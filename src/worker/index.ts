@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
 import { admin } from './admin';
+import { database } from './database';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
@@ -90,9 +91,9 @@ app.get('/lookups', async (c) => {
     c.env.DB.prepare(`SELECT DISTINCT name FROM wg_rigs WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(countries),
     c.env.DB.prepare(`SELECT DISTINCT value FROM lookup_values WHERE kind = 'conveyance' AND active = 1 AND ${inC} ORDER BY sort`).bind(countries),
     c.env.DB.prepare(`SELECT kind, value FROM lookup_values WHERE active = 1 AND kind <> 'conveyance' AND ${inC} GROUP BY kind, value ORDER BY kind, min(sort), value`).bind(countries),
-    c.env.DB.prepare(`SELECT id, country, label, kind, bore_in, rating_psi, length_ft FROM pce WHERE active = 1 AND ${inC} ORDER BY label`).bind(countries),
-    c.env.DB.prepare(`SELECT id, country, label, panel_type FROM grease_panels WHERE active = 1 AND ${inC} ORDER BY label`).bind(countries),
-    c.env.DB.prepare('SELECT job_type_name, is_plug, is_fishing, is_memory, is_perforation, is_explosive FROM service_profiles'),
+    c.env.DB.prepare(`SELECT id, country, label, kind, bore_in, rating_psi, length_ft, active FROM pce WHERE ${inC} ORDER BY label`).bind(countries),
+    c.env.DB.prepare(`SELECT id, country, label, panel_type, active FROM grease_panels WHERE ${inC} ORDER BY label`).bind(countries),
+    c.env.DB.prepare('SELECT job_type_name, domain, is_plug, is_fishing, is_memory, is_perforation, is_explosive FROM service_profiles'),
   ]);
   const names = (r: D1Result) => (r.results as { name?: string; value?: string }[]).map((x) => (x.name ?? x.value) as string);
   const byKind: Record<string, string[]> = {};
@@ -160,6 +161,7 @@ app.get('/schedule', async (c) => {
 
 app.route('/jobs', jobs);
 app.route('/admin', admin);
+app.route('/database', database);
 app.route('/recon', recon);
 app.route('/unit-events', unitEvents);
 

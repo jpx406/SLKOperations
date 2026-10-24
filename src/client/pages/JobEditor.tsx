@@ -176,7 +176,8 @@ export function JobEditor() {
   const num = (f: string) => (values[f] ? Number(values[f]) : null);
   const list = (k: string) => (L?.lists[k] ?? []).map((v) => ({ value: v, label: v }));
   const country = job?.country;
-  const pceOptions = (L?.pce ?? []).filter((p) => p.country === country);
+  // switched-off equipment stays on the jobs that have it but can't be picked again
+  const pceOptions = (L?.pce ?? []).filter((p) => p.country === country && (p.active || p.id === values.pce_id));
   const pce = pceOptions.find((p) => p.id === values.pce_id);
   const flags = serviceFlags(job, L);
   const failureOpen = hasFailure(preview);
@@ -257,7 +258,7 @@ export function JobEditor() {
                 </Field>
               </div>
             </div>
-            <ServicesPicker job={job} options={L?.jobTypes ?? []} canEdit={editable('run_details')} onSaved={adopt} />
+            <ServicesPicker job={job} options={L?.jobTypes ?? []} profiles={L?.serviceProfiles ?? []} canEdit={editable('run_details')} onSaved={adopt} />
           </Card>
         )}
 
@@ -341,12 +342,12 @@ export function JobEditor() {
 
             <SectionTitle>Pressure control</SectionTitle>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
-              {select('pce_id', 'Pressure control set', pceOptions.map((p) => ({ value: p.id, label: `${p.label} · ${p.bore_in} in bore` })),
-                !pceOptions.length ? 'No equipment listed yet (Database)' : pce ? `${pce.bore_in} in bore${pce.rating_psi ? ` · ${pce.rating_psi.toLocaleString()} psi` : ''}` : undefined, pickPce)}
+              {select('pce_id', 'Pressure control set', pceOptions.map((p) => ({ value: p.id, label: `${p.label} · ${p.bore_in} in bore${p.active ? '' : ' (switched off)'}` })),
+                !pceOptions.some((p) => p.active) ? 'No equipment listed yet (Database)' : pce ? `${pce.bore_in} in bore${pce.rating_psi ? ` · ${pce.rating_psi.toLocaleString()} psi` : ''}` : undefined, pickPce)}
               {select('pressure_rating_psi', 'Pressure rating', ['5000', '10000', '15000'].map((v) => ({ value: v, label: `${Number(v).toLocaleString()} psi` })))}
               {text('lubricator_length_ft', 'Lubricator length', { type: 'number', unit: 'ft' })}
               {select('stuffing_box_type', 'Stuffing box', list('stuffing_box_type'))}
-              {select('grease_panel_id', 'Grease panel', (L?.greasePanels ?? []).filter((g) => g.country === country).map((g) => ({ value: g.id, label: g.label })), 'Braided line only')}
+              {select('grease_panel_id', 'Grease panel', (L?.greasePanels ?? []).filter((g) => g.country === country && (g.active || g.id === values.grease_panel_id)).map((g) => ({ value: g.id, label: g.label })), 'Braided line only')}
               {select('jar_type', 'Jar type', list('jar_type'))}
               {select('special_setup', 'Special setup', YES_NO)}
               {values.special_setup === 'yes' && text('special_setup_notes', 'Special setup notes')}
@@ -429,10 +430,12 @@ function SaveIndicator({ state }: { state: SaveState }) {
   return <span role="status" aria-live="polite" className="ml-auto text-xs font-semibold">{map[state.kind]}</span>;
 }
 
-function ServicesPicker({ job, options, canEdit, onSaved }: { job: Job | null; options: string[]; canEdit: boolean; onSaved: (j: Job) => void }) {
+function ServicesPicker({ job, options, profiles, canEdit, onSaved }: { job: Job | null; options: string[]; profiles: Lookups['serviceProfiles']; canEdit: boolean; onSaved: (j: Job) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selected = job?.services ?? [];
+  // the job's service domain follows its first service, as set per job type in Database
+  const domains = [...new Set(selected.map((s) => profiles.find((p) => p.job_type_name === s)?.domain).filter(Boolean))];
   const toggle = async (name: string) => {
     if (!job) return;
     const next = selected.includes(name) ? selected.filter((s) => s !== name) : [...selected, name];
@@ -454,6 +457,7 @@ function ServicesPicker({ job, options, canEdit, onSaved }: { job: Job | null; o
         Services <span className="normal-case tracking-normal text-text-subtle">(WIREGUARD job types, up to 15)</span>
       </legend>
       {!job && <LockHint>Save a first detail above, then pick the services.</LockHint>}
+      {domains.length > 0 && <p className="mb-2 text-sm"><span className="text-text-muted">Service domain:</span> <span className="font-semibold">{domains[0]}</span>{domains.length > 1 && <span className="text-text-subtle"> (also {domains.slice(1).join(', ')})</span>}</p>}
       {error && <p className="mb-2 text-xs text-danger">{error}</p>}
       {job && (
         <div className="flex flex-wrap gap-2">

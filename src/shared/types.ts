@@ -91,9 +91,9 @@ export interface Lookups {
   conveyances: string[];
   /** Local lists by kind (well_type, casing_type, plug_type …) for the user's countries. */
   lists: Record<string, string[]>;
-  pce: { id: string; country: string; label: string; kind: string; bore_in: number; rating_psi: number | null; length_ft: number | null }[];
-  greasePanels: { id: string; country: string; label: string; panel_type: string | null }[];
-  serviceProfiles: { job_type_name: string; is_plug: number; is_fishing: number; is_memory: number; is_perforation: number; is_explosive: number }[];
+  pce: { id: string; country: string; label: string; kind: string; bore_in: number; rating_psi: number | null; length_ft: number | null; active: number }[];
+  greasePanels: { id: string; country: string; label: string; panel_type: string | null; active: number }[];
+  serviceProfiles: { job_type_name: string; domain: string | null; is_plug: number; is_fishing: number; is_memory: number; is_perforation: number; is_explosive: number }[];
 }
 
 export interface Employee { id: string; country: string; eid: string; full_name: string; title: string; crew_role: string | null }

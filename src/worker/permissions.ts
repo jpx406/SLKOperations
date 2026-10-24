@@ -65,6 +65,10 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'DELETE', re: /^\/api\/admin\/users\/[^/]+$/, menu: 'users', action: 'delete' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/grants$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/role-permissions$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists)$/, menu: 'database', action: 'edit' },
+  { method: 'PATCH', re: /^\/api\/database\/(pce|grease-panels|lists)\/[^/]+$/, menu: 'database', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/database\/(pce|grease-panels)\/[^/]+$/, menu: 'database', action: 'delete' },
+  { method: 'PUT', re: /^\/api\/database\/service-profiles$/, menu: 'database', action: 'edit' },
   { method: 'POST', re: /^\/api\/recon\/run$/, menu: 'reconciliation', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/recon\/findings\/[^/]+$/, menu: 'reconciliation', action: 'edit' },
   { method: 'POST', re: /^\/api\/recon\/links$/, menu: 'reconciliation', action: 'edit' },
@@ -80,6 +84,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options)$/, menus: ['jobs'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
+  { re: /^\/api\/database$/, menus: ['database'] },
   { re: /^\/api\/admin\//, menus: ['users'] },
 ];
 

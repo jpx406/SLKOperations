@@ -26,7 +26,7 @@ Per-stage progress bars on job cards,jobs,must,yes,yes,S03; build: Preparation a
 Create job,jobs,must,yes,yes,"original creates the record instantly; clone should save on first edit; build: created on first save, never on click"
 Delete job,jobs,must,yes,partial,S04 confirm first; build: API with soft delete; no button yet
 Job editor Design stage,jobs,must,yes,yes,"S04; build: core fields; DMR, program, third party in 2d; 2d: DMR, program in place, third party added"
-Up to 15 services with auto service domain,jobs,must,yes,partial,S04; build: WIREGUARD job types picked; domain readout in 2d
+Up to 15 services with auto service domain,jobs,must,yes,yes,S04; build: WIREGUARD job types picked; domain readout in 2d; 2f: domains set per job type in Database and shown under the services
 Job editor Preparation stage,jobs,must,yes,yes,"S05; 2d: well, wire and drum from WIREGUARD with pre-job test status, pressure control, toolstring, crew"
 Crew head count with caps per role,jobs,must,yes,yes,S05; SLK: supervisors 3 operators 6 assistants 6 helpers 6 (confirm); 2d: caps enforced in API and database; named crew from the country roster
 Conditional sections by service (plug/lock fishing survey tubing punch),jobs,must,yes,yes,"S05 S06; service flags in seed_slk.sql; 2d: plug, fishing, memory survey, perforation; gated on screen and in the API"
@@ -61,7 +61,7 @@ Failures by month chart with drill-down,failure roster,should,yes,no,S10
 Tracking-gap warning (NPT without 8MF etc),failure roster,should,yes,no,S10
 Add failure manually,failure roster,should,yes,no,S40
 Failure Roster CSV PDF Excel exports,failure roster,should,yes,no,S10
-Equipment Database (units PCE grease panels),database,must,yes,no,S24 manual
+Equipment Database (units PCE grease panels),database,must,yes,yes,"S24 manual; 2f: WIREGUARD units read-only with open jobs, PCE and grease panels (switch off asks when open jobs use it), local lists, service profiles"
 Quick Plan card board,quick plan,could,yes,no,S25 manual
 Operation Statistics KPIs gauges and charts,service quality,must,yes,no,S13
 Chart drill-down to job list and ticket,service quality,should,yes,no,S13

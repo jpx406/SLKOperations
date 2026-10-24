@@ -273,6 +273,41 @@ Pre-Job Notes access follows the manual.
 
 **Bug found and fixed:** the first job creation returned a 500 ("too many columns in result set"); this led to the D1 change above.
 
+## Milestone 2f: Equipment Database (S24)
+
+**Server (`/api/database`):**
+- **Read:** one call returns WIREGUARD units (read-only, with drums and open-job counts), PCE and grease panels (with open and total job counts), local lists including hidden values, every WIREGUARD job type with its service profile, and the service domains.
+- **PCE and grease panels:** add, edit, switch off and on, remove.
+  - Switching off something open jobs still use answers 409 with the count; it saves on a second, confirmed request (Administrator Manual §4).
+  - Removing is refused once any job has used it; switch it off instead.
+  - Labels are unique per country.
+- **Lists:** add (appended to the end), rename, hide and show, move up and down (swaps with the neighbour). Renaming doesn't rewrite jobs that saved the old text, and the editor still shows a saved value that left the list.
+- **Service profiles:** upsert per WIREGUARD job type, for job types in the caller's countries only; domain from the fixed list.
+- **Rights:** reading needs the Database tab; changes need its edit right, and removals its delete right. Everything writes to the audit log.
+- **Lookups:** now return switched-off PCE and panels too, so a job keeps showing its equipment by name, marked "(switched off)"; new jobs can't pick them. Service profiles carry their domain.
+
+**Client:**
+- **Database screen:** tabs for Units, Pressure control, Grease panels, Lists and Service profiles, plus a country filter for people with more than one country.
+  - Pressure control shows the days since the last pressure test and flags tests that are due (over 180 days, or never recorded).
+  - Equipment is added and edited in a dialog with the confirm-to-switch-off step.
+  - Lists are edited inline.
+  - Service profiles save on each change.
+- **Job editor:** Design shows the service domain under the picked services.
+
+**Verified 2026-10-25:**
+- **API:**
+  - adding PCE works; a duplicate label, a 7,000 psi rating and another country are refused;
+  - switching off PCE-5K-01 (used by an open job) asked first; removing it was refused;
+  - a list value was added and moved; a profile for an unknown job type was refused.
+- **Browser:**
+  - Units lists 35 units with drums and open jobs;
+  - switching off PCE-5K-01 in the dialog showed the warning, and "Switch off anyway" saved it;
+  - the job then showed "PCE-5K-01 · 2.5 in bore (switched off)";
+  - a jar type was added and moved up; the Fishing flag on Gauge Cutter was toggled on and off;
+  - Design showed the domain for two services;
+  - no sideways scroll at 375 px on any tab.
+- **Unit tests:** 63 of 63.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.
