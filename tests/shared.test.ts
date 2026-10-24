@@ -4,6 +4,7 @@ import { jobEfficiency, opHours, runEfficiency } from '../src/shared/metrics';
 import { defaultRoleFor } from '../src/shared/roles';
 import { stagePercent } from '../src/shared/stages';
 import { isOpenWrite, ruleFor } from '../src/worker/permissions';
+import { isCutOnly } from '../src/worker/sync';
 
 describe('job metrics (same rules as the job_metrics view)', () => {
   it('derives operating hours from rig-up and rig-down', () => {
@@ -74,6 +75,25 @@ describe('write rules (deny by default)', () => {
   it('leaves sign-in and sign-out open', () => {
     expect(isOpenWrite('POST', '/api/auth/login')).toBe(true);
     expect(isOpenWrite('POST', '/api/jobs')).toBe(false);
+  });
+});
+
+describe('WIREGUARD cut-only rows (never a run, per WIREGUARD)', () => {
+  it('flags maintenance wire cuts, SPOOL-AD adjustments and document-sourced rows', () => {
+    expect(isCutOnly({ job_name: 'Maintenance Wire cut' })).toBe(true);
+    expect(isCutOnly({ drss_number: 'SPOOL-AD' })).toBe(true);
+    expect(isCutOnly({ source_document_id: 'doc-1' })).toBe(true);
+    expect(isCutOnly({ job_name: 'Gauge Cutter', drss_number: 'DRSS-1' })).toBe(false);
+  });
+});
+
+describe('admin write rules', () => {
+  it('puts every admin write behind the users menu', () => {
+    expect(ruleFor('POST', '/api/admin/users')?.menu).toBe('users');
+    expect(ruleFor('PATCH', '/api/admin/users/NESR-1')?.menu).toBe('users');
+    expect(ruleFor('PUT', '/api/admin/users/NESR-1/grants')?.menu).toBe('users');
+    expect(ruleFor('PUT', '/api/admin/role-permissions')?.menu).toBe('users');
+    expect(ruleFor('DELETE', '/api/admin/users/NESR-1')).toBeUndefined();
   });
 });
 

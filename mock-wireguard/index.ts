@@ -3,6 +3,7 @@
 // the caller's countries, Admin sees everything, rows without a country are Admin-only.
 // It is wired in only by `vite dev` (auxiliary Worker). Production binds to the real WIREGUARD.
 
+import data from './data.json';
 import fixtures from './fixtures.json';
 import userFile from './users.json';
 
@@ -73,7 +74,34 @@ export default {
     if (pathname === '/auth/logout' && method === 'POST') return json({ success: true });
 
     if (method !== 'GET') return json({ error: 'The mock only serves reads' }, 405);
+    const params = new URL(request.url).searchParams;
     switch (pathname) {
+      case '/wires': return json(byCountry(data.wires, user));
+      case '/drums': return json(byCountry(data.drums, user));
+      case '/jobs': {
+        // like WIREGUARD: approved only by default, ?status=all for everything, ?status=x for one status
+        const status = params.get('status');
+        const rows = data.jobs.filter((j) => status === 'all' ? true : status ? j.approval_status === status : j.approval_status === 'approved');
+        return json(byCountry(rows, user));
+      }
+      case '/documents': {
+        const status = params.get('status');
+        const wireCountry = new Map(data.wires.map((w) => [w.wire_serial_number, w.country]));
+        const drumCountry = new Map(data.drums.map((d) => [d.drum_no, d.country]));
+        const rows = data.documents
+          .filter((d) => status === 'all' ? true : status ? d.approval_status === status
+            : d.approval_status === 'approved' || !['wire_maintenance_entry', 'drum_mpi'].includes(d.doc_type))
+          .map((d) => ({ ...d, resolved_country: wireCountry.get(d.wire_serial_number ?? '') ?? drumCountry.get(d.drum_no ?? '') ?? null }));
+        return json(byCountry(rows.map((r) => ({ ...r, country: r.resolved_country })), user).map(({ resolved_country: _r, country: _c, ...d }) => d));
+      }
+      // WIREGUARD's notifications endpoint has no country filter and no permission check
+      case '/notifications': return json(data.notifications);
+      case '/kpi-settings':
+      case '/sop-settings':
+      case '/sop-wire-size-thresholds':
+      case '/wire-alloy-database':
+      case '/wire-retirement-reasons':
+        return json(data.settings[pathname.slice(1) as keyof typeof data.settings]);
       case '/units': return json(byCountry(withIds('unit', fixtures.units), user));
       case '/job-types': return json(byCountry(withIds('jt', fixtures.job_types), user));
       case '/job-locations': return json(byCountry(withIds('jl', fixtures.job_locations), user));

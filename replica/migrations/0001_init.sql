@@ -159,9 +159,11 @@ CREATE TABLE wg_documents (
   expiry_date        TEXT,
   approval_status    TEXT COLLATE NOCASE,
   raw                TEXT CHECK (raw IS NULL OR json_valid(raw)),
+  wg_active          INTEGER NOT NULL DEFAULT 1,
   wg_synced_at       TEXT NOT NULL
 );
 CREATE INDEX wg_documents_wire ON wg_documents (wire_serial_number, test_date);
+CREATE INDEX wg_documents_drum ON wg_documents (drum_no, test_date);
 
 -- Wire alerts. WIREGUARD's endpoint has no country filter, so country is resolved here from the wire or drum.
 CREATE TABLE wg_notifications (
@@ -174,6 +176,7 @@ CREATE TABLE wg_notifications (
   drum_no            TEXT,
   country            TEXT,                                -- NULL means admins only, as in WIREGUARD
   is_read            INTEGER NOT NULL DEFAULT 0,
+  wg_active          INTEGER NOT NULL DEFAULT 1,
   wg_synced_at       TEXT NOT NULL
 );
 CREATE INDEX wg_notifications_wire ON wg_notifications (wire_serial_number, occurred_at);

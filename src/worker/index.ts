@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
+import { admin } from './admin';
 import { jobs } from './jobs';
 import { isOpenWrite, ruleFor } from './permissions';
 import { login, logout, requireSession, resolveSession } from './session';
@@ -126,10 +127,12 @@ app.get('/schedule', async (c) => {
 });
 
 app.route('/jobs', jobs);
+app.route('/admin', admin);
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(syncAll(env));
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    // runs every 15 minutes; documents, settings and the build stamp only on the hour
+    ctx.waitUntil(syncAll(env, { hourly: new Date(event.scheduledTime).getUTCMinutes() < 15 }));
   },
 } satisfies ExportedHandler<Env>;

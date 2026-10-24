@@ -70,4 +70,8 @@ export interface Lookups {
 
 export interface WgStatus {
   resources: { resource: string; finished_at: string | null; rows_seen: number | null; error: string | null }[];
+  counts: {
+    units: number; wires: number; drums: number; runs: number; runs_pending: number; cut_only_rows: number;
+    documents: number; alerts: number; countries_seen: string[]; wg_build: string | null;
+  };
 }

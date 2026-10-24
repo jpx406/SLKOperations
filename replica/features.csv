@@ -4,10 +4,10 @@ Country picker at sign-in (tenant),auth,must,yes,no,S01; only Saudi Arabia seen
 Forgot password (handled by WIREGUARD),auth,must,yes,no,S01; link to WIREGUARD
 Change password (handled by WIREGUARD),auth,should,yes,no,S36; link to WIREGUARD
 Roles control visible tabs,auth,must,yes,yes,manual §1-2; ~15 roles; build: role_permissions from 0002 seed
-Per-user tab grants by Admin,auth,must,yes,partial,manual §0; Users & Roles; build: read on the server; admin screen is milestone 2a
+Per-user tab grants by Admin,auth,must,yes,yes,"manual §0; Users & Roles; build: read on the server; admin screen is milestone 2a; 2a: extra tabs per person, view or edit, never Users & Roles"
 Field-level edit rights shown as role badges,auth,must,yes,yes,S04-S07 SALES/SDM badges; build: FIELD_POLICY drives badges and API filtering
-Restricted-content unlock on sensitive pages,auth,should,yes,no,original uses a shared password; replace with role permission
-Users & Roles admin screen,admin,must,yes,no,S34 admin manual only
+Restricted-content unlock on sensitive pages,auth,should,yes,yes,original uses a shared password; replace with role permission; 2a: replaced by role permissions; no shared password
+Users & Roles admin screen,admin,must,yes,yes,"S34 admin manual only; 2a: roles, access on/off, pre-register, grants, role matrix, sync status, recent changes"
 Global shell with nav groups and sub-tabs,shell,must,yes,yes,all screens; build: stub pages for unbuilt screens
 Light and dark theme toggle,shell,should,yes,yes,dark default
 Riyadh clock and live last-sync indicator,shell,could,yes,yes,header; build: clock + WIREGUARD sync status
@@ -106,7 +106,7 @@ Survey details for memory gauge jobs (stops gradients PBU),slickline,should,no,n
 Wire cut on the job compared with WIREGUARD runs,slickline,should,no,no,reconciliation value check; WIREGUARD owns the wire record
 Explosives link for tubing punch and cutter jobs,slickline,could,no,no,is_explosive services prompt a Mobilize to Well
 Separate inventory rights for explosives vs slickline hardware,inventory,must,no,no,storekeeper role; tested 2026-10-24
-WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,partial,"cron every 15 min; read-only service binding; build: units, job types, locations, fields, rigs; wires drums runs in 2b"
+WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,yes,"cron every 15 min; read-only service binding; build: units, job types, locations, fields, rigs; wires drums runs in 2b; 2b: plus documents, alerts, settings, build stamp; tested against mock with 1,210 runs"
 WIREGUARD data freshness indicator and on-demand sync,integration,should,no,yes,header status; /api/wg/status
 Reconciliation: SLK Ops jobs vs WIREGUARD runs with discrepancy findings,reconciliation,must,no,no,S46 F15; 9 checks
 Reconciliation actions: link runs to job and mark explained,reconciliation,must,no,no,SLK Ops side only; WIREGUARD stays untouched
@@ -118,4 +118,4 @@ Wire panel on the job: pre-job test rule and tension limit check,wire log,should
 Wire KPIs: 17 of WIREGUARD's KPIs with the same codes and parameters,wire log,should,no,no,D3; G1-G6 C12 C1-C6 J7 J9 M5 W14 W1
 KPI parity test against WIREGUARD's own engine and build-stamp watch,wire log,should,no,no,D3; re-run after each WIREGUARD release
 Link to the full WIREGUARD dashboard for the remaining KPIs,wire log,could,no,no,D3
-Read-only Viewer sync account with all countries,integration,must,no,no,created by a WIREGUARD admin; password as SLK Ops secret
+Read-only Viewer sync account with all countries,integration,must,no,partial,created by a WIREGUARD admin; password as SLK Ops secret; 2b: built and tested on the mock; the real account is created by a WIREGUARD admin

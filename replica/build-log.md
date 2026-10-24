@@ -43,13 +43,76 @@ Stack: Vite + React 19 SPA and a Hono API in one Cloudflare Worker (`@cloudflare
 - **Bounce after sign-in:** the cached "signed out" answer redirected back to sign-in before the new session was read. Sign-in now drops that cache.
 - **Schedule width:** wider than the screen at 1440 px.
 
-### Open observation
+### Open observation (resolved in milestone 2)
 
-- On the dev server's first boot, `PUT /api/jobs/:id/services` was refused as having no write rule (403), twice. After the Worker reloaded it passed every time (4 of 4), and the unit test for that rule passes. It wasn't reproduced. A log line now records any refused write with its method and path. Watch for it in `/replica-test`.
+- **Reported:** on the dev server's first boot, `PUT /api/jobs/:id/services` was refused as having no write rule (403).
+- **Resolved:** the refused-write log line showed the real request was `PUT /api/jobs/<id>`. My test script had left out `/services`, so deny-by-default refused a route that really has no rule, which is correct. Nothing was wrong with the app, and the log line stays as a diagnostic.
 
 ### Screenshots
 
 `replica/clone-screens/`: S01, S01-error, S02, S02-390, S03, S03-390, S04, S04-new, S04-viewer, S06.
+
+## Milestone 2a: Users & Roles (S34)
+
+| ID | date | status | missing | harder than expected |
+| --- | --- | --- | --- | --- |
+| S34 Users & Roles | 2026-10-24 | done | — | WIREGUARD can't list its users to a Viewer, so people appear after their first sign-in. An admin can pre-register a `NESR-` number with a role instead |
+
+What it does:
+- **People:** set the SLK Ops role, switch access on or off, add extra tabs (view or edit) per person, pre-register someone before their first sign-in.
+- **Role permissions:** the role × tab matrix (view, edit, delete). Admin always has every right and isn't editable.
+- **WIREGUARD sync:** see the next section.
+- **Recent changes:** the audit of access changes.
+
+Guards:
+- nobody can change their own role or switch off their own access;
+- the last active admin can't be removed;
+- the Users & Roles tab can't be granted;
+- reading the area is admin-only, not just writing.
+
+Changes apply on the person's next click, because the role is loaded on every request.
+
+**Verified 2026-10-24 (API):**
+- bad username refused (400), duplicate (409);
+- a pre-registered person keeps the SDM role at first sign-in, while their WIREGUARD role is Supervisor;
+- an SDM can't read (403) or write (403) the area;
+- an admin can't demote themself;
+- a grant gives the viewer jobs:edit, but the field policy still drops fields that role may not edit;
+- granting Users & Roles is refused, and so is editing the admin role;
+- a matrix change is live on the next request; switching access off gives 403 on the next call;
+- every change is audited (11 entries).
+
+**Verified (browser, 1440 and 390 px):** all four tabs; the person's own controls are locked; the dialog closes with Escape; no sideways scroll at 390 px after one fix (the tab row now wraps).
+
+## Milestone 2b: full WIREGUARD sync
+
+| item | date | status | missing |
+| --- | --- | --- | --- |
+| wires, drums, runs, documents, alerts, settings, build stamp | 2026-10-24 | done | wire screens and KPIs that use them (milestone 3) |
+
+Sync rules:
+- **Runs:** pulled with `?status=all`, so runs awaiting approval reach reconciliation.
+- **Approval status:** stored lower-case, because imported history writes `Approved`.
+- **Cut-only rows:** `Maintenance Wire cut`, `SPOOL-AD` and document-sourced rows are flagged and never counted as runs, as in WIREGUARD.
+- **Remaining length:** each wire gets it from its latest approved run.
+- **Alerts:** WIREGUARD sends them unfiltered, so each gets the country of its wire or drum. Alerts with neither are admin-only.
+- **Schedule:** runs and lists every 15 minutes; documents, settings and the build stamp on the hour; everything on demand.
+
+**Mock data:**
+- Built from WIREGUARD's exports by `scripts/make-wg-fixtures.mjs`: 81 wires, 73 drums, 1,210 runs, 1,283 tests and maintenance entries.
+- **Every person pseudonymised** (51 names → "Supervisor NN", 5 usernames → NESR-95xxx), and checked: no real name is in `data.json`.
+- Edge cases added on purpose: pending runs, two country-less runs, a capitalised `Approved`, a shop wire-cut row.
+
+**Verified 2026-10-24:**
+- **Full sync in 2.6 s:** 1,208 runs (the 2 country-less runs are invisible to the Viewer account, which is exactly the gap the open item describes); 1,207 real runs (4 awaiting approval) + 1 cut-only row.
+- **Lookups and alerts:** approval statuses folded to `approved` / `pending`; 64 of 81 wires have a remaining length; 6 alerts got Saudi Arabia and 1 is admin-only.
+- **Settings:** 5 settings keys + the build stamp stored.
+- **Repeat sync:** the second sync changes no counts.
+- **Unit tests:** 17 of 17 (cut-only rule, admin write rules added).
+
+Schema change: `wg_active` added to `wg_documents` and `wg_notifications`, plus a drum index on documents. Made in `0001`, which is still undeployed. **From the first deploy on, schema changes go in new numbered migrations, never into 0001 or 0002.**
+
+Tooling note: stopping a background dev-server task ends the shell, not Node. Check port 5173 is free before restarting.
 
 ### Clean-room note
 
