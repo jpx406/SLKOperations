@@ -1,0 +1,121 @@
+feature,area,priority,original,clone,notes
+Sign in with WIREGUARD accounts (NESR- usernames),auth,must,yes,no,S01; via service binding; no second password
+Country picker at sign-in (tenant),auth,must,yes,no,S01; only Saudi Arabia seen
+Forgot password (handled by WIREGUARD),auth,must,yes,no,S01; link to WIREGUARD
+Change password (handled by WIREGUARD),auth,should,yes,no,S36; link to WIREGUARD
+Roles control visible tabs,auth,must,yes,no,manual §1-2; ~15 roles
+Per-user tab grants by Admin,auth,must,yes,no,manual §0; Users & Roles
+Field-level edit rights shown as role badges,auth,must,yes,no,S04-S07 SALES/SDM badges
+Restricted-content unlock on sensitive pages,auth,should,yes,no,original uses a shared password; replace with role permission
+Users & Roles admin screen,admin,must,yes,no,S34 admin manual only
+Global shell with nav groups and sub-tabs,shell,must,yes,no,all screens
+Light and dark theme toggle,shell,should,yes,no,dark default
+Riyadh clock and live last-sync indicator,shell,could,yes,no,header
+Manual reload from database,shell,should,yes,no,header Refresh
+Unit Schedule Gantt by month,schedule,must,yes,no,S02
+Job bars coloured by status,schedule,must,yes,no,S02 legend
+Drag job bar to move unit or day,schedule,must,yes,no,S02 duration kept
+Drag bar edges to change dates,schedule,must,yes,no,S02
+Show canceled jobs toggle,schedule,should,yes,no,S02
+Warning for jobs without dates,schedule,should,yes,no,S02 banner
+Maintenance event blocks a unit,schedule,must,yes,no,S37 hatched Mechanic bar
+Unit status events (loan transferred junk backup),schedule,should,yes,no,S38 feeds utilization
+Filter schedule by division and SDM,schedule,should,yes,no,S02b
+Job Board list with search and status filter,jobs,must,yes,no,S03
+Per-stage progress bars on job cards,jobs,must,yes,no,S03
+Create job,jobs,must,yes,no,original creates the record instantly; clone should save on first edit
+Delete job,jobs,must,yes,no,S04 confirm first
+Job editor Design stage,jobs,must,yes,no,S04
+Up to 15 services with auto service domain,jobs,must,yes,no,S04
+Job editor Preparation stage,jobs,must,yes,no,S05
+Crew head count with caps per role,jobs,must,yes,no,S05; SLK: supervisors 3 operators 6 assistants 6 helpers 6 (confirm)
+Conditional sections by service (plug/lock fishing survey tubing punch),jobs,must,yes,no,S05 S06; service flags in seed_slk.sql
+PCE and lubricator clearance check (tool OD and toolstring length),jobs,should,yes,no,manual §4.2 adapted for slickline
+Job editor Execution stage,jobs,must,yes,no,S06
+Auto operating hours with SDM override,jobs,must,yes,no,S06
+Auto job and run efficiency,jobs,must,yes,no,S06 formula on screen
+Job editor Closure stage,jobs,must,yes,no,S07
+Failure fields unlock only when NPT or failure,jobs,must,yes,no,S07
+Stage completion percentage,jobs,must,yes,no,S04 stage cards
+Autosave with save-state indicator,jobs,should,yes,no,S04 saving/Saved
+Job Log sequence of events,jobs,should,yes,no,S42 not opened
+Offline wellsite job log,jobs,could,yes,no,S06 Offline version
+Full Job Report PDF,documents,should,yes,no,S41 not opened
+Job Package export,documents,should,yes,no,S41 not opened
+Signatures on job,documents,could,yes,no,S41 not opened
+JRA risk assessment form with live score,jra,should,yes,no,S28 QAF12069; 33 questions
+JRA send for approval and approval level,jra,should,yes,no,S28 S08 DRAFT/SENT/APPROVED
+Job Log spreadsheet view with 9 filters,job log,must,yes,no,S08
+Job Log export XLSX download print,job log,must,yes,no,S08
+Pre-Job Notes editor with versions,pre-job notes,should,yes,no,S26 PJN-nnnn
+Pre-Job Notes confirm and send (PDF mail app eml),pre-job notes,should,yes,no,S27
+Pre-Job Notes list with export,pre-job notes,should,yes,no,S09 restricted for SQM
+8 Min Facts list with search and status,8 min facts,must,yes,no,S11
+8 Min Facts editor with multiple incidents,8 min facts,must,yes,no,S12
+Severity auto from NPT with reference matrix,8 min facts,must,yes,no,S12
+8 Min Facts versions and history,8 min facts,must,yes,no,S12 vN
+8 Min Facts updates job NPT failure and roster on save,8 min facts,must,yes,no,S12 side effects
+8 Min Facts print PDF Word and email,8 min facts,should,yes,no,S12
+Failure Roster table with filters,failure roster,must,yes,no,S10
+Failures by month chart with drill-down,failure roster,should,yes,no,S10
+Tracking-gap warning (NPT without 8MF etc),failure roster,should,yes,no,S10
+Add failure manually,failure roster,should,yes,no,S40
+Failure Roster CSV PDF Excel exports,failure roster,should,yes,no,S10
+Equipment Database (units PCE grease panels),database,must,yes,no,S24 manual
+Quick Plan card board,quick plan,could,yes,no,S25 manual
+Operation Statistics KPIs gauges and charts,service quality,must,yes,no,S13
+Chart drill-down to job list and ticket,service quality,should,yes,no,S13
+Wellsite audit compliance by SDM,service quality,could,yes,no,S13 target 25%
+NPT and Failure Analysis,service quality,must,yes,no,S14
+Crew and fleet utilization with heatmap,service quality,should,yes,no,S15 methodology on screen
+Competency levels coverage gaps and quality signal,service quality,should,yes,no,S16
+Analytics exports (print XLSX PDF report),service quality,should,yes,no,S13-S16
+Attendance monthly code grid,attendance,must,yes,no,S17 15 codes
+Attendance multi-select range apply,attendance,should,yes,no,S17
+Weekend holiday and leave-while-assigned shading,attendance,should,yes,no,S17
+Attendance approve per row,attendance,should,yes,no,S17
+Attendance categories with approver email,attendance,could,yes,no,manual §6
+Attendance XLSX and HTML export,attendance,should,yes,no,S17
+Explosive inventory by location with KPIs,inventory,must,yes,no,S18
+Hardware inventory,inventory,should,yes,no,S19
+MCR inventory with par-level reorder alerts,inventory,should,yes,no,S29 manual
+Mobilize to well and consumption and return,inventory,must,yes,no,S39 not opened
+Job reconciliation per well,inventory,should,yes,no,S20
+Movement history and undo,inventory,should,yes,no,S18 manual §7.3
+Wires register read-only from WIREGUARD (status tests alerts remaining length),wire log,should,yes,no,S30; D3 decided: read-only
+Wire detail: runs tests and derived facts (trips/jars since cut life consumed used-wire limit),wire log,should,yes,no,S31; read-only; Open in WIREGUARD for edits
+Knowledge Hub library with filters and lesson of the week,knowledge hub,could,yes,no,S21
+Present lessons as toolbox talk,knowledge hub,could,yes,no,S43
+In-app AI help assistant,assistant,could,yes,no,S23 no data access
+Help dialog with manuals,help,could,yes,no,S22
+Bonus Report and Bonus Analysis,bonus,should,yes,no,S32 admin manual only; spec with owner
+Sales Dashboard,sales,should,yes,no,S33 admin manual only
+Existing NESR job personnel and inventory records,data,skip,yes,skip,company data; migrate via an approved export only
+Knowledge Hub document content,data,skip,yes,skip,147 docs owned by NESR QHSE; source from SharePoint via owner
+Aramco RILR GEARS OpsMiner integrations,integrations,skip,yes,skip,client systems; keep as free-text refs
+SAP integration for part numbers,integrations,skip,yes,skip,keep SAP# as a field only
+SharePoint job package and cable directory links,integrations,skip,yes,skip,store links as URLs
+Data-aware AI Agent (admin),assistant,skip,yes,skip,behaviour unknown; design new if wanted
+QAF12069 question text and weights copied from screens,jra,skip,yes,skip,load from the controlled QHSE form instead
+Resources Allocation board,other,skip,yes,skip,dormant in original
+Headcount Roster screen,other,skip,yes,skip,Attendance Administrator only; fold into an Employees admin page
+Service catalogue = WIREGUARD job types with local profiles (domain and section flags),slickline,must,no,no,service_profiles in 0002_seed.sql; 21 job types
+Toolstring builder on Preparation (component OD length weight),slickline,must,no,no,new for SLK; feeds max tool OD and lubricator length check
+Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,no,new for SLK
+Survey details for memory gauge jobs (stops gradients PBU),slickline,should,no,no,new for SLK; unlocked by is_memory
+Wire cut on the job compared with WIREGUARD runs,slickline,should,no,no,reconciliation value check; WIREGUARD owns the wire record
+Explosives link for tubing punch and cutter jobs,slickline,could,no,no,is_explosive services prompt a Mobilize to Well
+Separate inventory rights for explosives vs slickline hardware,inventory,must,no,no,storekeeper role; tested 2026-10-24
+WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,no,cron every 15 min; read-only service binding
+WIREGUARD data freshness indicator and on-demand sync,integration,should,no,no,header status; /api/wg/status
+Reconciliation: SLK Ops jobs vs WIREGUARD runs with discrepancy findings,reconciliation,must,no,no,S46 F15; 9 checks
+Reconciliation actions: link runs to job and mark explained,reconciliation,must,no,no,SLK Ops side only; WIREGUARD stays untouched
+Reconciliation summary per unit SDM and month,reconciliation,should,no,no,S46
+Nightly reconciliation feeding banners and digest,reconciliation,should,no,no,cron 04:00 Riyadh
+SLK Ops roles per WIREGUARD username with defaults from the WIREGUARD role,auth,must,no,no,user_roles
+Deploy on Cloudflare (Worker D1 R2 KV cron Email Service),platform,must,no,no,architecture.md wrangler.toml plan
+Wire panel on the job: pre-job test rule and tension limit check,wire log,should,no,no,D3; uses WIREGUARD sop and kpi settings
+Wire KPIs: 17 of WIREGUARD's KPIs with the same codes and parameters,wire log,should,no,no,D3; G1-G6 C12 C1-C6 J7 J9 M5 W14 W1
+KPI parity test against WIREGUARD's own engine and build-stamp watch,wire log,should,no,no,D3; re-run after each WIREGUARD release
+Link to the full WIREGUARD dashboard for the remaining KPIs,wire log,could,no,no,D3
+Read-only Viewer sync account with all countries,integration,must,no,no,created by a WIREGUARD admin; password as SLK Ops secret

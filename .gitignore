@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.log
+.playwright-cli/
+.DS_Store
+# reference material from the original app stays local (manuals, screenshots are reference only)
+replica/sources/

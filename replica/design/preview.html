@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SLK Design Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  /* Primitives styled only from tokens. This page is the design-system check; the React versions in the app use the same rules. */
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--color-bg); color: var(--color-text); font: var(--text-base)/var(--text-base--line-height) var(--font-sans); }
+  .themes { display: grid; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 1100px) { .themes { grid-template-columns: 1fr; } }
+  .panel { background: var(--color-bg); color: var(--color-text); padding: 24px var(--layout-gutter); }
+  .panel > h1 { font: 800 var(--text-xl)/var(--text-xl--line-height) var(--font-display); text-transform: uppercase; margin: 0 0 4px; letter-spacing: .01em; }
+  .sub { color: var(--color-text-muted); font-size: var(--text-sm); margin: 0 0 20px; }
+  section { margin-bottom: 22px; }
+  h2 { font: 600 var(--text-label)/var(--text-label--line-height) var(--font-mono); letter-spacing: var(--text-label--letter-spacing); text-transform: uppercase; color: var(--color-text-subtle); margin: 0 0 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-card); }
+
+  /* nav */
+  .topnav { display: flex; gap: 6px; }
+  .topnav a { display: inline-flex; align-items: center; height: var(--layout-control-md); padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); color: var(--color-text); text-decoration: none; font-weight: 600; font-size: var(--text-sm); }
+  .topnav a[aria-current] { background: var(--color-surface-3); border-color: var(--color-border-strong); }
+  .subnav { display: flex; gap: 8px; margin-top: 10px; }
+  .subnav a { display: inline-flex; align-items: center; gap: 6px; height: var(--layout-control-sm); padding: 0 14px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); color: var(--color-text-muted); text-decoration: none; font-weight: 600; font-size: var(--text-sm); }
+  .subnav a[aria-current] { background: var(--color-accent); color: var(--color-on-accent); border-color: transparent; }
+
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: var(--layout-control-md); padding: 0 14px; border-radius: var(--radius-md); border: 1px solid transparent; font: 600 var(--text-sm)/1 var(--font-sans); cursor: pointer; transition: background var(--motion-fast) var(--motion-ease); }
+  .btn svg { width: 16px; height: 16px; }
+  .btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  .primary { background: var(--color-accent); color: var(--color-on-accent); }
+  .primary:hover { background: var(--color-accent-hover); }
+  .secondary { background: var(--color-surface-2); color: var(--color-text); border-color: var(--color-border-strong); }
+  .ghost { background: transparent; color: var(--color-text-muted); }
+  .danger { background: transparent; color: var(--color-danger); border-color: var(--color-danger); }
+  .danger-solid { background: var(--color-danger-solid); color: var(--color-on-danger); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .sm { height: var(--layout-control-sm); padding: 0 12px; font-size: var(--text-xs); }
+  .lg { height: var(--layout-control-lg); padding: 0 18px; font: 700 var(--text-base)/1 var(--font-display); }
+  .spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: s 0.8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  .forcefocus { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+  /* pills */
+  .pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--radius-pill); font: 600 var(--text-label)/1 var(--font-mono); letter-spacing: var(--text-label--letter-spacing); text-transform: uppercase; border: 1px solid; }
+  .planned { color: var(--color-info); background: var(--color-info-subtle); border-color: color-mix(in srgb, var(--color-info) 40%, transparent); }
+  .ongoing { color: var(--color-warning); background: var(--color-warning-subtle); border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); }
+  .completed { color: var(--color-success); background: var(--color-success-subtle); border-color: color-mix(in srgb, var(--color-success) 40%, transparent); }
+  .canceled { color: var(--color-neutral); background: var(--color-neutral-subtle); border-color: color-mix(in srgb, var(--color-neutral) 40%, transparent); text-decoration: line-through; }
+  .sev { display: inline-flex; height: 22px; align-items: center; padding: 0 10px; border-radius: var(--radius-pill); font: 700 var(--text-xs)/1 var(--font-sans); color: var(--color-on-sev); }
+  .badge { display: inline-flex; padding: 1px 5px; border-radius: var(--radius-xs); background: var(--color-info-subtle); color: var(--color-info); font: 600 10px/14px var(--font-mono); letter-spacing: .06em; }
+
+  /* forms */
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px 20px; }
+  .field label { display: flex; gap: 6px; align-items: center; font: 600 var(--text-label)/var(--text-label--line-height) var(--font-mono); letter-spacing: var(--text-label--letter-spacing); text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 6px; }
+  .req { color: var(--color-danger); }
+  .control { position: relative; }
+  .control input, .control select { width: 100%; height: var(--layout-control-md); background: var(--color-input); color: var(--color-text); border: 1px solid var(--color-border-input); border-radius: var(--radius-sm); padding: 0 12px; font: var(--text-base) var(--font-sans); }
+  .control input::placeholder { color: var(--color-text-subtle); }
+  .control .unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--color-text-subtle); font: var(--text-xs) var(--font-mono); }
+  .field.err input { border-color: var(--color-danger); }
+  .hint { font-size: var(--text-xs); color: var(--color-text-subtle); margin-top: 4px; }
+  .error { font-size: var(--text-xs); color: var(--color-danger); margin-top: 4px; }
+  .auto input { background: var(--color-surface-2); border-style: dashed; color: var(--color-text-muted); }
+  .locked { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border: 1px dashed var(--color-border-strong); background: var(--color-surface-2); border-radius: var(--radius-md); color: var(--color-text-subtle); font-size: var(--text-sm); }
+  .seg { display: inline-flex; border: 1px solid var(--color-border-input); border-radius: var(--radius-sm); overflow: hidden; }
+  .seg button { background: var(--color-input); color: var(--color-text-muted); border: 0; border-right: 1px solid var(--color-border); height: 32px; padding: 0 14px; font: 600 var(--text-sm) var(--font-sans); }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-checked="true"] { background: var(--color-surface-3); color: var(--color-text); }
+
+  /* stage tabs */
+  .stages { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stage { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 12px; }
+  .stage[aria-selected="true"] { border-color: var(--color-accent); background: var(--color-surface-2); }
+  .stage .t { display: flex; flex-direction: column; gap: 4px; }
+  .stage b { font: 800 var(--text-lg)/1 var(--font-display); text-transform: uppercase; }
+  .stage small { color: var(--color-text-subtle); font: var(--text-xs) var(--font-mono); white-space: nowrap; order: -1; }
+  .stage p { margin: 4px 0 8px; color: var(--color-text-muted); font-size: var(--text-xs); }
+  .bar { height: 4px; border-radius: 2px; background: var(--color-surface-3); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--color-accent); }
+  .bar i.done { background: var(--color-success); }
+
+  /* toolstring */
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font: 600 var(--text-label)/1 var(--font-mono); letter-spacing: var(--text-label--letter-spacing); text-transform: uppercase; color: var(--color-text-muted); background: var(--color-surface-2); padding: 8px 10px; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--color-border); font-variant-numeric: tabular-nums; }
+  td.num { text-align: right; font-family: var(--font-mono); font-size: var(--text-sm); }
+  tfoot td { color: var(--color-text-muted); border-bottom: 0; }
+  .warn { color: var(--color-warning); }
+
+  /* kpi, banner */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpi .l { font: 600 var(--text-label)/1 var(--font-mono); letter-spacing: var(--text-label--letter-spacing); text-transform: uppercase; color: var(--color-text-muted); }
+  .kpi .v { font: 700 var(--text-kpi)/var(--text-kpi--line-height) var(--font-display); margin: 6px 0 2px; }
+  .kpi .c { font-size: var(--text-xs); color: var(--color-text-subtle); }
+  .banner { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: var(--radius-md); border-left: 3px solid; font-size: var(--text-sm); }
+  .banner.warning { background: var(--color-warning-subtle); color: var(--color-warning); }
+  .banner.danger { background: var(--color-danger-subtle); color: var(--color-danger); }
+  .banner a { color: inherit; font-weight: 700; margin-left: auto; }
+
+  /* gantt */
+  .gantt { display: grid; grid-template-columns: 120px repeat(10, minmax(28px,1fr)); border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; font-size: var(--text-xs); }
+  .gantt > div { border-bottom: 1px solid var(--color-border); border-right: 1px solid var(--color-border); min-height: 34px; padding: 4px; }
+  .gantt .h { background: var(--color-surface-2); text-align: center; font-family: var(--font-mono); color: var(--color-text-muted); min-height: 0; }
+  .gantt .we { background: var(--color-surface-2); }
+  .gantt .today { box-shadow: inset 2px 0 var(--color-accent), inset -2px 0 var(--color-accent); }
+  .gantt .u b { font: 700 var(--text-sm) var(--font-display); }
+  .gantt .u small { display: block; color: var(--color-text-subtle); font: 10px var(--font-mono); }
+  .jb { height: 26px; border-radius: var(--radius-sm); border-left: 3px solid; display: flex; align-items: center; padding: 0 6px; font: 600 11px var(--font-mono); white-space: nowrap; overflow: hidden; }
+  .jb.planned { border-color: var(--color-info); }
+  .jb.ongoing { border-color: var(--color-warning); }
+  .jb.blocked { color: var(--color-blocked); background: repeating-linear-gradient(45deg, var(--color-blocked-subtle) 0 6px, color-mix(in srgb, var(--color-blocked) 22%, var(--color-blocked-subtle)) 6px 12px); border-color: var(--color-blocked); }
+  .heat { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .heat div { color: var(--color-on-heat); text-align: center; border-radius: var(--radius-sm); padding: 6px; font: 700 var(--text-sm) var(--font-mono); }
+</style>
+</head>
+<body>
+<div class="themes">
+  <!-- one panel per theme; the markup is identical -->
+  <template id="tpl">
+    <h1>Design system check</h1>
+    <p class="sub">Primitives drawn from tokens.json only. Accent is a neutral placeholder until replica-brand.</p>
+
+    <section>
+      <h2>Navigation</h2>
+      <nav class="topnav" aria-label="Main"><a href="#" aria-current="page">Operation</a><a href="#">Service Quality</a><a href="#">Attendance</a><a href="#">Inventory</a><a href="#">Wire Log</a></nav>
+      <nav class="subnav" aria-label="Section"><a href="#" aria-current="page">Schedule</a><a href="#">Jobs</a><a href="#">Job Log</a><a href="#">8 Min. Facts</a><a href="#"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Pre-Job Notes</a></nav>
+    </section>
+
+    <section>
+      <h2>Buttons</h2>
+      <div class="row">
+        <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New job</button>
+        <button class="btn secondary">Filters</button>
+        <button class="btn ghost">Cancel</button>
+        <button class="btn danger">Delete job</button>
+        <button class="btn danger-solid">Delete permanently</button>
+        <button class="btn primary forcefocus">Focused</button>
+        <button class="btn primary" disabled>Disabled</button>
+        <button class="btn secondary" aria-busy="true"><span class="spin" aria-hidden="true"></span>Saving…</button>
+        <button class="btn primary sm">Small</button>
+        <button class="btn primary lg">Large</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Status, severity, badges</h2>
+      <div class="row">
+        <span class="pill planned">Planned</span><span class="pill ongoing">Ongoing</span><span class="pill completed">Completed</span><span class="pill canceled">Canceled</span>
+        <span class="sev" style="background:var(--color-sev-negligible)">Negligible</span>
+        <span class="sev" style="background:var(--color-sev-light)">Light</span>
+        <span class="sev" style="background:var(--color-sev-serious)">Serious · auto</span>
+        <span class="sev" style="background:var(--color-sev-major)">Major</span>
+        <span class="sev" style="background:var(--color-sev-catastrophic)">Catastrophic</span>
+        <span class="badge">SALES</span><span class="badge">SDM</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Job editor stages</h2>
+      <div class="stages" role="tablist">
+        <div class="stage" role="tab" aria-selected="false"><div class="t"><b>Design</b><small>01 · 100%</small></div><p>Request and setup</p><div class="bar"><i class="done" style="width:100%"></i></div></div>
+        <div class="stage" role="tab" aria-selected="true"><div class="t"><b>Preparation</b><small>02 · 40%</small></div><p>Well, wire, PCE, toolstring</p><div class="bar"><i style="width:40%"></i></div></div>
+        <div class="stage" role="tab" aria-selected="false"><div class="t"><b>Execution</b><small>03 · 0%</small></div><p>Runs, depths, NPT</p><div class="bar"><i style="width:0"></i></div></div>
+        <div class="stage" role="tab" aria-selected="false"><div class="t"><b>Closure</b><small>04 · 0%</small></div><p>Sign-off and reporting</p><div class="bar"><i style="width:0"></i></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Form fields</h2>
+      <div class="grid3">
+        <div class="field"><label>Ticket number <span class="badge">SALES</span><span class="req" aria-hidden="true">*</span></label><div class="control"><input placeholder="e.g. S-1001"></div></div>
+        <div class="field"><label>Target depth</label><div class="control"><input value="9,850"><span class="unit">ft</span></div><div class="hint">Measured depth to work interval</div></div>
+        <div class="field err"><label>Rig-down</label><div class="control"><input value="20 Oct 2026 05:00"></div><div class="error">Rig-down must be after rig-up (20 Oct 06:00)</div></div>
+        <div class="field"><label>Wire</label><div class="control"><select><option>TEST-WIRE-1 · Solid 0.125" Supa 75</option></select></div></div>
+        <div class="field auto"><label>Operating hours · auto</label><div class="control"><input value="12.0" readonly><span class="unit">h</span></div></div>
+        <div class="field"><label>Failure</label><div class="seg" role="radiogroup"><button role="radio" aria-checked="false">Yes</button><button role="radio" aria-checked="true">No</button><button role="radio" aria-checked="false">N/A</button></div></div>
+      </div>
+      <div class="locked" style="margin-top:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Fishing details unlock when a fishing service is added on Design.</div>
+    </section>
+
+    <section class="card">
+      <h2>Toolstring builder (SLK)</h2>
+      <table>
+        <thead><tr><th>#</th><th>Component</th><th style="text-align:right">OD in</th><th style="text-align:right">Length ft</th><th style="text-align:right">Weight lb</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Rope socket</td><td class="num">1.500</td><td class="num">0.8</td><td class="num">6</td></tr>
+          <tr><td>2</td><td>Stem</td><td class="num">1.500</td><td class="num">10.0</td><td class="num">60</td></tr>
+          <tr><td>3</td><td>Spang jar</td><td class="num">1.500</td><td class="num">4.5</td><td class="num">18</td></tr>
+          <tr><td>4</td><td>Pulling tool</td><td class="num">1.875</td><td class="num">2.2</td><td class="num">9</td></tr>
+        </tbody>
+        <tfoot><tr><td></td><td>Totals</td><td class="num warn">max 1.875</td><td class="num">17.5</td><td class="num">93</td></tr></tfoot>
+      </table>
+      <div class="banner warning" style="margin-top:10px">Toolstring 17.5 ft is longer than the 16 ft lubricator.<a href="#">Change lubricator</a></div>
+    </section>
+
+    <section>
+      <h2>KPI tiles</h2>
+      <div class="kpis">
+        <div class="card kpi"><div class="l">Jobs in period</div><div class="v">40</div><div class="c">473 on the board</div></div>
+        <div class="card kpi"><div class="l">Fleet efficiency</div><div class="v" style="color:var(--color-success)">95.8%</div><div class="c">op ÷ (op + NPT)</div></div>
+        <div class="card kpi"><div class="l">NPT hours</div><div class="v" style="color:var(--color-danger)">51</div><div class="c">from Execution</div></div>
+        <div class="card kpi"><div class="l">Wires due</div><div class="v" style="color:var(--color-warning)">3</div><div class="c">cut-back or torsion test</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Schedule</h2>
+      <div class="gantt" role="grid">
+        <div class="h">Unit</div><div class="h">M 19</div><div class="h">T 20</div><div class="h">W 21</div><div class="h">T 22</div><div class="h we">F 23</div><div class="h we">S 24</div><div class="h">S 25</div><div class="h">M 26</div><div class="h">T 27</div><div class="h">W 28</div>
+        <div class="u"><b>SLK-01</b><small>Solid 0.125"</small></div><div></div><div style="grid-column:span 2"><div class="jb pill planned" style="height:26px;width:100%;text-transform:none">S-1001 · TEST-1</div></div><div></div><div class="we"></div><div class="we today"></div><div style="grid-column:span 3"><div class="jb pill ongoing" style="height:26px;width:100%;text-transform:none">S-1004 · TEST-9</div></div><div></div>
+        <div class="u"><b>SLK-02</b><small>Braided 3/16"</small></div><div style="grid-column:span 4"><div class="jb blocked">Maintenance</div></div><div class="we"></div><div class="we today"></div><div></div><div></div><div></div><div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Banners and heatmap</h2>
+      <div class="banner warning" style="margin-bottom:8px">4 jobs have no dates and aren't on the schedule.<a href="#">Fix now</a></div>
+      <div class="banner danger" style="margin-bottom:10px">Wire TEST-WIRE-1 is overdue for a cut-back.<a href="#">Log cut-back</a></div>
+      <div class="heat"><div style="background:var(--color-heat-green)">92%</div><div style="background:var(--color-heat-yellow)">61%</div><div style="background:var(--color-heat-orange)">38%</div><div style="background:var(--color-heat-red)">12%</div></div>
+    </section>
+  </template>
+  <div class="panel" id="dark"></div>
+  <div class="panel" id="light" data-theme="light"></div>
+</div>
+<script>
+  for (const id of ["dark", "light"]) document.getElementById(id).append(document.getElementById("tpl").content.cloneNode(true));
+</script>
+</body>
+</html>
