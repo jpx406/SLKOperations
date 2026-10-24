@@ -22,21 +22,21 @@ Maintenance event blocks a unit,schedule,must,yes,yes,S37 hatched Mechanic bar; 
 Unit status events (loan transferred junk backup),schedule,should,yes,yes,"S38 feeds utilization; 2c: loan/transferred/junk block, backup-on-site marks only"
 Filter schedule by division and SDM,schedule,should,yes,no,S02b; still open; the original locked it behind a password
 Job Board list with search and status filter,jobs,must,yes,yes,S03
-Per-stage progress bars on job cards,jobs,must,yes,partial,S03; build: Preparation and Closure count from milestone 2d
+Per-stage progress bars on job cards,jobs,must,yes,yes,S03; build: Preparation and Closure count from milestone 2d; 2d: all four stages
 Create job,jobs,must,yes,yes,"original creates the record instantly; clone should save on first edit; build: created on first save, never on click"
 Delete job,jobs,must,yes,partial,S04 confirm first; build: API with soft delete; no button yet
-Job editor Design stage,jobs,must,yes,partial,"S04; build: core fields; DMR, program, third party in 2d"
+Job editor Design stage,jobs,must,yes,yes,"S04; build: core fields; DMR, program, third party in 2d; 2d: DMR, program in place, third party added"
 Up to 15 services with auto service domain,jobs,must,yes,partial,S04; build: WIREGUARD job types picked; domain readout in 2d
-Job editor Preparation stage,jobs,must,yes,no,S05
-Crew head count with caps per role,jobs,must,yes,no,S05; SLK: supervisors 3 operators 6 assistants 6 helpers 6 (confirm)
-Conditional sections by service (plug/lock fishing survey tubing punch),jobs,must,yes,no,S05 S06; service flags in seed_slk.sql
-PCE and lubricator clearance check (tool OD and toolstring length),jobs,should,yes,no,manual §4.2 adapted for slickline
-Job editor Execution stage,jobs,must,yes,partial,S06; build: times runs depths NPT failure; job log and conditional fields in 2d
+Job editor Preparation stage,jobs,must,yes,yes,"S05; 2d: well, wire and drum from WIREGUARD with pre-job test status, pressure control, toolstring, crew"
+Crew head count with caps per role,jobs,must,yes,yes,S05; SLK: supervisors 3 operators 6 assistants 6 helpers 6 (confirm); 2d: caps enforced in API and database; named crew from the country roster
+Conditional sections by service (plug/lock fishing survey tubing punch),jobs,must,yes,yes,"S05 S06; service flags in seed_slk.sql; 2d: plug, fishing, memory survey, perforation; gated on screen and in the API"
+PCE and lubricator clearance check (tool OD and toolstring length),jobs,should,yes,yes,"manual §4.2 adapted for slickline; 2d: OD vs restriction and PCE bore, length vs lubricator"
+Job editor Execution stage,jobs,must,yes,yes,"S06; build: times runs depths NPT failure; job log and conditional fields in 2d; 2d: overpull, plug, op time details, gated sections; job log is 2g"
 Auto operating hours with SDM override,jobs,must,yes,yes,S06
 Auto job and run efficiency,jobs,must,yes,yes,S06 formula on screen; build: floored at 0
-Job editor Closure stage,jobs,must,yes,no,S07
-Failure fields unlock only when NPT or failure,jobs,must,yes,no,S07
-Stage completion percentage,jobs,must,yes,partial,S04 stage cards; build: Design and Execution only
+Job editor Closure stage,jobs,must,yes,yes,"S07; 2d: sign-off, revenue, bonus remarks, failure follow-up"
+Failure fields unlock only when NPT or failure,jobs,must,yes,yes,"S07; 2d: screen, API and database check"
+Stage completion percentage,jobs,must,yes,yes,S04 stage cards; build: Design and Execution only; 2d: all stages; closure adds the failure follow-up when it applies
 Autosave with save-state indicator,jobs,should,yes,yes,S04 saving/Saved; build: with 409 conflict banner
 Job Log sequence of events,jobs,should,yes,no,S42 not opened
 Offline wellsite job log,jobs,could,yes,no,S06 Offline version
@@ -100,7 +100,7 @@ QAF12069 question text and weights copied from screens,jra,skip,yes,skip,load fr
 Resources Allocation board,other,skip,yes,skip,dormant in original
 Headcount Roster screen,other,should,yes,no,Attendance Administrator only; fold into an Employees admin page; decided: build it for attendance_admin (Admin Manual 6); one people list for attendance and crews
 Service catalogue = WIREGUARD job types with local profiles (domain and section flags),slickline,must,no,no,service_profiles in 0002_seed.sql; 21 job types
-Toolstring builder on Preparation (component OD length weight),slickline,must,no,no,new for SLK; feeds max tool OD and lubricator length check
+Toolstring builder on Preparation (component OD length weight),slickline,must,no,yes,new for SLK; feeds max tool OD and lubricator length check; 2d
 Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,partial,new for SLK; build: overpull not on screen yet
 Survey details for memory gauge jobs (stops gradients PBU),slickline,should,no,no,new for SLK; unlocked by is_memory
 Wire cut on the job compared with WIREGUARD runs,slickline,should,no,no,reconciliation value check; WIREGUARD owns the wire record
@@ -128,7 +128,7 @@ Read access enforced per tab (deny by default),admin,must,no,yes,found in review
 Bonus rules per job type configured by admin,bonus,should,no,no,"decided: per job, per run or % of revenue; default crew splits by role"
 Crew Assignment and Bonus Distribution on Closure (Admin/SDM),bonus,should,yes,no,Admin Manual 3; % or fixed amount; approval feeds the Bonus Report
 Bonus statements emailed to each person,bonus,could,yes,no,Admin Manual 1.1
-Revenue entered on each job (Closure),sales,should,no,no,decided 2026-10-24
+Revenue entered on each job (Closure),sales,should,no,yes,"decided 2026-10-24; 2d: Closure, SDM or Sales, stored in cents"
 Step-up re-authentication for Bonus and Sales pages,bonus,should,yes,no,"replaces the original's access code; WIREGUARD password, 30 min"
 Admin data export (all tables) and import with dry-run and backup,admin,should,yes,no,Admin Manual 7
 Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,no,Admin Manual 8.1

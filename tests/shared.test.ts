@@ -60,6 +60,15 @@ describe('stage completion', () => {
     expect(stagePercent({}, 'design')).toBe(0);
     expect(stagePercent({ ticket_no: '1', status: 'planned', services: ['Gauge Cutter'] }, 'design')).toBe(25);
   });
+  it('treats an empty toolstring as not filled', () => {
+    expect(stagePercent({ well_type: 'Oil producer', toolstring: [] }, 'preparation')).toBe(10);
+    expect(stagePercent({ well_type: 'Oil producer', toolstring: [{ component: 'Stem' }] }, 'preparation')).toBe(20);
+  });
+  it('adds the failure follow-up to closure only when the job has NPT or a failure', () => {
+    const signed = { job_log_signed: 'yes', ticket_signed: 'yes' } as const;
+    expect(stagePercent({ ...signed, npt_hours: 0 }, 'closure')).toBe(29);
+    expect(stagePercent({ ...signed, npt_hours: 2 }, 'closure')).toBe(17);
+  });
 });
 
 describe('write rules (deny by default)', () => {
@@ -68,6 +77,17 @@ describe('write rules (deny by default)', () => {
     expect(ruleFor('PATCH', '/api/jobs/abc')?.action).toBe('edit');
     expect(ruleFor('DELETE', '/api/jobs/abc')?.action).toBe('delete');
     expect(ruleFor('PUT', '/api/jobs/abc/services')?.menu).toBe('jobs');
+    expect(ruleFor('PUT', '/api/jobs/abc/crew')?.menu).toBe('jobs');
+    expect(ruleFor('PUT', '/api/jobs/abc/headcount')?.action).toBe('edit');
+    expect(ruleFor('POST', '/api/jobs/abc/crew')).toBeUndefined();
+  });
+  it('opens crew, wire options and the roster only with the right tabs', () => {
+    const jobsOnly = { jobs: { view: true, edit: false, delete: false } };
+    const scheduleOnly = { schedule: { view: true, edit: false, delete: false } };
+    expect(readAllowed('/api/jobs/abc/wire-options', jobsOnly)).toBe(true);
+    expect(readAllowed('/api/jobs/abc/crew', scheduleOnly)).toBe(false);
+    expect(readAllowed('/api/employees', scheduleOnly)).toBe(false);
+    expect(readAllowed('/api/employees', jobsOnly)).toBe(true);
   });
   it('puts schedule moves and unit blocks behind schedule:edit', () => {
     expect(ruleFor('POST', '/api/jobs/abc/move')).toMatchObject({ menu: 'schedule', action: 'edit' });

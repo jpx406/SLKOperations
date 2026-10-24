@@ -230,6 +230,49 @@ Pre-Job Notes access follows the manual.
 2. **Quick successive moves lost.** The second one carried an old timestamp and got 409; the cache now takes the server's answer at once, and three quick `]` presses all landed.
 3. **Audit lines lost field names.** A PowerShell here-string blanked `${k}` in a template literal. **Lesson:** never splice TypeScript through PowerShell expandable strings; use the editor tools.
 
+## Milestone 2d: job editor complete (S04–S07)
+
+**Server:**
+- **Field policy:** covers every job field, by role group (planners, managers, field crew, preparation, quality); sign-offs go to the crew, reporting to SQM/SDM, revenue to SDM and Sales.
+- **Checks:** values and references are checked on every patch: wire and drum from WIREGUARD (active, same country), PCE and grease panel (same country, active), report status, job package link.
+- **Gates:** plug, fishing, survey and perforation open only with a matching service profile; the failure follow-up opens only with NPT or Failure = Yes. Both are enforced in the API, and the failure gate also as a database check.
+- **Toolstring:** cleaned by `parseToolstring`; length, stem weight and largest OD are derived and stored so reports read one number.
+- **New routes:**
+  - `GET /jobs/:id/crew`, `PUT /jobs/:id/headcount` (caps 3/6/6/6), `PUT /jobs/:id/crew` (people from the job country's active roster, no duplicates);
+  - `GET /jobs/:id/wire-options` (drums on the job's unit with their wire, MBL, remaining length, tests and WIREGUARD's tension-test window);
+  - `GET /employees`;
+  - `/lookups` now also returns the local lists, PCE, grease panels and service profiles.
+- **Rules:** read and write rules for all of the above, deny by default.
+- **D1 column limit:** D1 returns at most 100 columns per row, and `jobs` has 96. A full job is now read in two statements (the row, then metrics and services); the board selects only the columns it shows. **New job fields from here on go in side tables.**
+
+**Client:**
+- **Preparation:** well data, the drum and wire panel from WIREGUARD with pre-job test status (`preJobWireStatus`), pressure control (picking a set fills rating and lubricator length when empty), the toolstring builder with live clearance checks, head count and named crew.
+- **Execution:** adds overpull, plug type (gated), operating time details, and the fishing, memory survey and perforation sections (gated).
+- **Closure:** sign-off, ticket value in USD (stored in cents), bonus remarks, and the failure follow-up (locked until NPT or Failure = Yes).
+- **Design:** adds DMR, Program in place and Third party.
+- **Stage percentages:** cover all four stages.
+- **Autosave on exit:** leaving the editor now saves what is still waiting.
+
+**Dev data:** `scripts/dev-seed.sql` holds fake people, PCE and grease panels for local use only.
+
+**Verified 2026-10-25:**
+- **API:**
+  - head count over the cap is refused, and so is crew from another country;
+  - crew slots are numbered per role;
+  - the toolstring stores derived totals (10.8 ft, stem 60 lb, OD 1.5 in);
+  - revenue is saved in cents;
+  - plug type without a plug service is refused, and so is a GEARS number without NPT;
+  - the board lists jobs with 47 columns.
+- **Browser:**
+  - Preparation shows WIREGUARD drum MOL 148 with wire CWR-1970, and flags its tension test as 569 days old;
+  - picking the drum saves the drum and the wire together;
+  - typing 1.5 in minimum restriction shows the OD warning at once;
+  - a third toolstring part with a 1.875 in OD updates Max OD and saves;
+  - Closure shows revenue as 12500 USD, with the follow-up locked; after NPT = 2 it opens, and a GEARS number saves.
+- **Unit tests:** 57 of 57.
+
+**Bug found and fixed:** the first job creation returned a 500 ("too many columns in result set"); this led to the D1 change above.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

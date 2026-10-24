@@ -53,6 +53,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/jobs$/, menu: 'jobs', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/jobs\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/services$/, menu: 'jobs', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/(headcount|crew)$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/jobs\/[^/]+\/move$/, menu: 'schedule', action: 'edit' },
   { method: 'POST', re: /^\/api\/unit-events$/, menu: 'schedule', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/unit-events\/[^/]+$/, menu: 'schedule', action: 'edit' },
@@ -76,6 +77,8 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status)$/, menus: 'any' },
   { re: /^\/api\/schedule$/, menus: ['schedule'] },
   { re: /^\/api\/jobs(\/[^/]+)?$/, menus: ['jobs', 'schedule'] },
+  { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options)$/, menus: ['jobs'] },
+  { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
   { re: /^\/api\/admin\//, menus: ['users'] },
 ];

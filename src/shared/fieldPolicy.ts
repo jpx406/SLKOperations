@@ -3,40 +3,45 @@ import type { Role } from './types';
 // Who may edit each job field, on top of the jobs:edit menu right. Admin may edit everything.
 // One map for both sides: the editor greys out fields, the API drops fields the caller may not set.
 
-const PLANNERS: Role[] = ['sales', 'sdm', 'deputy_sdm', 'operations_manager', 'sqm'];
 const MANAGERS: Role[] = ['sdm', 'deputy_sdm', 'operations_manager'];
+const PLANNERS: Role[] = ['sales', ...MANAGERS, 'sqm'];
 const FIELD_CREW: Role[] = ['slickline_supervisor', 'slickline_operator', ...MANAGERS, 'sqm'];
+const PREP: Role[] = [...new Set([...PLANNERS, ...FIELD_CREW])];   // Preparation: anyone who edits jobs
+const QUALITY: Role[] = ['sqm', ...MANAGERS];
 
-export const FIELD_POLICY: Record<string, { roles: Role[]; badge: string }> = {
-  ticket_no: { roles: PLANNERS, badge: 'SALES' },
-  drss_no: { roles: PLANNERS, badge: 'SALES' },
+type Policy = { roles: Role[]; badge: string; kind?: 'json' | 'money' };
+
+const fields = (names: string[], roles: Role[], badge: string, kind?: Policy['kind']) =>
+  Object.fromEntries(names.map((n) => [n, { roles, badge, kind } as Policy]));
+
+export const FIELD_POLICY: Record<string, Policy> = {
+  // 01 Design
+  ...fields(['ticket_no', 'drss_no', 'dmr_no', 'run_details', 'start_date', 'location', 'field', 'rig', 'well', 'conveyance', 'third_party_required'], PLANNERS, 'SALES'),
   status: { roles: PLANNERS, badge: 'SALES / SDM' },
-  run_details: { roles: PLANNERS, badge: 'SALES' },
-  start_date: { roles: PLANNERS, badge: 'SALES' },
-  location: { roles: PLANNERS, badge: 'SALES' },
-  field: { roles: PLANNERS, badge: 'SALES' },
-  rig: { roles: PLANNERS, badge: 'SALES' },
-  well: { roles: PLANNERS, badge: 'SALES' },
-  conveyance: { roles: PLANNERS, badge: 'SALES' },
-  sdm_username: { roles: MANAGERS, badge: 'SDM' },
-  unit_number: { roles: MANAGERS, badge: 'SDM' },
-  end_date: { roles: MANAGERS, badge: 'SDM' },
-  arrived_at: { roles: FIELD_CREW, badge: 'CREW' },
-  rig_up_at: { roles: FIELD_CREW, badge: 'CREW' },
-  rig_down_at: { roles: FIELD_CREW, badge: 'CREW' },
-  runs_ok: { roles: FIELD_CREW, badge: 'CREW' },
-  runs_failed: { roles: FIELD_CREW, badge: 'CREW' },
-  max_depth_ft: { roles: FIELD_CREW, badge: 'CREW' },
-  tag_depth_ft: { roles: FIELD_CREW, badge: 'CREW' },
-  max_pull_lb: { roles: FIELD_CREW, badge: 'CREW' },
-  jarring_minutes: { roles: FIELD_CREW, badge: 'CREW' },
-  wire_cut_ft: { roles: FIELD_CREW, badge: 'CREW' },
-  npt_hours: { roles: FIELD_CREW, badge: 'CREW' },
-  failure: { roles: FIELD_CREW, badge: 'CREW' },
+  ...fields(['sdm_username', 'unit_number', 'end_date', 'program_in_place'], MANAGERS, 'SDM'),
+  // 02 Preparation
+  ...fields([
+    'account_assignment', 'well_type', 'h2s_ppm', 'co2_pct', 'bht_f', 'bhp_psi', 'siwhp_psi', 'fluid_type', 'fluid_weight_pcf', 'solids_pct',
+    'target_depth_ft', 'top_interval_ft', 'completion_details', 'nipple_profile', 'sssv_depth_ft', 'min_restriction_in', 'max_inclination_deg',
+    'target_casing_type', 'target_casing_od', 'target_casing_weight_lbft', 'target_casing_grade', 'wellhead_connection',
+    'wire_serial_number', 'drum_no', 'pce_id', 'pressure_rating_psi', 'lubricator_length_ft', 'stuffing_box_type', 'grease_panel_id',
+    'jar_type', 'special_setup', 'special_setup_notes',
+  ], PREP, 'PREP'),
+  toolstring: { roles: PREP, badge: 'PREP', kind: 'json' },
+  // 03 Execution
+  ...fields(['arrived_at', 'rig_up_at', 'rig_down_at', 'runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'max_overpull_lb',
+    'jarring_minutes', 'wire_cut_ft', 'npt_hours', 'failure', 'plug_type', 'op_time_details'], FIELD_CREW, 'CREW'),
+  ...fields(['survey_details', 'fishing_details', 'perforation_details'], FIELD_CREW, 'CREW', 'json'),
   op_hours_override: { roles: ['sdm', 'operations_manager'], badge: 'SDM / OPS' },
+  // 04 Closure
+  ...fields(['job_log_signed', 'ticket_signed', 'job_package_url', 'wellsite_audit', 'wg_runs_logged'], FIELD_CREW, 'CREW'),
+  ...fields(['eight_min_facts_done', 'prelim_report', 'final_report', 'report_closure_status', 'report_closure_date', 'gears_no', 'failure_description'], QUALITY, 'SQM / SDM'),
+  ...fields(['service_order', 'bonus_remarks'], ['sdm', 'operations_manager'], 'SDM'),
+  revenue_cents: { roles: ['sdm', 'sales'], badge: 'SDM / SALES', kind: 'money' },
 };
 
 export const EDITABLE_FIELDS = Object.keys(FIELD_POLICY);
+export const JSON_FIELDS = EDITABLE_FIELDS.filter((f) => FIELD_POLICY[f].kind === 'json');
 
 export const canEditField = (role: Role, field: string) =>
   role === 'admin' || !!FIELD_POLICY[field]?.roles.includes(role);
@@ -51,3 +56,14 @@ export function filterPatch(role: Role, patch: Record<string, unknown>) {
   }
   return { allowed, dropped };
 }
+
+/** Fields that only open when one of the job's services needs them (service_profiles flags). */
+export const SERVICE_GATED: Record<string, 'is_plug' | 'is_fishing' | 'is_memory' | 'is_perforation'> = {
+  plug_type: 'is_plug',
+  fishing_details: 'is_fishing',
+  survey_details: 'is_memory',
+  perforation_details: 'is_perforation',
+};
+
+/** Closure fields that stay locked on a clean job (no NPT, no failure) — also a database check. */
+export const FAILURE_GATED = ['eight_min_facts_done', 'prelim_report', 'final_report', 'report_closure_status', 'report_closure_date', 'gears_no', 'failure_description'];

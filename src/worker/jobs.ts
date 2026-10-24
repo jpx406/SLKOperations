@@ -1,45 +1,90 @@
 import { Hono, type Context } from 'hono';
-import { canEditField, filterPatch } from '../shared/fieldPolicy';
+import { FAILURE_GATED, SERVICE_GATED, canEditField, filterPatch } from '../shared/fieldPolicy';
+import { FAILURE_FOLLOW_UP, STAGE_FIELDS } from '../shared/stages';
+import { parseToolstring, toolTotals } from '../shared/toolstring';
 import type { Job } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
 
 // Jobs: board, editor, create-on-first-save, autosave patches with per-field rights and a conflict check.
 
-const JOB_SELECT = `
-  SELECT j.id, j.country, j.ticket_no, j.drss_no, j.sdm_username, j.status, j.run_details, j.unit_number,
-         j.start_date, j.end_date, j.location, j.field, j.rig, j.well, j.conveyance,
-         j.arrived_at, j.rig_up_at, j.rig_down_at, j.runs_ok, j.runs_failed, j.max_depth_ft, j.tag_depth_ft,
-         j.max_pull_lb, j.jarring_minutes, j.wire_cut_ft, j.npt_hours, j.failure, j.op_hours_override, j.op_hours_auto,
-         m.op_hours, m.job_efficiency_pct, m.run_efficiency_pct,
-         (SELECT json_group_array(job_type_name) FROM (SELECT job_type_name FROM job_services s WHERE s.job_id = j.id ORDER BY position)) AS services,
-         j.created_by, j.updated_by, j.created_at, j.updated_at
-  FROM jobs j JOIN job_metrics m ON m.job_id = j.id`;
+// D1 returns at most 100 columns per row and jobs has close to that, so a full job is read in two statements
+// (the row, then metrics and services) and the board selects only the columns it shows.
+// New job fields beyond ~100 columns must go in a side table.
+const METRICS = `m.op_hours, m.job_efficiency_pct, m.run_efficiency_pct,
+  (SELECT json_group_array(job_type_name) FROM (SELECT job_type_name FROM job_services s WHERE s.job_id = m.job_id ORDER BY position)) AS services`;
+const BOARD_COLUMNS = [...new Set(['id', 'country', 'npt_hours', 'updated_at', ...Object.values(STAGE_FIELDS).flat(), ...FAILURE_FOLLOW_UP])]
+  .map((c) => `j.${c}`).join(', ');
 
 const inCountries = (alias = 'j') => `${alias}.country IN (SELECT value FROM json_each(?))`;
+const JSON_COLUMNS = ['toolstring', 'survey_details', 'fishing_details', 'perforation_details'];
 
 function toJob(row: Record<string, unknown>): Job {
-  return { ...(row as unknown as Job), services: JSON.parse((row.services as string) || '[]') };
+  const out: Record<string, unknown> = { ...row, services: JSON.parse((row.services as string) || '[]') };
+  for (const k of JSON_COLUMNS) if (k in row) out[k] = JSON.parse((row[k] as string) || (k === 'toolstring' ? '[]' : '{}'));
+  return out as unknown as Job;
 }
 
 export async function getJob(env: Env, user: AuthedUser, id: string): Promise<Job | null> {
-  const row = await env.DB.prepare(`${JOB_SELECT} WHERE j.id = ? AND j.deleted_at IS NULL AND ${inCountries()}`)
-    .bind(id, JSON.stringify(user.countries)).first();
-  return row ? toJob(row) : null;
+  const [row, extra] = await env.DB.batch([
+    env.DB.prepare(`SELECT j.* FROM jobs j WHERE j.id = ? AND j.deleted_at IS NULL AND ${inCountries()}`).bind(id, JSON.stringify(user.countries)),
+    env.DB.prepare(`SELECT ${METRICS} FROM job_metrics m WHERE m.job_id = ?`).bind(id),
+  ]);
+  const r = row.results[0] as Record<string, unknown> | undefined;
+  return r ? toJob({ ...r, ...(extra.results[0] as Record<string, unknown>) }) : null;
 }
 
-const NUMERIC = new Set(['runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'jarring_minutes', 'wire_cut_ft', 'npt_hours', 'op_hours_override']);
-const DATE = new Set(['start_date', 'end_date']);
+const NUMERIC = new Set([
+  'runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'max_overpull_lb', 'jarring_minutes', 'wire_cut_ft', 'npt_hours',
+  'op_hours_override', 'h2s_ppm', 'co2_pct', 'bht_f', 'bhp_psi', 'siwhp_psi', 'fluid_weight_pcf', 'solids_pct', 'target_depth_ft',
+  'top_interval_ft', 'sssv_depth_ft', 'min_restriction_in', 'max_inclination_deg', 'target_casing_weight_lbft', 'pressure_rating_psi',
+  'lubricator_length_ft',
+]);
+const INTEGER = new Set(['runs_ok', 'runs_failed', 'pressure_rating_psi', 'revenue_cents']);
+const DATE = new Set(['start_date', 'end_date', 'report_closure_date']);
 const DATETIME = new Set(['arrived_at', 'rig_up_at', 'rig_down_at']);
+const YESNO = new Set(['failure', 'third_party_required', 'special_setup', 'job_log_signed', 'ticket_signed', 'eight_min_facts_done',
+  'prelim_report', 'final_report', 'wellsite_audit', 'wg_runs_logged', 'service_order']);
+const LABEL: Record<string, string> = { revenue_cents: 'Revenue', max_inclination_deg: 'Max inclination', pressure_rating_psi: 'Pressure rating' };
+const label = (k: string) => LABEL[k] ?? k.replace(/_/g, ' ');
 
 /** Normalises values and checks references. Returns an error message or null. */
 async function clean(env: Env, patch: Record<string, unknown>, country: string): Promise<string | null> {
   for (const [k, v] of Object.entries(patch)) {
+    if (JSON_COLUMNS.includes(k)) {
+      if (k === 'toolstring') {
+        const parsed = parseToolstring(v ?? []);
+        if ('error' in parsed) return parsed.error;
+        const t = toolTotals(parsed.parts);
+        patch.toolstring = JSON.stringify(parsed.parts);
+        // derived, so the board, checks and reports read one number
+        patch.toolstring_length_ft = t.length_ft;
+        patch.stem_weight_lb = t.stem_weight_lb;
+        patch.max_tool_od_in = t.max_od_in;
+      } else {
+        if (v !== null && (typeof v !== 'object' || Array.isArray(v))) return `${label(k)} must be a set of values`;
+        const s = JSON.stringify(v ?? {});
+        if (s.length > 4000) return `${label(k)} is too long`;
+        patch[k] = s;
+      }
+      continue;
+    }
     if (v === '' || v === undefined) { patch[k] = k === 'npt_hours' ? 0 : null; continue; }
     if (v === null) { if (k === 'npt_hours') patch[k] = 0; continue; }
-    if (NUMERIC.has(k)) {
+    if (k === 'program_in_place') {
+      patch[k] = v === true || v === 'yes' || v === 1 || v === '1' ? 1 : 0;
+    } else if (k === 'revenue_cents') {
       const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) return `${k} must be a number of 0 or more`;
+      if (!Number.isInteger(n) || n < 0) return 'Revenue must be an amount of 0 or more';
       patch[k] = n;
+    } else if (NUMERIC.has(k)) {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) return `${label(k)} must be a number of 0 or more`;
+      if (INTEGER.has(k) && !Number.isInteger(n)) return `${label(k)} must be a whole number`;
+      patch[k] = n;
+    } else if (YESNO.has(k)) {
+      if (!['yes', 'no', 'na', 'other'].includes(String(v))) return `Choose yes, no or N/A for ${label(k)}`;
+    } else if (k === 'report_closure_status' && !['open', 'pending_review', 'closed', 'na'].includes(String(v))) {
+      return 'Unknown report status';
     } else if (DATE.has(k)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return `${k} must be a date (YYYY-MM-DD)`;
     } else if (DATETIME.has(k)) {
@@ -48,10 +93,26 @@ async function clean(env: Env, patch: Record<string, unknown>, country: string):
       patch[k] = new Date(t).toISOString();
     } else if (k === 'status' && !['planned', 'ongoing', 'completed', 'canceled'].includes(String(v))) {
       return 'Unknown status';
-    } else if (k === 'failure' && !['yes', 'no', 'na', 'other'].includes(String(v))) {
-      return 'Unknown failure value';
+    } else if (k === 'job_package_url' && !/^(https?:\/\/|\\\\|[a-z]:\\)/i.test(String(v).trim())) {
+      return 'The job package link must be a web address or a network path';
     } else if (typeof v === 'string') {
-      patch[k] = v.trim().slice(0, 500);
+      patch[k] = v.trim().slice(0, k === 'completion_details' || k === 'run_details' || k === 'failure_description' ? 4000 : 500);
+    }
+  }
+  if (typeof patch.wire_serial_number === 'string') {
+    const w = await env.DB.prepare('SELECT country, status FROM wg_wires WHERE wire_serial_number = ? AND wg_active = 1').bind(patch.wire_serial_number).first<{ country: string | null; status: string | null }>();
+    if (!w) return 'That wire is not in WIREGUARD';
+    if (w.country && w.country !== country) return `Wire ${patch.wire_serial_number} belongs to ${w.country}`;
+    if (w.status && !/active/i.test(w.status)) return `Wire ${patch.wire_serial_number} is ${w.status.toLowerCase()} in WIREGUARD`;
+  }
+  if (typeof patch.drum_no === 'string') {
+    const d = await env.DB.prepare('SELECT 1 FROM wg_drums WHERE drum_no = ? AND wg_active = 1').bind(patch.drum_no).first();
+    if (!d) return 'That drum is not in WIREGUARD';
+  }
+  for (const [k, table] of [['pce_id', 'pce'], ['grease_panel_id', 'grease_panels']] as const) {
+    if (typeof patch[k] === 'string') {
+      const r = await env.DB.prepare(`SELECT 1 FROM ${table} WHERE id = ? AND country = ? AND active = 1`).bind(patch[k], country).first();
+      if (!r) return `Pick ${k === 'pce_id' ? 'pressure control' : 'a grease panel'} from the list`;
     }
   }
   if (typeof patch.unit_number === 'string') {
@@ -116,7 +177,7 @@ jobs.get('/', async (c) => {
     const like = `%${q.replace(/[%_]/g, '')}%`;
     binds.push(like, like, like, like, like);
   }
-  const { results } = await c.env.DB.prepare(`${JOB_SELECT} WHERE ${where.join(' AND ')} ORDER BY coalesce(j.start_date, '9999') DESC, j.created_at DESC LIMIT 500`)
+  const { results } = await c.env.DB.prepare(`SELECT ${BOARD_COLUMNS}, ${METRICS} FROM jobs j JOIN job_metrics m ON m.job_id = j.id WHERE ${where.join(' AND ')} ORDER BY coalesce(j.start_date, '9999') DESC, j.created_at DESC LIMIT 500`)
     .bind(...binds).all();
   return c.json(results.map(toJob));
 });
@@ -141,6 +202,9 @@ jobs.post('/', async (c) => {
   if (!country) return c.json({ error: 'Choose the unit or the country first' }, 400);
   if (!user.countries.includes(country)) return c.json({ error: 'You cannot create jobs for that country' }, 403);
 
+  // a new job has no services and no NPT yet, so the gated sections can't be filled on creation
+  const early = [...Object.keys(SERVICE_GATED), ...FAILURE_GATED].find((k) => k in allowed && allowed[k] !== null && allowed[k] !== '');
+  if (early) return c.json({ error: 'Save the job and add its services first' }, 400);
   const err = await clean(c.env, allowed, country)
     ?? await blockConflict(c.env, (allowed.unit_number as string) ?? null, (allowed.start_date as string) ?? null, (allowed.end_date as string) ?? null);
   if (err) return c.json({ error: err }, 400);
@@ -160,6 +224,29 @@ jobs.post('/', async (c) => {
   return c.json({ job: await getJob(c.env, user, id), ignored: dropped }, 201);
 });
 
+/**
+ * Fields that only open in some situations, enforced here as well as greyed out on screen:
+ * service sections need a matching service, failure follow-up needs NPT or Failure = Yes.
+ */
+async function gateCheck(env: Env, current: Job, patch: Record<string, unknown>): Promise<string | null> {
+  const setting = (k: string) => k in patch && patch[k] !== null && patch[k] !== '' &&
+    !(JSON_COLUMNS.includes(k) && (patch[k] === undefined || (typeof patch[k] === 'object' && !Object.keys(patch[k] as object).length)));
+  const gated = Object.keys(SERVICE_GATED).filter(setting);
+  if (gated.length) {
+    const { results } = await env.DB.prepare(
+      `SELECT p.is_plug, p.is_fishing, p.is_memory, p.is_perforation FROM job_services s JOIN service_profiles p ON p.job_type_name = s.job_type_name WHERE s.job_id = ?`,
+    ).bind(current.id).all<Record<string, number>>();
+    for (const k of gated) {
+      const flag = SERVICE_GATED[k];
+      if (!results.some((r) => r[flag])) return `${k.replace(/_/g, ' ')} opens when the job has a service that needs it`;
+    }
+  }
+  const failureOpen = (('failure' in patch ? patch.failure : current.failure) === 'yes') || Number('npt_hours' in patch ? patch.npt_hours : current.npt_hours) > 0;
+  const fail = FAILURE_GATED.filter(setting);
+  if (fail.length && !failureOpen) return 'Failure follow-up opens when the job has NPT hours or Failure = Yes';
+  return null;
+}
+
 /** One path for every change to a job: field rights, conflict check, value checks, blocked days, audit. */
 async function applyPatch(c: Context<AppBindings>, id: string, raw: Record<string, unknown>, expectedUpdatedAt: string | undefined, strict: boolean) {
   const user = c.get('user');
@@ -172,6 +259,8 @@ async function applyPatch(c: Context<AppBindings>, id: string, raw: Record<strin
   // a schedule move is all-or-nothing: moving the dates but not the unit would put the job somewhere nobody chose
   if (strict && dropped.length) return c.json({ error: `Your role cannot change ${dropped.join(', ')}`, job: current }, 403);
   if (!Object.keys(allowed).length) return c.json({ job: current, ignored: dropped });
+  const gate = await gateCheck(c.env, current, allowed);
+  if (gate) return c.json({ error: gate, job: current }, 400);
   const err = await clean(c.env, allowed, current.country);
   if (err) return c.json({ error: err, job: current }, 400);
   if ('unit_number' in allowed || 'start_date' in allowed || 'end_date' in allowed) {
@@ -233,6 +322,104 @@ jobs.put('/:id/services', async (c) => {
     audit(c.env, user, 'edit', id, `services: ${list.join(', ') || '(none)'}`),
   ]);
   return c.json({ job: await getJob(c.env, user, id) });
+});
+
+const CREW_ROLES = ['slickline_supervisor', 'slickline_operator', 'assistant_operator', 'helper'] as const;
+const HEAD_CAP = { supervisors: 3, operators: 6, assistant_operators: 6, helpers: 6 } as const;
+
+jobs.get('/:id/crew', async (c) => {
+  const job = await getJob(c.env, c.get('user'), c.req.param('id'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const [head, crew] = await c.env.DB.batch([
+    c.env.DB.prepare('SELECT supervisors, operators, assistant_operators, helpers FROM job_headcount WHERE job_id = ?').bind(job.id),
+    c.env.DB.prepare(
+      `SELECT c.employee_id, c.crew_role, c.slot, e.full_name, e.eid FROM job_crew c JOIN employees e ON e.id = c.employee_id
+       WHERE c.job_id = ? ORDER BY c.crew_role, c.slot`,
+    ).bind(job.id),
+  ]);
+  return c.json({ headcount: head.results[0] ?? { supervisors: 0, operators: 0, assistant_operators: 0, helpers: 0 }, crew: crew.results, caps: HEAD_CAP });
+});
+
+jobs.put('/:id/headcount', async (c) => {
+  const user = c.get('user');
+  if (!canEditField(user.role, 'well_type')) return c.json({ error: 'Your role cannot plan the crew' }, 403);
+  const job = await getJob(c.env, user, c.req.param('id'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const b = await c.req.json<Record<keyof typeof HEAD_CAP, number>>().catch(() => ({} as Record<keyof typeof HEAD_CAP, number>));
+  const v: Record<string, number> = {};
+  for (const [k, cap] of Object.entries(HEAD_CAP)) {
+    const n = Number(b[k as keyof typeof HEAD_CAP] ?? 0);
+    if (!Number.isInteger(n) || n < 0 || n > cap) return c.json({ error: `${k.replace('_', ' ')}: 0 to ${cap} per job` }, 400);
+    v[k] = n;
+  }
+  const at = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO job_headcount (job_id, supervisors, operators, assistant_operators, helpers) VALUES (?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT (job_id) DO UPDATE SET supervisors = ?2, operators = ?3, assistant_operators = ?4, helpers = ?5`,
+    ).bind(job.id, v.supervisors, v.operators, v.assistant_operators, v.helpers),
+    c.env.DB.prepare('UPDATE jobs SET updated_by = ?, updated_at = ? WHERE id = ?').bind(user.username, at, job.id),
+    audit(c.env, user, 'edit', job.id, `head count: ${Object.entries(v).map(([k, n]) => `${k} ${n}`).join(', ')}`),
+  ]);
+  return c.json({ ok: true, job: await getJob(c.env, user, job.id) });
+});
+
+jobs.put('/:id/crew', async (c) => {
+  const user = c.get('user');
+  if (!canEditField(user.role, 'well_type')) return c.json({ error: 'Your role cannot assign the crew' }, 403);
+  const job = await getJob(c.env, user, c.req.param('id'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const { crew } = await c.req.json<{ crew: { employee_id: string; crew_role: (typeof CREW_ROLES)[number] }[] }>().catch(() => ({ crew: [] as { employee_id: string; crew_role: (typeof CREW_ROLES)[number] }[] }));
+  const list = crew ?? [];
+  if (list.some((m) => !CREW_ROLES.includes(m.crew_role))) return c.json({ error: 'Unknown crew role' }, 400);
+  if (new Set(list.map((m) => m.employee_id)).size !== list.length) return c.json({ error: 'A person is listed twice' }, 400);
+  const caps: Record<string, number> = { slickline_supervisor: 3, slickline_operator: 6, assistant_operator: 6, helper: 6 };
+  for (const r of CREW_ROLES) if (list.filter((m) => m.crew_role === r).length > caps[r]) return c.json({ error: `At most ${caps[r]} ${r.replace('_', ' ')}s per job` }, 400);
+  if (list.length) {
+    const { results } = await c.env.DB.prepare('SELECT id FROM employees WHERE id IN (SELECT value FROM json_each(?)) AND country = ? AND active = 1')
+      .bind(JSON.stringify(list.map((m) => m.employee_id)), job.country).all<{ id: string }>();
+    if (results.length !== list.length) return c.json({ error: 'Pick people from this country’s active roster' }, 400);
+  }
+  const slots: Record<string, number> = {};
+  const at = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM job_crew WHERE job_id = ?').bind(job.id),
+    ...list.map((m) => {
+      slots[m.crew_role] = (slots[m.crew_role] ?? 0) + 1;
+      return c.env.DB.prepare('INSERT INTO job_crew (id, job_id, employee_id, crew_role, slot) VALUES (?, ?, ?, ?, ?)')
+        .bind(crypto.randomUUID(), job.id, m.employee_id, m.crew_role, slots[m.crew_role]);
+    }),
+    c.env.DB.prepare('UPDATE jobs SET updated_by = ?, updated_at = ? WHERE id = ?').bind(user.username, at, job.id),
+    audit(c.env, user, 'edit', job.id, `crew: ${list.length} people`),
+  ]);
+  return c.json({ ok: true, job: await getJob(c.env, user, job.id) });
+});
+
+/** Drums on the job's unit with the wire spooled on each, its limits and its latest tests (all from WIREGUARD). */
+jobs.get('/:id/wire-options', async (c) => {
+  const job = await getJob(c.env, c.get('user'), c.req.param('id'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const [drums, tests, settings] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT d.drum_no, d.drum_position, w.wire_serial_number, w.wire_grade, w.wire_size, w.status, w.rated_mbl_lb, w.remaining_length_ft, w.spooled_length_ft
+       FROM wg_drums d LEFT JOIN wg_wires w ON w.drum_no = d.drum_no AND w.wg_active = 1
+       WHERE d.wg_active = 1 AND d.unit_number = ? ORDER BY d.drum_position, d.drum_no`,
+    ).bind(job.unit_number ?? ''),
+    c.env.DB.prepare(
+      `SELECT wire_serial_number, test_type, result, test_date, approval_status FROM wg_documents
+       WHERE wg_active = 1 AND test_type IS NOT NULL AND wire_serial_number IN
+         (SELECT w.wire_serial_number FROM wg_wires w JOIN wg_drums d ON d.drum_no = w.drum_no WHERE d.unit_number = ?)
+       ORDER BY test_date DESC`,
+    ).bind(job.unit_number ?? ''),
+    c.env.DB.prepare(`SELECT value FROM wg_settings WHERE key = 'sop-settings'`),
+  ]);
+  // WIREGUARD's tension-test window, 30 days unless its SOP settings say otherwise
+  let tensionDays = 30;
+  try {
+    const sop = JSON.parse(String((settings.results[0] as { value?: string } | undefined)?.value ?? '[]')) as { key: string; value: number }[];
+    tensionDays = Number(sop.find((s) => s.key === 'pre_job_test_days')?.value ?? 30) || 30;
+  } catch { /* keep the default */ }
+  return c.json({ unit: job.unit_number, drums: drums.results, tests: tests.results, tensionDays });
 });
 
 jobs.delete('/:id', async (c) => {

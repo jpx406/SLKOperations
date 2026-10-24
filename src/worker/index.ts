@@ -82,20 +82,40 @@ app.post('/wg/sync', async (c) => c.json({ results: await syncAll(c.env) }));
 app.get('/lookups', async (c) => {
   const countries = JSON.stringify(c.get('user').countries);
   const inC = 'country IN (SELECT value FROM json_each(?))';
-  const [units, jt, loc, fld, rig, conv] = await c.env.DB.batch([
+  const [units, jt, loc, fld, rig, conv, lists, pce, gp, sp] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT unit_number, country, year, wg_active FROM wg_units WHERE wg_active = 1 AND ${inC} ORDER BY unit_number`).bind(countries),
     c.env.DB.prepare(`SELECT DISTINCT name FROM wg_job_types WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(countries),
     c.env.DB.prepare(`SELECT DISTINCT name FROM wg_job_locations WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(countries),
     c.env.DB.prepare(`SELECT DISTINCT name FROM wg_fields WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(countries),
     c.env.DB.prepare(`SELECT DISTINCT name FROM wg_rigs WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(countries),
     c.env.DB.prepare(`SELECT DISTINCT value FROM lookup_values WHERE kind = 'conveyance' AND active = 1 AND ${inC} ORDER BY sort`).bind(countries),
+    c.env.DB.prepare(`SELECT kind, value FROM lookup_values WHERE active = 1 AND kind <> 'conveyance' AND ${inC} GROUP BY kind, value ORDER BY kind, min(sort), value`).bind(countries),
+    c.env.DB.prepare(`SELECT id, country, label, kind, bore_in, rating_psi, length_ft FROM pce WHERE active = 1 AND ${inC} ORDER BY label`).bind(countries),
+    c.env.DB.prepare(`SELECT id, country, label, panel_type FROM grease_panels WHERE active = 1 AND ${inC} ORDER BY label`).bind(countries),
+    c.env.DB.prepare('SELECT job_type_name, is_plug, is_fishing, is_memory, is_perforation, is_explosive FROM service_profiles'),
   ]);
   const names = (r: D1Result) => (r.results as { name?: string; value?: string }[]).map((x) => (x.name ?? x.value) as string);
+  const byKind: Record<string, string[]> = {};
+  for (const { kind, value } of lists.results as { kind: string; value: string }[]) (byKind[kind] ??= []).push(value);
   const out: Lookups = {
     units: units.results as unknown as Lookups['units'],
     jobTypes: names(jt), locations: names(loc), fields: names(fld), rigs: names(rig), conveyances: names(conv),
+    lists: byKind,
+    pce: pce.results as unknown as Lookups['pce'],
+    greasePanels: gp.results as unknown as Lookups['greasePanels'],
+    serviceProfiles: sp.results as unknown as Lookups['serviceProfiles'],
   };
   return c.json(out);
+});
+
+app.get('/employees', async (c) => {
+  const country = c.req.query('country');
+  const countries = c.get('user').countries.filter((x) => !country || x === country);
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, country, eid, full_name, title, crew_role FROM employees
+     WHERE active = 1 AND country IN (SELECT value FROM json_each(?)) ORDER BY full_name`,
+  ).bind(JSON.stringify(countries)).all();
+  return c.json(results);
 });
 
 app.get('/sdms', async (c) => {
