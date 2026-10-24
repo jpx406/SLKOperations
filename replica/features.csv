@@ -1,43 +1,43 @@
 feature,area,priority,original,clone,notes
-Sign in with WIREGUARD accounts (NESR- usernames),auth,must,yes,no,S01; via service binding; no second password
+Sign in with WIREGUARD accounts (NESR- usernames),auth,must,yes,yes,"S01; via service binding; no second password; build: slice: via service binding, tested with mock WIREGUARD"
 Country picker at sign-in (tenant),auth,must,yes,no,S01; only Saudi Arabia seen
 Forgot password (handled by WIREGUARD),auth,must,yes,no,S01; link to WIREGUARD
 Change password (handled by WIREGUARD),auth,should,yes,no,S36; link to WIREGUARD
-Roles control visible tabs,auth,must,yes,no,manual §1-2; ~15 roles
-Per-user tab grants by Admin,auth,must,yes,no,manual §0; Users & Roles
-Field-level edit rights shown as role badges,auth,must,yes,no,S04-S07 SALES/SDM badges
+Roles control visible tabs,auth,must,yes,yes,manual §1-2; ~15 roles; build: role_permissions from 0002 seed
+Per-user tab grants by Admin,auth,must,yes,partial,manual §0; Users & Roles; build: read on the server; admin screen is milestone 2a
+Field-level edit rights shown as role badges,auth,must,yes,yes,S04-S07 SALES/SDM badges; build: FIELD_POLICY drives badges and API filtering
 Restricted-content unlock on sensitive pages,auth,should,yes,no,original uses a shared password; replace with role permission
 Users & Roles admin screen,admin,must,yes,no,S34 admin manual only
-Global shell with nav groups and sub-tabs,shell,must,yes,no,all screens
-Light and dark theme toggle,shell,should,yes,no,dark default
-Riyadh clock and live last-sync indicator,shell,could,yes,no,header
-Manual reload from database,shell,should,yes,no,header Refresh
-Unit Schedule Gantt by month,schedule,must,yes,no,S02
-Job bars coloured by status,schedule,must,yes,no,S02 legend
+Global shell with nav groups and sub-tabs,shell,must,yes,yes,all screens; build: stub pages for unbuilt screens
+Light and dark theme toggle,shell,should,yes,yes,dark default
+Riyadh clock and live last-sync indicator,shell,could,yes,yes,header; build: clock + WIREGUARD sync status
+Manual reload from database,shell,should,yes,yes,header Refresh; build: Sync now from WIREGUARD; lists refetch every 30 s
+Unit Schedule Gantt by month,schedule,must,yes,yes,S02; build: read-only; units from WIREGUARD
+Job bars coloured by status,schedule,must,yes,yes,S02 legend
 Drag job bar to move unit or day,schedule,must,yes,no,S02 duration kept
 Drag bar edges to change dates,schedule,must,yes,no,S02
-Show canceled jobs toggle,schedule,should,yes,no,S02
-Warning for jobs without dates,schedule,should,yes,no,S02 banner
+Show canceled jobs toggle,schedule,should,yes,yes,S02
+Warning for jobs without dates,schedule,should,yes,yes,S02 banner; build: lists jobs missing unit or start date
 Maintenance event blocks a unit,schedule,must,yes,no,S37 hatched Mechanic bar
 Unit status events (loan transferred junk backup),schedule,should,yes,no,S38 feeds utilization
 Filter schedule by division and SDM,schedule,should,yes,no,S02b
-Job Board list with search and status filter,jobs,must,yes,no,S03
-Per-stage progress bars on job cards,jobs,must,yes,no,S03
-Create job,jobs,must,yes,no,original creates the record instantly; clone should save on first edit
-Delete job,jobs,must,yes,no,S04 confirm first
-Job editor Design stage,jobs,must,yes,no,S04
-Up to 15 services with auto service domain,jobs,must,yes,no,S04
+Job Board list with search and status filter,jobs,must,yes,yes,S03
+Per-stage progress bars on job cards,jobs,must,yes,partial,S03; build: Preparation and Closure count from milestone 2d
+Create job,jobs,must,yes,yes,"original creates the record instantly; clone should save on first edit; build: created on first save, never on click"
+Delete job,jobs,must,yes,partial,S04 confirm first; build: API with soft delete; no button yet
+Job editor Design stage,jobs,must,yes,partial,"S04; build: core fields; DMR, program, third party in 2d"
+Up to 15 services with auto service domain,jobs,must,yes,partial,S04; build: WIREGUARD job types picked; domain readout in 2d
 Job editor Preparation stage,jobs,must,yes,no,S05
 Crew head count with caps per role,jobs,must,yes,no,S05; SLK: supervisors 3 operators 6 assistants 6 helpers 6 (confirm)
 Conditional sections by service (plug/lock fishing survey tubing punch),jobs,must,yes,no,S05 S06; service flags in seed_slk.sql
 PCE and lubricator clearance check (tool OD and toolstring length),jobs,should,yes,no,manual §4.2 adapted for slickline
-Job editor Execution stage,jobs,must,yes,no,S06
-Auto operating hours with SDM override,jobs,must,yes,no,S06
-Auto job and run efficiency,jobs,must,yes,no,S06 formula on screen
+Job editor Execution stage,jobs,must,yes,partial,S06; build: times runs depths NPT failure; job log and conditional fields in 2d
+Auto operating hours with SDM override,jobs,must,yes,yes,S06
+Auto job and run efficiency,jobs,must,yes,yes,S06 formula on screen; build: floored at 0
 Job editor Closure stage,jobs,must,yes,no,S07
 Failure fields unlock only when NPT or failure,jobs,must,yes,no,S07
-Stage completion percentage,jobs,must,yes,no,S04 stage cards
-Autosave with save-state indicator,jobs,should,yes,no,S04 saving/Saved
+Stage completion percentage,jobs,must,yes,partial,S04 stage cards; build: Design and Execution only
+Autosave with save-state indicator,jobs,should,yes,yes,S04 saving/Saved; build: with 409 conflict banner
 Job Log sequence of events,jobs,should,yes,no,S42 not opened
 Offline wellsite job log,jobs,could,yes,no,S06 Offline version
 Full Job Report PDF,documents,should,yes,no,S41 not opened
@@ -101,19 +101,19 @@ Resources Allocation board,other,skip,yes,skip,dormant in original
 Headcount Roster screen,other,skip,yes,skip,Attendance Administrator only; fold into an Employees admin page
 Service catalogue = WIREGUARD job types with local profiles (domain and section flags),slickline,must,no,no,service_profiles in 0002_seed.sql; 21 job types
 Toolstring builder on Preparation (component OD length weight),slickline,must,no,no,new for SLK; feeds max tool OD and lubricator length check
-Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,no,new for SLK
+Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,partial,new for SLK; build: overpull not on screen yet
 Survey details for memory gauge jobs (stops gradients PBU),slickline,should,no,no,new for SLK; unlocked by is_memory
 Wire cut on the job compared with WIREGUARD runs,slickline,should,no,no,reconciliation value check; WIREGUARD owns the wire record
 Explosives link for tubing punch and cutter jobs,slickline,could,no,no,is_explosive services prompt a Mobilize to Well
 Separate inventory rights for explosives vs slickline hardware,inventory,must,no,no,storekeeper role; tested 2026-10-24
-WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,no,cron every 15 min; read-only service binding
-WIREGUARD data freshness indicator and on-demand sync,integration,should,no,no,header status; /api/wg/status
+WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,partial,"cron every 15 min; read-only service binding; build: units, job types, locations, fields, rigs; wires drums runs in 2b"
+WIREGUARD data freshness indicator and on-demand sync,integration,should,no,yes,header status; /api/wg/status
 Reconciliation: SLK Ops jobs vs WIREGUARD runs with discrepancy findings,reconciliation,must,no,no,S46 F15; 9 checks
 Reconciliation actions: link runs to job and mark explained,reconciliation,must,no,no,SLK Ops side only; WIREGUARD stays untouched
 Reconciliation summary per unit SDM and month,reconciliation,should,no,no,S46
 Nightly reconciliation feeding banners and digest,reconciliation,should,no,no,cron 04:00 Riyadh
-SLK Ops roles per WIREGUARD username with defaults from the WIREGUARD role,auth,must,no,no,user_roles
-Deploy on Cloudflare (Worker D1 R2 KV cron Email Service),platform,must,no,no,architecture.md wrangler.toml plan
+SLK Ops roles per WIREGUARD username with defaults from the WIREGUARD role,auth,must,no,yes,user_roles
+Deploy on Cloudflare (Worker D1 R2 KV cron Email Service),platform,must,no,partial,architecture.md wrangler.toml plan; build: wrangler.jsonc ready; not deployed
 Wire panel on the job: pre-job test rule and tension limit check,wire log,should,no,no,D3; uses WIREGUARD sop and kpi settings
 Wire KPIs: 17 of WIREGUARD's KPIs with the same codes and parameters,wire log,should,no,no,D3; G1-G6 C12 C1-C6 J7 J9 M5 W14 W1
 KPI parity test against WIREGUARD's own engine and build-stamp watch,wire log,should,no,no,D3; re-run after each WIREGUARD release
