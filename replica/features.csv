@@ -86,19 +86,19 @@ Wires register read-only from WIREGUARD (status tests alerts remaining length),w
 Wire detail: runs tests and derived facts (trips/jars since cut life consumed used-wire limit),wire log,should,yes,no,S31; read-only; Open in WIREGUARD for edits
 Knowledge Hub library with filters and lesson of the week,knowledge hub,could,yes,no,S21
 Present lessons as toolbox talk,knowledge hub,could,yes,no,S43
-In-app AI help assistant,assistant,could,yes,no,S23 no data access
+In-app AI help assistant,assistant,could,yes,no,S23 no data access; budget shared with the AI Agent (Admin Manual 5.2)
 Help dialog with manuals,help,could,yes,no,S22
-Bonus Report and Bonus Analysis,bonus,should,yes,no,S32 admin manual only; spec with owner
-Sales Dashboard,sales,should,yes,no,S33 admin manual only
+Bonus Report and Bonus Analysis,bonus,should,yes,no,"S32 admin manual only; spec with owner; Admin Manual 1: approved-only toggle, filters, PDF/XLSX, email statements, bonus % of revenue vs <4.5% target"
+Sales Dashboard,sales,should,yes,no,S33 admin manual only; decided: aggregate of revenue entered on each job; Incomplete Data = completed jobs without revenue
 Existing NESR job personnel and inventory records,data,skip,yes,skip,company data; migrate via an approved export only
 Knowledge Hub document content,data,skip,yes,skip,147 docs owned by NESR QHSE; source from SharePoint via owner
 Aramco RILR GEARS OpsMiner integrations,integrations,skip,yes,skip,client systems; keep as free-text refs
 SAP integration for part numbers,integrations,skip,yes,skip,keep SAP# as a field only
 SharePoint job package and cable directory links,integrations,skip,yes,skip,store links as URLs
-Data-aware AI Agent (admin),assistant,skip,yes,skip,behaviour unknown; design new if wanted
+Data-aware AI Agent (admin),assistant,could,yes,no,behaviour unknown; design new if wanted; decided 2026-10-24: build in a later milestone with scoped read-only tools
 QAF12069 question text and weights copied from screens,jra,skip,yes,skip,load from the controlled QHSE form instead
 Resources Allocation board,other,skip,yes,skip,dormant in original
-Headcount Roster screen,other,skip,yes,skip,Attendance Administrator only; fold into an Employees admin page
+Headcount Roster screen,other,should,yes,no,Attendance Administrator only; fold into an Employees admin page; decided: build it for attendance_admin (Admin Manual 6); one people list for attendance and crews
 Service catalogue = WIREGUARD job types with local profiles (domain and section flags),slickline,must,no,no,service_profiles in 0002_seed.sql; 21 job types
 Toolstring builder on Preparation (component OD length weight),slickline,must,no,no,new for SLK; feeds max tool OD and lubricator length check
 Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,partial,new for SLK; build: overpull not on screen yet
@@ -119,3 +119,20 @@ Wire KPIs: 17 of WIREGUARD's KPIs with the same codes and parameters,wire log,sh
 KPI parity test against WIREGUARD's own engine and build-stamp watch,wire log,should,no,no,D3; re-run after each WIREGUARD release
 Link to the full WIREGUARD dashboard for the remaining KPIs,wire log,could,no,no,D3
 Read-only Viewer sync account with all countries,integration,must,no,partial,created by a WIREGUARD admin; password as SLK Ops secret; 2b: built and tested on the mock; the real account is created by a WIREGUARD admin
+Per-person tab removals (role + grants - removals),admin,must,yes,yes,Admin Manual 5.1; reads and writes both enforce it
+Countries per person set by the SLK Ops admin,admin,must,yes,yes,decided 2026-10-24; seeded from WIREGUARD at first sign-in only
+Grant checklist grouped by nav cluster,admin,should,yes,yes,Admin Manual 5.1
+Role and access filters in Users & Roles,admin,should,yes,yes,Admin Manual 5.1
+Remove a person from SLK Ops (WIREGUARD account untouched),admin,should,yes,yes,replaces Delete user; account actions link to WIREGUARD
+Read access enforced per tab (deny by default),admin,must,no,yes,found in review: a removed tab must also close its data
+Bonus rules per job type configured by admin,bonus,should,no,no,"decided: per job, per run or % of revenue; default crew splits by role"
+Crew Assignment and Bonus Distribution on Closure (Admin/SDM),bonus,should,yes,no,Admin Manual 3; % or fixed amount; approval feeds the Bonus Report
+Bonus statements emailed to each person,bonus,could,yes,no,Admin Manual 1.1
+Revenue entered on each job (Closure),sales,should,no,no,decided 2026-10-24
+Step-up re-authentication for Bonus and Sales pages,bonus,should,yes,no,"replaces the original's access code; WIREGUARD password, 30 min"
+Admin data export (all tables) and import with dry-run and backup,admin,should,yes,no,Admin Manual 7
+Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,no,Admin Manual 8.1
+Job delete blocked while a Pre-Job Note exists,pre-job notes,should,yes,yes,Admin Manual 8.1; 409 with the note number
+SLK Contacts list opens Pre-Job Notes,pre-job notes,should,yes,partial,"Admin Manual 8.2; rights logic built, list maintained in Headcount Roster (2j)"
+Warning when WIREGUARD deactivates a unit with open SLK Ops jobs,integration,should,no,no,"Admin Manual 4 caution, adapted"
+"AI Agent settings: on/off, model, monthly budget, messages per user per day",assistant,could,yes,no,Admin Manual 5.2

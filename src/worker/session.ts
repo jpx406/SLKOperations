@@ -25,7 +25,7 @@ export async function login(c: Context<AppBindings>, username: string, password:
     env.DB.prepare(
       `INSERT INTO user_roles (username, full_name, role, countries, wg_role, last_login_at, updated_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
-       ON CONFLICT (username) DO UPDATE SET full_name = ?2, countries = ?4, wg_role = ?5, last_login_at = ?6, updated_at = ?6`,
+       ON CONFLICT (username) DO UPDATE SET full_name = ?2, wg_role = ?5, last_login_at = ?6`,
     ).bind(user.username, user.fullName, role, JSON.stringify(countries), user.role, now()),
     env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(), user.username, 'login', 'auth', user.username, `Signed in through WIREGUARD (${user.role})`),
@@ -84,10 +84,16 @@ export async function resolveSession(c: Context<AppBindings>): Promise<Resolved>
   s.lastSeen = t;
   await env.KV.put(key(id), JSON.stringify(s), { expirationTtl: SESSION_TTL_S });
 
-  const row = await env.DB.prepare('SELECT role, active FROM user_roles WHERE username = ?').bind(s.username).first<{ role: Role; active: number }>();
+  const row = await env.DB.prepare('SELECT role, active, countries FROM user_roles WHERE username = ?').bind(s.username).first<{ role: Role; active: number; countries: string }>();
   if (!row || !row.active) return { error: 'Your SLK Ops access is switched off. Ask an administrator.', status: 403 };
   const menus = await loadMenus(env, row.role, s.username);
-  return { user: { username: s.username, fullName: s.fullName, role: row.role, wgRole: s.wgRole, countries: s.countries, menus, sessionId: id } };
+  // countries belong to the SLK Ops admin (Users & Roles); admins see every country WIREGUARD has
+  let countries = JSON.parse(row.countries || '[]') as string[];
+  if (row.role === 'admin') {
+    const all = await env.DB.prepare('SELECT DISTINCT country FROM wg_units WHERE wg_active = 1').all<{ country: string }>();
+    countries = [...new Set([...countries, ...all.results.map((r) => r.country)])].sort();
+  }
+  return { user: { username: s.username, fullName: s.fullName, role: row.role, wgRole: s.wgRole, countries, menus, sessionId: id } };
 }
 
 /** Requires a valid SLK Ops session that WIREGUARD still honours. */

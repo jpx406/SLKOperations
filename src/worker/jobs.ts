@@ -204,6 +204,16 @@ jobs.delete('/:id', async (c) => {
   const id = c.req.param('id');
   const job = await getJob(c.env, user, id);
   if (!job) return c.json({ error: 'Job not found' }, 404);
+  // Admin Manual 8.1: a job keeps its Pre-Job Note's audit trail, so it can't go while a note exists
+  const note = await c.env.DB.prepare('SELECT log_no FROM pre_job_notes WHERE job_id = ?').bind(id).first<{ log_no: string }>();
+  if (note) {
+    return c.json({
+      error: user.role === 'admin'
+        ? `This job has Pre-Job Note ${note.log_no}. Delete the note first (Pre-Job Notes), then the job.`
+        : `This job has Pre-Job Note ${note.log_no}. Only an admin can delete the note, and with it the job.`,
+      blockedBy: { preJobNote: note.log_no },
+    }, 409);
+  }
   const at = new Date().toISOString();
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE jobs SET deleted_at = ?, updated_by = ?, updated_at = ? WHERE id = ?').bind(at, user.username, at, id),

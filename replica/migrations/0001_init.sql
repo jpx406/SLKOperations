@@ -39,11 +39,12 @@ CREATE TABLE role_permissions (
   UNIQUE (role, menu_key)
 );
 
--- Per-user extras on top of the role
+-- Per-user changes to the role: extra tabs (grant) or tabs taken away (deny). Admins ignore denials.
 CREATE TABLE tab_grants (
   id         TEXT PRIMARY KEY,
   username   TEXT NOT NULL REFERENCES user_roles(username) ON DELETE CASCADE,
   menu_key   TEXT NOT NULL,
+  effect     TEXT NOT NULL DEFAULT 'grant' CHECK (effect IN ('grant','deny')),
   can_edit   INTEGER NOT NULL DEFAULT 0 CHECK (can_edit IN (0,1)),
   granted_by TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -376,6 +377,8 @@ CREATE TABLE jobs (
   wellsite_audit TEXT, wg_runs_logged TEXT, service_order TEXT,
   failure_description TEXT,
   bonus_remarks TEXT,
+  revenue_cents INTEGER CHECK (revenue_cents IS NULL OR revenue_cents >= 0),   -- ticket value, entered on Closure
+  revenue_currency TEXT NOT NULL DEFAULT 'USD' CHECK (length(revenue_currency) = 3),
   -- housekeeping
   created_by    TEXT,
   updated_by    TEXT,
@@ -436,6 +439,9 @@ CREATE TABLE employees (
   attendance_group TEXT,
   rotation      TEXT NOT NULL DEFAULT '60/30',
   wg_username   TEXT,                                     -- link to the WIREGUARD account when the person has one
+  is_slk_contact INTEGER NOT NULL DEFAULT 0 CHECK (is_slk_contact IN (0,1)),  -- on the SLK Contacts list (Pre-Job Notes)
+  contact_email TEXT,
+  contact_mobile TEXT,
   self_updated  INTEGER NOT NULL DEFAULT 0 CHECK (self_updated IN (0,1)),
   active        INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -664,6 +670,79 @@ CREATE TABLE recon_links (
   linked_at  TEXT NOT NULL
 );
 CREATE INDEX recon_links_job ON recon_links (job_id);
+
+-- ===========================================================================
+-- Bonus (Admin Manual 1 and 3): admin-configured rules, distribution on Closure, approval
+-- ===========================================================================
+
+-- How a job's bonus pool is worked out, per WIREGUARD job type (first service on the job decides).
+CREATE TABLE bonus_rules (
+  id            TEXT PRIMARY KEY,
+  country       TEXT NOT NULL,
+  job_type_name TEXT NOT NULL,
+  basis         TEXT NOT NULL CHECK (basis IN ('per_job','per_run','pct_revenue')),
+  amount_cents  INTEGER CHECK (amount_cents IS NULL OR amount_cents >= 0),        -- per_job / per_run
+  pct           REAL CHECK (pct IS NULL OR (pct >= 0 AND pct <= 100)),             -- pct_revenue
+  currency      TEXT NOT NULL DEFAULT 'USD' CHECK (length(currency) = 3),
+  active        INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+  updated_by    TEXT,
+  updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (country, job_type_name),
+  CHECK ((basis = 'pct_revenue' AND pct IS NOT NULL) OR (basis <> 'pct_revenue' AND amount_cents IS NOT NULL))
+);
+
+-- Default split of a pool by crew role, editable per job before approval.
+CREATE TABLE bonus_role_splits (
+  country    TEXT NOT NULL,
+  crew_role  TEXT NOT NULL CHECK (crew_role IN ('slickline_supervisor','slickline_operator','assistant_operator','helper')),
+  share_pct  REAL NOT NULL CHECK (share_pct >= 0 AND share_pct <= 100),
+  updated_by TEXT,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (country, crew_role)
+);
+
+CREATE TABLE job_bonus_lines (
+  id           TEXT PRIMARY KEY,
+  job_id       TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  employee_id  TEXT NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+  crew_role    TEXT,
+  share_pct    REAL CHECK (share_pct IS NULL OR (share_pct >= 0 AND share_pct <= 100)),
+  amount_cents INTEGER NOT NULL CHECK (amount_cents >= 0),
+  currency     TEXT NOT NULL DEFAULT 'USD' CHECK (length(currency) = 3),
+  status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','approved')),
+  approved_by  TEXT,
+  approved_at  TEXT,
+  statement_sent_at TEXT,
+  updated_by   TEXT,
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (job_id, employee_id)
+);
+CREATE INDEX job_bonus_lines_emp ON job_bonus_lines (employee_id, status);
+CREATE INDEX job_bonus_lines_job ON job_bonus_lines (job_id);
+
+-- ===========================================================================
+-- AI Agent (Admin Manual 5.2): settings and a usage ledger for the budget and daily caps
+-- ===========================================================================
+
+CREATE TABLE ai_settings (
+  key        TEXT PRIMARY KEY,                             -- enabled, model, monthly_budget_cents, messages_per_user_day
+  value      TEXT NOT NULL CHECK (json_valid(value)),
+  updated_by TEXT,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE ai_usage (
+  id          TEXT PRIMARY KEY,
+  username    TEXT NOT NULL,
+  feature     TEXT NOT NULL CHECK (feature IN ('assistant','agent')),
+  model       TEXT NOT NULL,
+  input_tokens  INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_microusd INTEGER NOT NULL DEFAULT 0,
+  occurred_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX ai_usage_user_day ON ai_usage (username, occurred_at);
+CREATE INDEX ai_usage_month ON ai_usage (occurred_at);
 
 -- ===========================================================================
 -- Attendance (S17)

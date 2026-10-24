@@ -150,6 +150,48 @@ How it's built:
   - Escape closes it; no sideways scroll at 390 px.
   - Fixed: severity pills stretched across their column; the month picker ran full width.
 
+## Administrator Manual review and adjustments (2026-10-24)
+
+Full review: [admin-manual-review.md](admin-manual-review.md).
+
+Decisions (user):
+- bonus rules are configurable;
+- revenue is entered on each job;
+- the AI Agent comes in a later milestone;
+- countries are set by the SLK Ops admin.
+
+Pre-Job Notes access follows the manual.
+
+**Changed in what was already built (2a):**
+- **Countries per person, owned by the admin:** first sign-in seeds them from WIREGUARD; later sign-ins don't overwrite them; read on every request. Admins see every country.
+- **Effective tabs = role + grants − removals.** Being on the SLK Contacts list opens Pre-Job Notes. Admins ignore removals.
+- **Person dialog:** countries, tabs grouped like the navigation (role default / + view / + edit / remove), Remove from SLK Ops with a confirmation, and a link to WIREGUARD for the account itself. The People list gained role and access filters, a tab count and the SLK-contact mark.
+- **Read rules, deny by default:** found during this review, and the most important fix here. A removed tab used to hide only the menu while `/api/schedule` still answered. Every read now needs a tab that opens it, and unknown reads are refused.
+- **Jobs:** delete is refused (409, naming the note) while a Pre-Job Note exists.
+- **Schema (still undeployed 0001):**
+  - `tab_grants.effect` (grant/deny);
+  - `jobs.revenue_cents` and `revenue_currency`;
+  - `employees.is_slk_contact`, `contact_email` and `contact_mobile`;
+  - `bonus_rules`, `bonus_role_splits`, `job_bonus_lines`, `ai_settings` and `ai_usage`.
+- **Seed:** new menus `bonus`, `sales_dashboard`, `headcount_roster`, `ai_agent`, with role defaults from the manual. Pre-Job Notes is removed from the SLK supervisor and the deputy SDM, who can get it by grant.
+- **Navigation:** Bonus, Sales Dashboard, Headcount Roster, AI Agent and Data export & import (stubs with their milestone).
+
+**Verified:**
+- **Tests:** unit 45 of 45 (new: effective tabs, contacts, removals, clusters, read rules, admin delete rule); schema 30 of 30; the new migration-trap test passes.
+- **API:**
+  - countries required and checked against WIREGUARD's countries;
+  - a pre-registered SDM gets their countries, and widening applies on the next click;
+  - a WIREGUARD-only Bahrain user is seeded with Bahrain, and an admin's change survives his next sign-in;
+  - a removed tab gives 403 on its read, other reads stay 200, unknown reads give 403;
+  - a duplicate tab is refused; removing yourself is refused;
+  - after removing a person, their old session is dead, and their next sign-in starts from the default role;
+  - deleting a job with a Pre-Job Note gives 409.
+- **Browser:** the person dialog and the People list, with no sideways scroll at 390 px.
+
+**Caught along the way:**
+- I wrote a semicolon inside a SQL comment, WIREGUARD's D1 trap. It's fixed, and `tests/migrations.test.ts` now fails the build on that, window functions or chained `UNION ALL`.
+- A hot reload once kept a half-edited Worker (the usage of a function arrived before its import) and every request returned 500. A restart cleared it; the code was right.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

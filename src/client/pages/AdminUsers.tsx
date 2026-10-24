@@ -1,28 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, X } from 'lucide-react';
+import { ExternalLink, Plus, Search, X } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
-import { NAV } from '../../shared/menus';
+import { MENU_LABELS, menuClusters } from '../../shared/menus';
 import { ROLE_LABEL } from '../../shared/roles';
 import type { Role, WgStatus } from '../../shared/types';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
 
+type Change = { menu_key: string; effect: 'grant' | 'deny'; can_edit: number };
 interface UserRow {
   username: string; full_name: string; role: Role; wg_role: string | null; countries: string[];
   active: number; last_login_at: string | null; updated_by: string | null; updated_at: string;
-  grants: { menu_key: string; can_edit: number }[];
+  grants: Change[]; is_contact: boolean; effective: { menu_key: string; edit: boolean }[];
 }
 interface Matrix { roles: Role[]; menus: string[]; rows: { role: Role; menu_key: string; can_view: number; can_edit: number; can_delete: number }[] }
 interface AuditRow { occurred_at: string; username: string; action: string; entity_type: string; entity_id: string; summary: string }
 
 const ROLES = Object.keys(ROLE_LABEL) as Role[];
-const MENU_LABEL: Record<string, string> = Object.fromEntries(NAV.flatMap((g) => g.pages.map((p) => [p.key, p.label])));
-MENU_LABEL.audit = 'Audit trail';
-MENU_LABEL.ai_assistant = 'AI assistant';
-const menuLabel = (k: string) => MENU_LABEL[k] ?? k;
+const menuLabel = (k: string) => MENU_LABELS[k] ?? k;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
+
+function useConfig() {
+  return useQuery({ queryKey: ['config'], queryFn: () => api<{ wireguardUrl: string }>('/config'), staleTime: Infinity });
+}
 
 export function AdminUsers() {
   const [params, setParams] = useSearchParams();
@@ -32,8 +34,8 @@ export function AdminUsers() {
     <section aria-labelledby="admin-title">
       <PageTitle><span id="admin-title">Users &amp; roles</span></PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">
-        Accounts and passwords live in WIREGUARD. Here you decide what each person can do in SLK Operations.
-        Someone signing in for the first time gets a role based on their WIREGUARD role, which you can change.
+        Accounts and passwords live in WIREGUARD. Here you decide what each person can do in SLK Operations and which countries they see.
+        Someone signing in for the first time gets a role based on their WIREGUARD role and the countries WIREGUARD shows them. You can change both.
       </p>
       <div role="tablist" aria-label="Users and roles" className="mb-4 flex flex-wrap gap-2">
         {tabs.map(([k, label]) => (
@@ -58,7 +60,9 @@ function People() {
   const { data: me } = useMe();
   const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api<UserRow[]>('/admin/users') });
   const [q, setQ] = useState('');
-  const [editing, setEditing] = useState<UserRow | null>(null);
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
 
@@ -71,8 +75,12 @@ function People() {
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return (users.data ?? []).filter((u) => !s || `${u.username} ${u.full_name} ${ROLE_LABEL[u.role]}`.toLowerCase().includes(s));
-  }, [users.data, q]);
+    return (users.data ?? []).filter((u) =>
+      (!s || `${u.username} ${u.full_name} ${ROLE_LABEL[u.role]}`.toLowerCase().includes(s))
+      && (!roleFilter || u.role === roleFilter)
+      && (!statusFilter || (statusFilter === 'on' ? !!u.active : !u.active)));
+  }, [users.data, q, roleFilter, statusFilter]);
+  const editingRow = users.data?.find((u) => u.username === editing) ?? null;
 
   return (
     <>
@@ -82,36 +90,43 @@ function People() {
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-text-subtle" />
           <input className={`${inputClass} pl-8`} placeholder="Name, NESR number or role" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
+        <label><span className="sr-only">Filter by role</span>
+          <select className={`${inputClass} w-44`} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+            <option value="">All roles</option>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+          </select>
+        </label>
+        <label><span className="sr-only">Filter by access</span>
+          <select className={`${inputClass} w-36`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Access on and off</option><option value="on">Access on</option><option value="off">Access off</option>
+          </select>
+        </label>
         <Button variant="primary" onClick={() => setAdding(true)}><Plus aria-hidden className="size-4" />Add person</Button>
+        {users.data && <span className="ml-auto font-mono text-xs text-text-muted">{shown.length} of {users.data.length}</span>}
       </div>
       {notice && <div className="mb-3"><Banner tone={notice.tone} action={<Button size="sm" variant="ghost" onClick={() => setNotice(null)} aria-label="Dismiss"><X aria-hidden className="size-4" /></Button>}>{notice.text}</Banner></div>}
       {adding && <AddPerson onDone={(msg) => { setAdding(false); if (msg) setNotice({ tone: 'success', text: msg }); }} />}
       {users.isPending && <Skeleton className="h-64" />}
       {users.isError && <Banner tone="danger">{users.error.message}</Banner>}
-      {users.data && shown.length === 0 && <EmptyState title={q ? 'Nobody matches' : 'Nobody has signed in yet'}>{q ? 'Try another name or number.' : 'People appear here after their first sign-in, or when you add them.'}</EmptyState>}
+      {users.data && shown.length === 0 && <EmptyState title={q || roleFilter || statusFilter ? 'Nobody matches' : 'Nobody has signed in yet'}>{q || roleFilter || statusFilter ? 'Try another name, role or access filter.' : 'People appear here after their first sign-in, or when you add them.'}</EmptyState>}
       {shown.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[56rem] text-sm">
+          <table className="w-full min-w-[60rem] text-sm">
             <caption className="sr-only">People with access to SLK Operations</caption>
             <thead className="bg-surface-2">
               <tr className="label-caps text-left text-text-muted">
-                <th scope="col" className="px-3 py-2">Person</th>
-                <th scope="col" className="px-3 py-2">SLK Ops role</th>
-                <th scope="col" className="px-3 py-2">WIREGUARD role</th>
-                <th scope="col" className="px-3 py-2">Countries</th>
-                <th scope="col" className="px-3 py-2">Extra tabs</th>
-                <th scope="col" className="px-3 py-2">Last sign-in</th>
-                <th scope="col" className="px-3 py-2">Access</th>
+                {['Person', 'SLK Ops role', 'Countries', 'Tabs', 'Last sign-in', 'Access', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {shown.map((u) => {
                 const self = u.username.toLowerCase() === me?.username.toLowerCase();
+                const grants = u.grants.filter((g) => g.effect === 'grant').length;
+                const denies = u.grants.filter((g) => g.effect === 'deny').length;
                 return (
                   <tr key={u.username} className={cx('border-t border-border', !u.active && 'text-text-subtle')}>
                     <th scope="row" className="px-3 py-2 text-left font-normal">
                       <div className="font-semibold">{u.full_name}{self && <span className="ml-2 text-xs text-text-subtle">(you)</span>}</div>
-                      <div className="font-mono text-xs text-text-subtle">{u.username}</div>
+                      <div className="font-mono text-xs text-text-subtle">{u.username}{u.wg_role ? ` · WIREGUARD ${u.wg_role}` : ' · not signed in yet'}</div>
                     </th>
                     <td className="px-3 py-2">
                       <label className="sr-only" htmlFor={`role-${u.username}`}>Role for {u.full_name}</label>
@@ -121,12 +136,11 @@ function People() {
                         {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                       </select>
                     </td>
-                    <td className="px-3 py-2 text-text-muted">{u.wg_role ?? <span className="text-text-subtle">not signed in yet</span>}</td>
-                    <td className="px-3 py-2 text-text-muted">{u.countries.join(', ') || '—'}</td>
-                    <td className="px-3 py-2">
-                      <button className="text-left text-sm underline decoration-border-strong underline-offset-2 hover:decoration-text" onClick={() => setEditing(u)}>
-                        {u.grants.length ? u.grants.map((g) => menuLabel(g.menu_key) + (g.can_edit ? ' (edit)' : '')).join(', ') : 'None — add'}
-                      </button>
+                    <td className="px-3 py-2 text-text-muted">{u.role === 'admin' ? 'All' : u.countries.join(', ') || <span className="text-danger">none</span>}</td>
+                    <td className="px-3 py-2 text-text-muted">
+                      {u.effective.length} tab{u.effective.length === 1 ? '' : 's'}
+                      {(grants > 0 || denies > 0) && <span className="ml-1 text-xs">({grants > 0 ? `+${grants}` : ''}{grants > 0 && denies > 0 ? ' ' : ''}{denies > 0 ? `−${denies}` : ''})</span>}
+                      {u.is_contact && <span className="ml-1 text-xs">· SLK contact</span>}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-text-muted">{when(u.last_login_at)}</td>
                     <td className="px-3 py-2">
@@ -136,6 +150,7 @@ function People() {
                         <span>{u.active ? 'On' : 'Off'}</span>
                       </label>
                     </td>
+                    <td className="px-3 py-2 text-right"><Button size="sm" onClick={() => setEditing(u.username)} aria-label={`Edit ${u.full_name}`}>Edit</Button></td>
                   </tr>
                 );
               })}
@@ -143,8 +158,28 @@ function People() {
           </table>
         </div>
       )}
-      {editing && <GrantsEditor user={editing} onClose={(msg) => { setEditing(null); if (msg) setNotice({ tone: 'success', text: msg }); }} />}
+      {editingRow && <PersonDialog user={editingRow} self={editingRow.username.toLowerCase() === me?.username.toLowerCase()}
+        onClose={(msg) => { setEditing(null); if (msg) setNotice({ tone: 'success', text: msg }); }} />}
     </>
+  );
+}
+
+function CountryPicker({ value, onChange, idPrefix }: { value: string[]; onChange: (v: string[]) => void; idPrefix: string }) {
+  const countries = useQuery({ queryKey: ['admin-countries'], queryFn: () => api<string[]>('/admin/countries') });
+  if (countries.isPending) return <Skeleton className="h-9" />;
+  return (
+    <fieldset>
+      <legend className="label-caps mb-1.5 text-text-muted">Countries</legend>
+      <div className="flex flex-wrap gap-3">
+        {(countries.data ?? []).map((c) => (
+          <label key={c} className="inline-flex items-center gap-2 text-sm">
+            <input type="checkbox" id={`${idPrefix}-${c}`} checked={value.includes(c)}
+              onChange={(e) => onChange(e.target.checked ? [...value, c] : value.filter((x) => x !== c))} />
+            {c}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -153,78 +188,135 @@ function AddPerson({ onDone }: { onDone: (msg?: string) => void }) {
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<Role>('viewer');
+  const [countries, setCountries] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const add = useMutation({
-    mutationFn: () => api('/admin/users', { method: 'POST', json: { username, full_name: name, role } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onDone(`Added ${username.toUpperCase()}. They get this role at their first sign-in.`); },
+    mutationFn: () => api('/admin/users', { method: 'POST', json: { username, full_name: name, role, countries } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onDone(`Added ${username.toUpperCase()}. They get this role and these countries at their first sign-in.`); },
     onError: (e: ApiError) => setError(e.message),
   });
   const submit = (e: FormEvent) => { e.preventDefault(); setError(null); add.mutate(); };
   return (
     <Card className="mb-4">
-      <form onSubmit={submit} className="grid grid-cols-1 items-end gap-4 md:grid-cols-[1fr_1fr_14rem_auto]" aria-label="Add a person">
-        <Field id="new-username" label="WIREGUARD username" hint="NESR- and the employee number">
-          <input id="new-username" className={inputClass} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="NESR-12345" autoFocus />
-        </Field>
-        <Field id="new-name" label="Name"><input id="new-name" className={inputClass} value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field id="new-role" label="Role">
-          <select id="new-role" className={inputClass} value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-          </select>
-        </Field>
+      <form onSubmit={submit} className="flex flex-col gap-4" aria-label="Add a person">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Field id="new-username" label="WIREGUARD username" hint="NESR- and the employee number">
+            <input id="new-username" className={inputClass} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="NESR-12345" autoFocus />
+          </Field>
+          <Field id="new-name" label="Name"><input id="new-name" className={inputClass} value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field id="new-role" label="Role">
+            <select id="new-role" className={inputClass} value={role} onChange={(e) => setRole(e.target.value as Role)}>
+              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            </select>
+          </Field>
+        </div>
+        <CountryPicker value={countries} onChange={setCountries} idPrefix="new-c" />
+        <p className="text-xs text-text-subtle">The WIREGUARD account itself (password, sign-in) is created in WIREGUARD.</p>
+        {error && <Banner tone="danger">{error}</Banner>}
         <div className="flex gap-2">
           <Button type="submit" variant="primary" loading={add.isPending} disabled={!username || !name}>Add</Button>
           <Button variant="ghost" onClick={() => onDone()}>Cancel</Button>
         </div>
-        {error && <div className="md:col-span-4"><Banner tone="danger">{error}</Banner></div>}
       </form>
     </Card>
   );
 }
 
-function GrantsEditor({ user, onClose }: { user: UserRow; onClose: (msg?: string) => void }) {
+type Choice = 'default' | 'view' | 'edit' | 'remove';
+
+function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; onClose: (msg?: string) => void }) {
   const qc = useQueryClient();
-  const menus = Object.keys(MENU_LABEL).filter((k) => k !== 'users');
-  const [sel, setSel] = useState<Record<string, 'none' | 'view' | 'edit'>>(() =>
-    Object.fromEntries(menus.map((m) => {
-      const g = user.grants.find((x) => x.menu_key === m);
-      return [m, g ? (g.can_edit ? 'edit' : 'view') : 'none'];
-    })));
+  const config = useConfig();
+  const matrix = useQuery({ queryKey: ['role-matrix'], queryFn: () => api<Matrix>('/admin/role-permissions') });
+  const [countries, setCountries] = useState<string[]>(user.countries);
+  const [choice, setChoice] = useState<Record<string, Choice>>(() =>
+    Object.fromEntries(user.grants.map((g) => [g.menu_key, g.effect === 'deny' ? 'remove' : g.can_edit ? 'edit' : 'view'])));
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const keys = (matrix.data?.menus ?? []).filter((k) => k !== 'users');
+  const roleRight = (k: string) => {
+    if (user.role === 'admin') return 'edit';
+    const r = matrix.data?.rows.find((x) => x.role === user.role && x.menu_key === k);
+    if (k === 'pre_job_notes' && user.is_contact) return 'edit (SLK contact)';
+    return r?.can_edit ? 'edit' : r?.can_view ? 'view' : 'none';
+  };
   const save = useMutation({
-    mutationFn: () => api(`/admin/users/${encodeURIComponent(user.username)}/grants`, {
-      method: 'PUT',
-      json: { grants: Object.entries(sel).filter(([, v]) => v !== 'none').map(([menu_key, v]) => ({ menu_key, can_edit: v === 'edit' })) },
-    }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onClose(`Extra tabs saved for ${user.full_name}`); },
+    mutationFn: async () => {
+      if (user.role !== 'admin') await api(`/admin/users/${encodeURIComponent(user.username)}`, { method: 'PATCH', json: { countries } });
+      await api(`/admin/users/${encodeURIComponent(user.username)}/grants`, {
+        method: 'PUT',
+        json: { grants: Object.entries(choice).filter(([, v]) => v !== 'default').map(([menu_key, v]) => ({ menu_key, effect: v === 'remove' ? 'deny' : 'grant', can_edit: v === 'edit' })) },
+      });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onClose(`Saved ${user.full_name}`); },
     onError: (e: ApiError) => setError(e.message),
   });
+  const remove = useMutation({
+    mutationFn: () => api(`/admin/users/${encodeURIComponent(user.username)}`, { method: 'DELETE' }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onClose(`${user.full_name} was removed from SLK Ops`); },
+    onError: (e: ApiError) => { setError(e.message); setConfirmRemove(false); },
+  });
+
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="grants-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4"
+    <div role="dialog" aria-modal="true" aria-labelledby="person-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4"
       onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="max-h-full w-full max-w-lg overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-pop">
-        <h2 id="grants-title" className="font-display text-lg font-bold">Extra tabs for {user.full_name}</h2>
-        <p className="mt-1 mb-4 text-sm text-text-muted">These add to what the {ROLE_LABEL[user.role]} role already allows. They never take rights away.</p>
+      <div className="max-h-full w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-pop">
+        <div className="mb-1 flex items-start gap-3">
+          <h2 id="person-title" className="flex-1 font-display text-lg font-bold">{user.full_name} <span className="font-mono text-sm font-normal text-text-muted">{user.username}</span></h2>
+          <Button size="sm" variant="ghost" onClick={() => onClose()} aria-label="Close"><X aria-hidden className="size-4" /></Button>
+        </div>
+        <p className="mb-4 text-sm text-text-muted">Role: {ROLE_LABEL[user.role]}. Changes apply on the person’s next click.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
-        <table className="w-full text-sm">
-          <caption className="sr-only">Extra access per tab</caption>
-          <thead><tr className="label-caps text-left text-text-muted"><th scope="col" className="py-1">Tab</th><th scope="col">None</th><th scope="col">View</th><th scope="col">Edit</th></tr></thead>
-          <tbody>
-            {menus.map((m) => (
-              <tr key={m} className="border-t border-border">
-                <th scope="row" className="py-1.5 text-left font-normal">{menuLabel(m)}</th>
-                {(['none', 'view', 'edit'] as const).map((v) => (
-                  <td key={v}>
-                    <input type="radio" name={`g-${m}`} aria-label={`${menuLabel(m)}: ${v}`} checked={sel[m] === v} onChange={() => setSel((s) => ({ ...s, [m]: v }))} />
-                  </td>
+
+        {user.role === 'admin'
+          ? <p className="mb-4 text-sm text-text-muted">Admins see every country and every tab; tab changes do not apply to them.</p>
+          : <div className="mb-5"><CountryPicker value={countries} onChange={setCountries} idPrefix={`c-${user.username}`} /></div>}
+
+        <p className="label-caps mb-2 text-text-muted">Tabs: role default, extra access, or removed</p>
+        {matrix.isPending && <Skeleton className="h-48" />}
+        {matrix.data && menuClusters(keys).map((cl) => (
+          <fieldset key={cl.label} className="mb-3 rounded-md border border-border">
+            <legend className="label-caps px-2 text-text-subtle">{cl.label}</legend>
+            <table className="w-full table-fixed text-sm">
+              <caption className="sr-only">{cl.label} tabs for {user.full_name}</caption>
+              <colgroup><col /><col className="w-24" /><col className="w-16" /><col className="w-16" /><col className="w-20" /></colgroup>
+              <thead><tr className="text-left text-xs text-text-subtle"><th scope="col" className="px-2 py-1 font-normal">Tab</th>
+                {(['default', 'view', 'edit', 'remove'] as Choice[]).map((c) => <th key={c} scope="col" className="px-1 py-1 text-center font-normal">{c === 'default' ? 'Role default' : c === 'view' ? '+ View' : c === 'edit' ? '+ Edit' : 'Remove'}</th>)}
+              </tr></thead>
+              <tbody>
+                {cl.keys.map((k) => (
+                  <tr key={k} className="border-t border-border">
+                    <th scope="row" className="px-2 py-1.5 text-left font-normal">{menuLabel(k)} <span className="text-xs text-text-subtle">({roleRight(k)})</span></th>
+                    {(['default', 'view', 'edit', 'remove'] as Choice[]).map((c) => (
+                      <td key={c} className="text-center">
+                        <input type="radio" name={`t-${k}`} aria-label={`${menuLabel(k)}: ${c}`} disabled={user.role === 'admin'}
+                          checked={(choice[k] ?? 'default') === c} onChange={() => setChoice((s) => ({ ...s, [k]: c }))} />
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="mt-4 flex justify-end gap-2">
+              </tbody>
+            </table>
+          </fieldset>
+        ))}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()} disabled={user.role === 'admin' && !Object.keys(choice).length}>Save</Button>
           <Button variant="ghost" onClick={() => onClose()}>Cancel</Button>
-          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()} autoFocus>Save</Button>
+          {config.data && (
+            <a href={config.data.wireguardUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-text-muted underline hover:text-text">
+              Password and account: WIREGUARD <ExternalLink aria-hidden className="size-3.5" />
+            </a>
+          )}
+          {!self && (
+            <span className="ml-auto">
+              {!confirmRemove
+                ? <Button variant="danger" onClick={() => setConfirmRemove(true)}>Remove from SLK Ops</Button>
+                : <span className="inline-flex items-center gap-2"><span className="text-sm text-danger">Remove their SLK Ops access record?</span>
+                    <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>Yes, remove</Button>
+                    <Button variant="ghost" onClick={() => setConfirmRemove(false)}>No</Button></span>}
+            </span>
+          )}
         </div>
       </div>
     </div>

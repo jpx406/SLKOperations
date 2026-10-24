@@ -3,7 +3,8 @@ import { canEditField, filterPatch } from '../src/shared/fieldPolicy';
 import { jobEfficiency, opHours, runEfficiency } from '../src/shared/metrics';
 import { defaultRoleFor } from '../src/shared/roles';
 import { stagePercent } from '../src/shared/stages';
-import { isOpenWrite, ruleFor } from '../src/worker/permissions';
+import { menuClusters } from '../src/shared/menus';
+import { effectiveMenus, isOpenWrite, readAllowed, ruleFor } from '../src/worker/permissions';
 import { isCutOnly } from '../src/worker/sync';
 
 describe('job metrics (same rules as the job_metrics view)', () => {
@@ -93,7 +94,55 @@ describe('admin write rules', () => {
     expect(ruleFor('PATCH', '/api/admin/users/NESR-1')?.menu).toBe('users');
     expect(ruleFor('PUT', '/api/admin/users/NESR-1/grants')?.menu).toBe('users');
     expect(ruleFor('PUT', '/api/admin/role-permissions')?.menu).toBe('users');
-    expect(ruleFor('DELETE', '/api/admin/users/NESR-1')).toBeUndefined();
+    expect(ruleFor('DELETE', '/api/admin/users/NESR-1')).toMatchObject({ menu: 'users', action: 'delete' });
+    expect(ruleFor('DELETE', '/api/admin/role-permissions')).toBeUndefined();
+  });
+});
+
+describe('effective tabs = role + grants − removals (Admin Manual 5.1, 8.2)', () => {
+  const perms = [
+    { menu_key: 'jobs', can_view: 1, can_edit: 0, can_delete: 0 },
+    { menu_key: 'schedule', can_view: 1, can_edit: 1, can_delete: 0 },
+  ];
+  it('adds a granted tab and upgrades view to edit', () => {
+    const m = effectiveMenus(perms, [{ menu_key: 'jobs', effect: 'grant', can_edit: 1 }, { menu_key: 'bonus', effect: 'grant', can_edit: 0 }], false);
+    expect(m.jobs).toEqual({ view: true, edit: true, delete: false });
+    expect(m.bonus).toEqual({ view: true, edit: false, delete: false });
+  });
+  it('removes a role tab', () => {
+    const m = effectiveMenus(perms, [{ menu_key: 'schedule', effect: 'deny', can_edit: 0 }], false);
+    expect(m.schedule).toBeUndefined();
+    expect(m.jobs?.view).toBe(true);
+  });
+  it('opens Pre-Job Notes for people on the SLK Contacts list, unless removed', () => {
+    expect(effectiveMenus(perms, [], true).pre_job_notes).toEqual({ view: true, edit: true, delete: false });
+    expect(effectiveMenus(perms, [{ menu_key: 'pre_job_notes', effect: 'deny', can_edit: 0 }], true).pre_job_notes).toBeUndefined();
+    expect(effectiveMenus(perms, [], false).pre_job_notes).toBeUndefined();
+  });
+});
+
+describe('read rules (deny by default)', () => {
+  const v = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, { view: true, edit: false, delete: false }]));
+  it('closes a page whose tab was removed', () => {
+    expect(readAllowed('/api/schedule', v(['jobs']))).toBe(false);
+    expect(readAllowed('/api/schedule', v(['schedule']))).toBe(true);
+  });
+  it('opens jobs from either Jobs or Schedule', () => {
+    expect(readAllowed('/api/jobs/abc', v(['schedule']))).toBe(true);
+    expect(readAllowed('/api/jobs', v([]))).toBe(false);
+  });
+  it('keeps the shell endpoints open and refuses unknown reads', () => {
+    expect(readAllowed('/api/session', {})).toBe(true);
+    expect(readAllowed('/api/lookups', {})).toBe(true);
+    expect(readAllowed('/api/secret', v(['schedule', 'jobs']))).toBe(false);
+  });
+});
+
+describe('menu clusters (grant checklist grouped like the navigation)', () => {
+  it('puts keys under their nav group and the rest under Other', () => {
+    const cl = menuClusters(['schedule', 'jobs', 'bonus', 'audit', 'ai_assistant']);
+    expect(cl.map((c) => c.label)).toEqual(['Operation', 'Bonus', 'Other']);
+    expect(cl.find((c) => c.label === 'Other')!.keys).toEqual(['audit', 'ai_assistant']);
   });
 });
 

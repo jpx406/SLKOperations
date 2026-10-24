@@ -281,6 +281,25 @@ Sign in with a WIREGUARD account → units come from WIREGUARD → create a job 
 | 2j Attendance | S17 | people tables | attendance |
 | 2k Explosive inventory | S18, S39 | inventory | inventory |
 
+### Remaining order (updated 2026-10-24 after the Administrator Manual review)
+
+Done: slice, 2a Users & Roles (with the manual's adjustments), 2b WIREGUARD sync, 2e Reconciliation. The rest, in order:
+
+| # | milestone | screens | from the Administrator Manual |
+| --- | --- | --- | --- |
+| 2c | Schedule: drag to move and resize, unit maintenance and status blocks, a warning when WIREGUARD drops a unit that has open jobs | S02, S37, S38 | §4 caution |
+| 2d | Job editor complete: Preparation (well, wire and drum from WIREGUARD, pressure control, toolstring builder), Execution extras, Closure sign-offs, **revenue**, crew, head count | S04–S07 | §3 placement, revenue decision |
+| 2f | Database: local lists, service profiles, PCE, grease panels | S24 | §4 |
+| 2g | Job Log with exports | S08 | |
+| 2h | 8 Min. Facts and Failure Roster | S10–S12 | |
+| 2i | Statistics and NPT Analysis | S13, S14 | |
+| 2j | Attendance grid + **Headcount Roster** (attendance admin) with the **SLK Contacts list** | S17, S44 | §6, §8.2 |
+| 2k | Explosive inventory and movements | S18, S39 | |
+| 3 | Should-haves: hardware and MCR, utilization, competency, JRA, **Pre-Job Notes** (incl. admin delete with two confirmations), wire views and 17 Wire KPIs, documents and exports, offline job log | | §8 |
+| 4 | **Bonus**: rules per job type, Closure distribution and approval, Bonus Report and Analysis, statements by e-mail, **step-up re-authentication**; **Sales Dashboard** from job revenue; **admin data export and import** | S32, S33, S47 | §1, §2, §3, §7 |
+| 5 | **AI Agent** (scoped tools, budget, daily caps) and the help assistant | S23, S35 | §5.2 |
+| 6 | Could-haves: Knowledge Hub, Quick Plan, signatures | | |
+
 ### 3. Should-haves, then could-haves
 
 - **Should:** hardware and MCR, utilization, competency, JRA, Pre-Job Notes, documents and exports, offline job log, **the Wires register and wire detail (read-only), the wire panel on the job, Wire KPIs (17, with parity test)**, attendance extras, digest e-mail.

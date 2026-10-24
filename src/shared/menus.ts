@@ -29,7 +29,21 @@ export const NAV: Group[] = [
       { key: 'statistics', label: 'Wire KPIs', path: '/quality/wire-kpis', screen: 'D3', milestone: '3' },
     ],
   },
-  { label: 'Attendance', pages: [{ key: 'attendance', label: 'Attendance', path: '/attendance', screen: 'S17', milestone: '2j' }] },
+  {
+    label: 'Bonus',
+    pages: [
+      { key: 'bonus', label: 'Bonus Report', path: '/bonus/report', screen: 'S32', milestone: '4' },
+      { key: 'bonus', label: 'Bonus Analysis', path: '/bonus/analysis', screen: 'S32', milestone: '4' },
+    ],
+  },
+  { label: 'Sales Dashboard', pages: [{ key: 'sales_dashboard', label: 'Sales Dashboard', path: '/sales', screen: 'S33', milestone: '4' }] },
+  {
+    label: 'Attendance',
+    pages: [
+      { key: 'attendance', label: 'Attendance', path: '/attendance', screen: 'S17', milestone: '2j' },
+      { key: 'headcount_roster', label: 'Headcount Roster', path: '/attendance/roster', screen: 'S44', milestone: '2j' },
+    ],
+  },
   {
     label: 'Inventory',
     pages: [
@@ -40,8 +54,35 @@ export const NAV: Group[] = [
   },
   { label: 'Wires', pages: [{ key: 'wires', label: 'Wires', path: '/wires', screen: 'S30', milestone: '3' }] },
   { label: 'Knowledge Hub', pages: [{ key: 'knowledge_hub', label: 'Knowledge Hub', path: '/knowledge', screen: 'S21', milestone: '3' }] },
-  { label: 'Administration', pages: [{ key: 'users', label: 'Users & Roles', path: '/admin/users', screen: 'S34', milestone: '2a' }] },
+  {
+    label: 'Administration',
+    pages: [
+      { key: 'users', label: 'Users & Roles', path: '/admin/users', screen: 'S34', milestone: '2a' },
+      { key: 'ai_agent', label: 'AI Agent', path: '/admin/ai-agent', screen: 'S35', milestone: '5' },
+      { key: 'users', label: 'Data export & import', path: '/admin/data', screen: 'S47', milestone: '4' },
+    ],
+  },
 ];
+
+/** Labels for every menu key, used by Users & Roles. Keys without a page of their own are listed under "Other". */
+export const MENU_LABELS: Record<string, string> = {
+  // the first page with a key names it (Statistics, not the Wire KPIs page that shares its key)
+  ...Object.fromEntries(NAV.flatMap((g) => g.pages.map((p) => [p.key, p.key === 'bonus' ? 'Bonus' : p.label])).reverse()),
+  audit: 'Audit trail',
+  ai_assistant: 'Help assistant',
+};
+
+/** Menu keys grouped like the top navigation (Admin Manual 5.1: the grant checklist follows the nav clusters). */
+export function menuClusters(keys: readonly string[]): { label: string; keys: string[] }[] {
+  const seen = new Set<string>();
+  const out = NAV.map((g) => {
+    const ks = [...new Set(g.pages.map((p) => p.key))].filter((k) => keys.includes(k) && !seen.has(k));
+    ks.forEach((k) => seen.add(k));
+    return { label: g.label, keys: ks };
+  }).filter((g) => g.keys.length);
+  const other = keys.filter((k) => !seen.has(k));
+  return other.length ? [...out, { label: 'Other', keys: other }] : out;
+}
 
 export const canView = (menus: Record<string, { view: boolean }>, key: string) => !!menus[key]?.view;
 

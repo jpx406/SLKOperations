@@ -4,7 +4,7 @@ import type { AppBindings, Env } from './env';
 import { admin } from './admin';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
-import { isOpenWrite, ruleFor } from './permissions';
+import { isOpenWrite, readAllowed, ruleFor } from './permissions';
 import { login, logout, requireSession, resolveSession } from './session';
 import { syncAll, syncStatus } from './sync';
 import { WgError } from './wg';
@@ -55,7 +55,12 @@ app.get('/session', async (c) => {
 app.use('*', requireSession);
 app.use('*', async (c, next) => {
   const method = c.req.method;
-  if (method === 'GET' || method === 'HEAD' || isOpenWrite(method, c.req.path)) return next();
+  if (method === 'GET' || method === 'HEAD') {
+    if (readAllowed(c.req.path, c.get('user').menus)) return next();
+    console.warn(`read refused: ${c.req.path}`);
+    return c.json({ error: 'Your access does not include this page' }, 403);
+  }
+  if (isOpenWrite(method, c.req.path)) return next();
   const rule = ruleFor(method, c.req.path);
   if (!rule) {
     console.warn(`write refused, no WRITE_RULE: ${method} ${c.req.path}`);

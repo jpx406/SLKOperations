@@ -99,7 +99,8 @@ LOCATIONS = [
 
 MENUS = ["schedule", "jobs", "job_log", "pre_job_notes", "database", "failure_roster", "eight_min_facts", "quick_plan",
          "reconciliation", "statistics", "npt_analysis", "utilization", "competency", "attendance",
-         "inventory_explosive", "inventory_hardware", "inventory_mcr", "wires", "knowledge_hub", "users", "audit", "ai_assistant"]
+         "inventory_explosive", "inventory_hardware", "inventory_mcr", "wires", "knowledge_hub", "users", "audit", "ai_assistant",
+         "bonus", "sales_dashboard", "headcount_roster", "ai_agent"]
 
 ALL = set(MENUS)
 OPS = {"schedule", "jobs", "job_log", "failure_roster", "eight_min_facts", "reconciliation", "wires", "knowledge_hub", "ai_assistant"}
@@ -108,16 +109,16 @@ INV = {"inventory_explosive", "inventory_hardware", "inventory_mcr"}
 
 # role: (view set, edit set, delete set). admin passes every check in code and needs no rows.
 ROLES = {
-    "operations_manager":   (ALL - {"users"}, ALL - {"users", "audit", "inventory_explosive"}, {"jobs", "database"}),
+    "operations_manager":   (ALL - {"users", "bonus", "sales_dashboard", "headcount_roster", "ai_agent"}, ALL - {"users", "audit", "inventory_explosive", "bonus", "sales_dashboard", "headcount_roster", "ai_agent", "pre_job_notes"}, {"jobs", "database"}),
     "maintenance_manager":  (OPS | {"database", "attendance"} | INV, {"database", "schedule", "inventory_hardware", "inventory_mcr"}, set()),
-    "sdm":                  (OPS | DASH | {"pre_job_notes", "quick_plan", "attendance"} | INV,
-                             {"schedule", "jobs", "eight_min_facts", "failure_roster", "reconciliation", "pre_job_notes", "quick_plan", "attendance"}, set()),
-    "deputy_sdm":           (OPS | DASH | {"pre_job_notes", "quick_plan", "attendance"},
-                             {"schedule", "jobs", "eight_min_facts", "reconciliation", "pre_job_notes", "quick_plan"}, set()),
-    "sales":                (OPS | DASH | {"quick_plan"}, {"jobs", "quick_plan"}, set()),
-    "director":             (ALL - {"users", "audit"}, set(), set()),
-    "sqm":                  (ALL - {"users"}, {"eight_min_facts", "failure_roster", "knowledge_hub", "jobs", "attendance"}, set()),
-    "slickline_supervisor": (OPS | {"pre_job_notes", "attendance"}, {"jobs", "eight_min_facts", "pre_job_notes"}, set()),
+    "sdm":                  (OPS | DASH | {"pre_job_notes", "quick_plan", "attendance", "bonus"} | INV,
+                             {"schedule", "jobs", "eight_min_facts", "failure_roster", "reconciliation", "pre_job_notes", "quick_plan", "attendance", "bonus"}, set()),
+    "deputy_sdm":           (OPS | DASH | {"quick_plan", "attendance"},
+                             {"schedule", "jobs", "eight_min_facts", "reconciliation", "quick_plan"}, set()),
+    "sales":                (OPS | DASH | {"quick_plan", "bonus", "sales_dashboard"}, {"jobs", "quick_plan", "sales_dashboard"}, set()),
+    "director":             (ALL - {"users", "audit", "headcount_roster", "ai_agent"}, set(), set()),
+    "sqm":                  (ALL - {"users", "bonus", "sales_dashboard", "headcount_roster", "ai_agent", "pre_job_notes"}, {"eight_min_facts", "failure_roster", "knowledge_hub", "jobs", "attendance"}, set()),
+    "slickline_supervisor": (OPS | {"attendance"}, {"jobs", "eight_min_facts"}, set()),
     "slickline_operator":   (OPS | {"attendance"}, {"jobs"}, set()),
     "assistant_operator":   ({"schedule", "jobs", "knowledge_hub", "ai_assistant", "attendance"}, set(), set()),
     "crew":                 ({"schedule", "jobs", "knowledge_hub", "ai_assistant", "attendance"}, set(), set()),
@@ -125,7 +126,7 @@ ROLES = {
     "explosive_manager":    ({"schedule", "jobs", "knowledge_hub", "ai_assistant"} | INV, set(INV), set()),
     "explosive_admin":      ({"schedule", "jobs", "knowledge_hub", "ai_assistant"} | INV, set(INV), set(INV)),
     "storekeeper":          ({"schedule", "jobs", "ai_assistant"} | INV, {"inventory_hardware", "inventory_mcr"}, set()),
-    "attendance_admin":     ({"attendance", "ai_assistant"}, {"attendance"}, set()),
+    "attendance_admin":     ({"attendance", "headcount_roster", "ai_assistant"}, {"attendance", "headcount_roster"}, {"headcount_roster"}),
     "slk_contact":          ({"schedule", "jobs", "pre_job_notes", "knowledge_hub", "ai_assistant"}, {"pre_job_notes"}, set()),
 }
 

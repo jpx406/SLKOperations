@@ -20,6 +20,7 @@ export interface Session {
   fullName: string;
   wgRole: string | null;
   wgToken: string;
+  /** Countries WIREGUARD showed at sign-in; seeds a new person's access only. */
   countries: string[];
   createdAt: number;
   lastSeen: number;
