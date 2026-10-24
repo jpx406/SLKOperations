@@ -1,0 +1,31 @@
+@import "tailwindcss";
+@import "../../replica/design/tokens.css";
+@import "../../replica/design/tailwind.theme.css";
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  input, select, textarea, button { font: inherit; color: inherit; }
+}
+
+@utility label-caps {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: var(--text-label--line-height);
+  font-weight: 600;
+  letter-spacing: var(--text-label--letter-spacing);
+  text-transform: uppercase;
+}
+
+@utility hatch-blocked {
+  background: repeating-linear-gradient(45deg, var(--color-blocked-subtle) 0 6px,
+    color-mix(in srgb, var(--color-blocked) 22%, var(--color-blocked-subtle)) 6px 12px);
+}

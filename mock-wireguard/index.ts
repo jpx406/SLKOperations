@@ -1,0 +1,85 @@
+// Mock WIREGUARD for local development. Mirrors the response shapes of the real Worker's endpoints that
+// SLK Ops reads (see replica/integration-wireguard.md), including its country rule: rows are filtered to
+// the caller's countries, Admin sees everything, rows without a country are Admin-only.
+// It is wired in only by `vite dev` (auxiliary Worker). Production binds to the real WIREGUARD.
+
+import fixtures from './fixtures.json';
+import userFile from './users.json';
+
+type MockUser = (typeof userFile.users)[number];
+
+const SESSION_MS = 12 * 3600_000;
+const BUILD_STAMP = 'mock-2026-10-19T01-00';
+
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+
+// Unsigned on purpose: this token only ever exists between two local dev Workers.
+const makeToken = (u: MockUser) => btoa(JSON.stringify({ uid: u.id, username: u.username, exp: Date.now() + SESSION_MS }));
+
+function readToken(request: Request): MockUser | null {
+  const auth = request.headers.get('Authorization') ?? '';
+  if (!auth.startsWith('Bearer ')) return null;
+  try {
+    const payload = JSON.parse(atob(auth.slice(7)));
+    if (!(payload.exp > Date.now())) return null;
+    const user = userFile.users.find((u) => u.id === payload.uid);
+    return user && user.active ? user : null;
+  } catch {
+    return null;
+  }
+}
+
+function byCountry<T extends { country?: string | null }>(rows: T[], user: MockUser): T[] {
+  if (user.role === 'Admin') return rows;
+  if (!user.countries.length) return [];
+  return rows.filter((r) => r.country && user.countries.includes(r.country));
+}
+
+const withIds = <T extends object>(prefix: string, rows: T[]) => rows.map((r, i) => ({ id: `${prefix}-${i + 1}`, ...r }));
+
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const { pathname } = new URL(request.url);
+    const method = request.method;
+
+    if (pathname === '/health') return json({ status: 'ok', timestamp: Date.now(), skipAuth: false });
+    if (pathname === '/' || pathname === '/wireguard.html') {
+      return new Response(`<!doctype html><meta name="app-build" content="${BUILD_STAMP}"><title>WIREGUARD (mock)</title>`, {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+
+    if (pathname === '/auth/login' && method === 'POST') {
+      let body: { username?: string; password?: string };
+      try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+      if (!body.username || !body.password) return json({ error: 'Username and password required' }, 400);
+      const user = userFile.users.find((u) => u.username.toLowerCase() === String(body.username).toLowerCase());
+      if (!user) return json({ error: 'Invalid credentials' }, 401);
+      if (!user.active) return json({ error: 'Account is inactive. Contact an administrator.' }, 403);
+      if (user.password !== body.password) return json({ error: 'Invalid credentials' }, 401);
+      return json({
+        token: makeToken(user),
+        user: { kind: 'user', id: user.id, username: user.username, fullName: user.fullName, role: user.role, mustChangePassword: false },
+      });
+    }
+
+    const user = readToken(request);
+    if (!user) return json({ error: 'Unauthorized' }, 401);
+
+    if (pathname === '/auth/me' && method === 'GET') {
+      return json({ user: { kind: 'user', id: user.id, username: user.username, fullName: user.fullName, role: user.role, mustChangePassword: false } });
+    }
+    if (pathname === '/auth/logout' && method === 'POST') return json({ success: true });
+
+    if (method !== 'GET') return json({ error: 'The mock only serves reads' }, 405);
+    switch (pathname) {
+      case '/units': return json(byCountry(withIds('unit', fixtures.units), user));
+      case '/job-types': return json(byCountry(withIds('jt', fixtures.job_types), user));
+      case '/job-locations': return json(byCountry(withIds('jl', fixtures.job_locations), user));
+      case '/fields': return json(byCountry(withIds('fld', fixtures.fields), user));
+      case '/rigs': return json(byCountry(withIds('rig', fixtures.rigs), user));
+      default: return json({ error: 'Not found in mock' }, 404);
+    }
+  },
+};

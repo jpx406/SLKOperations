@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "slkops",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "slkops-db",
+      // replace with the id printed by: npx wrangler d1 create slkops-db
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "replica/migrations"
+    }
+  ],
+  "kv_namespaces": [
+    // replace with the id printed by: npx wrangler kv namespace create slkops-kv
+    { "binding": "KV", "id": "00000000000000000000000000000000" }
+  ],
+  // The live WIREGUARD Worker in the same Cloudflare account. Under `vite dev` the mock in
+  // mock-wireguard/ carries the same name and answers instead.
+  "services": [{ "binding": "WIREGUARD", "service": "slkwireguard-backend" }],
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "vars": {
+    "APP_URL": "https://slkops.nesrapp.com",
+    "IDLE_MINUTES": "60"
+  }
+  // secrets (wrangler secret put …, or .dev.vars locally): WG_SYNC_USERNAME, WG_SYNC_PASSWORD
+}

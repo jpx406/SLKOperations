@@ -1,0 +1,7 @@
+// Local-only stand-in for WIREGUARD. Same Worker name as production so the main Worker's
+// service binding resolves to it under `vite dev`. Never deployed.
+{
+  "name": "slkwireguard-backend",
+  "main": "./index.ts",
+  "compatibility_date": "2026-10-01"
+}

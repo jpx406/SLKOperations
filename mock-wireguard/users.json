@@ -1,0 +1,11 @@
+{
+  "_about": "Fake test accounts for local development only. They exist nowhere else. Passwords are dev-only values.",
+  "users": [
+    { "id": "u-90001", "username": "NESR-90001", "password": "dev-sdm-90001", "fullName": "Test SDM", "role": "Supervisor", "countries": ["Saudi Arabia"], "active": 1 },
+    { "id": "u-90002", "username": "NESR-90002", "password": "dev-viewer-90002", "fullName": "Test Viewer", "role": "Viewer", "countries": ["Saudi Arabia"], "active": 1 },
+    { "id": "u-90003", "username": "NESR-90003", "password": "dev-admin-90003", "fullName": "Test Admin", "role": "Admin", "countries": [], "active": 1 },
+    { "id": "u-90004", "username": "NESR-90004", "password": "dev-bahrain-90004", "fullName": "Test Bahrain Supervisor", "role": "Supervisor", "countries": ["Bahrain"], "active": 1 },
+    { "id": "u-90005", "username": "NESR-90005", "password": "dev-inactive-90005", "fullName": "Test Inactive", "role": "Viewer", "countries": ["Saudi Arabia"], "active": 0 },
+    { "id": "u-90009", "username": "NESR-90009", "password": "dev-sync-90009", "fullName": "SLK Ops sync (test)", "role": "Viewer", "countries": ["Saudi Arabia", "Bahrain"], "active": 1 }
+  ]
+}

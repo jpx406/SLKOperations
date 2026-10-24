@@ -10,3 +10,4 @@ dist/
 .DS_Store
 # reference material from the original app stays local (manuals, screenshots are reference only)
 replica/sources/
+!.dev.vars.example
