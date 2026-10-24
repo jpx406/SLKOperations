@@ -23,10 +23,13 @@
   // The live WIREGUARD Worker in the same Cloudflare account. Under `vite dev` the mock in
   // mock-wireguard/ carries the same name and answers instead.
   "services": [{ "binding": "WIREGUARD", "service": "slkwireguard-backend" }],
-  "triggers": { "crons": ["*/15 * * * *"] },
+  "triggers": { "crons": ["*/15 * * * *", "0 1 * * *"] },
   "vars": {
     "APP_URL": "https://slkops.nesrapp.com",
-    "IDLE_MINUTES": "60"
+    "IDLE_MINUTES": "60",
+    // WIREGUARD runs before this date are history and never reported as unlinked
+    "RECON_START_DATE": "2026-10-01",
+    "WG_APP_URL": "https://slkwireguard.nesrapp.com"
   }
   // secrets (wrangler secret put …, or .dev.vars locally): WG_SYNC_USERNAME, WG_SYNC_PASSWORD
 }

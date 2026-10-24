@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
 import { AlertCircle, AlertTriangle, Check, Info, Loader2, Lock } from 'lucide-react';
 import type { JobStatus } from '../../shared/types';
 
@@ -14,7 +14,7 @@ const VARIANT: Record<Variant, string> = {
 const SIZE = { sm: 'h-8 px-3 text-xs', md: 'h-9 px-3.5 text-sm', lg: 'h-11 px-4.5 text-base font-display font-bold' };
 
 export function Button({ variant = 'secondary', size = 'md', loading, children, className, disabled, ...rest }:
-  ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: keyof typeof SIZE; loading?: boolean }) {
+  ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: keyof typeof SIZE; loading?: boolean; ref?: Ref<HTMLButtonElement> }) {
   return (
     <button
       type="button"

@@ -3,6 +3,7 @@ import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
 import { admin } from './admin';
 import { jobs } from './jobs';
+import { recon, runReconciliation } from './recon';
 import { isOpenWrite, ruleFor } from './permissions';
 import { login, logout, requireSession, resolveSession } from './session';
 import { syncAll, syncStatus } from './sync';
@@ -128,10 +129,22 @@ app.get('/schedule', async (c) => {
 
 app.route('/jobs', jobs);
 app.route('/admin', admin);
+app.route('/recon', recon);
+
+app.get('/config', (c) => c.json({ wireguardUrl: c.env.WG_APP_URL ?? 'https://slkwireguard.nesrapp.com', reconStartDate: c.env.RECON_START_DATE ?? '2026-10-01' }));
 
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (event.cron === '0 1 * * *') {
+      // 04:00 Riyadh: fresh pull, then reconcile every country WIREGUARD shares with the sync account
+      ctx.waitUntil((async () => {
+        await syncAll(env, { hourly: true });
+        const { results } = await env.DB.prepare('SELECT DISTINCT country FROM wg_units WHERE wg_active = 1').all<{ country: string }>();
+        await runReconciliation(env, results.map((r) => r.country), 'nightly');
+      })());
+      return;
+    }
     // runs every 15 minutes; documents, settings and the build stamp only on the hour
     ctx.waitUntil(syncAll(env, { hourly: new Date(event.scheduledTime).getUTCMinutes() < 15 }));
   },

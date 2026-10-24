@@ -9,6 +9,10 @@ export interface Env {
   IDLE_MINUTES: string;
   WG_SYNC_USERNAME?: string;
   WG_SYNC_PASSWORD?: string;
+  /** WIREGUARD runs dated before this are history and never reported as unlinked. */
+  RECON_START_DATE?: string;
+  /** Where people open WIREGUARD to fix a run. */
+  WG_APP_URL?: string;
 }
 
 export interface Session {

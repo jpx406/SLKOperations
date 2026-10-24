@@ -3,3 +3,6 @@
 # set with `wrangler secret put` and point at the real read-only WIREGUARD service account.
 WG_SYNC_USERNAME=NESR-90009
 WG_SYNC_PASSWORD=dev-sync-90009
+
+# The mock's runs end in September 2026, so reconcile from there locally.
+RECON_START_DATE=2026-09-01

@@ -114,6 +114,42 @@ Schema change: `wg_active` added to `wg_documents` and `wg_notifications`, plus 
 
 Tooling note: stopping a background dev-server task ends the shell, not Node. Check port 5173 is free before restarting.
 
+## Milestone 2e: Reconciliation (S46)
+
+| ID | date | status | missing | harder than expected |
+| --- | --- | --- | --- | --- |
+| S46 Reconciliation | 2026-10-24 | done | findings in the header banner and daily digest; SDM column in the summary | WIREGUARD's field tickets are placeholders (`LEG-BATCH-n`) and DRSS is per run, so matching had to fall back to unit + date + well. That fallback is the main path in practice |
+
+How it's built:
+- **Engine:** `src/shared/recon.ts`, pure functions with no database, tested on its own.
+- **Worker:** `src/worker/recon.ts` loads the scope, stores findings by fingerprint and marks resolved anything that no longer shows.
+- **Checks (9):**
+  - high: no runs, drum on another unit, different wire;
+  - medium: unlinked runs, dates outside, runs awaiting approval;
+  - low: well/field/rig, job type not among services, depth/jarring/wire cut beyond tolerance (50 ft or 2 %, 5 min, 10 ft).
+- **Actions** change SLK Ops only: link or unlink runs, explain (note of at least 5 characters), reopen.
+- **Schedule:** a "Check now" button, plus a nightly cron (04:00 Riyadh) that pulls WIREGUARD and then reconciles every country.
+
+**Verified 2026-10-24:**
+- **Unit tests:** 32 of 32 (15 new): placeholder keys; the ±1-day window; DRSS beats unit + date; placeholders never match; ambiguity offers candidates; a well disagreement offers instead of matching; manual links win; countries are never mixed; each check fires and stays inside tolerance; unlinked groups have stable fingerprints.
+- **End to end with the mock's real September 2026 runs (six jobs):**
+  - A: 12 runs matched by DRSS, clean.
+  - B: no runs.
+  - C: matched by DRSS, wrong unit, date and well.
+  - D: matched by unit + date + well; wire, service and depth differ.
+  - E: linked by hand to a 2022 run awaiting approval; four findings.
+  - The SL-33 run is unlinked.
+- **Lifecycle:**
+  - an explanation survives a re-check, and reopening works;
+  - fixing job C resolved its 3 findings on the next check;
+  - creating a job for the SL-33 run resolved the unlinked finding;
+  - access: a role without the tab gets 403 on read and write; the Bahrain user sees no Saudi findings.
+- **Browser (1440 and 390 px):**
+  - the list, the severity tiles (which also filter) and the per-unit summary;
+  - the drawer with the side-by-side comparison, runs table, explanation box and WIREGUARD link;
+  - Escape closes it; no sideways scroll at 390 px.
+  - Fixed: severity pills stretched across their column; the month picker ran full width.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

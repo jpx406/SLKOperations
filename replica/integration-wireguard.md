@@ -97,6 +97,16 @@ SLK Ops' own tables reference these by **natural key** (unit number, wire serial
 
 ## Reconciliation: SLK Ops jobs vs WIREGUARD runs (S46, F15)
 
+> **Built 2026-10-24 (milestone 2e). What the data showed changed the matching order.** In WIREGUARD's export, field tickets are all legacy placeholders (`LEG-BATCH-n`, one per run), and DRSS numbers are mostly one per run. Matching therefore works in this order:
+> 1. a manual link;
+> 2. a **real** field ticket;
+> 3. a **real** DRSS number;
+> 4. **unit + date (±1 day) + well**: the run's drum belongs to the job's unit (WIREGUARD's drum register).
+>
+> Placeholders never match. When two jobs on one unit fit, the run stays unlinked and both are offered in the link picker. Runs dated before `RECON_START_DATE` (default 2026-10-01, the go-live) are history and are never reported as unlinked.
+>
+> **Suggestion for WIREGUARD (its owner's call, no change needed for SLK Ops):** if crews entered the real field ticket in WIREGUARD's Job Entry, matching would become exact rather than inferred.
+
 **Matching.** An SLK Ops job matches WIREGUARD runs on **field ticket** (`jobs.ticket_no` ↔ `fieldTicket`), and also on the **DRSS number** when present. Fallback when the ticket is blank: unit's drums + wire serial + date window (job start−1 to end+1) + well.
 
 | check | finding | severity |

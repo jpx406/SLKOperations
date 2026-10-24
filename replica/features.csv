@@ -108,10 +108,10 @@ Explosives link for tubing punch and cutter jobs,slickline,could,no,no,is_explos
 Separate inventory rights for explosives vs slickline hardware,inventory,must,no,no,storekeeper role; tested 2026-10-24
 WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,yes,"cron every 15 min; read-only service binding; build: units, job types, locations, fields, rigs; wires drums runs in 2b; 2b: plus documents, alerts, settings, build stamp; tested against mock with 1,210 runs"
 WIREGUARD data freshness indicator and on-demand sync,integration,should,no,yes,header status; /api/wg/status
-Reconciliation: SLK Ops jobs vs WIREGUARD runs with discrepancy findings,reconciliation,must,no,no,S46 F15; 9 checks
-Reconciliation actions: link runs to job and mark explained,reconciliation,must,no,no,SLK Ops side only; WIREGUARD stays untouched
-Reconciliation summary per unit SDM and month,reconciliation,should,no,no,S46
-Nightly reconciliation feeding banners and digest,reconciliation,should,no,no,cron 04:00 Riyadh
+Reconciliation: SLK Ops jobs vs WIREGUARD runs with discrepancy findings,reconciliation,must,no,yes,"S46 F15; 9 checks; 2e: 9 checks, matching by link / real ticket / real DRSS / unit+date+well"
+Reconciliation actions: link runs to job and mark explained,reconciliation,must,no,yes,"SLK Ops side only; WIREGUARD stays untouched; 2e: link, unlink, explain, reopen; auto-resolve when fixed"
+Reconciliation summary per unit SDM and month,reconciliation,should,no,partial,S46; 2e: per unit and month; per SDM filter via API only
+Nightly reconciliation feeding banners and digest,reconciliation,should,no,partial,cron 04:00 Riyadh; 2e: nightly cron runs sync + check; banners and digest not yet
 SLK Ops roles per WIREGUARD username with defaults from the WIREGUARD role,auth,must,no,yes,user_roles
 Deploy on Cloudflare (Worker D1 R2 KV cron Email Service),platform,must,no,partial,architecture.md wrangler.toml plan; build: wrangler.jsonc ready; not deployed
 Wire panel on the job: pre-job test rule and tension limit check,wire log,should,no,no,D3; uses WIREGUARD sop and kpi settings

@@ -8,12 +8,13 @@ import { AppShell } from './components/AppShell';
 import { AdminUsers } from './pages/AdminUsers';
 import { JobBoard } from './pages/JobBoard';
 import { JobEditor } from './pages/JobEditor';
+import { Reconciliation } from './pages/Reconciliation';
 import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/admin/users']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/reconciliation', '/admin/users']);
 
 const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
       { path: 'operation/schedule', element: <Schedule /> },
       { path: 'operation/jobs', element: <JobBoard /> },
       { path: 'operation/jobs/:id/:stage?', element: <JobEditor /> },
+      { path: 'operation/reconciliation', element: <Reconciliation /> },
       { path: 'admin/users', element: <AdminUsers /> },
       ...NAV.flatMap((g) => g.pages).filter((p) => !BUILT.has(p.path)).map((p) => ({ path: p.path.slice(1), element: <Stub /> })),
       { path: '*', element: <Stub /> },

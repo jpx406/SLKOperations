@@ -39,6 +39,10 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PATCH', re: /^\/api\/admin\/users\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/grants$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/role-permissions$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/recon\/run$/, menu: 'reconciliation', action: 'edit' },
+  { method: 'PATCH', re: /^\/api\/recon\/findings\/[^/]+$/, menu: 'reconciliation', action: 'edit' },
+  { method: 'POST', re: /^\/api\/recon\/links$/, menu: 'reconciliation', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/recon\/links\/[^/]+$/, menu: 'reconciliation', action: 'edit' },
 ];
 
 // Writes that only need a session (or not even that).
