@@ -24,13 +24,16 @@ npm run db:migrate:local
 npm run dev
 ```
 
-Open http://localhost:5173 and sign in with one of the **fake** accounts in [`mock-wireguard/users.json`](mock-wireguard/users.json). Locally, a mock WIREGUARD answers the service binding with WIREGUARD's real reference lists (units, job types, locations, fields, rigs) and fake users. A new account starts with the role mapped from its WIREGUARD role. To try the SDM screens, give the test account the `sdm` role:
+Open http://localhost:5173 and sign in with one of the **fake** accounts in [`mock-wireguard/users.json`](mock-wireguard/users.json).
 
-```bash
-npx wrangler d1 execute slkops-db --local --command "UPDATE user_roles SET role='sdm' WHERE username='NESR-90001'"
-```
+**The mock WIREGUARD** answers the service binding locally. It serves:
+- WIREGUARD's real reference lists: units, job types, locations, fields, rigs;
+- its wires, drums, job-log runs and tests, with every person replaced by a placeholder;
+- fake users only.
 
-Regenerate the mock lists from WIREGUARD's exports with `node scripts/make-wg-fixtures.mjs`.
+**Roles:** a new account starts with the role mapped from its WIREGUARD role. Sign in as the test admin (NESR-90003) and use **Administration → Users & Roles** to change roles, add extra tabs, or pre-register someone before their first sign-in. The **WIREGUARD sync** tab shows what was pulled and can sync on demand.
+
+Regenerate the mock data from WIREGUARD's exports with `node scripts/make-wg-fixtures.mjs`.
 
 ## Checks
 
