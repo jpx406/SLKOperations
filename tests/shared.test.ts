@@ -69,6 +69,12 @@ describe('write rules (deny by default)', () => {
     expect(ruleFor('DELETE', '/api/jobs/abc')?.action).toBe('delete');
     expect(ruleFor('PUT', '/api/jobs/abc/services')?.menu).toBe('jobs');
   });
+  it('puts schedule moves and unit blocks behind schedule:edit', () => {
+    expect(ruleFor('POST', '/api/jobs/abc/move')).toMatchObject({ menu: 'schedule', action: 'edit' });
+    expect(ruleFor('POST', '/api/unit-events')).toMatchObject({ menu: 'schedule', action: 'edit' });
+    expect(ruleFor('PATCH', '/api/unit-events/x')).toMatchObject({ menu: 'schedule', action: 'edit' });
+    expect(ruleFor('DELETE', '/api/unit-events/x')).toMatchObject({ menu: 'schedule', action: 'edit' });
+  });
   it('has no rule for unknown writes, so they are refused', () => {
     expect(ruleFor('POST', '/api/anything')).toBeUndefined();
     expect(ruleFor('DELETE', '/api/jobs')).toBeUndefined();

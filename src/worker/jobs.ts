@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { canEditField, filterPatch } from '../shared/fieldPolicy';
 import type { Job } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
@@ -66,6 +66,19 @@ async function clean(env: Env, patch: Record<string, unknown>, country: string):
   return null;
 }
 
+/** Unit blocks that stop a booking (User Manual 3.1: a unit under maintenance can't be booked over). */
+const BLOCKING = ['maintenance', 'loan', 'transferred', 'junk'] as const;
+const BLOCK_WORD: Record<string, string> = { maintenance: 'in maintenance', loan: 'on loan', transferred: 'transferred', junk: 'junked' };
+
+export async function blockConflict(env: Env, unit: string | null, start: string | null, end: string | null): Promise<string | null> {
+  if (!unit || !start) return null;
+  const hit = await env.DB.prepare(
+    `SELECT kind, starts_on, ends_on FROM unit_events
+     WHERE unit_number = ?1 AND starts_on <= ?3 AND ends_on >= ?2 AND kind IN (SELECT value FROM json_each(?4)) ORDER BY starts_on LIMIT 1`,
+  ).bind(unit, start, end ?? start, JSON.stringify(BLOCKING)).first<{ kind: string; starts_on: string; ends_on: string }>();
+  return hit ? `Unit ${unit} is ${BLOCK_WORD[hit.kind]} from ${hit.starts_on} to ${hit.ends_on}` : null;
+}
+
 function updateStatement(env: Env, id: string, patch: Record<string, unknown>, username: string, at: string) {
   const cols = Object.keys(patch);
   const set = cols.map((c, i) => `${c} = ?${i + 1}`).join(', ');
@@ -128,7 +141,8 @@ jobs.post('/', async (c) => {
   if (!country) return c.json({ error: 'Choose the unit or the country first' }, 400);
   if (!user.countries.includes(country)) return c.json({ error: 'You cannot create jobs for that country' }, 403);
 
-  const err = await clean(c.env, allowed, country);
+  const err = await clean(c.env, allowed, country)
+    ?? await blockConflict(c.env, (allowed.unit_number as string) ?? null, (allowed.start_date as string) ?? null, (allowed.end_date as string) ?? null);
   if (err) return c.json({ error: err }, 400);
 
   const id = crypto.randomUUID();
@@ -146,33 +160,55 @@ jobs.post('/', async (c) => {
   return c.json({ job: await getJob(c.env, user, id), ignored: dropped }, 201);
 });
 
-jobs.patch('/:id', async (c) => {
+/** One path for every change to a job: field rights, conflict check, value checks, blocked days, audit. */
+async function applyPatch(c: Context<AppBindings>, id: string, raw: Record<string, unknown>, expectedUpdatedAt: string | undefined, strict: boolean) {
   const user = c.get('user');
-  const id = c.req.param('id');
-  const body = await c.req.json<{ patch?: Record<string, unknown>; expectedUpdatedAt?: string }>().catch(() => ({} as { patch?: Record<string, unknown>; expectedUpdatedAt?: string }));
   const current = await getJob(c.env, user, id);
   if (!current) return c.json({ error: 'Job not found' }, 404);
-  if (body.expectedUpdatedAt && body.expectedUpdatedAt !== current.updated_at) {
+  if (expectedUpdatedAt && expectedUpdatedAt !== current.updated_at) {
     return c.json({ error: `Changed by ${current.updated_by ?? 'someone else'} since you opened it`, job: current }, 409);
   }
-  const { allowed, dropped } = filterPatch(user.role, body.patch ?? {});
+  const { allowed, dropped } = filterPatch(user.role, raw);
+  // a schedule move is all-or-nothing: moving the dates but not the unit would put the job somewhere nobody chose
+  if (strict && dropped.length) return c.json({ error: `Your role cannot change ${dropped.join(', ')}`, job: current }, 403);
   if (!Object.keys(allowed).length) return c.json({ job: current, ignored: dropped });
   const err = await clean(c.env, allowed, current.country);
-  if (err) return c.json({ error: err }, 400);
+  if (err) return c.json({ error: err, job: current }, 400);
+  if ('unit_number' in allowed || 'start_date' in allowed || 'end_date' in allowed) {
+    const unit = ('unit_number' in allowed ? allowed.unit_number : current.unit_number) as string | null;
+    const start = ('start_date' in allowed ? allowed.start_date : current.start_date) as string | null;
+    const end = ('end_date' in allowed ? allowed.end_date : current.end_date) as string | null;
+    const blocked = await blockConflict(c.env, unit, start, end);
+    if (blocked) return c.json({ error: blocked, job: current }, 400);
+  }
 
   const at = new Date().toISOString();
   const changes = Object.keys(allowed).filter((k) => (current as unknown as Record<string, unknown>)[k] !== allowed[k]);
   try {
     await c.env.DB.batch([
       updateStatement(c.env, id, allowed, user.username, at),
-      audit(c.env, user, 'edit', id, changes.map((k) => `${k}: ${String((current as unknown as Record<string, unknown>)[k])} → ${String(allowed[k])}`).join('; ')),
+      audit(c.env, user, strict ? 'move' : 'edit', id, changes.map((k) => `${k}: ${String((current as unknown as Record<string, unknown>)[k])} → ${String(allowed[k])}`).join('; ')),
     ]);
   } catch (e) {
-    return c.json({ error: constraintMessage(e) ?? 'Could not save the change' }, 400);
+    return c.json({ error: constraintMessage(e) ?? 'Could not save the change', job: current }, 400);
   }
   return c.json({ job: await getJob(c.env, user, id), ignored: dropped });
+}
+
+jobs.patch('/:id', async (c) => {
+  const body = await c.req.json<{ patch?: Record<string, unknown>; expectedUpdatedAt?: string }>().catch(() => ({} as { patch?: Record<string, unknown>; expectedUpdatedAt?: string }));
+  return applyPatch(c, c.req.param('id'), body.patch ?? {}, body.expectedUpdatedAt, false);
 });
 
+// Drag on the schedule: new unit and/or dates, duration kept by the client.
+jobs.post('/:id/move', async (c) => {
+  const body = await c.req.json<{ unit_number?: string; start_date?: string; end_date?: string | null; expectedUpdatedAt?: string }>()
+    .catch(() => ({} as { unit_number?: string; start_date?: string; end_date?: string | null; expectedUpdatedAt?: string }));
+  const patch: Record<string, unknown> = {};
+  for (const k of ['unit_number', 'start_date', 'end_date'] as const) if (body[k] !== undefined) patch[k] = body[k];
+  if (!Object.keys(patch).length) return c.json({ error: 'Nothing to move' }, 400);
+  return applyPatch(c, c.req.param('id'), patch, body.expectedUpdatedAt, true);
+});
 jobs.put('/:id/services', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');

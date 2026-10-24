@@ -192,6 +192,44 @@ Pre-Job Notes access follows the manual.
 - I wrote a semicolon inside a SQL comment, WIREGUARD's D1 trap. It's fixed, and `tests/migrations.test.ts` now fails the build on that, window functions or chained `UNION ALL`.
 - A hot reload once kept a half-edited Worker (the usage of a function arrived before its import) and every request returned 500. A restart cleared it; the code was right.
 
+## Milestone 2c: schedule drag-and-drop and unit blocks
+
+| ID | date | status | missing | harder than expected |
+| --- | --- | --- | --- | --- |
+| S02 schedule | 2026-10-24 | done | division/SDM filter | dragging redraws the bar in the row under the pointer, which replaced its element and lost pointer capture. The drag is now followed on the window |
+| S37/S38 unit blocks | 2026-10-24 | done | — | — |
+
+**Server:**
+- **One path for every job change.** `applyPatch` covers the editor's autosave and the schedule's `POST /jobs/:id/move`: field rights, the conflict check, value checks, blocked days, audit. A move is all-or-nothing: if the role can't change one of the fields, nothing moves.
+- **Blocked days refuse bookings** (User Manual §3.1): maintenance, loan, transferred and junk refuse a create, edit or move onto those days. "Backup on site" only marks.
+- **Unit-event API:** create, edit, delete. A block over planned or ongoing jobs returns 409 with the jobs and needs `confirmOverlap`. Overlapping blocks are refused by the D1 trigger.
+- **Deactivated units:** open jobs on a unit WIREGUARD no longer lists are returned with the schedule and shown in a red banner (Administrator Manual §4).
+
+**Client:**
+- **Mouse:** drag the body to another day or unit; drag either end to change the dates. A click without movement opens the job.
+- **Keyboard:** Shift+←/→ moves a day, Alt+↑/↓ changes the unit, `[` and `]` change the end. Results are announced in a live region.
+- **Unit block dialog:** with the confirm-over-jobs step, plus edit and remove.
+
+**Verified 2026-10-24:**
+- **API:**
+  - a move keeps the duration; a stale move gets 409;
+  - overlapping blocks are refused; a job on maintenance days is refused, both by move and on creation;
+  - backup-on-site doesn't block; a block over a booked job asks first, then saves with confirmation;
+  - a role without schedule edit can't move; a deactivated unit lists its open job.
+- **Browser (mouse):**
+  - grabbing the left handle moved the start +3 days, stopping at the end date;
+  - a body drag went +3 days and to the unit under the pointer;
+  - dragging the end handle took a day off; a click opened the job.
+- **Browser (keyboard):**
+  - Shift+→ onto a maintenance block was refused, which is correct;
+  - Alt+↓ changed the unit, and `]` extended the end.
+- **Block dialog and layout:** the booked-jobs warning → Save anyway → edit → remove; no sideways scroll at 390 px. Unit tests: 46 of 46.
+
+**Bugs found and fixed:**
+1. **Drags never saved.** The element was replaced mid-drag, so pointer capture was lost; the drag now uses window listeners.
+2. **Quick successive moves lost.** The second one carried an old timestamp and got 409; the cache now takes the server's answer at once, and three quick `]` presses all landed.
+3. **Audit lines lost field names.** A PowerShell here-string blanked `${k}` in a template literal. **Lesson:** never splice TypeScript through PowerShell expandable strings; use the editor tools.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

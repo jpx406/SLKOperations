@@ -4,6 +4,7 @@ import type { AppBindings, Env } from './env';
 import { admin } from './admin';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
+import { unitEvents } from './unitEvents';
 import { isOpenWrite, readAllowed, ruleFor } from './permissions';
 import { login, logout, requireSession, resolveSession } from './session';
 import { syncAll, syncStatus } from './sync';
@@ -111,10 +112,10 @@ app.get('/schedule', async (c) => {
   const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
   const countries = JSON.stringify(c.get('user').countries);
   const showCanceled = c.req.query('canceled') === '1';
-  const [units, jobsInMonth, events, undated] = await c.env.DB.batch([
+  const [units, jobsInMonth, events, undated, retired] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT unit_number, country, year, wg_active FROM wg_units WHERE wg_active = 1 AND country IN (SELECT value FROM json_each(?)) ORDER BY unit_number`).bind(countries),
     c.env.DB.prepare(
-      `SELECT j.id, j.ticket_no, j.well, j.rig, j.unit_number, j.status, j.start_date, coalesce(j.end_date, j.start_date) AS end_date, j.sdm_username
+      `SELECT j.id, j.ticket_no, j.well, j.rig, j.unit_number, j.status, j.start_date, coalesce(j.end_date, j.start_date) AS end_date, j.sdm_username, j.updated_at
        FROM jobs j WHERE j.deleted_at IS NULL AND j.unit_number IS NOT NULL AND j.start_date IS NOT NULL
          AND j.start_date <= ?2 AND coalesce(j.end_date, j.start_date) >= ?1
          AND j.country IN (SELECT value FROM json_each(?3)) ${showCanceled ? '' : "AND j.status <> 'canceled'"}
@@ -128,13 +129,19 @@ app.get('/schedule', async (c) => {
       `SELECT id, ticket_no, well FROM jobs WHERE deleted_at IS NULL AND status <> 'canceled'
          AND (start_date IS NULL OR unit_number IS NULL) AND country IN (SELECT value FROM json_each(?)) ORDER BY created_at DESC LIMIT 50`,
     ).bind(countries),
+    // Admin Manual 4: a unit WIREGUARD has deactivated keeps its bookings, so they are listed instead of vanishing
+    c.env.DB.prepare(
+      `SELECT j.id, j.ticket_no, j.well, j.unit_number, j.start_date FROM jobs j JOIN wg_units u ON u.unit_number = j.unit_number
+       WHERE u.wg_active = 0 AND j.deleted_at IS NULL AND j.status IN ('planned','ongoing') AND j.country IN (SELECT value FROM json_each(?))`,
+    ).bind(countries),
   ]);
-  return c.json({ month, first, last, units: units.results, jobs: jobsInMonth.results, events: events.results, unscheduled: undated.results });
+  return c.json({ month, first, last, units: units.results, jobs: jobsInMonth.results, events: events.results, unscheduled: undated.results, retiredUnitJobs: retired.results });
 });
 
 app.route('/jobs', jobs);
 app.route('/admin', admin);
 app.route('/recon', recon);
+app.route('/unit-events', unitEvents);
 
 app.get('/config', (c) => c.json({ wireguardUrl: c.env.WG_APP_URL ?? 'https://slkwireguard.nesrapp.com', reconStartDate: c.env.RECON_START_DATE ?? '2026-10-01' }));
 

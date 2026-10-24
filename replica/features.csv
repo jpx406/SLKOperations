@@ -14,13 +14,13 @@ Riyadh clock and live last-sync indicator,shell,could,yes,yes,header; build: clo
 Manual reload from database,shell,should,yes,yes,header Refresh; build: Sync now from WIREGUARD; lists refetch every 30 s
 Unit Schedule Gantt by month,schedule,must,yes,yes,S02; build: read-only; units from WIREGUARD
 Job bars coloured by status,schedule,must,yes,yes,S02 legend
-Drag job bar to move unit or day,schedule,must,yes,no,S02 duration kept
-Drag bar edges to change dates,schedule,must,yes,no,S02
+Drag job bar to move unit or day,schedule,must,yes,yes,"S02 duration kept; 2c: mouse, touch-safe, and keyboard (Shift+arrows, Alt+up/down); same checks as the editor"
+Drag bar edges to change dates,schedule,must,yes,yes,S02; 2c: start and end handles; [ and ] on the keyboard
 Show canceled jobs toggle,schedule,should,yes,yes,S02
 Warning for jobs without dates,schedule,should,yes,yes,S02 banner; build: lists jobs missing unit or start date
-Maintenance event blocks a unit,schedule,must,yes,no,S37 hatched Mechanic bar
-Unit status events (loan transferred junk backup),schedule,should,yes,no,S38 feeds utilization
-Filter schedule by division and SDM,schedule,should,yes,no,S02b
+Maintenance event blocks a unit,schedule,must,yes,yes,S37 hatched Mechanic bar; 2c: blocked days refuse bookings; a block over booked jobs needs confirmation
+Unit status events (loan transferred junk backup),schedule,should,yes,yes,"S38 feeds utilization; 2c: loan/transferred/junk block, backup-on-site marks only"
+Filter schedule by division and SDM,schedule,should,yes,no,S02b; still open; the original locked it behind a password
 Job Board list with search and status filter,jobs,must,yes,yes,S03
 Per-stage progress bars on job cards,jobs,must,yes,partial,S03; build: Preparation and Closure count from milestone 2d
 Create job,jobs,must,yes,yes,"original creates the record instantly; clone should save on first edit; build: created on first save, never on click"
@@ -134,5 +134,5 @@ Admin data export (all tables) and import with dry-run and backup,admin,should,y
 Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,no,Admin Manual 8.1
 Job delete blocked while a Pre-Job Note exists,pre-job notes,should,yes,yes,Admin Manual 8.1; 409 with the note number
 SLK Contacts list opens Pre-Job Notes,pre-job notes,should,yes,partial,"Admin Manual 8.2; rights logic built, list maintained in Headcount Roster (2j)"
-Warning when WIREGUARD deactivates a unit with open SLK Ops jobs,integration,should,no,no,"Admin Manual 4 caution, adapted"
+Warning when WIREGUARD deactivates a unit with open SLK Ops jobs,integration,should,no,yes,"Admin Manual 4 caution, adapted; 2c: banner on the schedule listing the jobs"
 "AI Agent settings: on/off, model, monthly budget, messages per user per day",assistant,could,yes,no,Admin Manual 5.2
