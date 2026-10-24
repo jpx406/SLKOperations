@@ -85,6 +85,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
   { re: /^\/api\/database$/, menus: ['database'] },
+  { re: /^\/api\/job-log(\/options)?$/, menus: ['job_log'] },
   { re: /^\/api\/admin\//, menus: ['users'] },
 ];
 

@@ -9,13 +9,14 @@ import { AdminUsers } from './pages/AdminUsers';
 import { Database } from './pages/Database';
 import { JobBoard } from './pages/JobBoard';
 import { JobEditor } from './pages/JobEditor';
+import { JobLog } from './pages/JobLog';
 import { Reconciliation } from './pages/Reconciliation';
 import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/reconciliation', '/operation/database', '/admin/users']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/reconciliation', '/operation/database', '/admin/users']);
 
 const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
@@ -27,6 +28,7 @@ const router = createBrowserRouter([
       { path: 'operation/schedule', element: <Schedule /> },
       { path: 'operation/jobs', element: <JobBoard /> },
       { path: 'operation/jobs/:id/:stage?', element: <JobEditor /> },
+      { path: 'operation/job-log', element: <JobLog /> },
       { path: 'operation/reconciliation', element: <Reconciliation /> },
       { path: 'operation/database', element: <Database /> },
       { path: 'admin/users', element: <AdminUsers /> },

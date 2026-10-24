@@ -3,6 +3,7 @@ import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
 import { admin } from './admin';
 import { database } from './database';
+import { jobLog } from './jobLog';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
@@ -162,6 +163,7 @@ app.get('/schedule', async (c) => {
 app.route('/jobs', jobs);
 app.route('/admin', admin);
 app.route('/database', database);
+app.route('/job-log', jobLog);
 app.route('/recon', recon);
 app.route('/unit-events', unitEvents);
 

@@ -308,6 +308,33 @@ Pre-Job Notes access follows the manual.
   - no sideways scroll at 375 px on any tab.
 - **Unit tests:** 63 of 63.
 
+## Milestone 2g: Job Log (S08)
+
+**Shared:**
+- **`filters.ts`:** the standard filter bar for this screen and the later statistics screens (S10, S13–S15): status plus nine dimensions (year, month, account, area, service domain, service, SDM, unit, conveyance). Values travel as repeated query parameters and become SQL in one place, each condition binding one JSON list.
+- **`jobLog.ts`:** one column list (34 columns) drives the table, the XLSX and the CSV. Codes show as words, and lists (services, crew per role, third parties with PO) are joined. **Revenue is left out on purpose:** it belongs to the restricted Sales Dashboard.
+- **`xlsx.ts`:** a dependency-free XLSX writer: zip with stored entries and CRC-32, a bold frozen header, autofilter, column widths, and numbers kept as numbers. Text is always written as text, never as a formula. The CSV gets a BOM and a leading apostrophe on values that start with `=`, `+`, `-` or `@`.
+
+**Server:**
+- `GET /api/job-log` (up to 5,000 rows, with a truncation flag; search by ticket, well, rig or DRSS) and `GET /api/job-log/options` (only values that occur in the caller's jobs).
+- Both need the Job Log tab.
+
+**Client:**
+- **Job Log screen:** filter bar (dropdowns of checkboxes, with search when a list is long; filters live in the address so a view can be shared), search, Print, CSV and XLSX.
+- **Table:** sticky header and first column; a row (or Enter) opens the job.
+- **Print:** the app header, section nav and filter bar are hidden; the date and active filters are printed instead.
+
+**Verified 2026-10-25:**
+- **API:** the options list the units, services and domains in use; unit + status + service narrows to one job; domain + year + month works.
+- **XLSX:** a real file from the API data opens in .NET (every part parses as XML) and in Excel, read-only: sheet "Job Log", range A1:AH6, frozen header, autofilter on, NPT read as a number.
+- **Browser:**
+  - 5 jobs and 34 columns; picking unit MSL-022 put `?unit=MSL-022` in the address and narrowed the list to 2;
+  - the dropdown closes on an outside click, and Clear appears;
+  - the playwright screenshot showed the layout as intended, with no page-level sideways scroll.
+- **Unit tests:** 72 of 72.
+
+**Not checked:** the print layout in a real print preview.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

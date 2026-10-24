@@ -45,8 +45,8 @@ Job Package export,documents,should,yes,no,S41 not opened
 Signatures on job,documents,could,yes,no,S41 not opened
 JRA risk assessment form with live score,jra,should,yes,no,S28 QAF12069; 33 questions
 JRA send for approval and approval level,jra,should,yes,no,S28 S08 DRAFT/SENT/APPROVED
-Job Log spreadsheet view with 9 filters,job log,must,yes,no,S08
-Job Log export XLSX download print,job log,must,yes,no,S08
+Job Log spreadsheet view with 9 filters,job log,must,yes,yes,"S08; 2g: status plus 9 filters in the address, search, 34 columns incl. crew and third parties, sticky header and first column, row opens the job; revenue left out"
+Job Log export XLSX download print,job log,must,yes,yes,"S08; 2g: own XLSX writer (checked in Excel), CSV with formula guard, print stylesheet"
 Pre-Job Notes editor with versions,pre-job notes,should,yes,no,S26 PJN-nnnn
 Pre-Job Notes confirm and send (PDF mail app eml),pre-job notes,should,yes,no,S27
 Pre-Job Notes list with export,pre-job notes,should,yes,no,S09 restricted for SQM
