@@ -104,7 +104,7 @@ Toolstring builder on Preparation (component OD length weight),slickline,must,no
 Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,yes,"new for SLK; build: overpull not on screen yet; 2d: overpull added to Execution"
 Survey details for memory gauge jobs (stops gradients PBU),slickline,should,no,yes,"new for SLK; unlocked by is_memory; 2d: memory survey section gated by is_memory"
 Wire cut on the job compared with WIREGUARD runs,slickline,should,no,yes,"reconciliation value check; WIREGUARD owns the wire record; 2e: value_mismatch check covers depth, jarring and wire cut"
-Explosives link for tubing punch and cutter jobs,slickline,could,no,no,is_explosive services prompt a Mobilize to Well
+Explosives link for tubing punch and cutter jobs,slickline,could,no,yes,is_explosive services prompt a Mobilize to Well; 6a: banner on the job with a prefilled Mobilize and the per-job explosive balance
 Separate inventory rights for explosives vs slickline hardware,inventory,must,no,yes,"storekeeper role; tested 2026-10-24; 2k: each inventory has its own read and write rules"
 WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,yes,"cron every 15 min; read-only service binding; build: units, job types, locations, fields, rigs; wires drums runs in 2b; 2b: plus documents, alerts, settings, build stamp; tested against mock with 1,210 runs"
 WIREGUARD data freshness indicator and on-demand sync,integration,should,no,yes,header status; /api/wg/status

@@ -304,6 +304,7 @@ export function JobEditor() {
                   { key: 'survey_type', label: 'Survey (static, flowing, build-up)' }, { key: 'stops', label: 'Stations', type: 'number' },
                   { key: 'deepest_station_ft', label: 'Deepest station', type: 'number', unit: 'ft' }, { key: 'data_quality', label: 'Data quality' }]} />
             </ServiceSection>
+            {flags.is_explosive && <ExplosivesPrompt job={job} />}
             <ServiceSection on={flags.is_perforation} title="Perforation" need="a perforation service">
               <DetailsSection idPrefix="perf" value={json('perforation_details', {})} canEdit={editable('perforation_details')} onChange={(v) => changeJson('perforation_details', v)}
                 fields={[{ key: 'gun_type', label: 'Gun type' }, { key: 'top_ft', label: 'Top shot', type: 'number', unit: 'ft' },
@@ -471,6 +472,40 @@ function SaveIndicator({ state }: { state: SaveState }) {
     conflict: <span className="inline-flex items-center gap-1.5 text-warning"><AlertCircle aria-hidden className="size-3.5" />Changed elsewhere</span>,
   } as const;
   return <span role="status" aria-live="polite" className="ml-auto text-xs font-semibold">{map[state.kind]}</span>;
+}
+
+/** Tubing punch, cutter and other explosive services: explosives go to the well through the explosive inventory. */
+function ExplosivesPrompt({ job }: { job: Job | null }) {
+  const { data: me } = useMe();
+  const canView = !!me?.menus.inventory_explosive?.view;
+  const canMove = !!me?.menus.inventory_explosive?.edit;
+  const recon = useQuery({
+    queryKey: ['inv-recon', 'explosive', job?.country], enabled: !!job && canView,
+    queryFn: () => api<{ rows: { job_id: string | null; item_id: string; mobilized: number; consumed: number; returned: number; open: number }[]; items: { id: string; description: string; uom: string }[] }>(`/inventory/explosive/reconciliation?country=${encodeURIComponent(job!.country)}`),
+  });
+  if (!job) return null;
+  const mine = (recon.data?.rows ?? []).filter((r) => r.job_id === job.id);
+  const item = (id: string) => recon.data?.items.find((i) => i.id === id);
+  const to = `/inventory/explosive?country=${encodeURIComponent(job.country)}&mobilize=${job.id}${job.well ? `&well=${encodeURIComponent(job.well)}` : ''}`;
+  return (
+    <div className="mt-4">
+      <Banner tone="warning" action={canMove && <Link to={to} className="text-sm font-semibold underline">Mobilize explosives to the well</Link>}>
+        This job has an explosive service. Record the explosives sent to the well against this job, then the consumption and return after the job.
+        {!canView && ' Ask the explosives custodian to record them; your access does not include the explosive inventory.'}
+      </Banner>
+      {canView && mine.length > 0 && (
+        <table className="mt-2 w-full text-xs">
+          <thead><tr className="text-left text-text-muted">{['Item', 'Mobilized', 'Consumed', 'Returned', 'Still at well'].map((h) => <th key={h} scope="col" className="py-1 pr-3 font-semibold">{h}</th>)}</tr></thead>
+          <tbody>{mine.map((r) => (
+            <tr key={r.item_id} className="border-t border-border"><td className="py-1 pr-3">{item(r.item_id)?.description ?? r.item_id}</td>
+              <td className="py-1 pr-3 font-mono">{r.mobilized}</td><td className="py-1 pr-3 font-mono">{r.consumed}</td><td className="py-1 pr-3 font-mono">{r.returned}</td>
+              <td className={cx('py-1 pr-3 font-mono', r.open > 0 && 'text-warning')}>{r.open} {item(r.item_id)?.uom}</td></tr>
+          ))}</tbody>
+        </table>
+      )}
+      {canView && recon.isSuccess && !mine.length && <p className="mt-1 text-xs text-text-subtle">No explosives recorded against this job yet.</p>}
+    </div>
+  );
 }
 
 function ServicesPicker({ job, options, profiles, canEdit, onSaved }: { job: Job | null; options: string[]; profiles: Lookups['serviceProfiles']; canEdit: boolean; onSaved: (j: Job) => void }) {

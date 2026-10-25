@@ -684,3 +684,11 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Unit tests:** 162 of 162, including the loop against a mocked Messages API (tool round-trip, one usage row with the right cost) and a check that every tool path is covered by the same read rule for the same menus.
 
 **Not checked:** a real Anthropic call (no key here). The PowerPoint output the manual mentions is not built.
+
+## Milestone 6a: explosives prompt on explosive services
+
+- A job with a service whose profile is marked explosive shows a warning on its Execution stage, above Perforation.
+  - People with the explosive inventory's edit right get a "Mobilize explosives to the well" link. It opens Explosive inventory with Mobilize to well already filled in (this job and its well).
+  - People who can view that inventory also see a per-job table: mobilized, consumed, returned and still at the well, from the existing reconciliation.
+  - Anyone else is told to ask the explosives custodian.
+- **Verified 2026-10-25 in the browser:** on job DV-26062 (PERFORATORS service), the link opened the Mobilize dialog with the job picked and the well filled. Closed without saving.

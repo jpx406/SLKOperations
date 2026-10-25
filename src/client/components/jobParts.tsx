@@ -206,6 +206,7 @@ export function serviceFlags(job: Job | null, lookups: Lookups | undefined) {
   return {
     is_plug: rows.some((r) => r.is_plug), is_fishing: rows.some((r) => r.is_fishing),
     is_memory: rows.some((r) => r.is_memory), is_perforation: rows.some((r) => r.is_perforation),
+    is_explosive: rows.some((r) => r.is_explosive),
   };
 }
 

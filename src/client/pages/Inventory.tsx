@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ArrowLeft, Download, History, PackagePlus, Pencil, Plus, Printer, Scale, Search, Trash2, Truck, Undo2, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   CATEGORIES, INVENTORY_LABEL, INVENTORY_MENU, KINDS, KIND_LABEL, MOVE_RULES, belowPar, type CountsAs, type Inventory as Inv, type Kind, type Location,
@@ -38,7 +38,14 @@ export function Inventory({ inv }: { inv: Inv }) {
   const [cat, setCat] = useState('');
   const [q, setQ] = useState('');
   const [archived, setArchived] = useState(false);
-  const [dialog, setDialog] = useState<{ kind: 'item'; item: Item | null } | { kind: 'move'; move: Kind } | { kind: 'consume' } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'item'; item: Item | null } | { kind: 'move'; move: Kind; job?: { jobId: string; well: string } } | { kind: 'consume' } | null>(null);
+  // a job with an explosive service links here with ?mobilize=<job id>&well=<well>
+  const mobilizeFor = params.get('mobilize');
+  useEffect(() => {
+    if (!mobilizeFor || !data.data || !canEdit) return;
+    setDialog({ kind: 'move', move: 'mobilize', job: { jobId: mobilizeFor, well: params.get('well') ?? '' } });
+    const n = new URLSearchParams(params); n.delete('mobilize'); n.delete('well'); setParams(n, { replace: true });
+  }, [mobilizeFor, data.data, canEdit, params, setParams]);
   const [notice, setNotice] = useState<string | null>(null);
   const refresh = () => { qc.invalidateQueries({ queryKey: ['inventory', inv] }); qc.invalidateQueries({ queryKey: ['inv-moves', inv] }); qc.invalidateQueries({ queryKey: ['inv-recon', inv] }); };
 
@@ -150,7 +157,7 @@ export function Inventory({ inv }: { inv: Inv }) {
         </>
       )}
       {d && dialog?.kind === 'item' && <ItemDialog inv={inv} country={country} item={dialog.item} cats={cats} onClose={(msg) => { setDialog(null); if (msg) { setNotice(msg); refresh(); } }} />}
-      {d && dialog?.kind === 'move' && <MoveDialog inv={inv} data={d} bal={bal} initial={dialog.move} onClose={(msg) => { setDialog(null); if (msg) { setNotice(msg); refresh(); } }} />}
+      {d && dialog?.kind === 'move' && <MoveDialog inv={inv} data={d} bal={bal} initial={dialog.move} job={dialog.job} onClose={(msg) => { setDialog(null); if (msg) { setNotice(msg); refresh(); } }} />}
       {d && dialog?.kind === 'consume' && <ConsumeDialog inv={inv} data={d} onClose={(msg) => { setDialog(null); if (msg) { setNotice(msg); refresh(); } }} />}
     </section>
   );
@@ -222,14 +229,14 @@ function JobOrWell({ jobId, well, onChange }: { jobId: string; well: string; onC
   );
 }
 
-function MoveDialog({ inv, data, bal, initial, onClose }: { inv: Inv; data: Data; bal: Map<string, number>; initial: Kind; onClose: (msg?: string) => void }) {
+function MoveDialog({ inv, data, bal, initial, job, onClose }: { inv: Inv; data: Data; bal: Map<string, number>; initial: Kind; job?: { jobId: string; well: string }; onClose: (msg?: string) => void }) {
   const [kind, setKind] = useState<Kind>(initial);
   const rule = MOVE_RULES[kind];
   const fromOpts = data.locations.filter((l) => rule.from.includes(l.counts_as));
   const toOpts = data.locations.filter((l) => rule.to.includes(l.counts_as));
   const [from, setFrom] = useState(fromOpts[0]?.id ?? '');
   const [to, setTo] = useState(toOpts[0]?.id ?? '');
-  const [jw, setJw] = useState({ jobId: '', well: '' });
+  const [jw, setJw] = useState(job ?? { jobId: '', well: '' });
   const [lines, setLines] = useState<{ item_id: string; qty: string }[]>([{ item_id: '', qty: '' }]);
   const [note, setNote] = useState('');
   const [adjustDir, setAdjustDir] = useState<'add' | 'remove'>('add');
