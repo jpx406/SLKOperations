@@ -2,13 +2,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Check, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { FIELD_POLICY, canEditField } from '../../shared/fieldPolicy';
+import { EXECUTION_FIELDS, FIELD_POLICY, canEditField } from '../../shared/fieldPolicy';
 import { jobEfficiency, opHours, runEfficiency } from '../../shared/metrics';
 import { STAGES, hasFailure, stagePercent, type Stage } from '../../shared/stages';
 import type { ToolPart } from '../../shared/toolstring';
 import type { Job, Lookups } from '../../shared/types';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
 import { useMe } from '../auth';
+import { JraBanner, useJraLock } from './Jra';
+import { PreJobNotePanel } from './PreJobNotes';
 import { CrewPanel, DetailsSection, SectionTitle, ToolstringBuilder, WirePanel, serviceFlags } from '../components/jobParts';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
 
@@ -134,7 +136,9 @@ export function JobEditor() {
   };
 
   const canEditJobs = !!me?.menus.jobs?.edit;
-  const editable = (f: string) => canEditJobs && !!me && canEditField(me.role, f);
+  const jraLocked = useJraLock(job?.id);
+  // Execution waits for an approved JRA on jobs that need one (the API refuses it too)
+  const editable = (f: string) => canEditJobs && !!me && canEditField(me.role, f) && !(jraLocked && EXECUTION_FIELDS.includes(f));
   const preview = useMemo(() => ({ ...(job ?? {}), ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, fromInput(k, v)])), services: job?.services ?? [] }) as Partial<Job>, [job, values]);
 
   if (!isNew && jobQ.isPending) return <div aria-busy="true"><Skeleton className="mb-4 h-24" /><Skeleton className="h-96" /></div>;
@@ -259,12 +263,14 @@ export function JobEditor() {
                 </Field>
               </div>
             </div>
+            {job && <PreJobNotePanel jobId={job.id} />}
             <ServicesPicker job={job} options={L?.jobTypes ?? []} profiles={L?.serviceProfiles ?? []} canEdit={editable('run_details')} onSaved={adopt} />
           </Card>
         )}
 
         {stage === 'execution' && (
           <Card>
+            {job && <JraBanner jobId={job.id} />}
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
               {text('arrived_at', 'Arrived on site', { type: 'datetime-local', hint: 'Riyadh time' })}
               {text('rig_up_at', 'Rig-up', { type: 'datetime-local', hint: 'Riyadh time' })}
@@ -311,6 +317,7 @@ export function JobEditor() {
 
         {stage === 'preparation' && (needsJob ?? (job && (
           <Card>
+            <JraBanner jobId={job.id} />
             <SectionTitle>Well</SectionTitle>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
               {text('account_assignment', 'Account assignment')}

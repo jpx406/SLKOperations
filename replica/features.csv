@@ -43,13 +43,13 @@ Offline wellsite job log,jobs,could,yes,no,S06 Offline version
 Full Job Report PDF,documents,should,yes,no,S41 not opened
 Job Package export,documents,should,yes,no,S41 not opened
 Signatures on job,documents,could,yes,no,S41 not opened
-JRA risk assessment form with live score,jra,should,yes,no,S28 QAF12069; 33 questions
-JRA send for approval and approval level,jra,should,yes,no,S28 S08 DRAFT/SENT/APPROVED
+JRA risk assessment form with live score,jra,should,yes,yes,"S28 QAF12069; 33 questions; 3b: template as data per country (SLK default written fresh, not QAF12069), Yes/No/N-A, live score, approval level, progress, autosave"
+JRA send for approval and approval level,jra,should,yes,yes,"S28 S08 DRAFT/SENT/APPROVED; 3b: send to an SDM, approve or reject with reason; Execution locked on jobs with explosives, H2S, 5,000 psi+ or special setup until approved"
 Job Log spreadsheet view with 9 filters,job log,must,yes,yes,"S08; 2g: status plus 9 filters in the address, search, 34 columns incl. crew and third parties, sticky header and first column, row opens the job; revenue left out"
 Job Log export XLSX download print,job log,must,yes,yes,"S08; 2g: own XLSX writer (checked in Excel), CSV with formula guard, print stylesheet"
-Pre-Job Notes editor with versions,pre-job notes,should,yes,no,S26 PJN-nnnn
-Pre-Job Notes confirm and send (PDF mail app eml),pre-job notes,should,yes,no,S27
-Pre-Job Notes list with export,pre-job notes,should,yes,no,S09 restricted for SQM
+Pre-Job Notes editor with versions,pre-job notes,should,yes,yes,"S26 PJN-nnnn; 3b: five sections, PJN numbering, immutable versions, history, prefilled from the job"
+Pre-Job Notes confirm and send (PDF mail app eml),pre-job notes,should,yes,yes,"S27; 3b: mail app with Cc from contacts and the text on the clipboard, or .eml with HTML body; PDF via print, not attached"
+Pre-Job Notes list with export,pre-job notes,should,yes,yes,"S09 restricted for SQM; 3b: search, Sent/Not sent, date range, XLSX and merged print of selected notes"
 8 Min Facts list with search and status,8 min facts,must,yes,yes,"S11; 2h: status filter, search by log/title/well/ticket"
 8 Min Facts editor with multiple incidents,8 min facts,must,yes,yes,"S12; 2h: ticket picker prefills rig/well/crew, incident cards reorder/collapse/remove, what failed list"
 Severity auto from NPT with reference matrix,8 min facts,must,yes,yes,"S12; 2h: shared bands = generated DB column; matrix highlights the report row"
@@ -131,7 +131,7 @@ Bonus statements emailed to each person,bonus,could,yes,no,Admin Manual 1.1
 Revenue entered on each job (Closure),sales,should,no,yes,"decided 2026-10-24; 2d: Closure, SDM or Sales, stored in cents"
 Step-up re-authentication for Bonus and Sales pages,bonus,should,yes,no,"replaces the original's access code; WIREGUARD password, 30 min"
 Admin data export (all tables) and import with dry-run and backup,admin,should,yes,no,Admin Manual 7
-Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,no,Admin Manual 8.1
+Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,yes,"Admin Manual 8.1; 3b: warning then typed log number; versions go with the note"
 Job delete blocked while a Pre-Job Note exists,pre-job notes,should,yes,yes,Admin Manual 8.1; 409 with the note number
 SLK Contacts list opens Pre-Job Notes,pre-job notes,should,yes,yes,"Admin Manual 8.2; rights logic built, list maintained in Headcount Roster (2j); 2j: SLK contacts view in the roster; a contact needs a WIREGUARD username"
 Warning when WIREGUARD deactivates a unit with open SLK Ops jobs,integration,should,no,yes,"Admin Manual 4 caution, adapted; 2c: banner on the schedule listing the jobs"

@@ -479,6 +479,34 @@ Pre-Job Notes access follows the manual.
 
 **Still open on the must list:** deploying to Cloudflare and the real WIREGUARD sync account, both waiting on the user.
 
+## Milestone 3b: Pre-Job Notes (S09, S26, S27) and JRA (S28)
+
+**JRA:**
+- **The template is data.** `jra_templates` holds one per country, and a JRA keeps the template it started with. The default (`SLK-JRA` rev 1: 29 questions in five sections, points per risky answer, approval SDM < 20 ≤ Operations Manager < 35 ≤ Country Manager) was written for slickline here. It is **not** NESR's QAF12069; NESR can load its own form as a new revision.
+- **Answering:** Yes/No/N-A, saved as you go while in draft; live Risk Index, approval level and progress.
+- **Send for approval** needs every required answer and an active SDM or manager. The named approver, or an admin or operations manager, approves or rejects; rejecting needs a reason and returns the JRA to draft. Approved answers are locked.
+- **Execution gate** (manual §4.2): a job with an explosive service, H₂S, wellhead pressure of 5,000 psi or more, or a special setup refuses Execution fields until its JRA is approved. This is enforced in `gateCheck`, and the editor greys the fields and shows the banner on Preparation and Execution. `EXECUTION_FIELDS` is now shared from `fieldPolicy`.
+
+**Pre-Job Notes:**
+- **One note per job:** five sections, prefilled from the job (dates, toolstring, run details) and with standard SLK reminders written here.
+- **Required fields** (manual §3.7): rig type, RDD department, casing, suite # and main contact. Contacts must be on the country's SLK Contacts list.
+- **Saving:** every save is an immutable version, and a stale save gets 409. A save after sending goes back to Not Sent.
+- **Numbering:** PJN numbers sit above both the counter and any number already used. This came from a bug: an old test note had taken PJN-0001 without the counter, so the first create failed.
+- **Confirm & Send:** Subject, To, and Cc defaulting to the other contacts; the mail app with the text on the clipboard, or a `.eml` draft with an HTML body. The PDF comes from Print, not attached automatically.
+- **List:** search, status, date range; select rows to export XLSX or print several notes one after another.
+- **Admin delete:** two confirmations (a warning, then the typed log number). The versions go through `ON DELETE CASCADE`; the immutability trigger only guards a note that still exists, which the test proves.
+
+**Verified 2026-10-25:**
+- **API:**
+  - required-field message; create, send, edit (v2, back to Not Sent); a stale save gets 409; v1 is readable;
+  - job delete is refused while a note exists; admin delete with the wrong log number is refused, with the right one it removes the note and 0 versions remain;
+  - numbering continues at PJN-0003;
+  - H₂S on a job blocks rig-up until the JRA is approved; sending is refused while answers are missing.
+- **Browser (playwright):**
+  - JRA answered → sent to the SDM → approved by admin → the Execution banner reads "JRA approved" and rig-up is editable (it was disabled before);
+  - the Design panel shows "Open Pre-Job Note" and opens the editor.
+- **Unit tests:** 115 of 115.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

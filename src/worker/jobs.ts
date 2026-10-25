@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
-import { FAILURE_GATED, SERVICE_GATED, canEditField, filterPatch } from '../shared/fieldPolicy';
+import { EXECUTION_FIELDS, FAILURE_GATED, SERVICE_GATED, canEditField, filterPatch } from '../shared/fieldPolicy';
+import { jraReasons } from '../shared/jra';
 import { FAILURE_FOLLOW_UP, STAGE_FIELDS } from '../shared/stages';
 import { parseToolstring, toolTotals } from '../shared/toolstring';
 import type { Job } from '../shared/types';
@@ -244,6 +245,15 @@ async function gateCheck(env: Env, current: Job, patch: Record<string, unknown>)
   const failureOpen = (('failure' in patch ? patch.failure : current.failure) === 'yes') || Number('npt_hours' in patch ? patch.npt_hours : current.npt_hours) > 0;
   const fail = FAILURE_GATED.filter(setting);
   if (fail.length && !failureOpen) return 'Failure follow-up opens when the job has NPT hours or Failure = Yes';
+  // manual §4.2: on a job that needs a JRA, Execution waits for its approval
+  if (EXECUTION_FIELDS.some(setting)) {
+    const explosive = !!(await env.DB.prepare('SELECT 1 FROM job_services s JOIN service_profiles p ON p.job_type_name = s.job_type_name WHERE s.job_id = ? AND p.is_explosive = 1 LIMIT 1').bind(current.id).first());
+    const reasons = jraReasons({ ...current, ...patch } as Parameters<typeof jraReasons>[0], explosive);
+    if (reasons.length) {
+      const j = await env.DB.prepare('SELECT status FROM jras WHERE job_id = ?').bind(current.id).first<{ status: string }>();
+      if (j?.status !== 'approved') return `Execution opens once the JRA is approved (this job has ${reasons.join(', ')})`;
+    }
+  }
   return null;
 }
 

@@ -9,6 +9,11 @@ const FIELD_CREW: Role[] = ['slickline_supervisor', 'slickline_operator', ...MAN
 const PREP: Role[] = [...new Set([...PLANNERS, ...FIELD_CREW])];   // Preparation: anyone who edits jobs
 const QUALITY: Role[] = ['sqm', ...MANAGERS];
 
+/** Execution fields: on a job that needs a JRA they stay closed until the JRA is approved. */
+export const EXECUTION_FIELDS = ['arrived_at', 'rig_up_at', 'rig_down_at', 'runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'max_overpull_lb',
+  'jarring_minutes', 'wire_cut_ft', 'npt_hours', 'failure', 'plug_type', 'op_time_details', 'survey_details', 'fishing_details', 'perforation_details'];
+const PLAIN_EXECUTION = EXECUTION_FIELDS.filter((f) => !f.endsWith('_details') || f === 'op_time_details');
+
 type Policy = { roles: Role[]; badge: string; kind?: 'json' | 'money' };
 
 const fields = (names: string[], roles: Role[], badge: string, kind?: Policy['kind']) =>
@@ -29,8 +34,7 @@ export const FIELD_POLICY: Record<string, Policy> = {
   ], PREP, 'PREP'),
   toolstring: { roles: PREP, badge: 'PREP', kind: 'json' },
   // 03 Execution
-  ...fields(['arrived_at', 'rig_up_at', 'rig_down_at', 'runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'max_overpull_lb',
-    'jarring_minutes', 'wire_cut_ft', 'npt_hours', 'failure', 'plug_type', 'op_time_details'], FIELD_CREW, 'CREW'),
+  ...fields(PLAIN_EXECUTION, FIELD_CREW, 'CREW'),
   ...fields(['survey_details', 'fishing_details', 'perforation_details'], FIELD_CREW, 'CREW', 'json'),
   op_hours_override: { roles: ['sdm', 'operations_manager'], badge: 'SDM / OPS' },
   // 04 Closure
