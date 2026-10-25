@@ -42,7 +42,7 @@ Job Log sequence of events,jobs,should,yes,yes,"S42 not opened; 3e: timestamped 
 Offline wellsite job log,jobs,could,yes,yes,"S06 Offline version; 3e: entries kept on the device without signal and uploaded on reconnect, idempotent by client id"
 Full Job Report PDF,documents,should,yes,yes,"S41 not opened; 3e: one printable page with every stage, crew, JRA, Pre-Job Note, events and 8MF; revenue left out"
 Job Package export,documents,should,yes,yes,"S41 not opened; 3e: zip with report.html, job.json and CSV tables, built in the browser"
-Signatures on job,documents,could,yes,no,S41 not opened
+Signatures on job,documents,could,yes,no,S41 not opened; Closure already records job log and ticket signed as checks; on-screen signature capture would be new design: owner decision
 JRA risk assessment form with live score,jra,should,yes,yes,"S28 QAF12069; 33 questions; 3b: template as data per country (SLK default written fresh, not QAF12069), Yes/No/N-A, live score, approval level, progress, autosave"
 JRA send for approval and approval level,jra,should,yes,yes,"S28 S08 DRAFT/SENT/APPROVED; 3b: send to an SDM, approve or reject with reason; Execution locked on jobs with explosives, H2S, 5,000 psi+ or special setup until approved"
 Job Log spreadsheet view with 9 filters,job log,must,yes,yes,"S08; 2g: status plus 9 filters in the address, search, 34 columns incl. crew and third parties, sticky header and first column, row opens the job; revenue left out"
@@ -127,7 +127,7 @@ Remove a person from SLK Ops (WIREGUARD account untouched),admin,should,yes,yes,
 Read access enforced per tab (deny by default),admin,must,no,yes,found in review: a removed tab must also close its data
 Bonus rules per job type configured by admin,bonus,should,no,yes,"decided: per job, per run or % of revenue; default crew splits by role; 4a: per WIREGUARD job type and country: fixed per job, per successful run or % of revenue; default split by role"
 Crew Assignment and Bonus Distribution on Closure (Admin/SDM),bonus,should,yes,yes,"Admin Manual 3; % or fixed amount; approval feeds the Bonus Report; 4a: Admin/SDM only, completed jobs; proposed from the split, edit share or amount, save, approve; admin reopen with reason"
-Bonus statements emailed to each person,bonus,could,yes,no,Admin Manual 1.1
+Bonus statements emailed to each person,bonus,could,yes,yes,Admin Manual 1.1; built in 4a (Email statements on the Bonus report)
 Revenue entered on each job (Closure),sales,should,no,yes,"decided 2026-10-24; 2d: Closure, SDM or Sales, stored in cents"
 Step-up re-authentication for Bonus and Sales pages,bonus,should,yes,yes,"replaces the original's access code; WIREGUARD password, 30 min; 4b: WIREGUARD password re-entered, 30 minutes on the session, audited; bonus and sales APIs refuse without it"
 Admin data export (all tables) and import with dry-run and backup,admin,should,yes,yes,"Admin Manual 7; 4c: package JSON plus per-table XLSX in a zip; import needs a backup export by the same admin within 15 min, a dry run (new/changed/unchanged/refused per table) and typed IMPORT; never deletes; history insert-only"
