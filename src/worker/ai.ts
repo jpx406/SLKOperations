@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Context } from 'hono';
 import { AI_MODELS, STARTER_PROMPTS, checkSettings, costMicroUsd, limitCheck, parseSettings, shapeResult, systemPrompt, toolPaths, toolsFor, trim, type AiSettings } from '../shared/ai';
+import { assistantPrompt, helpFor } from '../shared/help';
 import { ROLE_LABEL } from '../shared/roles';
 import type { AppBindings, Env } from './env';
 
@@ -21,10 +22,10 @@ export async function loadSettings(env: Env): Promise<AiSettings> {
   return parseSettings(results);
 }
 
-async function spend(env: Env, username: string) {
+async function spend(env: Env, username: string, feature: 'agent' | 'assistant' = 'agent') {
   const [month, today] = await env.DB.batch([
     env.DB.prepare('SELECT coalesce(sum(cost_microusd), 0) AS micro FROM ai_usage WHERE occurred_at >= ?').bind(monthStart()),
-    env.DB.prepare(`SELECT count(*) AS n FROM ai_usage WHERE feature = 'agent' AND username = ? AND occurred_at >= ?`).bind(username, dayStart()),
+    env.DB.prepare(`SELECT count(*) AS n FROM ai_usage WHERE feature = ? AND username = ? AND occurred_at >= ?`).bind(feature, username, dayStart()),
   ]);
   return { monthMicro: Number((month.results[0] as { micro: number }).micro), sentToday: Number((today.results[0] as { n: number }).n) };
 }
@@ -40,6 +41,57 @@ export async function aiStatus(c: Context<AppBindings>) {
   });
 }
 
+/** Turns the request body into a clean user/assistant history ending with the user's question. */
+function readHistory(body: ChatIn) {
+  const history = (body.messages ?? []).slice(-MAX_HISTORY)
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .map((m) => ({ role: m.role as 'user' | 'assistant', content: (m.content as string).slice(0, 8000) }));
+  while (history.length && history[0].role !== 'user') history.shift();
+  return history.length && history[history.length - 1].role === 'user' ? history : null;
+}
+
+const client = (env: Env) => new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, ...(env.ANTHROPIC_BASE_URL ? { baseURL: env.ANTHROPIC_BASE_URL } : {}) });
+const fallbackFor = (model: string) => (model === 'claude-haiku-5-5' ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const });
+const serviceError = (e: unknown) => {
+  if (!(e instanceof Anthropic.APIError)) return null;
+  console.error('ai', e.status, e.message);
+  return e.status === 429 || e.status === 529 ? 'The AI service is busy. Try again in a minute.' : 'The AI service returned an error. Try again, or tell an admin if it keeps happening.';
+};
+
+/** Help assistant (S23): answers how-to questions from the in-app guide. No tools, no data. */
+export async function assistantChat(c: Context<AppBindings>) {
+  const user = c.get('user');
+  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: 'The help assistant isn’t set up yet: the Anthropic API key is missing on the server.' }, 503);
+  const s = await loadSettings(c.env);
+  const u = await spend(c.env, user.username, 'assistant');
+  const blocked = limitCheck(s, u.monthMicro, u.sentToday);
+  if (blocked) return c.json({ error: blocked.replace('The AI Agent is switched off', 'The help assistant is switched off') }, 429);
+  const history = readHistory(await c.req.json<ChatIn>().catch(() => ({} as ChatIn)));
+  if (!history) return c.json({ error: 'Ask a question' }, 400);
+  let micro = 0, inTok = 0, outTok = 0;
+  let reply = '', note: string | null = null;
+  try {
+    const res = await client(c.env).beta.messages.create({
+      model: s.model, max_tokens: 4000, output_config: { effort: 'low' },
+      system: assistantPrompt(helpFor(user.menus, user.role === 'admin')), messages: history, ...fallbackFor(s.model),
+    });
+    micro = costMicroUsd(res.usage, s.model);
+    inTok = res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0);
+    outTok = res.usage.output_tokens;
+    reply = res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map((b) => b.text).join('\n').trim();
+    if (res.stop_reason === 'refusal') note = 'The assistant declined to answer this. Try asking it another way.';
+    if (res.stop_reason === 'max_tokens') note = 'The answer was cut short.';
+  } catch (e) {
+    const msg = serviceError(e);
+    if (!msg) throw e;
+    return c.json({ error: msg }, 502);
+  } finally {
+    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.username, 'assistant', s.model, inTok, outTok, micro).run();
+  }
+  return c.json({ reply, note, sentToday: u.sentToday + 1, dailyLimit: s.messages_per_user_day });
+}
+
 interface ChatIn { messages?: { role?: string; content?: unknown }[] }
 
 export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
@@ -51,11 +103,8 @@ export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
   if (blocked) return c.json({ error: blocked }, 429);
 
   const body = await c.req.json<ChatIn>().catch(() => ({} as ChatIn));
-  const history = (body.messages ?? []).slice(-MAX_HISTORY)
-    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-    .map((m) => ({ role: m.role as 'user' | 'assistant', content: (m.content as string).slice(0, 8000) }));
-  while (history.length && history[0].role !== 'user') history.shift();
-  if (!history.length || history[history.length - 1].role !== 'user') return c.json({ error: 'Ask a question' }, 400);
+  const history = readHistory(body);
+  if (!history) return c.json({ error: 'Ask a question' }, 400);
 
   const allowed = toolsFor(user.menus);
   const tools: Anthropic.Beta.BetaTool[] = allowed.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
@@ -63,7 +112,7 @@ export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
     fullName: user.fullName, role: ROLE_LABEL[user.role], countries: user.countries, tools: allowed.map((t) => t.name),
     today: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }),
   });
-  const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY, ...(c.env.ANTHROPIC_BASE_URL ? { baseURL: c.env.ANTHROPIC_BASE_URL } : {}) });
+  const api = client(c.env);
   const messages: Anthropic.Beta.BetaMessageParam[] = history;
   const used: { name: string; input: unknown; ok: boolean }[] = [];
   let micro = 0, inTok = 0, outTok = 0;
@@ -75,7 +124,7 @@ export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
 
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const res = await client.beta.messages.create({
+      const res = await api.beta.messages.create({
         model: s.model,
         max_tokens: 8000,
         system,
@@ -83,7 +132,7 @@ export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
         messages,
         output_config: { effort: 'medium' },
         // a declined request is retried server-side on Anthropic's recommended model; Haiku has no fallback
-        ...(s.model === 'claude-haiku-5-5' ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }),
+        ...fallbackFor(s.model),
       });
       micro += costMicroUsd(res.usage, s.model);
       inTok += res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0);
@@ -112,11 +161,9 @@ export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
     }
   } catch (e) {
     await record();
-    if (e instanceof Anthropic.APIError) {
-      console.error('ai agent', e.status, e.message);
-      return c.json({ error: e.status === 429 || e.status === 529 ? 'The AI service is busy. Try again in a minute.' : 'The AI service returned an error. Try again, or tell an admin if it keeps happening.' }, 502);
-    }
-    throw e;
+    const msg = serviceError(e);
+    if (!msg) throw e;
+    return c.json({ error: msg }, 502);
   }
   await record();
   return c.json({ reply: reply || (note ? '' : 'No answer came back.'), note, tools: used, sentToday: u.sentToday + 1, dailyLimit: s.messages_per_user_day });

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
 import { admin } from './admin';
-import { aiAdminGet, aiAdminPut, aiChat, aiStatus } from './ai';
+import { aiAdminGet, aiAdminPut, aiChat, aiStatus, assistantChat } from './ai';
 import { database } from './database';
 import { emf } from './emf';
 import { failureRoster } from './failureRoster';
@@ -215,6 +215,7 @@ app.route('/recon', recon);
 
 // AI Agent: each tool reads through this same app with the asker's cookie and country switch
 app.get('/ai/status', aiStatus);
+app.post('/ai/assistant', assistantChat);
 app.post('/ai/chat', (c) => aiChat(c, (path) => {
   const headers = new Headers();
   for (const h of ['cookie', 'x-slk-country']) { const v = c.req.header(h); if (v) headers.set(h, v); }

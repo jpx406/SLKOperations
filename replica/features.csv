@@ -86,8 +86,8 @@ Wires register read-only from WIREGUARD (status tests alerts remaining length),w
 Wire detail: runs tests and derived facts (trips/jars since cut life consumed used-wire limit),wire log,should,yes,yes,"S31; read-only; Open in WIREGUARD for edits; 3d: runs with per-run rule checks, tests, alerts, counters since last cut, life consumed, used-wire limit, pre-job test status"
 Knowledge Hub library with filters and lesson of the week,knowledge hub,could,yes,yes,6c: S21
 Present lessons as toolbox talk,knowledge hub,could,yes,yes,6c: S43
-In-app AI help assistant,assistant,could,yes,no,S23 no data access; budget shared with the AI Agent (Admin Manual 5.2)
-Help dialog with manuals,help,could,yes,no,S22
+In-app AI help assistant,assistant,could,yes,yes,6d: S23 no data access; budget shared with the AI Agent (Admin Manual 5.2)
+Help dialog with manuals,help,could,yes,yes,6d: S22
 Bonus Report and Bonus Analysis,bonus,should,yes,yes,"S32 admin manual only; spec with owner; Admin Manual 1: approved-only toggle, filters, PDF/XLSX, email statements, bonus % of revenue vs <4.5% target; 4a: report per person (approved-only toggle, filters, XLSX, print, email statements); analysis with total, jobs, bonus % of revenue vs 4.5 % target, monthly and breakdowns"
 Sales Dashboard,sales,should,yes,yes,"S33 admin manual only; decided: aggregate of revenue entered on each job; Incomplete Data = completed jobs without revenue; 4b: revenue from each job by account tabs, analysis, find/edit job (opens Closure), incomplete data; no separate dataset"
 Existing NESR job personnel and inventory records,data,skip,yes,skip,company data; migrate via an approved export only

@@ -7,6 +7,7 @@ import { ROLE_LABEL } from '../../shared/roles';
 import type { WgStatus } from '../../shared/types';
 import { api, countryScope, setCountryScope } from '../api';
 import { useMe } from '../auth';
+import { AssistantLauncher, HelpButton } from './Help';
 import { Button, cx } from './ui';
 
 function useTheme() {
@@ -105,6 +106,7 @@ export function AppShell() {
             <span className="hidden text-sm sm:inline">{me?.fullName}</span>
             {config.data && <a className="hidden text-xs text-text-muted underline hover:text-text lg:inline" href={config.data.wireguardUrl} target="_blank" rel="noreferrer">Change password</a>}
             {me && <span className="label-caps rounded-sm bg-success-subtle px-2 py-0.5 text-success">{ROLE_LABEL[me.role]}</span>}
+            <HelpButton />
             <Button size="sm" variant="ghost" onClick={toggleTheme} aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}>
               {theme === 'light' ? <Moon aria-hidden className="size-4" /> : <Sun aria-hidden className="size-4" />}
             </Button>
@@ -137,6 +139,7 @@ export function AppShell() {
       <main id="main" className="flex-1 px-4 py-5 md:px-5">
         <Outlet />
       </main>
+      <AssistantLauncher />
     </div>
   );
 }

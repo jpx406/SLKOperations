@@ -150,3 +150,42 @@ describe('AI Agent loop', () => {
     expect(out.status).toBe(429);
   });
 });
+
+describe('help guide and assistant', () => {
+  it('shows only the sections for the reader’s tabs, and admin help to admins', async () => {
+    const { helpFor, HELP_SECTIONS } = await import('../src/shared/help');
+    const crew = helpFor({ schedule: view, jobs: view, knowledge_hub: view, ai_assistant: view }, false).map((s) => s.id);
+    expect(crew).toEqual(['start', 'schedule', 'jobs', 'knowledge', 'ai']);
+    expect(helpFor({ users: view }, false).map((s) => s.id)).not.toContain('admin');
+    expect(helpFor({ users: view }, true).map((s) => s.id)).toContain('admin');
+    expect(new Set(HELP_SECTIONS.map((s) => s.id)).size).toBe(HELP_SECTIONS.length);
+  });
+  it('asks the model with the guide only: no tools, low effort, logged as the assistant', async () => {
+    const inserts: unknown[][] = [];
+    const stmt = (sql: string) => {
+      let args: unknown[] = [];
+      const s = { bind: (...a: unknown[]) => { args = a; return s; }, all: async () => ({ results: sql.includes('FROM ai_settings') ? [{ key: 'enabled', value: 'true' }] : sql.includes('sum(') ? [{ micro: 0 }] : [{ n: 0 }] }), run: async () => { inserts.push(args); return {}; } };
+      return s;
+    };
+    const env = { DB: { prepare: stmt, batch: async (l: { all: () => Promise<unknown> }[]) => Promise.all(l.map((x) => x.all())) }, ANTHROPIC_API_KEY: 'k' };
+    const c = { env, get: () => ({ username: 'NESR-2', fullName: 'Crew', role: 'crew', countries: ['Saudi Arabia'], menus: { jobs: view, ai_assistant: view } }), req: { json: async () => ({ messages: [{ role: 'user', content: 'How do I add crew?' }] }) }, json: (b: unknown, status = 200) => ({ b, status }) };
+    let body: Record<string, unknown> = {};
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (_u: unknown, init: { body: string }) => {
+      body = JSON.parse(init.body);
+      return new Response(JSON.stringify({ id: 'm', type: 'message', role: 'assistant', model: 'claude-opus-5-5', stop_reason: 'end_turn', stop_sequence: null, content: [{ type: 'text', text: 'Open Preparation.' }], usage: { input_tokens: 3000, output_tokens: 30 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      const { assistantChat } = await import('../src/worker/ai');
+      const out = await assistantChat(c as never) as unknown as { b: { reply: string }; status: number };
+      expect(out.b.reply).toBe('Open Preparation.');
+    } finally { globalThis.fetch = realFetch; }
+    expect(body.tools).toBeUndefined();
+    expect(body.output_config).toEqual({ effort: 'low' });
+    expect(String(body.system)).toContain('## Jobs: stages, fields and locks');
+    expect(String(body.system)).not.toContain('## Administration');
+    expect(inserts.at(-1)?.slice(2)).toEqual(['assistant', 'claude-opus-5-5', 3000, 30, 3000 * 4 + 30 * 20]);
+    const { ruleFor } = await import('../src/worker/permissions');
+    expect(ruleFor('POST', '/api/ai/assistant')).toMatchObject({ menu: 'ai_assistant', action: 'view' });
+  });
+});

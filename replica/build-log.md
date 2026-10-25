@@ -720,3 +720,17 @@ Every label, message and empty state was written here. No code, assets or copy f
   - API: three made-up sample entries added; an ftp link refused; an SDM adding an entry got 403.
   - Browser: the Wireline chip narrowed to 2 entries with correct counts; the slideshow went 1 → 2 of 2 and closed.
   - Unit tests: link check, lesson-of-the-week rule, filters and chip counts, rules.
+
+## Milestone 6d: Help guide and help assistant (S22, S23)
+
+- **Help** (a header button) opens the SLK Operations guide: 15 sections written for this app (`src/shared/help.ts`), filtered to the reader's tabs. Administration appears for admins only. The original's manuals are not shipped; they describe a different app and belong to NESR.
+- **Help assistant** (a round button at the bottom right, for people with the `ai_assistant` tab) opens a side panel with a disclaimer. Questions go to `POST /api/ai/assistant`, which answers from the guide sections that person can see.
+  - No tools, no data, effort `low`.
+  - Same model setting, on/off switch, monthly budget and fallback as the AI Agent.
+  - Its own daily count; usage is logged as `assistant` in the same ledger, so the budget is shared as the manual says.
+- **Also in this milestone:**
+  - the Markdown reader moved to `components/Markdown.tsx`;
+  - the guide and the Knowledge Hub dialogs close on Escape even when focus stayed on the button that opened them.
+- **Verified 2026-10-25:**
+  - Browser (page scripts, because the pane wasn't drawing): the admin's guide lists 15 sections; Escape closes it; the assistant panel focuses its input; a question without a key shows "isn't set up yet".
+  - Unit tests: section filtering, and the assistant request (guide in the system prompt, no tools, low effort, one ledger row priced correctly).
