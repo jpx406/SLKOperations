@@ -50,16 +50,16 @@ Job Log export XLSX download print,job log,must,yes,yes,"S08; 2g: own XLSX write
 Pre-Job Notes editor with versions,pre-job notes,should,yes,no,S26 PJN-nnnn
 Pre-Job Notes confirm and send (PDF mail app eml),pre-job notes,should,yes,no,S27
 Pre-Job Notes list with export,pre-job notes,should,yes,no,S09 restricted for SQM
-8 Min Facts list with search and status,8 min facts,must,yes,no,S11
-8 Min Facts editor with multiple incidents,8 min facts,must,yes,no,S12
-Severity auto from NPT with reference matrix,8 min facts,must,yes,no,S12
-8 Min Facts versions and history,8 min facts,must,yes,no,S12 vN
-8 Min Facts updates job NPT failure and roster on save,8 min facts,must,yes,no,S12 side effects
-8 Min Facts print PDF Word and email,8 min facts,should,yes,no,S12
-Failure Roster table with filters,failure roster,must,yes,no,S10
-Failures by month chart with drill-down,failure roster,should,yes,no,S10
-Tracking-gap warning (NPT without 8MF etc),failure roster,should,yes,no,S10
-Add failure manually,failure roster,should,yes,no,S40
+8 Min Facts list with search and status,8 min facts,must,yes,yes,"S11; 2h: status filter, search by log/title/well/ticket"
+8 Min Facts editor with multiple incidents,8 min facts,must,yes,yes,"S12; 2h: ticket picker prefills rig/well/crew, incident cards reorder/collapse/remove, what failed list"
+Severity auto from NPT with reference matrix,8 min facts,must,yes,yes,"S12; 2h: shared bands = generated DB column; matrix highlights the report row"
+8 Min Facts versions and history,8 min facts,must,yes,yes,"S12 vN; 2h: immutable version per save, History panel reads any version, stale save refused"
+8 Min Facts updates job NPT failure and roster on save,8 min facts,must,yes,yes,"S12 side effects; 2h: same batch; roster rows keyed by incident keep their action status"
+8 Min Facts print PDF Word and email,8 min facts,should,yes,yes,"S12; 2h: print stylesheet, .doc export, mailto with summary then marked Sent; editing after Sent returns to Saved"
+Failure Roster table with filters,failure roster,must,yes,yes,"S10; 2h: standard filter bar on the linked job plus severity and action status"
+Failures by month chart with drill-down,failure roster,should,yes,yes,"S10; 2h: click a month to list it, per-month Excel/PDF/CSV"
+Tracking-gap warning (NPT without 8MF etc),failure roster,should,yes,yes,"S10; 2h: NPT without 8MF and failure not in roster, with job links"
+Add failure manually,failure roster,should,yes,yes,"S40; 2h: hand-added rows, removable; 8MF rows edited from the report"
 Failure Roster CSV PDF Excel exports,failure roster,should,yes,no,S10
 Equipment Database (units PCE grease panels),database,must,yes,yes,"S24 manual; 2f: WIREGUARD units read-only with open jobs, PCE and grease panels (switch off asks when open jobs use it), local lists, service profiles"
 Quick Plan card board,quick plan,could,yes,no,S25 manual

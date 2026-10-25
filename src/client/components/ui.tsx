@@ -41,6 +41,16 @@ export function StatusPill({ status }: { status: JobStatus }) {
   return <span className={cx('label-caps inline-flex h-5.5 items-center rounded-pill border px-2', STATUS_STYLE[status])}>{status}</span>;
 }
 
+const SEVERITY_STYLE: Record<string, string> = {
+  negligible: 'bg-sev-negligible', light: 'bg-sev-light', serious: 'bg-sev-serious', major: 'bg-sev-major', catastrophic: 'bg-sev-catastrophic',
+};
+
+/** 8 Min. Facts severity. `auto` marks a value worked out from NPT rather than chosen. */
+export function SeverityPill({ severity, auto }: { severity: string | null; auto?: boolean }) {
+  if (!severity) return <span className="label-caps inline-flex h-5.5 items-center rounded-pill border border-dashed border-border-strong px-2 text-text-subtle">No 8MF</span>;
+  return <span className={cx('label-caps inline-flex h-5.5 items-center rounded-pill px-2 text-on-sev', SEVERITY_STYLE[severity])}>{severity}{auto && ' · auto'}</span>;
+}
+
 export function Badge({ children }: { children: ReactNode }) {
   return <span className="label-caps inline-flex rounded-xs bg-info-subtle px-1.5 text-info">{children}</span>;
 }

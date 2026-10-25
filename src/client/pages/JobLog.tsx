@@ -56,7 +56,7 @@ export function JobLog() {
         <span id="log-title">Job log</span>
         {log.data && <span className="ml-3 align-middle font-mono text-sm font-normal text-text-muted">{rows.length.toLocaleString()} job{rows.length === 1 ? '' : 's'}</span>}
       </PageTitle>
-      <FilterBar optionsPath="/job-log/options" />
+      <FilterBar optionsPath="/filter-options" />
       <p className="mb-3 hidden text-xs print:block">
         Printed {stamp()}{activeFilterCount(filters) ? ` · filters: ${Object.entries(filters).map(([k, v]) => `${k} ${v?.join('/')}`).join('; ')}` : ''}
       </p>

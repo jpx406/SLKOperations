@@ -335,6 +335,42 @@ Pre-Job Notes access follows the manual.
 
 **Not checked:** the print layout in a real print preview.
 
+## Milestone 2h: 8 Min. Facts (S11, S12) and Failure Roster (S10)
+
+**8 Min. Facts:**
+- **Severity bands** live in `src/shared/emf.ts`, the same as the generated `incidents.severity` column: none → Negligible, under 4 h Light, 4–24 h Serious, 24–48 h Major, over 48 h Catastrophic. A report takes its worst incident.
+- **Saving:** every save is checked (`cleanReport`) and written in one batch:
+  - the report and its incidents; incidents are updated in place by id, so roster rows survive a reorder;
+  - an immutable version snapshot; a stale `expectedVersion` gets 409;
+  - the job: NPT = the sum of all its 8MF NPT, Failure = Yes, 8MF = Yes;
+  - one roster row per incident (upsert on `incident_id`); action status and notes survive edits.
+- **Log numbers:** EM-0001, EM-0002 … per country.
+- **Sending:** the screen opens the mail app with a plain summary, then `POST /emf/:id/sent` records it. Editing after sending makes a new version and puts the report back to Saved, with the earlier send still shown.
+- **Exports:** Print/PDF uses a print stylesheet (collapsed incidents print expanded; the matrix and buttons are hidden). Word is an HTML `.doc`, with no library.
+- **Editor:** ticket search prefills rig, well and crew; incident cards can be reordered, collapsed and removed, with an auto severity pill; a "what failed" list; report totals; the severity reference with the current row highlighted; a History panel to read any version; a warning on leaving with unsaved changes.
+
+**Failure Roster:**
+- **Filters:** the standard bar applies to the linked job; severity (including "No 8MF") and action status are added.
+- **Chart:** failures by month, last 12 months, major-or-worse stacked. Click a month to list it, with per-month Excel, PDF and CSV.
+- **Tracking gaps:** a warning lists jobs with NPT but no 8MF, and jobs with failure but no roster row, with links.
+- **Hand-added rows:** for events without a report. They can be removed; rows from a report can't, and their category and severity are edited in the report.
+- **Action status** (Open / In progress / Closed) is set inline.
+
+**Filter options** moved to `GET /api/filter-options`, open to any signed-in user but limited to values from their own jobs. Only the options handler is shared, not the Job Log itself.
+
+**Verified 2026-10-25:**
+- **API:**
+  - incidents of 6 h and 30 h give 36 h, Major (Serious + Major); the job became NPT 36, Failure Yes, 8MF Yes; the roster got 2 rows;
+  - setting a roster row to In progress survives an edit that reordered, dropped and added incidents (v2, back to Saved after Sent; job NPT 4);
+  - a stale save gets 409; v1 is still readable; category edits on an 8MF row are refused; a hand-added row works.
+- **Browser (playwright):**
+  - a new report on ticket M-1 with 5.5 h + 26 h showed 31.5 h, Major, live, with the Major row highlighted;
+  - Save went to EM-0002 v1 at its own URL;
+  - the roster listed the rows, and clicking Nov 26 filtered to 4.
+- **Unit tests:** 78 of 78.
+
+**Not checked:** the Word file in Word, and the mail app hand-off (it depends on the machine's mail client).
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

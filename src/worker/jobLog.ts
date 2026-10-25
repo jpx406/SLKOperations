@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { filterSql, parseFilters } from '../shared/filters';
 import type { AppBindings } from './env';
 
@@ -45,7 +45,7 @@ jobLog.get('/', async (c) => {
 });
 
 /** Choices for the filter bar: values that occur in the caller's jobs, so no option leads to an empty list by itself. */
-jobLog.get('/options', async (c) => {
+export async function filterOptions(c: Context<AppBindings>) {
   const countries = JSON.stringify(c.get('user').countries);
   const scope = `j.deleted_at IS NULL AND j.country IN (SELECT value FROM json_each(?))`;
   const distinct = (col: string) => c.env.DB.prepare(`SELECT DISTINCT ${col} AS v FROM jobs j WHERE ${scope} AND ${col} IS NOT NULL AND ${col} <> '' ORDER BY v`).bind(countries);
@@ -67,4 +67,5 @@ jobLog.get('/options', async (c) => {
     year: vals(years), account: vals(accounts), area: vals(areas), unit: vals(units), conveyance: vals(conveyances),
     sdm: vals(sdms), service: vals(services), domain: vals(domains),
   });
-});
+}
+jobLog.get('/options', filterOptions);

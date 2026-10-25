@@ -69,6 +69,12 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PATCH', re: /^\/api\/database\/(pce|grease-panels|lists)\/[^/]+$/, menu: 'database', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/database\/(pce|grease-panels)\/[^/]+$/, menu: 'database', action: 'delete' },
   { method: 'PUT', re: /^\/api\/database\/service-profiles$/, menu: 'database', action: 'edit' },
+  { method: 'POST', re: /^\/api\/emf$/, menu: 'eight_min_facts', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/emf\/[^/]+$/, menu: 'eight_min_facts', action: 'edit' },
+  { method: 'POST', re: /^\/api\/emf\/[^/]+\/sent$/, menu: 'eight_min_facts', action: 'edit' },
+  { method: 'POST', re: /^\/api\/failure-roster$/, menu: 'failure_roster', action: 'edit' },
+  { method: 'PATCH', re: /^\/api\/failure-roster\/[^/]+$/, menu: 'failure_roster', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/failure-roster\/[^/]+$/, menu: 'failure_roster', action: 'delete' },
   { method: 'POST', re: /^\/api\/recon\/run$/, menu: 'reconciliation', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/recon\/findings\/[^/]+$/, menu: 'reconciliation', action: 'edit' },
   { method: 'POST', re: /^\/api\/recon\/links$/, menu: 'reconciliation', action: 'edit' },
@@ -86,6 +92,10 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
   { re: /^\/api\/database$/, menus: ['database'] },
   { re: /^\/api\/job-log(\/options)?$/, menus: ['job_log'] },
+  // only the values that occur in the caller's own jobs, for the filter dropdowns
+  { re: /^\/api\/filter-options$/, menus: 'any' },
+  { re: /^\/api\/emf(\/[^/]+(\/versions\/\d+)?)?$/, menus: ['eight_min_facts'] },
+  { re: /^\/api\/failure-roster(\/summary)?$/, menus: ['failure_roster'] },
   { re: /^\/api\/admin\//, menus: ['users'] },
 ];
 
