@@ -69,6 +69,10 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PUT', re: /^\/api\/admin\/role-permissions$/, menu: 'users', action: 'edit' },
   { method: 'POST', re: /^\/api\/admin\/import\/(dry-run|apply)$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/ai$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/quick-plan$/, menu: 'quick_plan', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/quick-plan\/[^/]+$/, menu: 'quick_plan', action: 'edit' },
+  { method: 'POST', re: /^\/api\/quick-plan\/[^/]+\/(move|promote)$/, menu: 'quick_plan', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/quick-plan\/[^/]+$/, menu: 'quick_plan', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'PUT', re: /^\/api\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/lesson-of-week$/, menu: 'knowledge_hub', action: 'edit' },
@@ -145,6 +149,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/admin\//, menus: ['users'] },
   { re: /^\/api\/ai\/status$/, menus: ['ai_agent'] },
   { re: /^\/api\/knowledge(\/[^/]+)?$/, menus: ['knowledge_hub'] },
+  { re: /^\/api\/quick-plan$/, menus: ['quick_plan'] },
 ];
 
 export function readAllowed(path: string, menus: Record<string, MenuRight>): boolean {

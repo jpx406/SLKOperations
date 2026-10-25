@@ -734,3 +734,15 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified 2026-10-25:**
   - Browser (page scripts, because the pane wasn't drawing): the admin's guide lists 15 sections; Escape closes it; the assistant panel focuses its input; a question without a key shows "isn't set up yet".
   - Unit tests: section filtering, and the assistant request (guide in the system prompt, no tools, low effort, one ledger row priced correctly).
+
+## Milestone 6e: Quick Plan (S25)
+
+- A card board for jobs that aren't tickets yet, using the existing `quick_plan_cards` table: Idea → Likely → Confirmed. Each card has a title, target date, unit and notes.
+- Cards move by drag and drop or by the left and right arrows (so a keyboard works too). `reorder` renumbers the column on the server.
+- **Make it a job** (needs the jobs edit right and a date or a unit) creates a planned job through the normal job route, with all its checks, links the card to it, and opens the job's Design stage. The card then shows the job's ticket link.
+- Cards can be edited and removed (quick_plan edit right), and every change is audited.
+- **Guide fix:** the Jobs section of the help guide now describes the real stages (Design, Preparation, Execution, Closure) and what each holds. The first draft in 6d had them wrong.
+- **Verified 2026-10-25:**
+  - API: created two made-up cards; moved one to Confirmed; created the job and linked it; an SDM can read the board.
+  - Browser (page scripts): the columns show 1 / 0 / 1 with the job link; Make it a job on a card without date or unit explains why it can't; the arrow moved a card to Likely.
+  - Unit tests: card check, reorder, rules.

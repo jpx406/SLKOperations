@@ -18,13 +18,15 @@ The top row holds the groups (Operation, Service Quality, Attendance, Inventory 
   },
   {
     id: 'jobs', title: 'Jobs: stages, fields and locks', menus: ['jobs'],
-    body: `Every job moves through Preparation, Execution and Closure. Each stage shows a progress bar of the fields it still needs. Fields save as you leave them; a red mark means the value was refused and why.
+    body: `Every job moves through Design, Preparation, Execution and Closure. Each stage shows a progress bar of the fields it still needs. Fields save as you leave them; a red mark means the value was refused and why.
 
-Preparation holds the client, well, unit, crew, services and the Pre-Job Note. If the job needs a JRA (high-risk services or conditions), a banner says so and Execution stays locked until the JRA is approved.
+Design holds the ticket, SDM, status, unit, dates, account, area, rig, well and conveyance, plus the Pre-Job Note and the services. Picking services decides which sections open later.
 
-Execution holds times (rig-up, rig-down), NPT, runs, the toolstring, the wire and the service sections that open with the services picked: plug, fishing, memory survey, perforation. A job with an explosive service also shows the explosives prompt.
+Preparation holds the well data, the wire and drum, the pressure control equipment, the toolstring and the crew. If the job needs a JRA (high-risk services or conditions), a banner says so and Execution stays locked until the JRA is approved.
 
-Closure holds the outcome, failure details, revenue (SDM or Sales) and the bonus distribution. The job log (sequence of events) records what happened in order and works offline; entries wait on the device and send when the connection is back.
+Execution holds the times (arrival, rig-up, rig-down), NPT, runs, failure, and the sections the services opened: plug, fishing, memory survey, perforation. A job with an explosive service also shows the explosives prompt. The job log (sequence of events) records what happened in order and works offline; entries wait on the device and send when the connection is back.
+
+Closure holds the paperwork checks (job log and ticket signed, job package, wellsite audit, runs logged in WIREGUARD), the service order, the ticket value (revenue) and the bonus distribution.
 
 The Full Job Report prints everything on one page; the Job Package downloads a zip with the report, the job data, the sequence of events, the toolstring and the crew.`,
   },

@@ -62,7 +62,7 @@ Tracking-gap warning (NPT without 8MF etc),failure roster,should,yes,yes,"S10; 2
 Add failure manually,failure roster,should,yes,yes,"S40; 2h: hand-added rows, removable; 8MF rows edited from the report"
 Failure Roster CSV PDF Excel exports,failure roster,should,yes,yes,"S10; 2h: CSV, XLSX and print for all rows and per month"
 Equipment Database (units PCE grease panels),database,must,yes,yes,"S24 manual; 2f: WIREGUARD units read-only with open jobs, PCE and grease panels (switch off asks when open jobs use it), local lists, service profiles"
-Quick Plan card board,quick plan,could,yes,no,S25 manual
+Quick Plan card board,quick plan,could,yes,yes,6e: S25 manual
 Operation Statistics KPIs gauges and charts,service quality,must,yes,yes,"S13; 2i: period presets, 9 filters, 6 KPI tiles, fleet-efficiency gauges by account, missing-data warning with list, 12 charts"
 Chart drill-down to job list and ticket,service quality,should,yes,yes,"S13; 2i: every bar and gauge opens the jobs behind it with ticket links"
 Wellsite audit compliance by SDM,service quality,could,yes,yes,"S13 target 25%; 2i: gauges with 25 % target tick"
