@@ -5,6 +5,7 @@ import { canonical } from '../shared/signature';
 import { readXlsx } from '../shared/xlsxRead';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { getJob } from './jobs';
+import { storeAttachment } from './attachments';
 import { signStatement } from './signatures';
 
 // JRA (S28) for one job: answer, score live, send to an SDM, approve or reject. Approved answers are locked.
@@ -155,7 +156,9 @@ jra.post('/:jobId/upload', async (c) => {
     ).bind(row?.id ?? crypto.randomUUID(), job.id, reg.id, JSON.stringify(answers), score, level, formDetails, at),
     audit(c.env, user, 'upload', row?.id ?? job.id, `JRA for ticket ${job.ticket_no ?? '—'} uploaded from ${name || 'Excel'} (${t.code} Rev ${t.revision}, ${Object.keys(answers).length}/${t.questions.length} answered, score ${score}, ${level})`),
   ]);
-  return c.json({ ok: true, ...summary });
+  // keep the original file with the job's attachments; the JRA itself is already saved if storage isn't set up
+  const kept = await storeAttachment(c.env, user, { country: job.country, entity: 'job', entityId: job.id, category: 'jra_form', name: name || 'JRA.xlsx', bytes });
+  return c.json({ ok: true, ...summary, file_kept: !('error' in kept) });
 });
 
 jra.post('/:jobId/send', async (c) => {

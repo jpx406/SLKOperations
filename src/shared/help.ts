@@ -28,6 +28,8 @@ Execution holds the times (arrival, rig-up, rig-down), NPT, runs, failure, and t
 
 Closure holds the paperwork checks (job log and ticket signed, job package, wellsite audit, runs logged in WIREGUARD), the service order, the ticket value (revenue) and the bonus distribution.
 
+Every stage has an Attachments section at the bottom: drop photos, the signed ticket, job log scans, permits or reports there (PDF, images, Office, text, email or zip, up to 25 MB each). An uploaded JRA Excel is kept there too. Removing a file hides it; the audit trail keeps a record.
+
 The Full Job Report prints everything on one page; the Job Package downloads a zip with the report, the job data, the sequence of events, the toolstring and the crew.`,
   },
   {

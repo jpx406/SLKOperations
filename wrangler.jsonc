@@ -23,6 +23,13 @@
 			"id": "cbc330732d454b138e4dd5fa91ee8af4"
 		}
 	],
+	// attachments and uploaded JRA forms: npx wrangler r2 bucket create slkops-files
+	"r2_buckets": [
+		{
+			"binding": "FILES",
+			"bucket_name": "slkops-files"
+		}
+	],
 	// served at slkops.nesrapp.com (nesrapp.com is a zone in this account)
 	"routes": [
 		{

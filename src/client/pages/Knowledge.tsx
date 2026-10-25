@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router';
 import { DOC_TYPES, filterLibrary, lessonOfWeek, type DocType, type KnowledgeDoc } from '../../shared/knowledge';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
+import { Attachments } from '../components/Attachments';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
 // Knowledge Hub (S21) and the reader / toolbox-talk mode (S43). The documents stay with their owner; each card
@@ -123,6 +124,7 @@ function Reader({ doc, original, onClose, onPresent }: { doc: KnowledgeDoc; orig
       {doc.summary && <p className="mt-3 whitespace-pre-wrap text-sm">{doc.summary}</p>}
       {doc.key_action && <div className="mt-3 rounded-md bg-warning-subtle p-3 text-sm"><span className="font-semibold">Key action: </span>{doc.key_action}</div>}
       {doc.failure_types.length > 0 && <p className="mt-3 flex flex-wrap gap-1">{doc.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
+      <div className="mt-4 rounded-md border border-border p-3"><Attachments entity="knowledge" id={doc.id} title="Files" /></div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button variant="primary" onClick={onPresent}><Play aria-hidden className="size-4" />Present to the crew</Button>
         {doc.source_ref && <a href={doc.source_ref} target="_blank" rel="noreferrer noopener" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><ExternalLink aria-hidden className="size-4" />Open the source document</a>}

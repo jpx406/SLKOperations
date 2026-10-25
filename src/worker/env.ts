@@ -22,6 +22,8 @@ export interface Env {
   ANTHROPIC_BASE_URL?: string;
   /** Worker secret: the HMAC key that seals approval signatures. Without it signatures are recorded but not sealed. */
   SIGNING_KEY?: string;
+  /** R2 bucket slkops-files: attachments and the original of each uploaded JRA form. */
+  FILES?: R2Bucket;
 }
 
 export interface Session {

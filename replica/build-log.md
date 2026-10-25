@@ -807,3 +807,32 @@ Every label, message and empty state was written here. No code, assets or copy f
   - Browser (page scripts): the briefing card on Preparation; the JRA page with form details, per-answer points, Exemption tags, approver, guidance and form notes.
   - Unit tests: 192.
 - **Local note:** after the real database ID went into `wrangler.jsonc`, local development uses a fresh local database. Reseed it with `scripts/dev-seed.sql` and `scripts/dev-jobs.sql`.
+
+## Milestone 6h: attachments in R2
+
+**Owner request, 2026-10-25:** files need to be stored.
+
+- **Storage:** R2 bucket `slkops-files` (binding `FILES`). Each file has a row in `attachments` (migration 0007) with its category, name, type, size, a SHA-256 of the bytes, the R2 key and who uploaded it when. Removing a file hides it (`deleted_at`) and keeps the object; every upload and removal is audited.
+- **Where they show:**
+  - an **Attachments** section at the bottom of every job stage;
+  - **Files** in the Knowledge Hub reader.
+  - Categories: photo, field ticket, job log, JRA form, report, permit / certificate, document, other.
+  - Upload by picking or dropping files; images show as thumbnails; images and PDFs open in a new tab, everything else downloads.
+- **Uploaded JRA Excel:** the original file is now kept as a "JRA form" attachment on the job, next to the answers read from it.
+- **Access follows the record** (`/api/attachments/:type/:recordId[/:fileId]`):
+  - job files need the jobs tab (adding or removing needs its edit right);
+  - Knowledge Hub files need the knowledge_hub tab;
+  - both stay inside the person's countries;
+  - a file id only works under the record it belongs to.
+- **Safety:**
+  - only document and image types are accepted (no HTML, SVG, scripts or executables), up to 25 MB, names cleaned;
+  - files are served with `nosniff`, a sandboxing Content-Security-Policy, and as downloads except images and PDFs.
+- **Data package:** file records are exported but never imported. The files themselves stay in R2 and aren't in the package.
+- **Production:** create the bucket once with `npx wrangler r2 bucket create slkops-files`, run the migration, then deploy. Without the bucket the section says storage isn't set up, and JRA uploads still work (the original just isn't kept).
+- **Verified 2026-10-25 (dev server, local R2):**
+  - a PDF uploaded; an .html file and an unknown category refused;
+  - a JRA upload kept its Excel, and downloading it gave a byte-identical file with the expected headers;
+  - the PDF opened inline;
+  - removing it hid it (later fetch 404); fetching through a different job's address gave 404; no session gave 401;
+  - in the browser, a PNG uploaded through the panel showed in the list with View / Download, and its thumbnail decodes (40×30).
+  - Unit tests: 199.

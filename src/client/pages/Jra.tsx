@@ -219,7 +219,7 @@ export function JraUpload({ jobId }: { jobId: string }) {
   const confirm = async () => {
     if (!file) return;
     setBusy(true); setError(null);
-    try { await send(file, false); await qc.invalidateQueries({ queryKey: ['jra', jobId] }); setFile(null); setPreview(null); } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
+    try { await send(file, false); await qc.invalidateQueries({ queryKey: ['jra', jobId] }); qc.invalidateQueries({ queryKey: ['attachments', 'job', jobId] }); setFile(null); setPreview(null); } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   const close = () => { setFile(null); setPreview(null); setError(null); };
   return (

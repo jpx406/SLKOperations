@@ -10,6 +10,7 @@ import type { Job, Lookups } from '../../shared/types';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
 import { useMe } from '../auth';
 import { JraBanner, useJraLock } from './Jra';
+import { Attachments } from '../components/Attachments';
 import { JobLogEvents } from '../components/JobLogEvents';
 import { BonusDistribution } from './Bonus';
 import { PreJobNotePanel } from './PreJobNotes';
@@ -419,6 +420,7 @@ export function JobEditor() {
             )}
           </Card>
         ))}
+        {job && <Card className="mt-4"><Attachments entity="job" id={job.id} /></Card>}
       </div>
     </section>
   );
