@@ -10,6 +10,7 @@ import { api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { saveFile } from '../components/charts';
 import type { LogEvent } from '../components/JobLogEvents';
+import { SignatureBadge } from '../components/Signature';
 import { Banner, Button, Skeleton } from '../components/ui';
 
 // Full Job Report and Job Package (S41): everything known about one job on one printable page, and the same
@@ -76,6 +77,7 @@ export function JobReport() {
           {row('Toolstring', (j.toolstring ?? []).length ? `${(j.toolstring ?? []).map((p) => p.component).join(' → ')} (${t.length_ft ?? '—'} ft, max OD ${t.max_od_in ?? '—'} in, stem ${t.stem_weight_lb ?? '—'} lb)` : null)}
           {row('Crew', (crew.data?.crew ?? []).map((m) => `${m.full_name} (${ROLE[m.crew_role] ?? m.crew_role})`).join(', '))}
           {row('JRA', jra.data?.jra ? `${jra.data.jra.status} · score ${jra.data.jra.risk_score} · ${jra.data.jra.approval_level ?? ''}${jra.data.jra.decided_by ? ` · decided by ${jra.data.jra.decided_by}` : ''}` : jra.data?.reasons.length ? `needed (${jra.data.reasons.join(', ')}) but not started` : 'not needed')}
+          {jra.data?.jra?.status === 'approved' && row('JRA signature', <SignatureBadge type="jra" id={j.id} />)}
           {pjn.data !== undefined && row('Pre-Job Note', pjn.data ? `${pjn.data.log_no} v${pjn.data.current_version} · ${pjn.data.status === 'sent' ? 'sent' : 'not sent'}` : 'none')}
         </tbody></table></section>
         <section><h2 className="label-caps mb-1 text-text-muted">Execution</h2><table className="w-full"><tbody>

@@ -3,6 +3,7 @@ import { cleanLines, defaultLines, money, poolFor, type CrewMember, type CrewRol
 import { filterSql, parseFilters } from '../shared/filters';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { getJob } from './jobs';
+import { revokeStatement, signStatement } from './signatures';
 
 // Bonus (Administrator Manual 1 and 3). Every route here sits behind step-up re-authentication (see index.ts).
 // The distribution on Closure is for Admin and SDM roles only, on completed jobs; approval locks it.
@@ -134,6 +135,7 @@ bonus.post('/jobs/:id/approve', async (c) => {
   if (cur.status !== 'draft') return c.json({ error: cur.status === 'approved' ? 'Already approved' : 'Save the distribution first' }, 409);
   const at = new Date().toISOString();
   await c.env.DB.batch([
+    await signStatement(c.env, user, 'bonus', cur.job.id),
     c.env.DB.prepare(`UPDATE job_bonus_lines SET status = 'approved', approved_by = ?, approved_at = ? WHERE job_id = ?`).bind(user.username, at, cur.job.id),
     audit(c.env, user, 'approve', cur.job.id, `Bonus approved for ticket ${cur.job.ticket_no ?? '—'}`),
   ]);
@@ -150,6 +152,7 @@ bonus.post('/jobs/:id/reopen', async (c) => {
   if (!String(reason ?? '').trim()) return c.json({ error: 'Say why it is reopened' }, 400);
   await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE job_bonus_lines SET status = 'draft', approved_by = NULL, approved_at = NULL WHERE job_id = ?`).bind(cur.job.id),
+    revokeStatement(c.env, user, 'bonus', cur.job.id, String(reason)),
     audit(c.env, user, 'reopen', cur.job.id, `Bonus reopened for ticket ${cur.job.ticket_no ?? '—'}: ${String(reason).slice(0, 300)}`),
   ]);
   return c.json({ ok: true, bonus: await jobBonus(c.env, user, cur.job.id) });

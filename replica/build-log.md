@@ -746,3 +746,29 @@ Every label, message and empty state was written here. No code, assets or copy f
   - API: created two made-up cards; moved one to Confirmed; created the job and linked it; an SDM can read the board.
   - Browser (page scripts): the columns show 1 / 0 / 1 with the job link; Make it a job on a card without date or unit explains why it can't; the arrow moved a card to Likely.
   - Unit tests: card check, reorder, rules.
+
+## Milestone 6f: digital sign-off on approval
+
+**Owner decision, 2026-10-25:** no drawn signatures. Approving signs digitally.
+
+- **What gets signed:** approving a JRA, a job's bonus distribution, or a person's attendance month writes a signature in the same batch as the approval (`signatures` table, migration 0005). Each signature holds:
+  - who signed, their name, role and the time;
+  - a SHA-256 fingerprint of exactly what was approved: the JRA answers, score and level; the bonus lines; or the month's attendance codes;
+  - an HMAC-SHA256 seal over all of that, made with the Worker secret `SIGNING_KEY`.
+- **Checking:** every time a signature is shown, the server recomputes both.
+  - **Valid:** the record is exactly as approved.
+  - **Changed after signing:** the record was edited, for example in the database directly.
+  - **Does not verify:** the signature row itself was altered.
+  - **Withdrawn:** reopening a bonus distribution or unapproving an attendance month withdraws the signature with the reason. Withdrawn signatures are kept as history.
+- **Where it shows:**
+  - under the approval on the JRA page and on the bonus distribution;
+  - a "JRA signature" row on the Full Job Report;
+  - a "signed" link next to each approved attendance row, which loads only when opened.
+- **Data package:** signatures are exported but never imported, so a package can't plant a signature.
+- **Without `SIGNING_KEY`:** signatures are recorded and fingerprinted but not sealed, and the screen says so.
+- **Verified 2026-10-25 (API, local key):**
+  - an attendance approval showed valid; unapproving showed withdrawn ("unapproved"); re-approving added a new valid signature with the old one kept;
+  - inserting an attendance code straight into the database turned it to "changed after signing", and removing it turned it back to valid;
+  - editing the signer's name in the signatures row showed "does not verify".
+  - Unit tests: canonical JSON, fingerprint, seal, every state, the export-only rule, read rules.
+- **Not checked:** the screens in the browser (the pane lost its session after the server restart). The JRA and bonus approvals use the same signing code as attendance but weren't run live.

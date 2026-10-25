@@ -11,3 +11,5 @@ RECON_START_DATE=2026-09-01
 ANTHROPIC_API_KEY=
 # Optional: Cloudflare AI Gateway URL for Anthropic
 ANTHROPIC_BASE_URL=
+# Digital sign-off: HMAC key that seals approval signatures (any long random string; keep it secret)
+SIGNING_KEY=

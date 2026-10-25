@@ -42,7 +42,7 @@ Job Log sequence of events,jobs,should,yes,yes,"S42 not opened; 3e: timestamped 
 Offline wellsite job log,jobs,could,yes,yes,"S06 Offline version; 3e: entries kept on the device without signal and uploaded on reconnect, idempotent by client id"
 Full Job Report PDF,documents,should,yes,yes,"S41 not opened; 3e: one printable page with every stage, crew, JRA, Pre-Job Note, events and 8MF; revenue left out"
 Job Package export,documents,should,yes,yes,"S41 not opened; 3e: zip with report.html, job.json and CSV tables, built in the browser"
-Signatures on job,documents,could,yes,no,S41 not opened; Closure already records job log and ticket signed as checks; on-screen signature capture would be new design: owner decision
+Signatures on job,documents,could,yes,yes,owner 2026-10-25: no drawn signatures; approving signs digitally (JRA, bonus, attendance) — 6f
 JRA risk assessment form with live score,jra,should,yes,yes,"S28 QAF12069; 33 questions; 3b: template as data per country (SLK default written fresh, not QAF12069), Yes/No/N-A, live score, approval level, progress, autosave"
 JRA send for approval and approval level,jra,should,yes,yes,"S28 S08 DRAFT/SENT/APPROVED; 3b: send to an SDM, approve or reject with reason; Execution locked on jobs with explosives, H2S, 5,000 psi+ or special setup until approved"
 Job Log spreadsheet view with 9 filters,job log,must,yes,yes,"S08; 2g: status plus 9 filters in the address, search, 34 columns incl. crew and third parties, sticky header and first column, row opens the job; revenue left out"

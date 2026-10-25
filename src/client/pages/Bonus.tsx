@@ -10,6 +10,7 @@ import { useMe } from '../auth';
 import { BarChart, KpiTile, saveFile } from '../components/charts';
 import { FilterBar, useFilters } from '../components/FilterBar';
 import { StepUpGate, UnlockedBadge, needsStepUp } from '../components/StepUp';
+import { SignatureBadge } from '../components/Signature';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputSized } from '../components/ui';
 
 // Bonus (Administrator Manual 1 and 3): Report (per person), Analysis (trends and % of revenue), Rules (admin),
@@ -242,7 +243,7 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
         {d.pool.note && <span className="ml-1 text-warning">· {d.pool.note}</span>}
       </p>
       {d.job.status !== 'completed' && <p className="mb-2 text-xs text-text-subtle">Opens once the job is completed.</p>}
-      {d.status === 'approved' && <div className="mb-2"><Banner tone="success">Approved by {d.lines[0]?.approved_by}. {me?.role === 'admin' ? 'Reopening affects the Bonus Report and statements already sent.' : 'Only an admin can reopen it.'}</Banner></div>}
+      {d.status === 'approved' && <div className="mb-2"><Banner tone="success">Approved by {d.lines[0]?.approved_by}. {me?.role === 'admin' ? 'Reopening affects the Bonus Report and statements already sent.' : 'Only an admin can reopen it.'}</Banner><SignatureBadge className="mt-2" type="bonus" id={jobId} /></div>}
       {error && <div className="mb-2"><Banner tone="danger">{error}</Banner></div>}
       {!d.crew.length ? <p className="text-sm text-text-subtle">Name the crew on Preparation first.</p> : (
         <table className="w-full max-w-2xl text-sm">

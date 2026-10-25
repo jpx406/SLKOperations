@@ -20,6 +20,8 @@ export interface Env {
   ANTHROPIC_API_KEY?: string;
   /** Optional: route the agent through Cloudflare AI Gateway (its Anthropic endpoint URL). */
   ANTHROPIC_BASE_URL?: string;
+  /** Worker secret: the HMAC key that seals approval signatures. Without it signatures are recorded but not sealed. */
+  SIGNING_KEY?: string;
 }
 
 export interface Session {

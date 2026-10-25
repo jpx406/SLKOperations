@@ -13,7 +13,7 @@ export const IMPORT_ORDER = [
   'job_bonus_lines', 'recon_findings', 'recon_links', 'doc_counters', 'knowledge_docs', 'quick_plan_cards', 'ai_settings', 'ai_usage', 'kpi_parity_runs',
 ];
 /** Exported for the record, never imported. */
-export const EXPORT_ONLY = ['audit_log'];
+export const EXPORT_ONLY = ['audit_log', 'signatures'];
 /** Append-only history: an import may add rows but never change one. */
 export const IMMUTABLE = ['pre_job_note_versions', 'eight_min_facts_versions', 'inventory_movements'];
 

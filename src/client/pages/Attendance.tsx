@@ -7,6 +7,7 @@ import { workbook } from '../../shared/xlsx';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { saveFile } from '../components/charts';
+import { SignedToggle } from '../components/Signature';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
 // Attendance (S17): one row per person, one column per day. Click a cell to pick a code, or switch on
@@ -277,6 +278,7 @@ export function Attendance() {
                         <td className="border-b border-border px-2 whitespace-nowrap">
                           {appr ? (
                             <span className="inline-flex items-center gap-1 text-success" title={`Approved by ${appr.approved_by}`}><Check aria-hidden className="size-3.5" />{appr.approved_by}
+                              <SignedToggle type="attendance" id={`${p.id}|${month}`} />
                               {canEdit && <Button size="sm" variant="ghost" onClick={() => approve(p, false)}>Unapprove</Button>}</span>
                           ) : canEdit ? <Button size="sm" onClick={() => approve(p, true)} disabled={days.some((d) => cellKey(p.id, d) in pending)}>Approve</Button> : <span className="text-text-subtle">—</span>}
                         </td>

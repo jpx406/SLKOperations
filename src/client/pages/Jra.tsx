@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, Check, Send, ShieldCheck, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
+import { SignatureBadge } from '../components/Signature';
 import { approvalLevel, progress, riskScore, type Answer, type Template } from '../../shared/jra';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
@@ -72,7 +73,7 @@ export function JraPage() {
       </div>
       {d.reasons.length > 0 ? <div className="mb-3"><Banner tone="warning">This job needs an approved JRA before Execution: it has {d.reasons.join(', ')}.</Banner></div>
         : <div className="mb-3"><Banner tone="info">This job doesn’t need a JRA, but you can still complete one.</Banner></div>}
-      {status === 'approved' && <div className="mb-3"><Banner tone="success">Approved by {d.jra?.decided_by} on {when(d.jra?.decided_at ?? null)}. Answers are locked.</Banner></div>}
+      {status === 'approved' && <div className="mb-3"><Banner tone="success">Approved by {d.jra?.decided_by} on {when(d.jra?.decided_at ?? null)}. Answers are locked.</Banner><SignatureBadge className="mt-2" type="jra" id={id} /></div>}
       {status === 'sent' && <div className="mb-3"><Banner tone="info">Sent to {d.jra?.sent_to} on {when(d.jra?.sent_at ?? null)} for approval.</Banner></div>}
       {status === 'draft' && d.jra?.decided_by && <div className="mb-3"><Banner tone="warning">Rejected by {d.jra.decided_by} on {when(d.jra.decided_at)}. Update the answers and send it again.</Banner></div>}
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}

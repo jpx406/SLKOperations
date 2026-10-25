@@ -150,6 +150,8 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/ai\/status$/, menus: ['ai_agent'] },
   { re: /^\/api\/knowledge(\/[^/]+)?$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/quick-plan$/, menus: ['quick_plan'] },
+  { re: /^\/api\/signatures\/(jra|bonus)\/[^/]+$/, menus: ['jobs'] },
+  { re: /^\/api\/signatures\/attendance\/[^/]+$/, menus: ['attendance'] },
 ];
 
 export function readAllowed(path: string, menus: Record<string, MenuRight>): boolean {

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { DEFAULT_TEMPLATE, approvalLevel, cleanAnswers, jraReasons, progress, riskScore, type Answer, type Template } from '../shared/jra';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { getJob } from './jobs';
+import { signStatement } from './signatures';
 
 // JRA (S28) for one job: answer, score live, send to an SDM, approve or reject. Approved answers are locked.
 
@@ -103,7 +104,10 @@ jra.post('/:jobId/decide', async (c) => {
   const { decision, note } = await c.req.json<{ decision?: string; note?: string }>().catch(() => ({} as { decision?: string; note?: string }));
   if (decision !== 'approved' && decision !== 'rejected') return c.json({ error: 'Approve or reject' }, 400);
   const at = new Date().toISOString();
+  // approving signs: who, when, role and a fingerprint of the answers (shared/signature.ts)
+  const signature = decision === 'approved' ? [await signStatement(c.env, user, 'jra', job.id)] : [];
   await c.env.DB.batch([
+    ...signature,
     decision === 'approved'
       ? c.env.DB.prepare(`UPDATE jras SET status = 'approved', decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ?`).bind(user.username, at, at, row.id)
       : c.env.DB.prepare(`UPDATE jras SET status = 'draft', decided_by = ?, decided_at = ?, sent_to = NULL, sent_at = NULL, updated_at = ? WHERE id = ?`).bind(user.username, at, at, row.id),

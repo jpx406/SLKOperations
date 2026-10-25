@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { EMAIL_RE, MONTH_RE, approvalEmail, groupLabel, isCode, monthDays, rowSummary, type Code } from '../shared/attendance';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { revokeStatement, signStatement } from './signatures';
 
 // Attendance (S17). People with the Attendance edit right see and edit the whole sheet for their countries;
 // everyone else with the tab sees only their own row (linked through employees.wg_username), read-only.
@@ -93,7 +94,11 @@ attendance.post('/approve', async (c) => {
   if (!MONTH_RE.test(String(b.month ?? ''))) return c.json({ error: 'month must be YYYY-MM' }, 400);
   const e = await c.env.DB.prepare('SELECT id, full_name, country FROM employees WHERE id = ?').bind(b.employee_id ?? '').first<{ id: string; full_name: string; country: string }>();
   if (!e || !user.countries.includes(e.country)) return c.json({ error: 'Person not found' }, 404);
+  const already = await c.env.DB.prepare('SELECT 1 FROM attendance_approvals WHERE employee_id = ? AND month = ?').bind(e.id, b.month).first();
+  const key = `${e.id}|${b.month}`;
+  const signing = b.approved === false ? (already ? [revokeStatement(c.env, user, 'attendance', key, 'unapproved')] : []) : already ? [] : [await signStatement(c.env, user, 'attendance', key)];
   await c.env.DB.batch([
+    ...signing,
     b.approved === false
       ? c.env.DB.prepare('DELETE FROM attendance_approvals WHERE employee_id = ? AND month = ?').bind(e.id, b.month)
       : c.env.DB.prepare(`INSERT INTO attendance_approvals (id, employee_id, month, approved_by, approved_at) VALUES (?, ?, ?, ?, ?)
