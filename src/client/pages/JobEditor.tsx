@@ -10,6 +10,7 @@ import type { Job, Lookups } from '../../shared/types';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
 import { useMe } from '../auth';
 import { JraBanner, useJraLock } from './Jra';
+import { JobLogEvents } from '../components/JobLogEvents';
 import { PreJobNotePanel } from './PreJobNotes';
 import { CrewPanel, DetailsSection, SectionTitle, ToolstringBuilder, WirePanel, serviceFlags } from '../components/jobParts';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
@@ -210,6 +211,7 @@ export function JobEditor() {
         </h1>
         {job && <StatusPill status={job.status} />}
         <SaveIndicator state={save} />
+        {job && <Link to={`/operation/jobs/${job.id}/report`} className="inline-flex h-8 items-center rounded-md border border-border-strong px-3 text-xs font-semibold hover:bg-surface-2">Job report</Link>}
         {job && me?.menus.jobs?.delete && <DeleteJob job={job} onDeleted={() => { qc.invalidateQueries({ queryKey: ['jobs'] }); qc.invalidateQueries({ queryKey: ['schedule'] }); navigate('/operation/jobs', { replace: true }); }} />}
       </div>
 
@@ -312,6 +314,12 @@ export function JobEditor() {
               <Metric label="Job efficiency" value={eff != null ? `${eff}%` : '—'} note="(1 − NPT ÷ op hours) × 100" />
               <Metric label="Run efficiency" value={runEff != null ? `${runEff}%` : '—'} note="successful ÷ total runs" />
             </dl>
+            {job && (
+              <>
+                <SectionTitle aside="Kept on the device when there is no signal">Job log · sequence of events</SectionTitle>
+                <JobLogEvents jobId={job.id} canEdit={canEditJobs && !jraLocked} />
+              </>
+            )}
           </Card>
         )}
 

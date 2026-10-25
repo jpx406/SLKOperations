@@ -457,3 +457,48 @@ jobs.delete('/:id', async (c) => {
   ]);
   return c.json({ ok: true });
 });
+
+// ---- Job Log · Sequence of Events (S42) ----
+// Entries carry a client id made on the device, so an entry typed offline and replayed twice is stored once.
+
+jobs.get('/:id/events', async (c) => {
+  const job = await getJob(c.env, c.get('user'), c.req.param('id'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const { results } = await c.env.DB.prepare('SELECT id, client_id, occurred_at, run_no, depth_ft, text, created_by, created_at FROM job_log_events WHERE job_id = ? ORDER BY occurred_at, created_at').bind(job.id).all();
+  return c.json(results);
+});
+
+jobs.post('/:id/events', async (c) => {
+  const user = c.get('user');
+  const job = await getJob(c.env, user, c.req.param('id'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const b = await c.req.json<{ client_id?: string; occurred_at?: string; run_no?: unknown; depth_ft?: unknown; text?: string }>().catch(() => ({} as Record<string, never>));
+  const clientId = String(b.client_id ?? '');
+  if (!/^[\w-]{8,64}$/.test(clientId)) return c.json({ error: 'Missing entry id' }, 400);
+  const t = Date.parse(String(b.occurred_at ?? ''));
+  if (!Number.isFinite(t)) return c.json({ error: 'Give the time of the entry' }, 400);
+  const text = String(b.text ?? '').trim().slice(0, 2000);
+  if (!text) return c.json({ error: 'Write what happened' }, 400);
+  const run = b.run_no === '' || b.run_no == null ? null : Number(b.run_no);
+  const depth = b.depth_ft === '' || b.depth_ft == null ? null : Number(b.depth_ft);
+  if (run !== null && (!Number.isInteger(run) || run < 0 || run > 999)) return c.json({ error: 'Run number must be a whole number' }, 400);
+  if (depth !== null && (!Number.isFinite(depth) || depth < 0 || depth > 40000)) return c.json({ error: 'Depth must be between 0 and 40,000 ft' }, 400);
+  await c.env.DB.prepare(
+    `INSERT INTO job_log_events (id, job_id, client_id, occurred_at, run_no, depth_ft, text, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (job_id, client_id) DO NOTHING`,
+  ).bind(crypto.randomUUID(), job.id, clientId, new Date(t).toISOString(), run, depth, text, user.username).run();
+  return c.json({ ok: true }, 201);
+});
+
+jobs.delete('/:id/events/:eventId', async (c) => {
+  const user = c.get('user');
+  const job = await getJob(c.env, user, c.req.param('id'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const ev = await c.env.DB.prepare('SELECT id, text FROM job_log_events WHERE id = ? AND job_id = ?').bind(c.req.param('eventId'), job.id).first<{ id: string; text: string }>();
+  if (!ev) return c.json({ error: 'Entry not found' }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM job_log_events WHERE id = ?').bind(ev.id),
+    audit(c.env, user, 'edit', job.id, `job log entry removed: ${ev.text.slice(0, 200)}`),
+  ]);
+  return c.json({ ok: true });
+});

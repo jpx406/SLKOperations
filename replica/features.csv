@@ -38,10 +38,10 @@ Job editor Closure stage,jobs,must,yes,yes,"S07; 2d: sign-off, revenue, bonus re
 Failure fields unlock only when NPT or failure,jobs,must,yes,yes,"S07; 2d: screen, API and database check"
 Stage completion percentage,jobs,must,yes,yes,S04 stage cards; build: Design and Execution only; 2d: all stages; closure adds the failure follow-up when it applies
 Autosave with save-state indicator,jobs,should,yes,yes,S04 saving/Saved; build: with 409 conflict banner
-Job Log sequence of events,jobs,should,yes,no,S42 not opened
-Offline wellsite job log,jobs,could,yes,no,S06 Offline version
-Full Job Report PDF,documents,should,yes,no,S41 not opened
-Job Package export,documents,should,yes,no,S41 not opened
+Job Log sequence of events,jobs,should,yes,yes,"S42 not opened; 3e: timestamped entries with run and depth on Execution, removable, in the report and package"
+Offline wellsite job log,jobs,could,yes,yes,"S06 Offline version; 3e: entries kept on the device without signal and uploaded on reconnect, idempotent by client id"
+Full Job Report PDF,documents,should,yes,yes,"S41 not opened; 3e: one printable page with every stage, crew, JRA, Pre-Job Note, events and 8MF; revenue left out"
+Job Package export,documents,should,yes,yes,"S41 not opened; 3e: zip with report.html, job.json and CSV tables, built in the browser"
 Signatures on job,documents,could,yes,no,S41 not opened
 JRA risk assessment form with live score,jra,should,yes,yes,"S28 QAF12069; 33 questions; 3b: template as data per country (SLK default written fresh, not QAF12069), Yes/No/N-A, live score, approval level, progress, autosave"
 JRA send for approval and approval level,jra,should,yes,yes,"S28 S08 DRAFT/SENT/APPROVED; 3b: send to an SDM, approve or reject with reason; Execution locked on jobs with explosives, H2S, 5,000 psi+ or special setup until approved"
@@ -103,7 +103,7 @@ Service catalogue = WIREGUARD job types with local profiles (domain and section 
 Toolstring builder on Preparation (component OD length weight),slickline,must,no,yes,new for SLK; feeds max tool OD and lubricator length check; 2d
 Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,yes,"new for SLK; build: overpull not on screen yet; 2d: overpull added to Execution"
 Survey details for memory gauge jobs (stops gradients PBU),slickline,should,no,yes,"new for SLK; unlocked by is_memory; 2d: memory survey section gated by is_memory"
-Wire cut on the job compared with WIREGUARD runs,slickline,should,no,no,reconciliation value check; WIREGUARD owns the wire record
+Wire cut on the job compared with WIREGUARD runs,slickline,should,no,yes,"reconciliation value check; WIREGUARD owns the wire record; 2e: value_mismatch check covers depth, jarring and wire cut"
 Explosives link for tubing punch and cutter jobs,slickline,could,no,no,is_explosive services prompt a Mobilize to Well
 Separate inventory rights for explosives vs slickline hardware,inventory,must,no,yes,"storekeeper role; tested 2026-10-24; 2k: each inventory has its own read and write rules"
 WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,yes,"cron every 15 min; read-only service binding; build: units, job types, locations, fields, rigs; wires drums runs in 2b; 2b: plus documents, alerts, settings, build stamp; tested against mock with 1,210 runs"

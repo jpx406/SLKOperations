@@ -556,6 +556,20 @@ Pre-Job Notes access follows the manual.
   - Wire KPIs: G1 1,207 runs, C12 76.8 %, C1 17.6 % with the failure reasons, C6 2.7 %, J7 36 runs over the limit; the parity banner shows for the admin.
 - **Unit tests:** 134 of 134 (including the parity cases).
 
+## Milestone 3e: Job Log sequence of events (S42), Full Job Report and Job Package (S41)
+
+- **Sequence of events:** `GET/POST/DELETE /api/jobs/:id/events`. Each entry has a time, an optional run and depth, and text. The client makes the id, and `ON CONFLICT (job_id, client_id) DO NOTHING` makes a retried upload harmless. The panel sits on Execution and follows the JRA lock.
+- **Offline:** entries go into a device queue (localStorage) first and upload straight away. If the network fails they stay, with a banner, and upload on the browser's `online` event or with "Upload now". A server refusal is dropped with its message; a network failure keeps the entry.
+- **Full Job Report** (`/operation/jobs/:id/report`, linked from the editor header): Design, Preparation (with crew, JRA and Pre-Job Note), Execution, the sequence of events, 8 Min. Facts, and Closure on one printable page. Revenue is left out.
+- **Job Package:** a zip made in the browser with the existing zip writer: `report.html` (self-contained), `job.json`, and CSVs of the events, toolstring and crew.
+- **Matrix:** "wire cut on the job vs WIREGUARD runs" was already covered by the 2e `value_mismatch` check.
+
+**Verified 2026-10-25:**
+- **API:** the same client id posted twice gives one entry; a bad time is refused.
+- **Browser (playwright):** with the page's `fetch` failing, a new entry stayed queued ("1 entry is kept on this device…"). After restoring the network and firing `online`, the queue emptied and the entry is listed. The report shows both entries and every section.
+
+**Not checked:** opening the downloaded zip (the same zip writer is already proven by the XLSX files opening in Excel).
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

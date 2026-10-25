@@ -81,6 +81,8 @@ emf.get('/', async (c) => {
   const binds: unknown[] = [JSON.stringify(c.get('user').countries)];
   if (status === 'saved' || status === 'sent') { where.push('r.status = ?'); binds.push(status); }
   if (q) { where.push('(r.log_no LIKE ? OR r.title LIKE ? OR r.well LIKE ? OR j.ticket_no LIKE ?)'); binds.push(...Array(4).fill(`%${q}%`)); }
+  const jobId = c.req.query('job');
+  if (jobId) { where.push('r.job_id = ?'); binds.push(jobId); }
   const { results } = await c.env.DB.prepare(
     `SELECT r.id, r.log_no, r.title, r.well, r.status, r.current_version, r.total_npt, r.severity, r.created_by, r.last_saved_by, r.last_saved_at,
             r.sent_by, r.sent_at, j.id AS job_id, j.ticket_no, (SELECT count(*) FROM incidents i WHERE i.report_id = r.id) AS incidents
