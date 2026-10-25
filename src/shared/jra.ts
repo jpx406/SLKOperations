@@ -2,9 +2,20 @@
 // The default below is a slickline starting point written for SLK Ops, not a copy of any NESR form.
 
 export type Answer = 'yes' | 'no' | 'na';
-export interface Question { id: string; section: string; text: string; risk_if: 'yes' | 'no'; points: number; required: boolean }
+/** A requirement or approver that applies when the answer is one of `when` (from the form's formulas). */
+export interface Conditional { text: string; when: Answer[] }
+export interface Question {
+  id: string; section: string; text: string; risk_if: 'yes' | 'no'; points: number; required: boolean;
+  /** Loaded from NESR's form: the answers offered, the points each one scores, and what each one triggers. */
+  options?: Answer[]; scores?: Partial<Record<Answer, number>>; requirement?: Conditional; approver?: Conditional; guidance?: string;
+}
 export interface ApprovalLevel { min: number; label: string }
-export interface Template { code: string; revision: string; sections: Record<string, string>; questions: Question[]; approval_levels: ApprovalLevel[] }
+export interface Template {
+  code: string; revision: string; sections: Record<string, string>; questions: Question[]; approval_levels: ApprovalLevel[];
+  title?: string; notes?: string[];
+  /** Points added to the score for each "Exemption Required" (the form's COUNTIF × N). */
+  exemption_points?: number;
+}
 
 const q = (id: string, text: string, risk_if: 'yes' | 'no', points: number, required = true): Question => ({ id, section: id[0], text, risk_if, points, required });
 
@@ -46,9 +57,32 @@ export const DEFAULT_TEMPLATE: Template = {
   approval_levels: [{ min: 0, label: 'SDM' }, { min: 20, label: 'Operations Manager' }, { min: 35, label: 'Country Manager' }],
 };
 
-/** Risk Index Score: points for every answer that matches the question's risk side. */
+export const ANSWER_LABEL: Record<Answer, string> = { yes: 'Yes', no: 'No', na: 'N/A' };
+export const optionsOf = (x: Question): Answer[] => x.options ?? ['yes', 'no', 'na'];
+
+/** Points one answer scores: from the form's per-answer points when loaded, else the risk side. */
+export function pointsFor(x: Question, a: Answer | undefined): number {
+  if (!a) return 0;
+  if (x.scores) return x.scores[a] ?? 0;
+  return a === x.risk_if ? x.points : 0;
+}
+
+/** Answers that trigger a requirement (MOC or exemption) or a named approver. */
+export function flags(t: Template, answers: Record<string, Answer>) {
+  return t.questions.flatMap((x) => {
+    const a = answers[x.id];
+    if (!a) return [];
+    const requirement = x.requirement?.when.includes(a) ? x.requirement.text : null;
+    const approver = x.approver?.when.includes(a) ? x.approver.text : null;
+    return requirement || approver ? [{ id: x.id, requirement, approver }] : [];
+  });
+}
+
+export const exemptions = (t: Template, answers: Record<string, Answer>) => flags(t, answers).filter((f) => f.requirement && /exemption/i.test(f.requirement)).length;
+
+/** Risk Index Score: points of every answer, plus the form's points per exemption. */
 export function riskScore(t: Template, answers: Record<string, Answer>): number {
-  return t.questions.reduce((s, x) => s + (answers[x.id] === x.risk_if ? x.points : 0), 0);
+  return t.questions.reduce((s, x) => s + pointsFor(x, answers[x.id]), 0) + exemptions(t, answers) * (t.exemption_points ?? 0);
 }
 
 export function approvalLevel(t: Template, score: number): string {
@@ -63,12 +97,14 @@ export function progress(t: Template, answers: Record<string, Answer>) {
 
 export function cleanAnswers(t: Template, input: unknown): Record<string, Answer> | { error: string } {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { error: 'Answers must be a set of question ids' };
-  const ids = new Set(t.questions.map((x) => x.id));
+  const byId = new Map(t.questions.map((x) => [x.id, x]));
   const out: Record<string, Answer> = {};
   for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
-    if (!ids.has(k)) return { error: `Unknown question ${k}` };
+    const x = byId.get(k);
+    if (!x) return { error: `Unknown question ${k}` };
     if (v === null || v === '') continue;
     if (v !== 'yes' && v !== 'no' && v !== 'na') return { error: `${k}: answer Yes, No or N/A` };
+    if (!optionsOf(x).includes(v)) return { error: `${k}: ${ANSWER_LABEL[v]} isn’t an answer this form offers` };
     out[k] = v;
   }
   return out;

@@ -772,3 +772,38 @@ Every label, message and empty state was written here. No code, assets or copy f
   - editing the signer's name in the signatures row showed "does not verify".
   - Unit tests: canonical JSON, fingerprint, seal, every state, the export-only rule, read rules.
 - **Not checked:** the screens in the browser (the pane lost its session after the server restart). The JRA and bonus approvals use the same signing code as attendance but weren't run live.
+
+## Milestone 6g: JRA from NESR's Excel form (QAF14021)
+
+**Owner request, 2026-10-25:** the JRA must show on Preparation and be uploadable from the Excel form, updated by uploading it again.
+
+- **JRA briefing on Preparation:** always shown. It gives the status, score → approval level, the MOC / exemption count, the form and revision, "Upload Excel JRA", and Start / Open JRA. Before, the banner hid itself on jobs that didn't strictly need a JRA.
+- **Upload** (`POST /api/jra/:job/upload`, raw .xlsx body, jobs edit right, draft only):
+  - a dry run first shows the form and revision, answered / total, score and level, what each answer triggers, which answers change, and any warnings;
+  - confirming replaces the draft's answers;
+  - uploading again updates it, until it is sent for approval.
+- **What's read from the file:**
+  - the form's header (job no., performed by, position, date, client, location, rig/well, the job) and the remarks per question;
+  - the file name, who uploaded it and when (new `jras.form_details`, migration 0006).
+  - It warns when the form's country or job no. doesn't match the job.
+- **The form defines the JRA** (`src/shared/jraForm.ts` over a small reader, `src/shared/xlsxRead.ts`). Nothing about QAF14021 is hard-coded:
+  - **Sections:** rows with "Answer" over the answer column.
+  - **Questions:** the numbered rows under each section.
+  - **Points per answer:** each row's `IF(Rn="NO",a,b)`.
+  - **Requirements and approvers:** "MOC Required" / "Exemption Required" and the approver from their IF formulas.
+  - **Options:** Yes / No / N/A from the list validations.
+  - **Guidance:** cell comments.
+  - **Approval levels:** the nested `IF(P<10,"Cell Leader",…)`.
+  - **Points per exemption:** the COUNTIF × 5.
+  - **Notes:** the "JRA Notes" lines.
+- **Revisions:** a new revision is stored for the country the first time it's uploaded and becomes the form for new JRAs (an older revision doesn't take over). The same revision with different questions is refused once another JRA uses it, so an approved JRA never changes underneath.
+- **Quirks in QAF14021 Rev 3**, surfaced as warnings and kept as the form defines them:
+  - C3 and D7 have no risk formula, so they score 0;
+  - D9 "N/A" scores 6, like "No";
+  - the section C total (`SUM(T23:T25)`) leaves out C1, so SLK Operations counts C1 and can score higher than the sheet.
+- **Not in the repository:** the form file itself. Tests use a small made-up form with the same layout, plus a check against the real file that runs only on a machine that has it.
+- **Verified 2026-10-25:**
+  - Real file through the API: dry run, then upload; QAF14021 Rev 3 loaded with 26 questions, all 26 answers taken, header saved. Re-uploading recognised the same form. Answering A2 No + B2 Yes on screen scored 20 → Country Technical Manager (5 + 5 + 2 exemptions × 5). New JRAs on other jobs now use QAF14021.
+  - Browser (page scripts): the briefing card on Preparation; the JRA page with form details, per-answer points, Exemption tags, approver, guidance and form notes.
+  - Unit tests: 192.
+- **Local note:** after the real database ID went into `wrangler.jsonc`, local development uses a fresh local database. Reseed it with `scripts/dev-seed.sql` and `scripts/dev-jobs.sql`.
