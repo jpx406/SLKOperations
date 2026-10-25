@@ -836,3 +836,30 @@ Every label, message and empty state was written here. No code, assets or copy f
   - removing it hid it (later fetch 404); fetching through a different job's address gave 404; no session gave 401;
   - in the browser, a PNG uploaded through the panel showed in the list with View / Download, and its thumbnail decodes (40×30).
   - Unit tests: 199.
+
+## Milestone 6i: JRA autosave with the job, approved JRA filed as a PDF
+
+**Owner request, 2026-10-25:** the JRA must always autosave and belong to its job; once approved, a PDF goes into the job's attachments.
+
+- **Bound to the job from the start:** opening a job's JRA (with the jobs edit right) creates its draft record straight away, pinned to the form revision in force that day. Before, the record only appeared after the first answer.
+- **Autosave fixes:**
+  - Each answer is kept on the device at once and saved to the server 0.4 s later.
+  - Leaving the JRA page, hiding the tab or closing it saves immediately (`keepalive`). Before, a change made in the last 0.6 s before leaving was lost.
+  - A failed save is retried every 5 s and when the connection comes back; the answers stay on the device meanwhile and are restored on the next visit if they never reached the server.
+  - Refocusing the tab no longer overwrites answers that are still waiting to save.
+  - Send for approval first pushes anything pending.
+  - The header shows "All changes saved · hh:mm:ss", "Saving…", or "Not saved yet. Kept on this device; retrying."
+- **Approved JRA as a PDF:** approving files `JRA <ticket> <form> Rev <n> approved.pdf` in the job's attachments (category JRA form). It contains:
+  - the form title, code and revision; the job and form header;
+  - the score, approval level and MOC / exemption count;
+  - every question with its answer, points, requirement, approver and remarks;
+  - the form notes;
+  - who approved it and when, and the digital-signature fingerprint.
+  - The approval stands even if storage isn't set up; the page says the PDF wasn't filed.
+  - "File approved PDF again" (`POST /api/jra/:job/pdf`) covers JRAs approved before this, or a removed PDF.
+- **PDF writer** (`src/shared/pdf.ts`): written here, no dependency; A4, Helvetica, word wrap, Windows-1252 text, page numbers and a footer.
+- **Verified 2026-10-25 (dev server):**
+  - sending and approving DV-26071's uploaded JRA filed a 17 KB PDF; it downloads as a valid PDF;
+  - on DV-26072, opening the JRA created its draft (QAF14021 Rev 3), and an answer clicked 50 ms before leaving the page was saved;
+  - unit tests (204) check the PDF's cross-reference offsets and stream lengths and the text it draws.
+- **Not checked:** how the PDF looks on screen. There's no PDF renderer here; a sample file was sent to the owner to open.

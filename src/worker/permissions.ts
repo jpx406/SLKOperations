@@ -110,7 +110,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/pre-job-notes\/[^/]+\/sent$/, menu: 'pre_job_notes', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/pre-job-notes\/[^/]+$/, menu: 'pre_job_notes', action: 'delete' },
   { method: 'PUT', re: /^\/api\/jra\/[^/]+$/, menu: 'jobs', action: 'edit' },
-  { method: 'POST', re: /^\/api\/jra\/[^/]+\/(send|decide|upload)$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/jra\/[^/]+\/(send|decide|upload|pdf)$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/bonus\/(rules|splits)$/, menu: 'bonus', action: 'edit' },
   { method: 'POST', re: /^\/api\/bonus\/statements$/, menu: 'bonus', action: 'edit' },
   { method: 'PUT', re: /^\/api\/bonus\/jobs\/[^/]+$/, menu: 'jobs', action: 'edit' },

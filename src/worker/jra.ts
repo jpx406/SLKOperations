@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { DEFAULT_TEMPLATE, approvalLevel, cleanAnswers, flags, jraReasons, progress, riskScore, type Answer, type Template } from '../shared/jra';
 import { parseJraForm } from '../shared/jraForm';
+import { jraPdf } from '../shared/jraPdf';
+import { ROLE_LABEL } from '../shared/roles';
 import { canonical } from '../shared/signature';
 import { readXlsx } from '../shared/xlsxRead';
 import type { AppBindings, AuthedUser, Env } from './env';
@@ -204,5 +206,35 @@ jra.post('/:jobId/decide', async (c) => {
       : c.env.DB.prepare(`UPDATE jras SET status = 'draft', decided_by = ?, decided_at = ?, sent_to = NULL, sent_at = NULL, updated_at = ? WHERE id = ?`).bind(user.username, at, at, row.id),
     audit(c.env, user, decision === 'approved' ? 'approve' : 'reject', row.id, `JRA for ticket ${job.ticket_no ?? '—'} ${decision}${note ? `: ${String(note).slice(0, 300)}` : ''}`),
   ]);
-  return c.json({ ok: true });
+  if (decision !== 'approved') return c.json({ ok: true });
+  // the approved JRA goes into the job's attachments as a PDF; the approval stands even if storage isn't set up
+  const pdf = await fileApprovedPdf(c.env, user, job.id);
+  return c.json({ ok: true, pdf: 'error' in pdf ? null : pdf.name, pdf_error: 'error' in pdf ? pdf.error : undefined });
+});
+
+/** Builds the approved JRA's PDF from what is stored (answers, form, approval, signature) and files it with the job. */
+async function fileApprovedPdf(env: Env, user: AuthedUser, jobId: string) {
+  const job = await env.DB.prepare('SELECT id, country, ticket_no, well, rig, unit_number, start_date FROM jobs WHERE id = ?').bind(jobId)
+    .first<{ id: string; country: string; ticket_no: string | null; well: string | null; rig: string | null; unit_number: string | null; start_date: string | null }>();
+  const row = await env.DB.prepare('SELECT * FROM jras WHERE job_id = ?').bind(jobId).first<JraRow>();
+  if (!job || !row || row.status !== 'approved') return { error: 'The JRA isn’t approved' };
+  const t = await templateById(env, row.template_id);
+  const approver = await env.DB.prepare('SELECT full_name, role FROM user_roles WHERE username = ?').bind(row.decided_by ?? '').first<{ full_name: string; role: keyof typeof ROLE_LABEL }>();
+  const sig = await env.DB.prepare(`SELECT fingerprint, seal FROM signatures WHERE entity_type = 'jra' AND entity_id = ? AND revoked_at IS NULL ORDER BY signed_at DESC LIMIT 1`).bind(jobId).first<{ fingerprint: string; seal: string | null }>();
+  const bytes = jraPdf({
+    template: t, answers: JSON.parse(row.answers) as Record<string, Answer>, job, details: row.form_details ? JSON.parse(row.form_details) : null,
+    approval: { by: approver?.full_name ?? row.decided_by ?? '', role: approver ? ROLE_LABEL[approver.role] ?? approver.role : '', at: row.decided_at ?? new Date().toISOString(), sent_at: row.sent_at },
+    signature: sig ? { fingerprint: sig.fingerprint, sealed: !!sig.seal } : null,
+  });
+  const name = `JRA ${job.ticket_no ?? job.id.slice(0, 8)} ${t.code} Rev ${t.revision} approved.pdf`.replace(/[\\/:*?"<>|]/g, '-');
+  return storeAttachment(env, user, { country: job.country, entity: 'job', entityId: job.id, category: 'jra_form', name, bytes, note: 'Approved JRA' });
+}
+
+/** Files the PDF for a JRA approved before PDFs were kept, or again if it was removed. */
+jra.post('/:jobId/pdf', async (c) => {
+  const user = c.get('user');
+  const job = await getJob(c.env, user, c.req.param('jobId'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const r = await fileApprovedPdf(c.env, user, job.id);
+  return 'error' in r ? c.json({ error: r.error }, r.error.includes('set up') ? 503 : 409) : c.json({ ok: true, pdf: r.name });
 });

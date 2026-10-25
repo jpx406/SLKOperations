@@ -14,7 +14,7 @@ import { Banner, Button, Card, Field, ProgressBar, Skeleton, cx, inputClass } fr
 interface JraData {
   job: { id: string; ticket_no: string | null; well: string | null; sdm: { username: string; full_name: string } | null };
   template: Template;
-  jra: { status: 'draft' | 'sent' | 'approved' | 'rejected'; answers: Record<string, Answer>; risk_score: number; approval_level: string | null; sent_to: string | null; sent_at: string | null; decided_by: string | null; decided_at: string | null; form_details: FormDetails | null } | null;
+  jra: { status: 'draft' | 'sent' | 'approved' | 'rejected'; answers: Record<string, Answer>; risk_score: number; approval_level: string | null; sent_to: string | null; sent_at: string | null; decided_by: string | null; decided_at: string | null; updated_at: string; form_details: FormDetails | null } | null;
   reasons: string[];
 }
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
@@ -27,37 +27,31 @@ export function JraPage() {
   const { data: me } = useMe();
   const q = useQuery({ queryKey: ['jra', id], queryFn: () => api<JraData>(`/jra/${id}`) });
   const sdms = useQuery({ queryKey: ['sdms'], queryFn: () => api<{ username: string; full_name: string }[]>('/sdms'), staleTime: 300_000 });
-  const [answers, setAnswers] = useState<Record<string, Answer>>({});
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [to, setTo] = useState('');
   const [rejectNote, setRejectNote] = useState('');
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const d = q.data;
-  useEffect(() => { if (d) { setAnswers(d.jra?.answers ?? {}); setTo(d.jra?.sent_to ?? d.job.sdm?.username ?? ''); } }, [d]);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-
   const status = d?.jra?.status ?? 'draft';
   const canEdit = !!me?.menus.jobs?.edit && status === 'draft';
+  const { answers, answer, save, restored } = useJraAutosave(id, d, canEdit);
+  useEffect(() => { if (d) setTo((t) => t || d.jra?.sent_to || d.job.sdm?.username || ''); }, [d]);
   const score = d ? riskScore(d.template, answers) : 0;
   const level = d ? approvalLevel(d.template, score) : '';
   const prog = d ? progress(d.template, answers) : { answered: 0, total: 0, missing: [] as string[] };
   const mayDecide = status === 'sent' && !!me && (d?.jra?.sent_to?.toLowerCase() === me.username.toLowerCase() || me.role === 'admin' || me.role === 'operations_manager');
   const sections = useMemo(() => (d ? Object.entries(d.template.sections) : []), [d]);
 
-  const answer = (qid: string, v: Answer) => {
-    const next = { ...answers, [qid]: v };
-    setAnswers(next);
-    setSaveState('saving');
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      try { await api(`/jra/${id}`, { method: 'PUT', json: { answers: next } }); setSaveState('saved'); }
-      catch (e) { setSaveState('error'); setError((e as ApiError).message); }
-    }, 600);
-  };
   const act = async (path: string, json: unknown) => {
     setError(null);
-    try { await api(`/jra/${id}/${path}`, { method: 'POST', json }); await qc.invalidateQueries({ queryKey: ['jra', id] }); qc.invalidateQueries({ queryKey: ['job', id] }); }
+    try {
+      // anything still waiting goes to the server before it is sent or decided
+      if (path === 'send' && !(await save.flush())) throw new ApiError(0, 'The latest answers haven’t saved yet. Check the connection and try again.');
+      const r = await api<{ pdf_error?: string }>(`/jra/${id}/${path}`, { method: 'POST', json });
+      await qc.invalidateQueries({ queryKey: ['jra', id] });
+      qc.invalidateQueries({ queryKey: ['job', id] });
+      qc.invalidateQueries({ queryKey: ['attachments', 'job', id] });
+      if (r.pdf_error) setError(`Approved. The PDF wasn’t filed: ${r.pdf_error}`);
+    }
     catch (e) { setError((e as ApiError).message); }
   };
 
@@ -71,11 +65,12 @@ export function JraPage() {
         <h1 id="jra-title" className="font-display text-xl font-extrabold uppercase">Job risk assessment</h1>
         <span className="font-mono text-sm text-text-muted">{d.job.ticket_no ?? 'no ticket'} · {d.template.code} rev {d.template.revision}</span>
         {canEdit && <span className="ml-auto"><JraUpload jobId={id} /></span>}
-        <span role="status" className="text-xs font-semibold text-text-muted">{saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : ''}</span>
+        <SaveStatus state={save.state} at={save.at} message={save.message} />
       </div>
+      {restored && <div className="mb-3"><Banner tone="info">Answers that hadn’t reached the server were kept on this device and have been restored. They are saving now.</Banner></div>}
       {d.reasons.length > 0 ? <div className="mb-3"><Banner tone="warning">This job needs an approved JRA before Execution: it has {d.reasons.join(', ')}.</Banner></div>
         : <div className="mb-3"><Banner tone="info">This job doesn’t need a JRA, but you can still complete one.</Banner></div>}
-      {status === 'approved' && <div className="mb-3"><Banner tone="success">Approved by {d.jra?.decided_by} on {when(d.jra?.decided_at ?? null)}. Answers are locked.</Banner><SignatureBadge className="mt-2" type="jra" id={id} /></div>}
+      {status === 'approved' && <div className="mb-3"><Banner tone="success" action={me?.menus.jobs?.edit && <Button size="sm" onClick={() => act('pdf', {})}>File approved PDF again</Button>}>Approved by {d.jra?.decided_by} on {when(d.jra?.decided_at ?? null)}. Answers are locked. The approved JRA is filed as a PDF in the job’s attachments.</Banner><SignatureBadge className="mt-2" type="jra" id={id} /></div>}
       {status === 'sent' && <div className="mb-3"><Banner tone="info">Sent to {d.jra?.sent_to} on {when(d.jra?.sent_at ?? null)} for approval.</Banner></div>}
       {status === 'draft' && d.jra?.decided_by && <div className="mb-3"><Banner tone="warning">Rejected by {d.jra.decided_by} on {when(d.jra.decided_at)}. Update the answers and send it again.</Banner></div>}
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
@@ -149,7 +144,7 @@ export function JraPage() {
                 <Field id="jra-to" label="Send to" hint={prog.missing.length ? `Still to answer: ${prog.missing.join(', ')}` : 'Every required question is answered'}>
                   <select id="jra-to" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)}><option value="">Choose…</option>{(sdms.data ?? []).map((s) => <option key={s.username} value={s.username}>{s.full_name}</option>)}</select>
                 </Field>
-                <Button variant="primary" className="w-full" disabled={!!prog.missing.length || !to || saveState === 'saving'} onClick={() => act('send', { to })}><Send aria-hidden className="size-4" />Send for approval</Button>
+                <Button variant="primary" className="w-full" disabled={!!prog.missing.length || !to || save.state === 'saving'} onClick={() => act('send', { to })}><Send aria-hidden className="size-4" />Send for approval</Button>
               </div>
             )}
             {mayDecide && (
@@ -259,4 +254,111 @@ export function JraUpload({ jobId }: { jobId: string }) {
 export function useJraLock(jobId: string | undefined) {
   const q = useQuery({ queryKey: ['jra', jobId], queryFn: () => api<JraData>(`/jra/${jobId}`), enabled: !!jobId });
   return !!q.data && q.data.reasons.length > 0 && q.data.jra?.status !== 'approved';
+}
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'offline';
+const draftKey = (jobId: string) => `slk-jra-draft:${jobId}`;
+function readDraft(jobId: string): { answers: Record<string, Answer>; at: string } | null {
+  try { const v = localStorage.getItem(draftKey(jobId)); return v ? JSON.parse(v) : null; } catch { return null; }
+}
+function writeDraft(jobId: string, answers: Record<string, Answer> | null) {
+  try { if (answers) localStorage.setItem(draftKey(jobId), JSON.stringify({ answers, at: new Date().toISOString() })); else localStorage.removeItem(draftKey(jobId)); } catch { /* private mode: the server save still runs */ }
+}
+
+/**
+ * Autosave for one job's JRA. Every change is kept on the device at once and saved to the server a moment later; leaving
+ * the page or hiding the tab saves straight away; a failed save is retried every few seconds and when the connection
+ * comes back. Answers the server hasn't confirmed are never overwritten by a reload. The JRA record is created for the
+ * job (with today's form revision) as soon as someone who can edit opens it.
+ */
+function useJraAutosave(jobId: string, d: JraData | undefined, canEdit: boolean) {
+  const qc = useQueryClient();
+  const [answers, setAnswers] = useState<Record<string, Answer>>({});
+  const [state, setState] = useState<SaveState>('idle');
+  const [at, setAt] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [restored, setRestored] = useState(false);
+  const pending = useRef<Record<string, Answer> | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loaded = useRef(false);
+
+  const push = async (keepalive = false): Promise<boolean> => {
+    const next = pending.current;
+    if (!next) return true;
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    setState('saving');
+    try {
+      await api(`/jra/${jobId}`, { method: 'PUT', json: { answers: next }, keepalive });
+      if (pending.current === next) { pending.current = null; writeDraft(jobId, null); }
+      setState(pending.current ? 'saving' : 'saved'); setAt(new Date().toISOString()); setMessage(null);
+      if (pending.current) void push();
+      return !pending.current;
+    } catch (e) {
+      const err = e as ApiError;
+      if (err.status === 409 || err.status === 400 || err.status === 403) {
+        // the JRA was sent or locked elsewhere, or an answer was refused: stop retrying and show why
+        setState('idle'); setMessage(err.message); pending.current = null; writeDraft(jobId, null);
+        qc.invalidateQueries({ queryKey: ['jra', jobId] });
+        return false;
+      }
+      setState('offline'); setMessage('Not saved yet. Kept on this device; retrying.');
+      if (retry.current) clearTimeout(retry.current);
+      retry.current = setTimeout(() => void push(), 5000);
+      return false;
+    }
+  };
+
+  // first load: the server's answers, unless this device holds newer ones that never reached it
+  useEffect(() => {
+    if (!d || loaded.current) return;
+    loaded.current = true;
+    const server = d.jra?.answers ?? {};
+    const local = readDraft(jobId);
+    if (local && canEdit && (!d.jra || local.at > d.jra.updated_at) && JSON.stringify(local.answers) !== JSON.stringify(server)) {
+      setAnswers(local.answers); pending.current = local.answers; setRestored(true); void push();
+    } else {
+      setAnswers(server); writeDraft(jobId, null);
+      // tie the JRA to the job now, with the form revision in force today
+      if (!d.jra && canEdit) { pending.current = {}; void push().then(() => qc.invalidateQueries({ queryKey: ['jra', jobId] })); }
+    }
+  }, [d, canEdit, jobId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // later reloads (tab focus, another person's change) only replace answers when nothing is waiting to save
+  useEffect(() => { if (d && loaded.current && !pending.current && state !== 'saving') setAnswers(d.jra?.answers ?? {}); }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const now = () => { if (pending.current) void push(true); };
+    const hidden = () => { if (document.visibilityState === 'hidden') now(); };
+    window.addEventListener('pagehide', now);
+    window.addEventListener('online', now);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      window.removeEventListener('pagehide', now); window.removeEventListener('online', now); document.removeEventListener('visibilitychange', hidden);
+      if (retry.current) clearTimeout(retry.current);
+      // leaving the JRA page: send what is waiting right away instead of dropping it
+      if (pending.current) void push(true);
+    };
+  }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const answer = (qid: string, v: Answer) => {
+    const next = { ...answers, [qid]: v };
+    setAnswers(next);
+    pending.current = next;
+    writeDraft(jobId, next);
+    setState('saving');
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void push(), 400);
+  };
+
+  return { answers, answer, restored, save: { state, at, message, flush: () => push() } };
+}
+
+function SaveStatus({ state, at, message }: { state: SaveState; at: string | null; message: string | null }) {
+  const time = at ? new Date(at).toLocaleTimeString('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+  return (
+    <span role="status" aria-live="polite" className={cx('text-xs font-semibold', state === 'offline' || message ? 'text-warning' : 'text-text-muted')}>
+      {message ?? (state === 'saving' ? 'Saving…' : state === 'saved' ? `All changes saved · ${time}` : '')}
+    </span>
+  );
 }
