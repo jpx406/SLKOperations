@@ -6,7 +6,7 @@ import { SEVERITY_LABEL, SEVERITY_MATRIX, reportTotals, severityFromNpt, type Se
 import type { Job, JobCrew } from '../../shared/types';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
 // 8 Min. Facts: the list (S11) and the report editor (S12).
 
@@ -58,7 +58,7 @@ export function EightMinFactsList() {
         <label className="relative ml-auto">
           <span className="sr-only">Search log number, title, well or ticket</span>
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-          <input className={cx(inputClass, 'h-8 w-64 pl-8')} placeholder="Log #, title, well, ticket" defaultValue={q} onChange={(e) => set('q', e.target.value.trim())} />
+          <input className={inputSized('h-8 w-64 pl-8')} placeholder="Log #, title, well, ticket" defaultValue={q} onChange={(e) => set('q', e.target.value.trim())} />
         </label>
       </div>
       {list.isPending && <Skeleton className="h-64" />}

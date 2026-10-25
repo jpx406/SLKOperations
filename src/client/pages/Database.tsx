@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router';
 import { FLAG_LABEL, LIST_KINDS, PCE_KINDS, PCE_RATINGS, SERVICE_FLAGS, pressureTestDue, type ListKind } from '../../shared/database';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
 interface UnitRow { unit_number: string; country: string; year: number | null; wg_active: number; open_jobs: number; drums: string | null }
 interface PceRow {
@@ -36,7 +36,7 @@ export function Database() {
     <section aria-labelledby="db-title">
       <PageTitle aside={countries.length > 1 && (
         <label className="flex items-center gap-2 text-sm text-text-muted">Country
-          <select className={cx(inputClass, 'h-8 w-48')} value={country} onChange={(e) => setCountry(e.target.value)}>
+          <select className={inputSized('h-8 w-48')} value={country} onChange={(e) => setCountry(e.target.value)}>
             <option value="">All my countries</option>
             {countries.map((c) => <option key={c}>{c}</option>)}
           </select>
@@ -402,7 +402,7 @@ function Profiles({ rows, domains, canEdit }: { rows: ProfileRow[]; domains: str
           Each WIREGUARD job type sits in a service domain and opens sections of the job editor (plug, fishing, memory survey, perforation).
           {missing > 0 && <span className="text-warning"> {missing} job type{missing === 1 ? ' has' : 's have'} no profile yet.</span>}
         </p>
-        <input aria-label="Search job types" className={cx(inputClass, 'h-8 w-56')} placeholder="Search job types" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input aria-label="Search job types" className={inputSized('h-8 w-56')} placeholder="Search job types" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       {!rows.length ? <EmptyState title="No job types yet">Job types come from WIREGUARD. Run a sync first.</EmptyState> : (

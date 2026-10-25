@@ -8,7 +8,7 @@ import { csv, workbook, type Cell } from '../../shared/xlsx';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { FilterBar, useFilters } from '../components/FilterBar';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
 // Failure Roster (S10): failures by month, the jobs not fully tracked, and the register with action status.
 
@@ -106,12 +106,12 @@ export function FailureRoster() {
       <FilterBar optionsPath="/filter-options" withStatus={false} />
       <div className="mb-4 flex flex-wrap gap-2 print:hidden">
         <label className="flex items-center gap-2 text-xs text-text-muted">Severity
-          <select className={cx(inputClass, 'h-8 w-40')} value={severity} onChange={(e) => setP('severity', e.target.value)}>
+          <select className={inputSized('h-8 w-40')} value={severity} onChange={(e) => setP('severity', e.target.value)}>
             <option value="">All</option>{SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}<option value="none">No 8MF (added by hand)</option>
           </select>
         </label>
         <label className="flex items-center gap-2 text-xs text-text-muted">Action
-          <select className={cx(inputClass, 'h-8 w-36')} value={action} onChange={(e) => setP('action', e.target.value)}>
+          <select className={inputSized('h-8 w-36')} value={action} onChange={(e) => setP('action', e.target.value)}>
             <option value="">All</option>{Object.entries(ACTION_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </label>

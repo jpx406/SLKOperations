@@ -70,12 +70,12 @@ NPT and Failure Analysis,service quality,must,yes,yes,"S14; 2i: 5 KPIs, NPT by m
 Crew and fleet utilization with heatmap,service quality,should,yes,no,S15 methodology on screen
 Competency levels coverage gaps and quality signal,service quality,should,yes,no,S16
 Analytics exports (print XLSX PDF report),service quality,should,yes,no,S13-S16
-Attendance monthly code grid,attendance,must,yes,no,S17 15 codes
-Attendance multi-select range apply,attendance,should,yes,no,S17
-Weekend holiday and leave-while-assigned shading,attendance,should,yes,no,S17
-Attendance approve per row,attendance,should,yes,no,S17
+Attendance monthly code grid,attendance,must,yes,yes,"S17 15 codes; 2j: 15 codes from the manual (JO fixed by migration 0003), per-cell code menu, groups by reporting line, summary column, explicit Save"
+Attendance multi-select range apply,attendance,should,yes,yes,"S17; 2j: click or Shift-click a rectangle, apply or clear one code"
+Weekend holiday and leave-while-assigned shading,attendance,should,yes,yes,"S17; 2j: Fri/Sat, holidays managed in the sheet, red outline for leave while crewed, dot for crewed days"
+Attendance approve per row,attendance,should,yes,yes,"S17; 2j: approval locks the row for the month until unapproved"
 Attendance categories with approver email,attendance,could,yes,no,manual §6
-Attendance XLSX and HTML export,attendance,should,yes,no,S17
+Attendance XLSX and HTML export,attendance,should,yes,yes,"S17; 2j: XLSX all and per group, standalone HTML"
 Explosive inventory by location with KPIs,inventory,must,yes,no,S18
 Hardware inventory,inventory,should,yes,no,S19
 MCR inventory with par-level reorder alerts,inventory,should,yes,no,S29 manual
@@ -98,7 +98,7 @@ SharePoint job package and cable directory links,integrations,skip,yes,skip,stor
 Data-aware AI Agent (admin),assistant,could,yes,no,behaviour unknown; design new if wanted; decided 2026-10-24: build in a later milestone with scoped read-only tools
 QAF12069 question text and weights copied from screens,jra,skip,yes,skip,load from the controlled QHSE form instead
 Resources Allocation board,other,skip,yes,skip,dormant in original
-Headcount Roster screen,other,should,yes,no,Attendance Administrator only; fold into an Employees admin page; decided: build it for attendance_admin (Admin Manual 6); one people list for attendance and crews
+Headcount Roster screen,other,should,yes,yes,"Attendance Administrator only; fold into an Employees admin page; decided: build it for attendance_admin (Admin Manual 6); one people list for attendance and crews; 2j: add/edit/switch off/remove (only if never crewed), reporting line, rotation, WIREGUARD link"
 Service catalogue = WIREGUARD job types with local profiles (domain and section flags),slickline,must,no,no,service_profiles in 0002_seed.sql; 21 job types
 Toolstring builder on Preparation (component OD length weight),slickline,must,no,yes,new for SLK; feeds max tool OD and lubricator length check; 2d
 Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,partial,new for SLK; build: overpull not on screen yet
@@ -133,6 +133,6 @@ Step-up re-authentication for Bonus and Sales pages,bonus,should,yes,no,"replace
 Admin data export (all tables) and import with dry-run and backup,admin,should,yes,no,Admin Manual 7
 Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,no,Admin Manual 8.1
 Job delete blocked while a Pre-Job Note exists,pre-job notes,should,yes,yes,Admin Manual 8.1; 409 with the note number
-SLK Contacts list opens Pre-Job Notes,pre-job notes,should,yes,partial,"Admin Manual 8.2; rights logic built, list maintained in Headcount Roster (2j)"
+SLK Contacts list opens Pre-Job Notes,pre-job notes,should,yes,yes,"Admin Manual 8.2; rights logic built, list maintained in Headcount Roster (2j); 2j: SLK contacts view in the roster; a contact needs a WIREGUARD username"
 Warning when WIREGUARD deactivates a unit with open SLK Ops jobs,integration,should,no,yes,"Admin Manual 4 caution, adapted; 2c: banner on the schedule listing the jobs"
 "AI Agent settings: on/off, model, monthly budget, messages per user per day",assistant,could,yes,no,Admin Manual 5.2

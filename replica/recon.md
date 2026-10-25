@@ -277,7 +277,7 @@ FailureRosterEntry id, date, job_id?, well, rilr_refs[], eight_min_facts_id?, in
                    action_items_status (open|in progress|closed), manual (bool)
                    evidence: S10, S12 "one row per incident, kept in sync"   confidence: high
 
-AttendanceEntry    employee_eid, date, code (P, A, AL, SL, UL, EL, PL, HL, MAL, JBFS, 30, FA, JBOF, TR, JBOFS),
+AttendanceEntry    employee_eid, date, code (P, A, AL, SL, UL, EL, PL, HL, MAL, JBFS, JO, FA, JBOF, TR, JBOFS),
                    updated_by, approved_by/at
 AttendanceCategory name, approver_email   evidence: S17, manual §6   confidence: high
 Holiday            date, name   evidence: S17 shading   confidence: medium

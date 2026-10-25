@@ -141,3 +141,6 @@ export function Field({ id, label, badge, hint, error, unit, children, required 
 }
 
 export const inputClass = inputBase;
+
+/** Input classes with a size of its own: drops the default full width when a width is given, so the width always wins. */
+export const inputSized = (extra: string) => cx(/(^|\s)w-/.test(extra) ? inputBase.replace('w-full ', '') : inputBase, extra);

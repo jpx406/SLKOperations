@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { TOOLSTRING_COMPONENTS, preJobWireStatus, toolChecks, toolTotals, type ToolPart } from '../../shared/toolstring';
 import type { CrewMember, Employee, Job, JobCrew, Lookups, WireOptions } from '../../shared/types';
 import { api } from '../api';
-import { Banner, Button, LockHint, cx, inputClass } from './ui';
+import { Banner, Button, LockHint, cx, inputClass, inputSized } from './ui';
 
 // Pieces of the job editor that hold more than one field: wire panel, toolstring builder, crew, gated detail sections.
 
@@ -168,7 +168,7 @@ export function CrewPanel({ job, canEdit }: { job: Job; canEdit: boolean }) {
               <legend className="px-1 text-xs font-semibold">{label}</legend>
               <label className="flex items-center gap-2 text-xs text-text-muted">
                 Planned
-                <input type="number" min={0} max={caps[head]} className={cx(inputClass, 'h-8 w-16')} disabled={!canEdit || busy} value={headcount[head]}
+                <input type="number" min={0} max={caps[head]} className={inputSized('h-8 w-16')} disabled={!canEdit || busy} value={headcount[head]}
                   onChange={(e) => run('headcount', { ...headcount, [head]: Math.min(caps[head], Math.max(0, Number(e.target.value) || 0)) })} />
                 <span className="text-text-subtle">of {caps[head]}</span>
               </label>

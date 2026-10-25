@@ -395,6 +395,43 @@ Pre-Job Notes access follows the manual.
 
 **Not checked:** a bar drill-down click in the browser (my selector didn't match the bar's accessible name; it's covered by the shared bucket ids instead), and single-chart printing.
 
+## Milestone 2j: Attendance (S17), Headcount Roster (S44) and the SLK Contacts list
+
+**Schema:** migration `0003_attendance_codes.sql` rebuilds `attendance_entries` so its check allows **JO** (Field Bonus without Food). Recon had misread the manual's legend as "30"; the recon text is corrected too.
+
+**Attendance:**
+- **Who sees what:** people with the Attendance edit right see and edit the whole sheet for their countries. Everyone else with the tab sees only their own row, linked through `employees.wg_username`, read-only (the manual's simplified crew view). All five statements bind the same five parameters; D1 refuses a bind count that doesn't match.
+- **Saving:** `PUT /attendance` saves a batch of cell changes, all or nothing: codes and days are checked, people must be in the caller's countries, and approved rows are refused.
+- **Approval** locks a person's month until it is unapproved.
+- **Holidays** are kept per country in the sheet's Holidays dialog. Islamic holidays move every year, so they are entered when announced, not seeded.
+- **Grid:**
+  - groups by reporting line, each with its own XLSX; a sticky name column; weekday letters;
+  - Fri/Sat and holiday shading; a dot on days the person is crewed on a job; a red outline for a leave code on a crewed day, with a tooltip naming the tickets;
+  - a per-cell code menu; Multi-select with Shift-click rectangles and Apply or Clear;
+  - pending cells show underlined until Save; leaving with unsaved changes warns;
+  - a summary column (on, field and leave days), XLSX of everything and an HTML export.
+
+**Headcount Roster:**
+- The single people list. Add and edit EID, name, title, account, crew role, reporting line, rotation, WIREGUARD username, contact email and mobile, and active.
+- Someone who was ever on a job crew can only be switched off; others can be removed.
+- An **SLK contact** must have a WIREGUARD username, so Pre-Job Notes access (already checked at sign-in) follows them. The "SLK contacts" tab is the Contacts list.
+
+**UI fix across screens:** `inputSized()` drops the default full width when a width is given. Narrow filters and selects had been stretching, because `w-full` could win in the CSS order.
+
+**Verified 2026-10-25:**
+- **API:**
+  - month read (31 days, 8 people, crew assignments); a 3-cell save;
+  - a day outside the month is refused; approving locks the row and unapproving unlocks it;
+  - a holiday is added; a contact without a username is refused; a duplicate EID is refused;
+  - removing a person who is on 61 crews is refused.
+- **Browser (playwright):**
+  - a Shift-click range of 5 cells → JBFS → Save (5) → summary "5 field";
+  - a single cell set to P through the code menu showed Save (1); leaving raised the unsaved-changes warning;
+  - a leave-on-crewed-day cell (SL on the 5th) shows the red outline.
+- **Unit tests:** 98 of 98.
+
+**Not done:** attendance categories with an approver email (a could-have in the manual), left for milestone 6.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

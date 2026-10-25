@@ -13,13 +13,15 @@ import { JobLog } from './pages/JobLog';
 import { EightMinFactsEditor, EightMinFactsList } from './pages/EightMinFacts';
 import { FailureRoster } from './pages/FailureRoster';
 import { NptAnalysis, Statistics } from './pages/Statistics';
+import { Attendance } from './pages/Attendance';
+import { Roster } from './pages/Roster';
 import { Reconciliation } from './pages/Reconciliation';
 import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/quality/statistics', '/quality/npt', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users']);
 
 const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
@@ -37,6 +39,8 @@ const router = createBrowserRouter([
       { path: 'operation/failure-roster', element: <FailureRoster /> },
       { path: 'quality/statistics', element: <Statistics /> },
       { path: 'quality/npt', element: <NptAnalysis /> },
+      { path: 'attendance', element: <Attendance /> },
+      { path: 'attendance/roster', element: <Roster /> },
       { path: 'operation/reconciliation', element: <Reconciliation /> },
       { path: 'operation/database', element: <Database /> },
       { path: 'admin/users', element: <AdminUsers /> },

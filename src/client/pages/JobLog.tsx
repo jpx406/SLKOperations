@@ -7,7 +7,7 @@ import { JOB_LOG_COLUMNS, displayValue, jobLogTable, type JobLogRow } from '../.
 import { csv, workbook } from '../../shared/xlsx';
 import { api, formatDate } from '../api';
 import { FilterBar, useFilters } from '../components/FilterBar';
-import { Banner, Button, EmptyState, PageTitle, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
+import { Banner, Button, EmptyState, PageTitle, Skeleton, StatusPill, cx, inputSized } from '../components/ui';
 import type { JobStatus } from '../../shared/types';
 
 const stamp = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
@@ -46,7 +46,7 @@ export function JobLog() {
           <label className="relative">
             <span className="sr-only">Search ticket, well, rig or DRSS</span>
             <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-            <input className={cx(inputClass, 'h-8 w-56 pl-8')} placeholder="Ticket, well, rig, DRSS" value={q} onChange={(e) => search(e.target.value)} />
+            <input className={inputSized('h-8 w-56 pl-8')} placeholder="Ticket, well, rig, DRSS" value={q} onChange={(e) => search(e.target.value)} />
           </label>
           <Button size="sm" onClick={() => window.print()} disabled={!rows.length}><Printer aria-hidden className="size-4" />Print</Button>
           <Button size="sm" onClick={exportCsv} disabled={!rows.length}><Download aria-hidden className="size-4" />CSV</Button>
