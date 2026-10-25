@@ -13,6 +13,9 @@ export interface Env {
   RECON_START_DATE?: string;
   /** Where people open WIREGUARD to fix a run. */
   WG_APP_URL?: string;
+  /** Cloudflare Email Service binding for the daily digest; absent until the sender domain is onboarded. */
+  EMAIL?: { send(message: { to: string; from: { email: string; name?: string }; subject: string; html: string; text: string }): Promise<unknown> };
+  EMAIL_FROM?: string;
 }
 
 export interface Session {

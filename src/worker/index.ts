@@ -13,6 +13,7 @@ import { inventory } from './inventory';
 import { preJobNotes } from './preJobNotes';
 import { jra } from './jra';
 import { wires } from './wires';
+import { sendDigests } from './digest';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
@@ -200,6 +201,7 @@ export default {
         await syncAll(env, { hourly: true });
         const { results } = await env.DB.prepare('SELECT DISTINCT country FROM wg_units WHERE wg_active = 1').all<{ country: string }>();
         await runReconciliation(env, results.map((r) => r.country), 'nightly');
+        await sendDigests(env);
       })());
       return;
     }

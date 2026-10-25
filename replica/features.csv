@@ -110,8 +110,8 @@ WIREGUARD sync of units fields rigs job types locations wires drums runs,integra
 WIREGUARD data freshness indicator and on-demand sync,integration,should,no,yes,header status; /api/wg/status
 Reconciliation: SLK Ops jobs vs WIREGUARD runs with discrepancy findings,reconciliation,must,no,yes,"S46 F15; 9 checks; 2e: 9 checks, matching by link / real ticket / real DRSS / unit+date+well"
 Reconciliation actions: link runs to job and mark explained,reconciliation,must,no,yes,"SLK Ops side only; WIREGUARD stays untouched; 2e: link, unlink, explain, reopen; auto-resolve when fixed"
-Reconciliation summary per unit SDM and month,reconciliation,should,no,partial,S46; 2e: per unit and month; per SDM filter via API only
-Nightly reconciliation feeding banners and digest,reconciliation,should,no,partial,cron 04:00 Riyadh; 2e: nightly cron runs sync + check; banners and digest not yet
+Reconciliation summary per unit SDM and month,reconciliation,should,no,yes,"S46; 2e: per unit and month; per SDM filter via API only; 3f: per-SDM table (jobs in month, open findings on their jobs) and SDM filter on screen"
+Nightly reconciliation feeding banners and digest,reconciliation,should,no,yes,"cron 04:00 Riyadh; 2e: nightly cron runs sync + check; banners and digest not yet; 3f: banner on Schedule and Job board for open high findings; morning digest via Cloudflare Email Service after the nightly run, with an on-screen preview"
 SLK Ops roles per WIREGUARD username with defaults from the WIREGUARD role,auth,must,no,yes,user_roles
 Deploy on Cloudflare (Worker D1 R2 KV cron Email Service),platform,must,no,partial,architecture.md wrangler.toml plan; build: wrangler.jsonc ready; not deployed
 Wire panel on the job: pre-job test rule and tension limit check,wire log,should,no,yes,"D3; uses WIREGUARD sop and kpi settings; 2d: drum and wire from WIREGUARD with the pre-job test rule and WIREGUARD's tension-test window"

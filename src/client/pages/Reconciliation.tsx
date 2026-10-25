@@ -20,7 +20,7 @@ interface RunRow {
 }
 interface JobLite { id: string; ticket_no: string | null; unit_number: string | null; start_date: string | null; end_date: string | null; well: string | null; status: string }
 interface Detail extends FindingRow { runs: RunRow[]; job: (JobLite & Record<string, unknown>) | null; candidates: JobLite[]; label: string }
-interface Summary { month: string; from: string; units: { unit_number: string; jobs: number; runs: number; open_findings: number }[]; open: Partial<Record<Severity, number>>; lastRun: { occurred_at: string; username: string; summary: string } | null }
+interface Summary { month: string; from: string; units: { unit_number: string; jobs: number; runs: number; open_findings: number }[]; open: Partial<Record<Severity, number>>; lastRun: { occurred_at: string; username: string; summary: string } | null; sdms: { sdm: string; name: string; jobs: number; open_findings: number }[] }
 
 const SEV_STYLE: Record<Severity, string> = {
   high: 'bg-sev-catastrophic text-on-sev',
@@ -30,6 +30,25 @@ const SEV_STYLE: Record<Severity, string> = {
 };
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
 const jobLabel = (j: JobLite) => `${j.ticket_no ?? 'No ticket'} · ${j.unit_number ?? 'no unit'} · ${j.start_date ? formatDate(j.start_date) : 'no date'}${j.well ? ` · well ${j.well}` : ''}`;
+
+/** What the morning email would say to the person looking, sent after the nightly check. */
+function DigestPreview() {
+  const q = useQuery({ queryKey: ['recon-digest'], queryFn: () => api<{ digest: { subject: string; text: string; count: number; fresh: number } | null; email: string | null; mailer: boolean; receives: boolean }>('/recon/digest') });
+  if (!q.data || !q.data.receives) return null;
+  const { digest, email, mailer } = q.data;
+  return (
+    <details className="mt-8 rounded-lg border border-border bg-surface p-4">
+      <summary className="cursor-pointer font-display text-lg font-bold">Your morning digest</summary>
+      <p className="mt-2 text-sm text-text-muted">
+        Sent after the nightly check (04:00 Riyadh){email ? ` to ${email}` : ''}.
+        {!email && ' Your roster entry has no contact email, so it isn’t sent to you.'}
+        {!mailer && ' Email sending isn’t switched on yet; this is what it will say.'}
+      </p>
+      {digest ? <><p className="mt-3 text-sm font-semibold">{digest.subject}</p><pre className="mt-2 max-h-72 overflow-auto rounded-md bg-surface-2 p-3 text-xs whitespace-pre-wrap">{digest.text}</pre></>
+        : <p className="mt-3 text-sm text-text-subtle">Nothing for you today, so no email.</p>}
+    </details>
+  );
+}
 
 function SeverityPill({ s }: { s: Severity }) {
   return <span className={cx('label-caps inline-flex h-5.5 items-center justify-self-start rounded-pill px-2', SEV_STYLE[s])}>{s}</span>;
@@ -44,11 +63,12 @@ export function Reconciliation() {
   const check = params.get('check') ?? '';
   const severity = params.get('severity') ?? '';
   const unit = params.get('unit') ?? '';
+  const sdm = params.get('sdm') ?? '';
   const month = params.get('month') ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }).slice(0, 7);
   const open = params.get('finding');
   const set = (k: string, v: string) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); setParams(n, { replace: true }); };
 
-  const qs = new URLSearchParams({ status, ...(check && { check }), ...(severity && { severity }), ...(unit && { unit }) }).toString();
+  const qs = new URLSearchParams({ status, ...(check && { check }), ...(severity && { severity }), ...(unit && { unit }), ...(sdm && { sdm }) }).toString();
   const findings = useQuery({ queryKey: ['recon', qs], queryFn: () => api<FindingRow[]>(`/recon/findings?${qs}`) });
   const summary = useQuery({ queryKey: ['recon-summary', month], queryFn: () => api<Summary>(`/recon/summary?month=${month}`) });
   const config = useQuery({ queryKey: ['config'], queryFn: () => api<{ wireguardUrl: string }>('/config'), staleTime: Infinity });
@@ -102,7 +122,13 @@ export function Reconciliation() {
             {(summary.data?.units ?? []).map((u) => <option key={u.unit_number} value={u.unit_number}>{u.unit_number}</option>)}
           </select>
         </Field>
-        {(check || severity || unit || status !== 'open') && <Button variant="ghost" onClick={() => setParams({ month })}>Clear filters</Button>}
+        <Field id="f-sdm" label="SDM">
+          <select id="f-sdm" className={`${inputClass} w-48`} value={sdm} onChange={(e) => set('sdm', e.target.value)}>
+            <option value="">All SDMs</option>
+            {(summary.data?.sdms ?? []).map((x) => <option key={x.sdm} value={x.sdm}>{x.name}</option>)}
+          </select>
+        </Field>
+        {(check || severity || unit || sdm || status !== 'open') && <Button variant="ghost" onClick={() => setParams({ month })}>Clear filters</Button>}
       </div>
 
       {findings.isPending && <div className="flex flex-col gap-2">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-16" />)}</div>}
@@ -161,6 +187,31 @@ export function Reconciliation() {
           </table>
         </div>
       ) : <EmptyState title={`No jobs or runs in ${month}`} />)}
+
+      {summary.data && summary.data.sdms.length > 0 && (
+        <>
+          <h2 className="mt-8 mb-3 font-display text-lg font-bold">Per SDM</h2>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <caption className="sr-only">Jobs in {month} and open findings per SDM</caption>
+              <thead className="bg-surface-2"><tr className="label-caps text-left text-text-muted">
+                <th scope="col" className="px-3 py-2">SDM</th><th scope="col" className="px-3 py-2 text-right">Jobs in {month}</th><th scope="col" className="px-3 py-2 text-right">Open findings on their jobs</th>
+              </tr></thead>
+              <tbody>
+                {summary.data.sdms.map((x) => (
+                  <tr key={x.sdm} className="border-t border-border">
+                    <th scope="row" className="px-3 py-2 text-left font-semibold">{x.name}</th>
+                    <td className="px-3 py-2 text-right font-mono">{x.jobs}</td>
+                    <td className="px-3 py-2 text-right">{x.open_findings ? <button className="font-mono text-warning underline" onClick={() => setParams({ sdm: x.sdm, month })}>{x.open_findings}</button> : <span className="font-mono text-text-subtle">0</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <DigestPreview />
 
       {open && <FindingDrawer id={open} canEdit={canEdit} wireguardUrl={config.data?.wireguardUrl} onClose={() => set('finding', '')} />}
     </section>

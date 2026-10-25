@@ -7,6 +7,7 @@ import type { Job } from '../../shared/types';
 import { api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, EmptyState, PageTitle, ProgressBar, Skeleton, StatusPill, inputClass } from '../components/ui';
+import { ReconBanner } from '../components/ReconBanner';
 
 export function JobBoard() {
   const [params, setParams] = useSearchParams();
@@ -54,6 +55,7 @@ export function JobBoard() {
         <span id="board-title">Job board</span>
         {jobs.data && <span className="ml-3 align-middle font-mono text-sm font-medium normal-case text-text-muted">{jobs.data.length} jobs</span>}
       </PageTitle>
+      <ReconBanner />
 
       {jobs.isPending && <div className="flex flex-col gap-3">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-20" />)}</div>}
       {jobs.isError && <Banner tone="danger" action={<Button size="sm" onClick={() => jobs.refetch()}>Retry</Button>}>Couldn't load jobs. {jobs.error.message}</Banner>}

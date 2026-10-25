@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { CHECKS, reconcile, type CheckCode, type ReconJob, type ReconRun } from '../shared/recon';
+import { buildDigest } from '../shared/digest';
+import { digestInputs } from './digest';
 import type { AppBindings, AuthedUser, Env } from './env';
 
 // Reconciliation (S46): SLK Ops jobs vs WIREGUARD runs. Read-only towards WIREGUARD: every action here
@@ -138,7 +140,7 @@ recon.get('/summary', async (c) => {
   const month = c.req.query('month') ?? today().slice(0, 7);
   if (!/^\d{4}-\d{2}$/.test(month)) return c.json({ error: 'month must be YYYY-MM' }, 400);
   const cs = JSON.stringify(user.countries);
-  const [units, open, last] = await c.env.DB.batch([
+  const [units, open, last, sdms] = await c.env.DB.batch([
     c.env.DB.prepare(
       `SELECT u.unit_number,
          (SELECT count(*) FROM jobs j WHERE j.unit_number = u.unit_number AND j.deleted_at IS NULL AND j.status <> 'canceled' AND substr(j.start_date, 1, 7) = ?1) AS jobs,
@@ -149,12 +151,22 @@ recon.get('/summary', async (c) => {
     ).bind(month, cs),
     c.env.DB.prepare(`SELECT severity, count(*) n FROM recon_findings WHERE status = 'open' AND country IN (SELECT value FROM json_each(?)) GROUP BY severity`).bind(cs),
     c.env.DB.prepare(`SELECT occurred_at, username, summary FROM audit_log WHERE entity_type = 'reconciliation' AND action = 'run' ORDER BY occurred_at DESC LIMIT 1`),
+    // per SDM: jobs in the month and open findings on their jobs
+    c.env.DB.prepare(
+      `SELECT j.sdm_username AS sdm, coalesce(u.full_name, j.sdm_username) AS name,
+              sum(CASE WHEN substr(j.start_date, 1, 7) = ?1 THEN 1 ELSE 0 END) AS jobs,
+              (SELECT count(*) FROM recon_findings f JOIN jobs j2 ON j2.id = f.job_id WHERE f.status = 'open' AND j2.sdm_username = j.sdm_username) AS open_findings
+       FROM jobs j LEFT JOIN user_roles u ON u.username = j.sdm_username
+       WHERE j.deleted_at IS NULL AND j.status <> 'canceled' AND j.sdm_username IS NOT NULL AND j.country IN (SELECT value FROM json_each(?2))
+       GROUP BY j.sdm_username ORDER BY open_findings DESC, name`,
+    ).bind(month, cs),
   ]);
   return c.json({
     month, from: startDate(c.env),
     units: (units.results as { jobs: number; runs: number; open_findings: number }[]).filter((u) => u.jobs || u.runs || u.open_findings),
     open: Object.fromEntries((open.results as { severity: string; n: number }[]).map((r) => [r.severity, r.n])),
     lastRun: last.results[0] ?? null,
+    sdms: (sdms.results as { jobs: number; open_findings: number }[]).filter((s) => s.jobs || s.open_findings),
   });
 });
 
@@ -217,4 +229,14 @@ recon.delete('/links/:runId', async (c) => {
     audit(c.env, user, 'unlink', link.job_id, `Unlinked WIREGUARD run ${link.wg_run_id}`),
   ]);
   return c.json({ ok: true, result: await runReconciliation(c.env, user.countries, user.username) });
+});
+
+/** What this person's morning digest holds right now (the nightly email is built the same way). */
+recon.get('/digest', async (c) => {
+  const user = c.get('user');
+  const { recipients, findings } = await digestInputs(c.env);
+  const me = recipients.find((r) => r.username.toLowerCase() === user.username.toLowerCase())
+    ?? { username: user.username, full_name: user.fullName, role: user.role, countries: user.countries, email: null };
+  const d = buildDigest({ ...me, countries: user.countries }, findings, c.env.APP_URL, new Date(Date.now() - 24 * 3600_000).toISOString());
+  return c.json({ digest: d, email: me.email, mailer: !!c.env.EMAIL, receives: ['sdm', 'deputy_sdm', 'operations_manager', 'admin'].includes(user.role) });
 });

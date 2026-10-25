@@ -7,6 +7,7 @@ import type { JobStatus } from '../../shared/types';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { ReconBanner } from '../components/ReconBanner';
 
 interface SJob { id: string; ticket_no: string | null; well: string | null; unit_number: string; status: JobStatus; start_date: string; end_date: string; updated_at: string; sdm_username: string | null; location: string | null }
 interface SEvent { id: string; unit_number: string; kind: string; starts_on: string; ends_on: string; note: string | null }
@@ -230,6 +231,7 @@ export function Schedule() {
       </div>
 
       <p aria-live="polite" className="sr-only">{live}</p>
+      <ReconBanner />
       {notice && <div className="mb-3"><Banner tone={notice.tone} action={<Button size="sm" variant="ghost" onClick={() => setNotice(null)} aria-label="Dismiss"><X aria-hidden className="size-4" /></Button>}>{notice.text}</Banner></div>}
       {q.data && q.data.retiredUnitJobs.length > 0 && (
         <div className="mb-3">

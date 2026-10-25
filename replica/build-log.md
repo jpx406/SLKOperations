@@ -570,6 +570,25 @@ Pre-Job Notes access follows the manual.
 
 **Not checked:** opening the downloaded zip (the same zip writer is already proven by the XLSX files opening in Excel).
 
+## Milestone 3f: reconciliation per SDM, banners and the morning digest
+
+- **Per SDM:** `/api/recon/summary` also returns, for each SDM, the jobs in the month and the open findings on their jobs. The Reconciliation screen shows a "Per SDM" table (counts link to the filtered list) and an SDM filter; the findings API already accepted `sdm`.
+- **Banner:** on the Schedule and Job board, for people with the Reconciliation tab, when high-severity findings are open, with a link to the filtered list.
+- **Digest** (`src/shared/digest.ts`, pure and tested):
+  - SDMs get the findings on their own jobs plus every high one in their countries; managers and admins get high and medium. New ones are marked; with nothing to report, nothing is sent.
+  - `sendDigests` runs after the nightly reconciliation. Recipients are active SDMs, deputy SDMs, operations managers and admins whose roster entry (linked by WIREGUARD username) has a contact email.
+  - It sends through the Cloudflare Email Service binding `EMAIL` (`send_email` in `wrangler.jsonc`, sender `EMAIL_FROM = slkops@nesrapp.com`) and records the outcome in the audit log.
+  - "Your morning digest" on the Reconciliation screen shows the person the same text.
+
+**User action before it can send:** onboard the sender domain with `npx wrangler email sending enable nesrapp.com` (WIREGUARD already sends from `nesrapp.com`), and put contact emails on the roster entries of the people who should receive it.
+
+**Verified 2026-10-25 (local):**
+- Triggering the 04:00 cron through `/cdn-cgi/handler/scheduled` ran sync → reconciliation (22 findings: 18 high, 4 medium, 9 per SDM) → digest ("0 sent, 2 without an email on the roster").
+- The preview shows "SLK Ops reconciliation: 22 open findings (22 new)" with the lines, highest severity first.
+- **Unit tests:** 138 of 138.
+
+**Not checked:** an actual email delivery (needs the onboarded domain and a real recipient).
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.
