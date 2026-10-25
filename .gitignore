@@ -11,3 +11,4 @@ dist/
 # reference material from the original app stays local (manuals, screenshots are reference only)
 replica/sources/
 !.dev.vars.example
+scripts/dev-jobs.sql

@@ -6,6 +6,7 @@ import { database } from './database';
 import { emf } from './emf';
 import { failureRoster } from './failureRoster';
 import { filterOptions, jobLog } from './jobLog';
+import { stats } from './stats';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
@@ -169,6 +170,7 @@ app.route('/job-log', jobLog);
 app.get('/filter-options', filterOptions);
 app.route('/emf', emf);
 app.route('/failure-roster', failureRoster);
+app.route('/stats', stats);
 app.route('/recon', recon);
 app.route('/unit-events', unitEvents);
 

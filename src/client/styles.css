@@ -29,3 +29,10 @@
   background: repeating-linear-gradient(45deg, var(--color-blocked-subtle) 0 6px,
     color-mix(in srgb, var(--color-blocked) 22%, var(--color-blocked-subtle)) 6px 12px);
 }
+
+/* Print one chart: everything else on the page is hidden while it prints. */
+@media print {
+  body.print-one #main * { visibility: hidden; }
+  body.print-one .print-target, body.print-one .print-target * { visibility: visible; }
+  body.print-one .print-target { position: absolute; inset: 0 auto auto 0; width: 100%; }
+}

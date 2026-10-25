@@ -96,6 +96,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/filter-options$/, menus: 'any' },
   { re: /^\/api\/emf(\/[^/]+(\/versions\/\d+)?)?$/, menus: ['eight_min_facts'] },
   { re: /^\/api\/failure-roster(\/summary)?$/, menus: ['failure_roster'] },
+  { re: /^\/api\/stats$/, menus: ['statistics', 'npt_analysis', 'utilization', 'competency'] },
   { re: /^\/api\/admin\//, menus: ['users'] },
 ];
 

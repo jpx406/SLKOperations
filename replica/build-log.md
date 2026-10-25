@@ -371,6 +371,30 @@ Pre-Job Notes access follows the manual.
 
 **Not checked:** the Word file in Word, and the mail app hand-off (it depends on the machine's mail client).
 
+## Milestone 2i: Operation Statistics (S13) and NPT & Failure Analysis (S14)
+
+**How it's built:**
+- `GET /api/stats` returns the rows: non-canceled jobs with a start date, filtered by the standard bar and the period. Each row carries its services, domains and crew (supervisors and operators), plus the active units and the unit events in range. It's readable with any of the Statistics, NPT Analysis, Utilization or Competency tabs.
+- Every figure is computed in `src/shared/stats.ts`, so each bar or gauge knows the job ids behind it:
+  - KPIs: fleet efficiency = op ÷ (op + NPT); average run efficiency per job; failure rate;
+  - `groupBy` (one job can fall in several buckets, e.g. services) and `byMonth` (fills empty months);
+  - `unitUtilization`: available days = calendar days minus maintenance, loan, transferred and junk; active days = arrival or start to end, plus mob −1 and demob +2, never counted twice;
+  - missing data (completed jobs without hours or runs); wellsite audit compliance per SDM against 25 %.
+- **Charts** are plain HTML bars with a hidden data table for screen readers. Each chart has its own Print (prints only that chart, via a body class) and XLSX; clicking a bar toggles the job list.
+
+**Screens:**
+- **Statistics:** period presets (This month, 3 months, Year to date, All time); KPI tiles (jobs, op hours, NPT, fleet efficiency, average run efficiency, average unit utilization); fleet-efficiency gauges by account (the SLK stand-in for "division"); the missing-data warning with its list; 12 charts (six monthly trends, six breakdowns); audit-compliance gauges per SDM with a target tick.
+- **NPT Analysis:** KPIs (total NPT, jobs with NPT, failures, failure rate, fleet efficiency); NPT by month, area, account, service, crew member and unit; the list of jobs with NPT or a failure; report print and XLSX.
+
+**Dev data:** `scripts/make-dev-jobs.mjs` generates 120 fake 2026 jobs with services and crew (deterministic). The generated SQL is git-ignored and local only.
+
+**Verified 2026-10-25 (playwright, dev data):**
+- Statistics for All time: 120 jobs, 2,915 op h, 247.3 h NPT, 92.2 % fleet efficiency, 93.3 % run efficiency; canceled jobs are left out; gauges, charts and audit gauges render.
+- NPT Analysis filtered to account D&WO: 67.7 h NPT over 8 of 37 jobs, 3 failures, 8.1 % failure rate; the breakdowns and the job list match.
+- **Unit tests:** 88 of 88, including the utilization example (6 active of 21 available days = 28.6 %).
+
+**Not checked:** a bar drill-down click in the browser (my selector didn't match the bar's accessible name; it's covered by the shared bucket ids instead), and single-chart printing.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.
