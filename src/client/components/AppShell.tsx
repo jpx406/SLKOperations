@@ -5,7 +5,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav } from '../../shared/menus';
 import { ROLE_LABEL } from '../../shared/roles';
 import type { WgStatus } from '../../shared/types';
-import { api } from '../api';
+import { api, countryScope, setCountryScope } from '../api';
 import { useMe } from '../auth';
 import { Button, cx } from './ui';
 
@@ -17,6 +17,24 @@ function useTheme() {
     try { localStorage.setItem('slk-theme', theme); } catch { /* private mode */ }
   }, [theme]);
   return [theme, () => setTheme((t) => (t === 'light' ? 'dark' : 'light'))] as const;
+}
+
+/** Narrows every screen to one country for people who cover several. The server checks it against their countries. */
+function CountrySwitch({ countries }: { countries: string[] }) {
+  const qc = useQueryClient();
+  const [value, setValue] = useState(() => countryScope() ?? '');
+  useEffect(() => { if (value && !countries.includes(value)) { setCountryScope(''); setValue(''); } }, [countries, value]);
+  if (countries.length < 2) return null;
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-text-muted">
+      <span className="sr-only">Country shown</span>
+      <select className="h-8 rounded-sm border border-border-input bg-input px-2 text-sm text-text" value={value}
+        onChange={(e) => { setCountryScope(e.target.value); setValue(e.target.value); qc.invalidateQueries(); }}>
+        <option value="">All my countries</option>
+        {countries.map((c) => <option key={c}>{c}</option>)}
+      </select>
+    </label>
+  );
 }
 
 function RiyadhClock() {
@@ -58,6 +76,7 @@ function SyncStatus({ canSync }: { canSync: boolean }) {
 
 export function AppShell() {
   const { data: me } = useMe();
+  const config = useQuery({ queryKey: ['config'], queryFn: () => api<{ wireguardUrl: string }>('/config'), staleTime: Infinity });
   const [theme, toggleTheme] = useTheme();
   const nav = visibleNav(me?.menus ?? {});
   const loc = useLocation();
@@ -80,9 +99,11 @@ export function AppShell() {
           </a>
           <span className="font-mono text-xs text-text-subtle">v0.1</span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            {me && <CountrySwitch countries={me.allCountries ?? me.countries} />}
             <SyncStatus canSync={!!me?.menus.schedule?.edit} />
             <RiyadhClock />
             <span className="hidden text-sm sm:inline">{me?.fullName}</span>
+            {config.data && <a className="hidden text-xs text-text-muted underline hover:text-text lg:inline" href={config.data.wireguardUrl} target="_blank" rel="noreferrer">Change password</a>}
             {me && <span className="label-caps rounded-sm bg-success-subtle px-2 py-0.5 text-success">{ROLE_LABEL[me.role]}</span>}
             <Button size="sm" variant="ghost" onClick={toggleTheme} aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}>
               {theme === 'light' ? <Moon aria-hidden className="size-4" /> : <Sun aria-hidden className="size-4" />}

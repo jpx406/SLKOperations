@@ -2,12 +2,21 @@ export class ApiError extends Error {
   constructor(public status: number, message: string, public body: Record<string, unknown> = {}) { super(message); }
 }
 
+/** The country picked in the header switch, if any (empty = all of the person's countries). */
+export function countryScope(): string | null {
+  try { return localStorage.getItem('slk-country') || null; } catch { return null; }
+}
+
+export function setCountryScope(country: string) {
+  try { if (country) localStorage.setItem('slk-country', country); else localStorage.removeItem('slk-country'); } catch { /* private mode: the switch just won't stick */ }
+}
+
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, ...rest } = init;
   const res = await fetch(`/api${path}`, {
     credentials: 'same-origin',
     ...rest,
-    headers: { ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...rest.headers },
+    headers: { ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(countryScope() ? { 'X-SLK-Country': countryScope()! } : {}), ...rest.headers },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;

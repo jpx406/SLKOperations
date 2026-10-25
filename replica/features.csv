@@ -1,8 +1,8 @@
 feature,area,priority,original,clone,notes
 Sign in with WIREGUARD accounts (NESR- usernames),auth,must,yes,yes,"S01; via service binding; no second password; build: slice: via service binding, tested with mock WIREGUARD"
-Country picker at sign-in (tenant),auth,must,yes,no,S01; only Saudi Arabia seen
-Forgot password (handled by WIREGUARD),auth,must,yes,no,S01; link to WIREGUARD
-Change password (handled by WIREGUARD),auth,should,yes,no,S36; link to WIREGUARD
+Country picker at sign-in (tenant),auth,must,yes,yes,"S01; only Saudi Arabia seen; 3a: header country switch for people with several countries; the server narrows the session to the pick, checked against their countries"
+Forgot password (handled by WIREGUARD),auth,must,yes,yes,"S01; link to WIREGUARD; 3a: link on the sign-in page to WIREGUARD"
+Change password (handled by WIREGUARD),auth,should,yes,yes,"S36; link to WIREGUARD; 3a: link in the header to WIREGUARD"
 Roles control visible tabs,auth,must,yes,yes,manual §1-2; ~15 roles; build: role_permissions from 0002 seed
 Per-user tab grants by Admin,auth,must,yes,yes,"manual §0; Users & Roles; build: read on the server; admin screen is milestone 2a; 2a: extra tabs per person, view or edit, never Users & Roles"
 Field-level edit rights shown as role badges,auth,must,yes,yes,S04-S07 SALES/SDM badges; build: FIELD_POLICY drives badges and API filtering
@@ -20,11 +20,11 @@ Show canceled jobs toggle,schedule,should,yes,yes,S02
 Warning for jobs without dates,schedule,should,yes,yes,S02 banner; build: lists jobs missing unit or start date
 Maintenance event blocks a unit,schedule,must,yes,yes,S37 hatched Mechanic bar; 2c: blocked days refuse bookings; a block over booked jobs needs confirmation
 Unit status events (loan transferred junk backup),schedule,should,yes,yes,"S38 feeds utilization; 2c: loan/transferred/junk block, backup-on-site marks only"
-Filter schedule by division and SDM,schedule,should,yes,no,S02b; still open; the original locked it behind a password
+Filter schedule by division and SDM,schedule,should,yes,yes,"S02b; still open; the original locked it behind a password; 3a: SDM and account filters, no password gate"
 Job Board list with search and status filter,jobs,must,yes,yes,S03
 Per-stage progress bars on job cards,jobs,must,yes,yes,S03; build: Preparation and Closure count from milestone 2d; 2d: all four stages
 Create job,jobs,must,yes,yes,"original creates the record instantly; clone should save on first edit; build: created on first save, never on click"
-Delete job,jobs,must,yes,partial,S04 confirm first; build: API with soft delete; no button yet
+Delete job,jobs,must,yes,yes,"S04 confirm first; build: API with soft delete; no button yet; 3a: two-step button; refused while a Pre-Job Note or 8 Min. Facts exist"
 Job editor Design stage,jobs,must,yes,yes,"S04; build: core fields; DMR, program, third party in 2d; 2d: DMR, program in place, third party added"
 Up to 15 services with auto service domain,jobs,must,yes,yes,S04; build: WIREGUARD job types picked; domain readout in 2d; 2f: domains set per job type in Database and shown under the services
 Job editor Preparation stage,jobs,must,yes,yes,"S05; 2d: well, wire and drum from WIREGUARD with pre-job test status, pressure control, toolstring, crew"
@@ -60,7 +60,7 @@ Failure Roster table with filters,failure roster,must,yes,yes,"S10; 2h: standard
 Failures by month chart with drill-down,failure roster,should,yes,yes,"S10; 2h: click a month to list it, per-month Excel/PDF/CSV"
 Tracking-gap warning (NPT without 8MF etc),failure roster,should,yes,yes,"S10; 2h: NPT without 8MF and failure not in roster, with job links"
 Add failure manually,failure roster,should,yes,yes,"S40; 2h: hand-added rows, removable; 8MF rows edited from the report"
-Failure Roster CSV PDF Excel exports,failure roster,should,yes,no,S10
+Failure Roster CSV PDF Excel exports,failure roster,should,yes,yes,"S10; 2h: CSV, XLSX and print for all rows and per month"
 Equipment Database (units PCE grease panels),database,must,yes,yes,"S24 manual; 2f: WIREGUARD units read-only with open jobs, PCE and grease panels (switch off asks when open jobs use it), local lists, service profiles"
 Quick Plan card board,quick plan,could,yes,no,S25 manual
 Operation Statistics KPIs gauges and charts,service quality,must,yes,yes,"S13; 2i: period presets, 9 filters, 6 KPI tiles, fleet-efficiency gauges by account, missing-data warning with list, 12 charts"
@@ -99,13 +99,13 @@ Data-aware AI Agent (admin),assistant,could,yes,no,behaviour unknown; design new
 QAF12069 question text and weights copied from screens,jra,skip,yes,skip,load from the controlled QHSE form instead
 Resources Allocation board,other,skip,yes,skip,dormant in original
 Headcount Roster screen,other,should,yes,yes,"Attendance Administrator only; fold into an Employees admin page; decided: build it for attendance_admin (Admin Manual 6); one people list for attendance and crews; 2j: add/edit/switch off/remove (only if never crewed), reporting line, rotation, WIREGUARD link"
-Service catalogue = WIREGUARD job types with local profiles (domain and section flags),slickline,must,no,no,service_profiles in 0002_seed.sql; 21 job types
+Service catalogue = WIREGUARD job types with local profiles (domain and section flags),slickline,must,no,yes,"service_profiles in 0002_seed.sql; 21 job types; 2f: Service profiles tab edits domain and section flags per WIREGUARD job type"
 Toolstring builder on Preparation (component OD length weight),slickline,must,no,yes,new for SLK; feeds max tool OD and lubricator length check; 2d
-Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,partial,new for SLK; build: overpull not on screen yet
-Survey details for memory gauge jobs (stops gradients PBU),slickline,should,no,no,new for SLK; unlocked by is_memory
+Slickline execution fields (tag depth max pull overpull jarring wire cut),slickline,must,no,yes,"new for SLK; build: overpull not on screen yet; 2d: overpull added to Execution"
+Survey details for memory gauge jobs (stops gradients PBU),slickline,should,no,yes,"new for SLK; unlocked by is_memory; 2d: memory survey section gated by is_memory"
 Wire cut on the job compared with WIREGUARD runs,slickline,should,no,no,reconciliation value check; WIREGUARD owns the wire record
 Explosives link for tubing punch and cutter jobs,slickline,could,no,no,is_explosive services prompt a Mobilize to Well
-Separate inventory rights for explosives vs slickline hardware,inventory,must,no,no,storekeeper role; tested 2026-10-24
+Separate inventory rights for explosives vs slickline hardware,inventory,must,no,yes,"storekeeper role; tested 2026-10-24; 2k: each inventory has its own read and write rules"
 WIREGUARD sync of units fields rigs job types locations wires drums runs,integration,must,no,yes,"cron every 15 min; read-only service binding; build: units, job types, locations, fields, rigs; wires drums runs in 2b; 2b: plus documents, alerts, settings, build stamp; tested against mock with 1,210 runs"
 WIREGUARD data freshness indicator and on-demand sync,integration,should,no,yes,header status; /api/wg/status
 Reconciliation: SLK Ops jobs vs WIREGUARD runs with discrepancy findings,reconciliation,must,no,yes,"S46 F15; 9 checks; 2e: 9 checks, matching by link / real ticket / real DRSS / unit+date+well"
@@ -114,7 +114,7 @@ Reconciliation summary per unit SDM and month,reconciliation,should,no,partial,S
 Nightly reconciliation feeding banners and digest,reconciliation,should,no,partial,cron 04:00 Riyadh; 2e: nightly cron runs sync + check; banners and digest not yet
 SLK Ops roles per WIREGUARD username with defaults from the WIREGUARD role,auth,must,no,yes,user_roles
 Deploy on Cloudflare (Worker D1 R2 KV cron Email Service),platform,must,no,partial,architecture.md wrangler.toml plan; build: wrangler.jsonc ready; not deployed
-Wire panel on the job: pre-job test rule and tension limit check,wire log,should,no,no,D3; uses WIREGUARD sop and kpi settings
+Wire panel on the job: pre-job test rule and tension limit check,wire log,should,no,yes,"D3; uses WIREGUARD sop and kpi settings; 2d: drum and wire from WIREGUARD with the pre-job test rule and WIREGUARD's tension-test window"
 Wire KPIs: 17 of WIREGUARD's KPIs with the same codes and parameters,wire log,should,no,no,D3; G1-G6 C12 C1-C6 J7 J9 M5 W14 W1
 KPI parity test against WIREGUARD's own engine and build-stamp watch,wire log,should,no,no,D3; re-run after each WIREGUARD release
 Link to the full WIREGUARD dashboard for the remaining KPIs,wire log,could,no,no,D3

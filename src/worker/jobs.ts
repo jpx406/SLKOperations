@@ -437,6 +437,9 @@ jobs.delete('/:id', async (c) => {
       blockedBy: { preJobNote: note.log_no },
     }, 409);
   }
+  // 8 Min. Facts reports and their roster rows belong to the job's history
+  const emf = await c.env.DB.prepare('SELECT group_concat(log_no, \', \') AS logs FROM eight_min_facts WHERE job_id = ?').bind(id).first<{ logs: string | null }>();
+  if (emf?.logs) return c.json({ error: `This job has 8 Min. Facts ${emf.logs}, which stay with it. Set the job to Canceled instead.`, blockedBy: { eightMinFacts: emf.logs } }, 409);
   const at = new Date().toISOString();
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE jobs SET deleted_at = ?, updated_by = ?, updated_at = ? WHERE id = ?').bind(at, user.username, at, id),

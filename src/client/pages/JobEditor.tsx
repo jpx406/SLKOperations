@@ -206,6 +206,7 @@ export function JobEditor() {
         </h1>
         {job && <StatusPill status={job.status} />}
         <SaveIndicator state={save} />
+        {job && me?.menus.jobs?.delete && <DeleteJob job={job} onDeleted={() => { qc.invalidateQueries({ queryKey: ['jobs'] }); qc.invalidateQueries({ queryKey: ['schedule'] }); navigate('/operation/jobs', { replace: true }); }} />}
       </div>
 
       {isNew && <p className="mb-4 text-sm text-text-muted">Nothing is saved until you enter the first detail, so opening this page never leaves an empty job behind.</p>}
@@ -396,6 +397,25 @@ export function JobEditor() {
         ))}
       </div>
     </section>
+  );
+}
+
+/** Two steps, so a stray click never removes a job. The API refuses jobs that have a Pre-Job Note or 8 Min. Facts. */
+function DeleteJob({ job, onDeleted }: { job: Job; onDeleted: () => void }) {
+  const [step, setStep] = useState<'idle' | 'confirm' | 'busy'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const remove = async () => {
+    setStep('busy');
+    try { await api(`/jobs/${job.id}`, { method: 'DELETE' }); onDeleted(); }
+    catch (e) { setError((e as ApiError).message); setStep('idle'); }
+  };
+  return (
+    <span className="flex items-center gap-2">
+      {error && <span role="alert" className="max-w-md text-xs text-danger">{error}</span>}
+      {step === 'idle'
+        ? <Button size="sm" variant="ghost" onClick={() => { setError(null); setStep('confirm'); }}>Delete job</Button>
+        : <><Button size="sm" variant="danger" loading={step === 'busy'} onClick={remove}>Delete {job.ticket_no ?? 'this job'}</Button><Button size="sm" variant="ghost" onClick={() => setStep('idle')}>Keep</Button></>}
+    </span>
   );
 }
 

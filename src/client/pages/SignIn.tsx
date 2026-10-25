@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { ApiError, api } from '../api';
 import { Banner, Button, Field, inputClass } from '../components/ui';
@@ -8,6 +8,8 @@ import { Banner, Button, Field, inputClass } from '../components/ui';
 export function SignIn() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [wg, setWg] = useState<string | null>(null);
+  useEffect(() => { api<{ wireguardUrl: string }>('/public-config').then((r) => setWg(r.wireguardUrl)).catch(() => undefined); }, []);
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,6 +57,9 @@ export function SignIn() {
           </Field>
           <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!username || !password}>Sign in</Button>
         </form>
+        <p className="mt-4 text-center text-sm">
+          <a className="text-text-muted underline hover:text-text" href={wg ?? undefined} target="_blank" rel="noreferrer">Forgot your password? Reset it in WIREGUARD</a>
+        </p>
       </div>
     </main>
   );

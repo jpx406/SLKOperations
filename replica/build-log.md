@@ -464,6 +464,21 @@ Pre-Job Notes access follows the manual.
 
 **Not done:** the prompt to mobilize explosives from a job with an explosive service (a could-have).
 
+## Milestone 3a: quick wins and catch-up
+
+- **Country switch** (stands in for the original's country picker at sign-in): a header select for people with more than one country. The client sends `X-SLK-Country`; `resolveSession` narrows `countries` to that one only if it is among the person's countries (`allCountries` keeps the full list). Every screen and export follows without page-level code.
+- **WIREGUARD password links:** "Forgot your password?" on the sign-in page, through a small public `/api/public-config` registered before the session middleware, and "Change password" in the header. Passwords stay in WIREGUARD.
+- **Delete job:** a two-step button in the editor for roles with the jobs delete right. The API refuses while a Pre-Job Note exists (Administrator Manual 8.1) or while 8 Min. Facts exist (their roster rows belong to the job); the answer suggests Canceled instead.
+- **Schedule:** SDM and account filters change which bars are drawn; units and blocks stay, so free days remain visible.
+- **Feature matrix catch-up:** marked rows that earlier milestones had already built (service catalogue, slickline execution fields, separate inventory rights, memory survey, Failure Roster exports, the pre-job wire panel).
+
+**Verified 2026-10-25 (API):**
+- deleting the DEV-W1 job was refused because it has EM-0001;
+- `X-SLK-Country: Bahrain` narrowed the countries to Bahrain (0 jobs) while keeping both in `allCountries`; an unknown country was ignored;
+- the public config answers without signing in.
+
+**Still open on the must list:** deploying to Cloudflare and the real WIREGUARD sync account, both waiting on the user.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

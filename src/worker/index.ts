@@ -46,6 +46,9 @@ app.post('/auth/login', async (c) => {
   }
 });
 
+// the sign-in page needs WIREGUARD's address for the forgot-password link, before anyone is signed in
+app.get('/public-config', (c) => c.json({ wireguardUrl: c.env.WG_APP_URL ?? 'https://slkwireguard.nesrapp.com' }));
+
 app.post('/auth/logout', async (c) => {
   await logout(c);
   return c.json({ ok: true });
@@ -143,7 +146,7 @@ app.get('/schedule', async (c) => {
   const [units, jobsInMonth, events, undated, retired] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT unit_number, country, year, wg_active FROM wg_units WHERE wg_active = 1 AND country IN (SELECT value FROM json_each(?)) ORDER BY unit_number`).bind(countries),
     c.env.DB.prepare(
-      `SELECT j.id, j.ticket_no, j.well, j.rig, j.unit_number, j.status, j.start_date, coalesce(j.end_date, j.start_date) AS end_date, j.sdm_username, j.updated_at
+      `SELECT j.id, j.ticket_no, j.well, j.rig, j.unit_number, j.status, j.start_date, coalesce(j.end_date, j.start_date) AS end_date, j.sdm_username, j.location, j.updated_at
        FROM jobs j WHERE j.deleted_at IS NULL AND j.unit_number IS NOT NULL AND j.start_date IS NOT NULL
          AND j.start_date <= ?2 AND coalesce(j.end_date, j.start_date) >= ?1
          AND j.country IN (SELECT value FROM json_each(?3)) ${showCanceled ? '' : "AND j.status <> 'canceled'"}

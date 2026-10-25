@@ -93,7 +93,11 @@ export async function resolveSession(c: Context<AppBindings>): Promise<Resolved>
     const all = await env.DB.prepare('SELECT DISTINCT country FROM wg_units WHERE wg_active = 1').all<{ country: string }>();
     countries = [...new Set([...countries, ...all.results.map((r) => r.country)])].sort();
   }
-  return { user: { username: s.username, fullName: s.fullName, role: row.role, wgRole: s.wgRole, countries, menus, sessionId: id } };
+  // the header country switch narrows every screen to one country without changing what the person may see
+  const allCountries = countries;
+  const pick = c.req.header('x-slk-country');
+  if (pick && countries.includes(pick)) countries = [pick];
+  return { user: { username: s.username, fullName: s.fullName, role: row.role, wgRole: s.wgRole, countries, allCountries, menus, sessionId: id } };
 }
 
 /** Requires a valid SLK Ops session that WIREGUARD still honours. */

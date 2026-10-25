@@ -16,6 +16,8 @@ export interface Me {
   role: Role;
   wgRole: string | null;
   countries: string[];
+  /** Every country the person may see; countries is narrowed to one when the header switch is used. */
+  allCountries?: string[];
   menus: Record<string, MenuRight>;
 }
 

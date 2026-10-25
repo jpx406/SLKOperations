@@ -6,9 +6,9 @@ import { canEditField } from '../../shared/fieldPolicy';
 import type { JobStatus } from '../../shared/types';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
-import { Banner, Button, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
+import { Banner, Button, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
-interface SJob { id: string; ticket_no: string | null; well: string | null; unit_number: string; status: JobStatus; start_date: string; end_date: string; updated_at: string }
+interface SJob { id: string; ticket_no: string | null; well: string | null; unit_number: string; status: JobStatus; start_date: string; end_date: string; updated_at: string; sdm_username: string | null; location: string | null }
 interface SEvent { id: string; unit_number: string; kind: string; starts_on: string; ends_on: string; note: string | null }
 interface ScheduleData {
   month: string; first: string; last: string;
@@ -67,6 +67,10 @@ export function Schedule() {
   const [params, setParams] = useSearchParams();
   const month = params.get('month') ?? thisMonth();
   const [showCanceled, setShowCanceled] = useState(false);
+  // SDM and account filters only change what is drawn; blocks and units stay so free days are still visible
+  const [only, setOnly] = useState({ sdm: '', account: '' });
+  const sdmsQ = useQuery({ queryKey: ['sdms'], queryFn: () => api<{ username: string; full_name: string }[]>('/sdms'), staleTime: 300_000 });
+  const shown = (j: SJob) => (!only.sdm || j.sdm_username === only.sdm) && (!only.account || j.location === only.account);
   const { data: me } = useMe();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -211,6 +215,12 @@ export function Schedule() {
         <label className="inline-flex items-center gap-2 text-text-muted">
           <input type="checkbox" checked={showCanceled} onChange={(e) => setShowCanceled(e.target.checked)} /> Show canceled jobs
         </label>
+        <select aria-label="Show jobs of one SDM" className={inputSized('h-8 w-48')} value={only.sdm} onChange={(e) => setOnly({ ...only, sdm: e.target.value })}>
+          <option value="">All SDMs</option>{(sdmsQ.data ?? []).map((m) => <option key={m.username} value={m.username}>{m.full_name}</option>)}
+        </select>
+        <select aria-label="Show jobs of one account" className={inputSized('h-8 w-44')} value={only.account} onChange={(e) => setOnly({ ...only, account: e.target.value })}>
+          <option value="">All accounts</option>{[...new Set((q.data?.jobs ?? []).map((j) => j.location).filter(Boolean) as string[])].sort().map((a) => <option key={a}>{a}</option>)}
+        </select>
         <span className="flex flex-wrap gap-3 text-xs text-text-muted" aria-label="Legend">
           {(['planned', 'ongoing', 'completed'] as JobStatus[]).map((s) => (
             <span key={s} className="inline-flex items-center gap-1.5"><i className={cx('inline-block size-2.5 rounded-xs border-l-3', BAR[s])} />{s}</span>
@@ -260,7 +270,7 @@ export function Schedule() {
             </div>
             {q.data.units.map((u) => {
               const bars = lanes([
-                ...q.data.jobs.map(placed).filter((j) => j.unit_number === u.unit_number && j.end_date >= q.data.first && j.start_date <= q.data.last)
+                ...q.data.jobs.filter(shown).map(placed).filter((j) => j.unit_number === u.unit_number && j.end_date >= q.data.first && j.start_date <= q.data.last)
                   .map((j) => ({ kind: 'job' as const, job: j, start: col(j.start_date), end: col(j.end_date) })),
                 ...q.data.events.filter((e) => e.unit_number === u.unit_number).map((e) => ({ kind: 'block' as const, block: e, start: col(e.starts_on), end: col(e.ends_on) })),
               ]);
