@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { ROLE_LABEL } from '../shared/roles';
 import type { Role } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { exportPackage, importApply, importDryRun } from './dataPackage';
 import { MENU_KEYS, effectiveMenus } from './permissions';
 
 // Users & Roles (S34). Accounts live in WIREGUARD; here an admin sets each person's SLK Ops role,
@@ -202,3 +203,8 @@ admin.get('/audit', async (c) => {
   ).all();
   return c.json(results);
 });
+
+// ---- whole-board export and import (Administrator Manual 7), admin role only ----
+admin.get('/export', exportPackage);
+admin.post('/import/dry-run', importDryRun);
+admin.post('/import/apply', importApply);

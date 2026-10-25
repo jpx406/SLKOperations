@@ -22,6 +22,7 @@ import { JraPage } from './pages/Jra';
 import { JobReport } from './pages/JobReport';
 import { BonusAnalysis, BonusReport, BonusRules } from './pages/Bonus';
 import { SalesDashboard } from './pages/Sales';
+import { AdminData } from './pages/AdminData';
 import { WireDetail, WireKpis, WiresRegister } from './pages/Wires';
 import { Reconciliation } from './pages/Reconciliation';
 import { Schedule } from './pages/Schedule';
@@ -29,7 +30,7 @@ import { SignIn } from './pages/SignIn';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users', '/admin/data']);
 
 const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
@@ -69,6 +70,7 @@ const router = createBrowserRouter([
       { path: 'operation/reconciliation', element: <Reconciliation /> },
       { path: 'operation/database', element: <Database /> },
       { path: 'admin/users', element: <AdminUsers /> },
+      { path: 'admin/data', element: <AdminData /> },
       ...NAV.flatMap((g) => g.pages).filter((p) => !BUILT.has(p.path)).map((p) => ({ path: p.path.slice(1), element: <Stub /> })),
       { path: '*', element: <Stub /> },
     ],

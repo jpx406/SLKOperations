@@ -619,6 +619,32 @@ Pre-Job Notes access follows the manual.
 
 **Open:** real bonus rules and splits are NESR's to enter. Statements need email sending switched on (the 3f user action).
 
+## Milestone 4c: data export and import (Administrator Manual 7)
+
+- **Export** (`GET /api/admin/export`, admin role): every SLK Ops table in dependency order, plus the audit log for the record. WIREGUARD mirrors are left out because the sync owns them. The export id is written to the audit log and acts as the backup receipt.
+  - The screen packs a zip: `slkops-package-<time>.json` (what an import takes) and `tables/<table>.xlsx` for reading, with the existing writers.
+  - A "Data" link sits next to Sign out for admins, as in the manual.
+- **Dry run** (`POST /api/admin/import/dry-run`):
+  - checks the package format, version and table names;
+  - compares each table's rows with the database by primary key (composite keys work, generated columns are ignored): new, changed (with the fields), unchanged, refused;
+  - history tables (note and 8MF versions, inventory movements) never change, and the audit log is never imported.
+- **Apply** (`POST /api/admin/import/apply`):
+  - needs `confirm: IMPORT` and a backup export by the same admin within the last 15 minutes;
+  - inserts new rows and updates changed rows in place; it never deletes and never rewrites unchanged rows, so table triggers only see real changes. This came from a bug: the first version upserted every row, and the unit-block overlap trigger refused the unchanged ones;
+  - writes in chunks of 80, all-or-nothing per chunk and in dependency order; a failure stops, is audited, and names the backup to restore from.
+
+**Verified 2026-10-25:**
+- **API:**
+  - exporting the local board gave 34 tables with rows;
+  - a dry run of the same package showed 0 changes across 1,051 rows;
+  - a package with a renamed PCE, a new list value and an edited inventory movement showed +1 / ~1 / 1 refused;
+  - an apply without a fresh backup was refused;
+  - an apply with a PCE rename, a new list value and a unit-block note wrote exactly 3 rows and audited the per-table counts.
+- **Browser (playwright):** the export downloaded the zip, which .NET opens (34 entries: the JSON package and 33 table spreadsheets), and the screen recorded the backup.
+- **Unit tests:** 150 of 150.
+
+**Not checked:** a file upload through the screen (playwright-cli's upload needs a file chooser open first); the same requests were checked through the API.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

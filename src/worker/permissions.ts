@@ -67,6 +67,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'DELETE', re: /^\/api\/admin\/users\/[^/]+$/, menu: 'users', action: 'delete' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/grants$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/role-permissions$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/admin\/import\/(dry-run|apply)$/, menu: 'users', action: 'edit' },
   { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists)$/, menu: 'database', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/database\/(pce|grease-panels|lists)\/[^/]+$/, menu: 'database', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/database\/(pce|grease-panels)\/[^/]+$/, menu: 'database', action: 'delete' },

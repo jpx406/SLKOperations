@@ -130,7 +130,7 @@ Crew Assignment and Bonus Distribution on Closure (Admin/SDM),bonus,should,yes,y
 Bonus statements emailed to each person,bonus,could,yes,no,Admin Manual 1.1
 Revenue entered on each job (Closure),sales,should,no,yes,"decided 2026-10-24; 2d: Closure, SDM or Sales, stored in cents"
 Step-up re-authentication for Bonus and Sales pages,bonus,should,yes,yes,"replaces the original's access code; WIREGUARD password, 30 min; 4b: WIREGUARD password re-entered, 30 minutes on the session, audited; bonus and sales APIs refuse without it"
-Admin data export (all tables) and import with dry-run and backup,admin,should,yes,no,Admin Manual 7
+Admin data export (all tables) and import with dry-run and backup,admin,should,yes,yes,"Admin Manual 7; 4c: package JSON plus per-table XLSX in a zip; import needs a backup export by the same admin within 15 min, a dry run (new/changed/unchanged/refused per table) and typed IMPORT; never deletes; history insert-only"
 Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,yes,"Admin Manual 8.1; 3b: warning then typed log number; versions go with the note"
 Job delete blocked while a Pre-Job Note exists,pre-job notes,should,yes,yes,Admin Manual 8.1; 409 with the note number
 SLK Contacts list opens Pre-Job Notes,pre-job notes,should,yes,yes,"Admin Manual 8.2; rights logic built, list maintained in Headcount Roster (2j); 2j: SLK contacts view in the roster; a contact needs a WIREGUARD username"

@@ -108,6 +108,7 @@ export function AppShell() {
             <Button size="sm" variant="ghost" onClick={toggleTheme} aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}>
               {theme === 'light' ? <Moon aria-hidden className="size-4" /> : <Sun aria-hidden className="size-4" />}
             </Button>
+            {me?.role === 'admin' && <NavLink to="/admin/data" className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm font-semibold text-text-muted hover:bg-surface-2 hover:text-text">Data</NavLink>}
             <Button size="sm" variant="ghost" onClick={signOut}><LogOut aria-hidden className="size-4" />Sign out</Button>
           </div>
         </div>
