@@ -94,6 +94,10 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'DELETE', re: /^\/api\/pre-job-notes\/[^/]+$/, menu: 'pre_job_notes', action: 'delete' },
   { method: 'PUT', re: /^\/api\/jra\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/jra\/[^/]+\/(send|decide)$/, menu: 'jobs', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/bonus\/(rules|splits)$/, menu: 'bonus', action: 'edit' },
+  { method: 'POST', re: /^\/api\/bonus\/statements$/, menu: 'bonus', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/bonus\/jobs\/[^/]+$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/bonus\/jobs\/[^/]+\/(approve|reopen)$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/recon\/run$/, menu: 'reconciliation', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/recon\/findings\/[^/]+$/, menu: 'reconciliation', action: 'edit' },
   { method: 'POST', re: /^\/api\/recon\/links$/, menu: 'reconciliation', action: 'edit' },
@@ -122,6 +126,9 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/pre-job-notes(\/(contacts|by-job\/[^/]+|[^/]+(\/versions\/\d+)?))?$/, menus: ['pre_job_notes'] },
   { re: /^\/api\/jra\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/wires\/data$/, menus: ['wires', 'statistics'] },
+  { re: /^\/api\/bonus\/(rules|lines|revenue)$/, menus: ['bonus'] },
+  { re: /^\/api\/bonus\/jobs\/[^/]+$/, menus: ['jobs'] },
+  { re: /^\/api\/sales\/jobs$/, menus: ['sales_dashboard'] },
   // each inventory opens only with its own tab, so explosives stay apart from slickline hardware
   { re: /^\/api\/inventory\/explosive(\/(movements|reconciliation))?$/, menus: ['inventory_explosive'] },
   { re: /^\/api\/inventory\/hardware(\/(movements|reconciliation))?$/, menus: ['inventory_hardware'] },
@@ -139,6 +146,8 @@ export function readAllowed(path: string, menus: Record<string, MenuRight>): boo
 export const OPEN_WRITES: { method: string; re: RegExp }[] = [
   { method: 'POST', re: /^\/api\/auth\/login$/ },
   { method: 'POST', re: /^\/api\/auth\/logout$/ },
+  // re-entering one's own password; what it unlocks is still limited by the tabs
+  { method: 'POST', re: /^\/api\/step-up$/ },
 ];
 
 export function ruleFor(method: string, path: string) {

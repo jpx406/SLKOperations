@@ -589,6 +589,36 @@ Pre-Job Notes access follows the manual.
 
 **Not checked:** an actual email delivery (needs the onboarded domain and a real recipient).
 
+## Milestones 4a and 4b: Bonus, Sales Dashboard and step-up
+
+**Step-up** (replaces the original's shared access code):
+- `POST /api/step-up` checks the person's own WIREGUARD password with WIREGUARD and sets `stepUpUntil` on the KV session for 30 minutes; each unlock is audited.
+- Middleware refuses `/api/bonus/*` and `/api/sales/*` without it (403 with `stepUp: true`). The pages then show the password prompt, and an "Unlocked · N min" badge while open.
+
+**Bonus** (Administrator Manual 1 and 3; rules decided 2026-10-24):
+- **Rules** (`/bonus/rules`): per WIREGUARD job type and country: fixed per job, per successful run, or % of the job revenue, with an on/off switch. A default split by role must add up to 100 %.
+- **Pool:** set by the rule of the job's main service (`poolFor`).
+- **Split:** each role's share is divided among the people in that role. Roles nobody filled are spread over the present ones in proportion, so the whole pool is allocated, with rounding cents to the first person.
+- **Closure → Crew assignment and bonus distribution:** Admin and SDM roles only, completed jobs only. Proposed from the split; edit a share or an amount (the total can't exceed the pool); save, then approve. Only an admin reopens, with a reason; statements already sent stay recorded.
+- **Bonus Report:** per person totals of approved lines (the toggle includes unapproved ones); the standard filters plus a name search; XLSX, print; **Email statements** through the `EMAIL` binding, marking `statement_sent_at`.
+- **Bonus Analysis:** total paid, jobs with bonus, bonus % of the revenue of the same jobs against the < 4.5 % target (warning when over), revenue of completed jobs and how many lack revenue; by month, person, main service and role.
+
+**Sales Dashboard** (decided: aggregate of revenue entered on each job):
+- Tabs per account plus Analysis, Find / edit job (opens the job's Closure) and Incomplete data (completed jobs without revenue, counted on the tab).
+- KPIs: total, jobs #, average per job, approved bonus on those jobs. Quarterly and account charts, with month, service, area, SDM and unit in Analysis. XLSX and print.
+- No "Add jobs" or "Upload clean revenue", since there is no second dataset.
+
+**Verified 2026-10-25 (local, fake amounts):**
+- **API:** bonus routes refuse before step-up; a wrong password is refused, the right one unlocks for 30 minutes. A split that doesn't add up is refused. A $500 per-job pool split 40/35/15/10 over a supervisor, operator and assistant gives 222.22 / 194.44 / 83.34, exactly 500.00.
+- **Browser (playwright):**
+  - the Bonus Report prompts, then shows "Unlocked · 30 min";
+  - on devjob-010's Closure the proposed split saved and approved ("Approved by NESR-90003");
+  - the Report lists the three people;
+  - Analysis shows 500.00 USD = 1.3 % of the revenue of the same job; Sales totals 266,500 USD over 11 jobs.
+- **Unit tests:** 145 of 145.
+
+**Open:** real bonus rules and splits are NESR's to enter. Statements need email sending switched on (the 3f user action).
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

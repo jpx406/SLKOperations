@@ -11,6 +11,7 @@ import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
 import { useMe } from '../auth';
 import { JraBanner, useJraLock } from './Jra';
 import { JobLogEvents } from '../components/JobLogEvents';
+import { BonusDistribution } from './Bonus';
 import { PreJobNotePanel } from './PreJobNotes';
 import { CrewPanel, DetailsSection, SectionTitle, ToolstringBuilder, WirePanel, serviceFlags } from '../components/jobParts';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
@@ -395,6 +396,13 @@ export function JobEditor() {
               {text('revenue_cents', 'Ticket value', { type: 'number', unit: job?.revenue_currency ?? 'USD', hint: 'Feeds the Sales Dashboard' })}
               <div className="md:col-span-2">{area('bonus_remarks', 'Bonus remarks', 'Anything the bonus review should know')}</div>
             </div>
+
+            {job && me && ['admin', 'sdm', 'deputy_sdm'].includes(me.role) && (
+              <>
+                <SectionTitle aside="Admin and SDM only">Crew assignment and bonus distribution</SectionTitle>
+                <BonusDistribution jobId={job.id} />
+              </>
+            )}
 
             <SectionTitle aside={failureOpen ? 'NPT or a failure on this job' : undefined}>Failure follow-up</SectionTitle>
             {!failureOpen ? <LockHint>Opens when the job has NPT hours or Failure = Yes on Execution.</LockHint> : (

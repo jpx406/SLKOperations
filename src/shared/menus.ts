@@ -34,6 +34,7 @@ export const NAV: Group[] = [
     pages: [
       { key: 'bonus', label: 'Bonus Report', path: '/bonus/report', screen: 'S32', milestone: '4' },
       { key: 'bonus', label: 'Bonus Analysis', path: '/bonus/analysis', screen: 'S32', milestone: '4' },
+      { key: 'bonus', label: 'Bonus Rules', path: '/bonus/rules', screen: 'S32', milestone: '4' },
     ],
   },
   { label: 'Sales Dashboard', pages: [{ key: 'sales_dashboard', label: 'Sales Dashboard', path: '/sales', screen: 'S33', milestone: '4' }] },

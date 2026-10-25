@@ -97,7 +97,7 @@ export async function resolveSession(c: Context<AppBindings>): Promise<Resolved>
   const allCountries = countries;
   const pick = c.req.header('x-slk-country');
   if (pick && countries.includes(pick)) countries = [pick];
-  return { user: { username: s.username, fullName: s.fullName, role: row.role, wgRole: s.wgRole, countries, allCountries, menus, sessionId: id } };
+  return { user: { username: s.username, fullName: s.fullName, role: row.role, wgRole: s.wgRole, countries, allCountries, menus, sessionId: id, stepUpUntil: s.stepUpUntil ?? 0 } };
 }
 
 /** Requires a valid SLK Ops session that WIREGUARD still honours. */
@@ -107,3 +107,22 @@ export const requireSession: MiddlewareHandler<AppBindings> = async (c, next) =>
   c.set('user', r.user);
   await next();
 };
+
+export const STEP_UP_MS = 30 * 60_000;
+
+/**
+ * Step-up for compensation and revenue figures: the person re-enters their WIREGUARD password, WIREGUARD checks it,
+ * and the session opens those pages for 30 minutes. Replaces the original's shared access code.
+ */
+export async function stepUp(c: Context<AppBindings>, password: string) {
+  const user = c.get('user');
+  await wgLogin(c.env, user.username, password);
+  const raw = await c.env.KV.get(key(user.sessionId));
+  if (!raw) return { ok: false as const };
+  const s = JSON.parse(raw) as Session;
+  s.stepUpUntil = Date.now() + STEP_UP_MS;
+  await c.env.KV.put(key(user.sessionId), JSON.stringify(s), { expirationTtl: SESSION_TTL_S });
+  await c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), user.username, 'step_up', 'auth', user.username, 'Unlocked bonus and revenue figures for 30 minutes').run();
+  return { ok: true as const, until: s.stepUpUntil };
+}

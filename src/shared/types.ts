@@ -18,6 +18,8 @@ export interface Me {
   countries: string[];
   /** Every country the person may see; countries is narrowed to one when the header switch is used. */
   allCountries?: string[];
+  /** Epoch ms until which bonus and revenue figures are unlocked by step-up re-authentication. */
+  stepUpUntil?: number;
   menus: Record<string, MenuRight>;
 }
 
