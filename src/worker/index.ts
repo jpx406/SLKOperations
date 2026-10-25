@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
 import { admin } from './admin';
+import { aiAdminGet, aiAdminPut, aiChat, aiStatus } from './ai';
 import { database } from './database';
 import { emf } from './emf';
 import { failureRoster } from './failureRoster';
@@ -176,6 +177,8 @@ app.get('/schedule', async (c) => {
 });
 
 app.route('/jobs', jobs);
+app.get('/admin/ai', aiAdminGet);
+app.put('/admin/ai', aiAdminPut);
 app.route('/admin', admin);
 app.route('/database', database);
 app.route('/job-log', jobLog);
@@ -207,6 +210,14 @@ app.use('/sales/*', async (c, next) => ((c.get('user').stepUpUntil ?? 0) > Date.
 app.route('/bonus', bonus);
 app.route('/sales', sales);
 app.route('/recon', recon);
+
+// AI Agent: each tool reads through this same app with the asker's cookie and country switch
+app.get('/ai/status', aiStatus);
+app.post('/ai/chat', (c) => aiChat(c, (path) => {
+  const headers = new Headers();
+  for (const h of ['cookie', 'x-slk-country']) { const v = c.req.header(h); if (v) headers.set(h, v); }
+  return Promise.resolve(app.fetch(new Request(new URL(`/api${path}`, c.req.url), { headers }), c.env, c.executionCtx));
+}));
 app.route('/unit-events', unitEvents);
 
 app.get('/config', (c) => c.json({ wireguardUrl: c.env.WG_APP_URL ?? 'https://slkwireguard.nesrapp.com', reconStartDate: c.env.RECON_START_DATE ?? '2026-10-01' }));

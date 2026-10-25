@@ -16,6 +16,10 @@ export interface Env {
   /** Cloudflare Email Service binding for the daily digest; absent until the sender domain is onboarded. */
   EMAIL?: { send(message: { to: string; from: { email: string; name?: string }; subject: string; html: string; text: string }): Promise<unknown> };
   EMAIL_FROM?: string;
+  /** Worker secret for the AI Agent; without it the agent says it isn't set up. */
+  ANTHROPIC_API_KEY?: string;
+  /** Optional: route the agent through Cloudflare AI Gateway (its Anthropic endpoint URL). */
+  ANTHROPIC_BASE_URL?: string;
 }
 
 export interface Session {

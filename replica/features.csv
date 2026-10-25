@@ -95,7 +95,7 @@ Knowledge Hub document content,data,skip,yes,skip,147 docs owned by NESR QHSE; s
 Aramco RILR GEARS OpsMiner integrations,integrations,skip,yes,skip,client systems; keep as free-text refs
 SAP integration for part numbers,integrations,skip,yes,skip,keep SAP# as a field only
 SharePoint job package and cable directory links,integrations,skip,yes,skip,store links as URLs
-Data-aware AI Agent (admin),assistant,could,yes,no,behaviour unknown; design new if wanted; decided 2026-10-24: build in a later milestone with scoped read-only tools
+Data-aware AI Agent (admin),assistant,could,yes,yes,milestone 5: read-only tools through the asker's own session (same permissions, countries and step-up)
 QAF12069 question text and weights copied from screens,jra,skip,yes,skip,load from the controlled QHSE form instead
 Resources Allocation board,other,skip,yes,skip,dormant in original
 Headcount Roster screen,other,should,yes,yes,"Attendance Administrator only; fold into an Employees admin page; decided: build it for attendance_admin (Admin Manual 6); one people list for attendance and crews; 2j: add/edit/switch off/remove (only if never crewed), reporting line, rotation, WIREGUARD link"
@@ -135,4 +135,4 @@ Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,yes
 Job delete blocked while a Pre-Job Note exists,pre-job notes,should,yes,yes,Admin Manual 8.1; 409 with the note number
 SLK Contacts list opens Pre-Job Notes,pre-job notes,should,yes,yes,"Admin Manual 8.2; rights logic built, list maintained in Headcount Roster (2j); 2j: SLK contacts view in the roster; a contact needs a WIREGUARD username"
 Warning when WIREGUARD deactivates a unit with open SLK Ops jobs,integration,should,no,yes,"Admin Manual 4 caution, adapted; 2c: banner on the schedule listing the jobs"
-"AI Agent settings: on/off, model, monthly budget, messages per user per day",assistant,could,yes,no,Admin Manual 5.2
+"AI Agent settings: on/off, model, monthly budget, messages per user per day",assistant,could,yes,yes,Admin Manual 5.2; milestone 5

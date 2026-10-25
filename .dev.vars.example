@@ -6,3 +6,8 @@ WG_SYNC_PASSWORD=dev-sync-90009
 
 # The mock's runs end in September 2026, so reconcile from there locally.
 RECON_START_DATE=2026-09-01
+
+# AI Agent (milestone 5). Leave empty locally unless you want real answers; the page then says it is not set up.
+ANTHROPIC_API_KEY=
+# Optional: Cloudflare AI Gateway URL for Anthropic
+ANTHROPIC_BASE_URL=

@@ -648,3 +648,39 @@ Pre-Job Notes access follows the manual.
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.
+
+## Milestone 5: AI Agent (Administrator Manual 6)
+
+- **How it reads data.** Every tool is a GET through the app itself (`app.fetch`), carrying the asker's cookie and country switch. Read rules, countries and step-up apply exactly as in their browser, so the agent can't see more than the person can. Tools are offered only for the tabs the person has. A refused read or a locked revenue page comes back to the model as an error, and the model says so.
+- **Tools** (`src/shared/ai.ts`):
+  - job statistics with a breakdown, using the shared KPI maths;
+  - find jobs and one job;
+  - Failure Roster with its summary;
+  - 8 Min. Facts;
+  - attendance per person for a month;
+  - open reconciliation findings;
+  - revenue by account and month (needs step-up).
+  - Results are reduced to the fields that matter and cut at 30,000 characters.
+- **Model** (`src/worker/ai.ts`):
+  - `claude-opus-5-5` by default (admins can pick Sonnet 5.5 or Haiku 5.5), effort `medium`;
+  - server-side fallback `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`), not sent for Haiku, which has none;
+  - a manual tool loop of at most 8 turns; `refusal`, `max_tokens` and `pause_turn` are handled;
+  - `ANTHROPIC_API_KEY` is a Worker secret; `ANTHROPIC_BASE_URL` optionally routes through Cloudflare AI Gateway.
+- **Limits:** `ai_settings` holds on/off (off by default), model, the monthly budget in cents (shared with the help assistant) and messages per person per day (reset at midnight UTC). `ai_usage` gets one row per question with tokens and cost in micro-USD; fallback attempts are priced at their own model, and unknown models at the highest rate.
+- **Screen** `/admin/ai-agent`:
+  - chat with starter prompts;
+  - a list of what it can read for you;
+  - a small Markdown reader (tables, lists, bold) that never injects HTML;
+  - for admins, settings plus this month's spend per person.
+- **Permissions:**
+  - `POST /api/ai/chat` needs the `ai_agent` tab;
+  - `GET /api/ai/status` needs `ai_agent`;
+  - `GET`/`PUT /api/admin/ai` need Users & Roles.
+
+**Verified 2026-10-25:**
+- **Fake Anthropic API** (a local server via `ANTHROPIC_BASE_URL`, removed afterwards): the admin's question called `job_statistics` through the app and got real figures back (120 jobs, 247.3 NPT hours, broken down by unit). Each request carried the fallback beta, effort `medium` and only the allowed tools.
+- **Refusals:** an SDM without the tab was refused on chat (403) and on status (403). With no key set, chat says the agent isn't set up.
+- **Browser:** the starter prompt sent a question and showed the answer with the "Read: Statistics" chip.
+- **Unit tests:** 162 of 162, including the loop against a mocked Messages API (tool round-trip, one usage row with the right cost) and a check that every tool path is covered by the same read rule for the same menus.
+
+**Not checked:** a real Anthropic call (no key here). The PowerPoint output the manual mentions is not built.
