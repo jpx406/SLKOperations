@@ -19,13 +19,14 @@ import { Roster } from './pages/Roster';
 import { Inventory } from './pages/Inventory';
 import { PreJobNoteEditor, PreJobNotesList, PreJobNotesPrint } from './pages/PreJobNotes';
 import { JraPage } from './pages/Jra';
+import { WireDetail, WireKpis, WiresRegister } from './pages/Wires';
 import { Reconciliation } from './pages/Reconciliation';
 import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/quality/wire-kpis', '/wires', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users']);
 
 const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
@@ -49,6 +50,9 @@ const router = createBrowserRouter([
       { path: 'quality/npt', element: <NptAnalysis /> },
       { path: 'quality/utilization', element: <Utilization /> },
       { path: 'quality/competency', element: <Competency /> },
+      { path: 'quality/wire-kpis', element: <WireKpis /> },
+      { path: 'wires', element: <WiresRegister /> },
+      { path: 'wires/:serial', element: <WireDetail /> },
       { path: 'attendance', element: <Attendance /> },
       { path: 'attendance/roster', element: <Roster /> },
       { path: 'inventory/explosive', element: <Inventory key="explosive" inv="explosive" /> },

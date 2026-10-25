@@ -82,8 +82,8 @@ MCR inventory with par-level reorder alerts,inventory,should,yes,yes,"S29 manual
 Mobilize to well and consumption and return,inventory,must,yes,yes,"S39 not opened; 2k: multi-item movements with idempotent request ids; Consumption & return dialog per job or well"
 Job reconciliation per well,inventory,should,yes,yes,"S20; 2k: mobilized = consumed + returned + junked, undo netted, completed jobs with stock still out flagged"
 Movement history and undo,inventory,should,yes,yes,"S18 manual §7.3; 2k: append-only; undo writes the mirror movement, refused once stock has moved on or already undone"
-Wires register read-only from WIREGUARD (status tests alerts remaining length),wire log,should,yes,no,S30; D3 decided: read-only
-Wire detail: runs tests and derived facts (trips/jars since cut life consumed used-wire limit),wire log,should,yes,no,S31; read-only; Open in WIREGUARD for edits
+Wires register read-only from WIREGUARD (status tests alerts remaining length),wire log,should,yes,yes,"S30; D3 decided: read-only; 3d: register from WIREGUARD raw rows: remaining length, runs and life, latest test, drum MPI, open alerts; filters; Open in WIREGUARD"
+Wire detail: runs tests and derived facts (trips/jars since cut life consumed used-wire limit),wire log,should,yes,yes,"S31; read-only; Open in WIREGUARD for edits; 3d: runs with per-run rule checks, tests, alerts, counters since last cut, life consumed, used-wire limit, pre-job test status"
 Knowledge Hub library with filters and lesson of the week,knowledge hub,could,yes,no,S21
 Present lessons as toolbox talk,knowledge hub,could,yes,no,S43
 In-app AI help assistant,assistant,could,yes,no,S23 no data access; budget shared with the AI Agent (Admin Manual 5.2)
@@ -115,9 +115,9 @@ Nightly reconciliation feeding banners and digest,reconciliation,should,no,parti
 SLK Ops roles per WIREGUARD username with defaults from the WIREGUARD role,auth,must,no,yes,user_roles
 Deploy on Cloudflare (Worker D1 R2 KV cron Email Service),platform,must,no,partial,architecture.md wrangler.toml plan; build: wrangler.jsonc ready; not deployed
 Wire panel on the job: pre-job test rule and tension limit check,wire log,should,no,yes,"D3; uses WIREGUARD sop and kpi settings; 2d: drum and wire from WIREGUARD with the pre-job test rule and WIREGUARD's tension-test window"
-Wire KPIs: 17 of WIREGUARD's KPIs with the same codes and parameters,wire log,should,no,no,D3; G1-G6 C12 C1-C6 J7 J9 M5 W14 W1
-KPI parity test against WIREGUARD's own engine and build-stamp watch,wire log,should,no,no,D3; re-run after each WIREGUARD release
-Link to the full WIREGUARD dashboard for the remaining KPIs,wire log,could,no,no,D3
+Wire KPIs: 17 of WIREGUARD's KPIs with the same codes and parameters,wire log,should,no,yes,"D3; G1-G6 C12 C1-C6 J7 J9 M5 W14 W1; 3d: 18 codes in fact (G1-G6, C12, C1-C6, J7, J9, M5, W14, W1), ported line by line, kpi-settings switches respected, filters year/month/unit/field/wire"
+KPI parity test against WIREGUARD's own engine and build-stamp watch,wire log,should,no,yes,"D3; re-run after each WIREGUARD release; 3d: tests/wireKpiParity.test.ts runs WIREGUARD's v2-patch.js slices on the mock data; derivation identical for all runs; admins warned when the build stamp differs from the verified build"
+Link to the full WIREGUARD dashboard for the remaining KPIs,wire log,could,no,yes,"D3; 3d: on Wire KPIs"
 Read-only Viewer sync account with all countries,integration,must,no,partial,created by a WIREGUARD admin; password as SLK Ops secret; 2b: built and tested on the mock; the real account is created by a WIREGUARD admin
 Per-person tab removals (role + grants - removals),admin,must,yes,yes,Admin Manual 5.1; reads and writes both enforce it
 Countries per person set by the SLK Ops admin,admin,must,yes,yes,decided 2026-10-24; seeded from WIREGUARD at first sign-in only

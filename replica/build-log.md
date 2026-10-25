@@ -526,6 +526,36 @@ Pre-Job Notes access follows the manual.
   - Competency shows 100 person-service pairs, all Basic (the fake data has few jobs per service), the gap list and near-threshold entries.
 - **Unit tests:** 123 of 123. One expected value in a new test was wrong (5 busy days, not 4) and was corrected; the code was right.
 
+## Milestone 3d: Wires (register, detail) and Wire KPIs with a parity test
+
+**Data:**
+- **Migration `0004_wg_raw_rows.sql`** keeps WIREGUARD's raw rows for drums and alerts, plus the alert's resolved date, as was already done for wires, runs and documents. The sync now stores them.
+- **`GET /api/wires/data`** returns WIREGUARD's own rows for the caller's countries:
+  - a document takes the country of its wire or drum; alerts without a country go to admins only, as in WIREGUARD;
+  - it also returns the KPI and SOP settings, the WIREGUARD build stamp, and whether it matches the build the port was verified against.
+- **Payload:** about 1.9 MB of JSON on the mock data (compressed in transit), cached for 5 minutes on the client. Worth revisiting if the history grows a lot.
+
+**Port (`src/shared/wireKpis.ts`):**
+- WIREGUARD's `keysToCamel` (with its acronym overrides), `v2DateParts`, `v2DaysBetween`, the SOP fallback table and `v2SopNum` / `v2KpiParam` / `v2KpiEnabled`, `v2Derive` (per-run trips, impacts and minutes since the last cut, used-wire limit, tension utilisation, pre-job test status), `v2ComplianceScore`, `v2WireRemaining`, `v2MpiStatus`.
+- **18 KPIs:** G1–G6, C12, C1–C6, J7, J9, M5, W14, W1. The integration note said 17, but its own list has 18. Each follows its WIREGUARD counterpart line for line and returns numbers instead of HTML. A KPI switched off in WIREGUARD's kpi-settings is hidden.
+
+**Parity test (`tests/wireKpiParity.test.ts`):**
+- Reads WIREGUARD's `v2-patch.js` (set `WG_V2_PATCH`, or the sibling checkout) and cuts the needed functions out by their own markers, not line numbers. It stubs only the rendering helpers and runs both engines on the 1,209-run mock data.
+- **Result:** the derivation is identical for every run, and the tiles, notes and lists match for every ported KPI. It's skipped, with a label saying so, when WIREGUARD's source isn't present.
+- **Build watch:** `KPI_VERIFIED_BUILD = 2026-10-22T03-00`. When WIREGUARD's `app-build` stamp differs, admins see "WIREGUARD updated — KPI parity not yet re-checked". The mock reports 2026-10-19, so the banner shows locally, which is correct.
+
+**Screens:**
+- **Wires** (replaces Cable Summary): register with remaining length (lowest first), runs and life %, latest test, drum MPI, open alerts; search, unit and status filters; Open in WIREGUARD.
+- **Wire detail** (replaces Cable Book): remaining, drum and unit, life consumed, trips, impacts and minutes since the last cut, hours, used- or new-wire tension limit; pre-job test status for today; runs with per-run rule checks; tests and inspections; alerts.
+- **Wire KPIs:** General and Compliance tiles with codes; C1 failure reasons; monthly C1–C4 adherence (latest 24 months); J7 utilisation bands; J9 by month; M5 bands with the late wires; W14 with the metric switch; W1; the link to the full WIREGUARD dashboard.
+
+**Verified 2026-10-25:**
+- **Parity:** 8 of 8 cases pass against WIREGUARD build 2026-10-22.
+- **Browser (playwright, synced mock):**
+  - the register lists 79 wires; opening 1514 shows 14,496 ft, 40.5 % life, 50 % MBL limit (used wire);
+  - Wire KPIs: G1 1,207 runs, C12 76.8 %, C1 17.6 % with the failure reasons, C6 2.7 %, J7 36 runs over the limit; the parity banner shows for the admin.
+- **Unit tests:** 134 of 134 (including the parity cases).
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

@@ -65,9 +65,9 @@ export const RESOURCES: Resource[] = [
     name: 'drums', path: '/drums', table: 'wg_drums', where: 'drum_no',
     upsert: (env, r: WgDrum, at) => r.drum_no
       ? env.DB.prepare(
-          `INSERT INTO wg_drums (drum_no, drum_position, unit_number, country, field, wg_active, wg_synced_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-           ON CONFLICT (drum_no) DO UPDATE SET drum_position = ?2, unit_number = ?3, country = ?4, field = ?5, wg_active = ?6, wg_synced_at = ?7`,
-        ).bind(r.drum_no, r.drum_position ?? null, r.slickline_unit ?? null, r.country ?? null, r.field ?? null, r.active === 0 ? 0 : 1, at)
+          `INSERT INTO wg_drums (drum_no, drum_position, unit_number, country, field, wg_active, raw, wg_synced_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+           ON CONFLICT (drum_no) DO UPDATE SET drum_position = ?2, unit_number = ?3, country = ?4, field = ?5, wg_active = ?6, raw = ?7, wg_synced_at = ?8`,
+        ).bind(r.drum_no, r.drum_position ?? null, r.slickline_unit ?? null, r.country ?? null, r.field ?? null, r.active === 0 ? 0 : 1, JSON.stringify(r), at)
       : null,
   },
   {
@@ -120,14 +120,14 @@ export const RESOURCES: Resource[] = [
     name: 'notifications', path: '/notifications', table: 'wg_notifications', where: 'wg_id',
     upsert: (env, r: WgNotification, at) => r.id
       ? env.DB.prepare(
-          `INSERT INTO wg_notifications (wg_id, occurred_at, severity, code, message, wire_serial_number, drum_no, country, is_read, wg_synced_at)
+          `INSERT INTO wg_notifications (wg_id, occurred_at, severity, code, message, wire_serial_number, drum_no, country, is_read, resolved_at, raw, wg_synced_at)
            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
-             coalesce((SELECT country FROM wg_wires WHERE wire_serial_number = ?6), (SELECT country FROM wg_drums WHERE drum_no = ?7)), ?8, ?9)
+             coalesce((SELECT country FROM wg_wires WHERE wire_serial_number = ?6), (SELECT country FROM wg_drums WHERE drum_no = ?7)), ?8, ?10, ?11, ?9)
            ON CONFLICT (wg_id) DO UPDATE SET severity = ?3, code = ?4, message = ?5, wire_serial_number = ?6, drum_no = ?7,
              country = coalesce((SELECT country FROM wg_wires WHERE wire_serial_number = ?6), (SELECT country FROM wg_drums WHERE drum_no = ?7)),
-             is_read = ?8, wg_synced_at = ?9`,
+             is_read = ?8, resolved_at = ?10, raw = ?11, wg_synced_at = ?9`,
         ).bind(r.id, r.occurred_at ?? new Date().toISOString(), r.severity ?? r.sev ?? null, r.code ?? null, r.message ?? null,
-          r.wire_serial_number != null ? String(r.wire_serial_number) : null, r.drum_no ?? null, r.read ? 1 : 0, at)
+          r.wire_serial_number != null ? String(r.wire_serial_number) : null, r.drum_no ?? null, r.read ? 1 : 0, at, r.resolved_at ?? null, JSON.stringify(r))
       : null,
   },
 ];
@@ -145,7 +145,7 @@ interface WgRun {
   source_document_id?: string;
 }
 interface WgDocument { id: string; doc_type?: string; wire_serial_number?: string | number; drum_no?: string; test_type?: string; result?: string; test_date?: string; expiry_date?: string; approval_status?: string }
-interface WgNotification { id: string; occurred_at?: string; severity?: string; sev?: string; code?: string; message?: string; wire_serial_number?: string | number; drum_no?: string; read?: number }
+interface WgNotification { id: string; occurred_at?: string; severity?: string; sev?: string; code?: string; message?: string; wire_serial_number?: string | number; drum_no?: string; read?: number; resolved_at?: string | null }
 
 function toNum(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;

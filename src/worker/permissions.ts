@@ -119,6 +119,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/roster$/, menus: ['headcount_roster'] },
   { re: /^\/api\/pre-job-notes(\/(contacts|by-job\/[^/]+|[^/]+(\/versions\/\d+)?))?$/, menus: ['pre_job_notes'] },
   { re: /^\/api\/jra\/[^/]+$/, menus: ['jobs'] },
+  { re: /^\/api\/wires\/data$/, menus: ['wires', 'statistics'] },
   // each inventory opens only with its own tab, so explosives stay apart from slickline hardware
   { re: /^\/api\/inventory\/explosive(\/(movements|reconciliation))?$/, menus: ['inventory_explosive'] },
   { re: /^\/api\/inventory\/hardware(\/(movements|reconciliation))?$/, menus: ['inventory_hardware'] },

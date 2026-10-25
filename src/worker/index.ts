@@ -12,6 +12,7 @@ import { roster } from './roster';
 import { inventory } from './inventory';
 import { preJobNotes } from './preJobNotes';
 import { jra } from './jra';
+import { wires } from './wires';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
@@ -184,6 +185,7 @@ app.route('/roster', roster);
 app.route('/inventory', inventory);
 app.route('/pre-job-notes', preJobNotes);
 app.route('/jra', jra);
+app.route('/wires', wires);
 app.route('/recon', recon);
 app.route('/unit-events', unitEvents);
 
