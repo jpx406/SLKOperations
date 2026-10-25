@@ -67,9 +67,9 @@ Operation Statistics KPIs gauges and charts,service quality,must,yes,yes,"S13; 2
 Chart drill-down to job list and ticket,service quality,should,yes,yes,"S13; 2i: every bar and gauge opens the jobs behind it with ticket links"
 Wellsite audit compliance by SDM,service quality,could,yes,yes,"S13 target 25%; 2i: gauges with 25 % target tick"
 NPT and Failure Analysis,service quality,must,yes,yes,"S14; 2i: 5 KPIs, NPT by month/area/account/service/crew/unit, failure job list, report print and XLSX"
-Crew and fleet utilization with heatmap,service quality,should,yes,no,S15 methodology on screen
-Competency levels coverage gaps and quality signal,service quality,should,yes,no,S16
-Analytics exports (print XLSX PDF report),service quality,should,yes,no,S13-S16
+Crew and fleet utilization with heatmap,service quality,should,yes,yes,"S15 methodology on screen; 3c: crew (rotation-aware, idle = 0 %) and fleet per month, unit x month heatmap with bands and day tooltips, KPIs, methodology on screen, XLSX and print"
+Competency levels coverage gaps and quality signal,service quality,should,yes,yes,"S16; 3c: levels per person and service from successful jobs, overview, bench strength gaps, near-threshold list, domain roll-up, monthly trend, person cards with fail % and NPT per job, filters, XLSX"
+Analytics exports (print XLSX PDF report),service quality,should,yes,yes,"S13-S16; 2i and 3c: per-chart print and XLSX, page print, XLSX on Utilization and Competency"
 Attendance monthly code grid,attendance,must,yes,yes,"S17 15 codes; 2j: 15 codes from the manual (JO fixed by migration 0003), per-cell code menu, groups by reporting line, summary column, explicit Save"
 Attendance multi-select range apply,attendance,should,yes,yes,"S17; 2j: click or Shift-click a rectangle, apply or clear one code"
 Weekend holiday and leave-while-assigned shading,attendance,should,yes,yes,"S17; 2j: Fri/Sat, holidays managed in the sheet, red outline for leave while crewed, dot for crewed days"

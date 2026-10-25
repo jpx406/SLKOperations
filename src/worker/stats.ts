@@ -45,3 +45,26 @@ stats.get('/', async (c) => {
     events: events.results,
   });
 });
+
+/** People behind Utilization and Competency: the field roster and every crew assignment (any period, canceled left out). */
+stats.get('/people', async (c) => {
+  const countries = JSON.stringify(c.get('user').countries);
+  const [people, rows] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT id, full_name, crew_role, rotation, title FROM employees WHERE active = 1 AND country IN (SELECT value FROM json_each(?)) ORDER BY full_name`,
+    ).bind(countries),
+    c.env.DB.prepare(
+      `SELECT cr.employee_id, cr.crew_role, j.id AS job_id, j.ticket_no, j.start_date, j.end_date, j.arrived_at, j.status, j.failure, j.npt_hours,
+              (SELECT group_concat(job_type_name, ${SEP}) FROM job_services s WHERE s.job_id = j.id) AS services,
+              (SELECT group_concat(domain, ${SEP}) FROM (SELECT DISTINCT p.domain FROM job_services s JOIN service_profiles p ON p.job_type_name = s.job_type_name
+                 WHERE s.job_id = j.id AND p.domain IS NOT NULL)) AS domains
+       FROM job_crew cr JOIN jobs j ON j.id = cr.job_id
+       WHERE j.deleted_at IS NULL AND j.status <> 'canceled' AND j.start_date IS NOT NULL AND j.country IN (SELECT value FROM json_each(?))`,
+    ).bind(countries),
+  ]);
+  const split = (v: unknown) => (v ? String(v).split('\u001f') : []);
+  return c.json({
+    people: people.results,
+    assignments: (rows.results as Record<string, unknown>[]).map((r) => ({ ...r, services: split(r.services), domains: split(r.domains) })),
+  });
+});

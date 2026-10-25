@@ -114,6 +114,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/emf(\/[^/]+(\/versions\/\d+)?)?$/, menus: ['eight_min_facts'] },
   { re: /^\/api\/failure-roster(\/summary)?$/, menus: ['failure_roster'] },
   { re: /^\/api\/stats$/, menus: ['statistics', 'npt_analysis', 'utilization', 'competency'] },
+  { re: /^\/api\/stats\/people$/, menus: ['utilization', 'competency'] },
   { re: /^\/api\/attendance$/, menus: ['attendance'] },
   { re: /^\/api\/roster$/, menus: ['headcount_roster'] },
   { re: /^\/api\/pre-job-notes(\/(contacts|by-job\/[^/]+|[^/]+(\/versions\/\d+)?))?$/, menus: ['pre_job_notes'] },

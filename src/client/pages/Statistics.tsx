@@ -17,7 +17,7 @@ import { Banner, Button, Card, PageTitle, Skeleton, cx } from '../components/ui'
 
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 
-function useStats() {
+export function useStats() {
   const [filters] = useFilters();
   const [params, setParams] = useSearchParams();
   const period = (PERIODS.some((p) => p.key === params.get('period')) ? params.get('period') : 'ytd') as Period;
@@ -28,7 +28,7 @@ function useStats() {
   return { q, period, range, setPeriod };
 }
 
-function PeriodPicker({ period, onChange }: { period: Period; onChange: (p: Period) => void }) {
+export function PeriodPicker({ period, onChange }: { period: Period; onChange: (p: Period) => void }) {
   return (
     <div role="radiogroup" aria-label="Period" className="flex flex-wrap gap-1.5 print:hidden">
       {PERIODS.map((p) => (

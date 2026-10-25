@@ -507,6 +507,25 @@ Pre-Job Notes access follows the manual.
   - the Design panel shows "Open Pre-Job Note" and opens the editor.
 - **Unit tests:** 115 of 115.
 
+## Milestone 3c: Utilization (S15) and Competency (S16)
+
+**Data:** `GET /api/stats/people` returns the active roster and every crew assignment (non-canceled), with services and domains. It's readable with the Utilization or Competency tab. The calculations live in `src/shared/people.ts`.
+
+**Utilization:**
+- **Crew:** each month, every field person (supervisor, operator, assistant, helper) gets busy days ÷ on-duty days. Busy days run from arrival or start −1 to end +2, each day counted once; on-duty days follow the rotation share (60/30 = ⅔). Idle people count as 0 %, and nobody goes above 100 %.
+- **Fleet:** `unitUtilization` per unit per month, as in 2i.
+- **Screen:** KPIs (fleet, crew, jobs, op hours, busiest and least used unit); crew and fleet monthly charts; a unit × month heatmap with the manual's bands (≥75 / 50–75 / 25–49 / <25) and tooltips for jobs and active and idle days; the methodology in plain words; XLSX and print.
+
+**Competency:**
+- **Levels:** completed jobs without a failure, per person per service: Basic <10, Intermediate 10–19, Advance 20–29, Expert ≥30.
+- **Screen:** an overview by level; bench strength (a service with ≤1 person at Advance or above is flagged as a gap); people within two jobs of the next level; a service-domain roll-up; successful crew jobs per month; person cards with the quality signal (fail % of completed jobs, NPT per job); filters by service, person and role; XLSX of the person × service matrix.
+
+**Verified 2026-10-25:**
+- **Playwright, dev data:**
+  - Utilization YTD: 35 units, fleet 5.9 %, crew 65.2 % across 7 field people, 115 jobs, busiest SL-33 (23.2 %); the heatmap and charts render.
+  - Competency shows 100 person-service pairs, all Basic (the fake data has few jobs per service), the gap list and near-threshold entries.
+- **Unit tests:** 123 of 123. One expected value in a new test was wrong (5 busy days, not 4) and was corrected; the code was right.
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.
