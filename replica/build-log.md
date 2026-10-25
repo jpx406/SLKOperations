@@ -432,6 +432,38 @@ Pre-Job Notes access follows the manual.
 
 **Not done:** attendance categories with an approver email (a could-have in the manual), left for milestone 6.
 
+## Milestone 2k: Explosive inventory (S18, S20, S39), with Hardware (S19) and MCR (S29) from the same module
+
+**One module, three inventories.** Each has its own tab and its own read and write rules, so explosives stay apart from slickline hardware (the storekeeper-only-hardware case from 2026-10-24 still holds). One country is shown at a time. A country opening an inventory for the first time gets the standard locations.
+
+**Ledger** (`src/shared/inventory.ts`, `src/worker/inventory.ts`):
+- **Balances** come from the `inventory_balances` view. Movements are never edited or deleted, and the existing trigger refuses any move that would take a location below zero ("Not enough stock … nothing was moved").
+- **`checkMovement`** fixes which kinds can go where:
+  - receive (delivery or on order → on hand), order, transfer (on hand ↔ on hand);
+  - mobilize (on hand → at well), consume (at well → used), return (at well → on hand); these three need a job or a well;
+  - junk; count adjustment (adds to, or takes from, one location).
+- **Movements** carry several items in one batch. Each line gets a client id derived from the request id, so a retried request is ignored rather than doubled.
+- **Undo** writes the mirror movement (`reverses_id`). It is refused for an undo, for a movement already undone, or when the stock has already moved on.
+- **Reconciliation** (S20): per job, well and item, mobilized vs consumed + returned + junked. An undo comes off the column it reverses. A completed job with stock still out is flagged.
+- **MCR:** a par level per item and a below-par banner.
+
+**Screen:**
+- KPIs: on hand, at a well, used, junk, on order, received to date; category pills; search by description, PN or SAP number; an archived toggle.
+- A grouped table with a column per stock location; add and edit items, archive and restore; CSV and print.
+- **Mobilize to well** (choose items, quantities checked against what's available, job search or well); **Consumption & return** (pick a job or well, see what's still out, enter used and back-to-stock); other movements from a menu.
+- **Movement history** with undo, and **Job reconciliation**.
+
+**Verified 2026-10-25:**
+- **API:**
+  - receive 10 → mobilize 4 to W-1234; repeating the same request id did not double it;
+  - consume 3; consuming 5 more was refused with nothing moved; consuming from the bunker and mobilizing without a well were refused;
+  - undoing the consume nets out in reconciliation (4 / 0 / 4 open); a second undo says it was already undone;
+  - Bahrain hardware got 8 default locations on first open.
+- **Browser (playwright):** Consumption & return on W-1234 (3 used, 1 back) gave on hand 7, used 3, at a well 0; reconciliation reads 4 = 3 + 1 + 0, nothing open.
+- **Unit tests:** 105 of 105.
+
+**Not done:** the prompt to mobilize explosives from a job with an explosive service (a could-have).
+
 ### Clean-room note
 
 Every label, message and empty state was written here. No code, assets or copy from the WL Operations Hub were used. WIREGUARD contributes its API contract and its reference lists only, not its code.

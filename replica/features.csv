@@ -76,12 +76,12 @@ Weekend holiday and leave-while-assigned shading,attendance,should,yes,yes,"S17;
 Attendance approve per row,attendance,should,yes,yes,"S17; 2j: approval locks the row for the month until unapproved"
 Attendance categories with approver email,attendance,could,yes,no,manual §6
 Attendance XLSX and HTML export,attendance,should,yes,yes,"S17; 2j: XLSX all and per group, standalone HTML"
-Explosive inventory by location with KPIs,inventory,must,yes,no,S18
-Hardware inventory,inventory,should,yes,no,S19
-MCR inventory with par-level reorder alerts,inventory,should,yes,no,S29 manual
-Mobilize to well and consumption and return,inventory,must,yes,no,S39 not opened
-Job reconciliation per well,inventory,should,yes,no,S20
-Movement history and undo,inventory,should,yes,no,S18 manual §7.3
+Explosive inventory by location with KPIs,inventory,must,yes,yes,"S18; 2k: ledger balances by location, 6 KPIs, category pills, search, archived, CSV and PDF"
+Hardware inventory,inventory,should,yes,yes,"S19; 2k: same module and ledger as explosives, own tab and rights"
+MCR inventory with par-level reorder alerts,inventory,should,yes,yes,"S29 manual; 2k: par level per item and a below-par banner"
+Mobilize to well and consumption and return,inventory,must,yes,yes,"S39 not opened; 2k: multi-item movements with idempotent request ids; Consumption & return dialog per job or well"
+Job reconciliation per well,inventory,should,yes,yes,"S20; 2k: mobilized = consumed + returned + junked, undo netted, completed jobs with stock still out flagged"
+Movement history and undo,inventory,should,yes,yes,"S18 manual §7.3; 2k: append-only; undo writes the mirror movement, refused once stock has moved on or already undone"
 Wires register read-only from WIREGUARD (status tests alerts remaining length),wire log,should,yes,no,S30; D3 decided: read-only
 Wire detail: runs tests and derived facts (trips/jars since cut life consumed used-wire limit),wire log,should,yes,no,S31; read-only; Open in WIREGUARD for edits
 Knowledge Hub library with filters and lesson of the week,knowledge hub,could,yes,no,S21

@@ -9,6 +9,7 @@ import { filterOptions, jobLog } from './jobLog';
 import { stats } from './stats';
 import { attendance } from './attendance';
 import { roster } from './roster';
+import { inventory } from './inventory';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
@@ -175,6 +176,7 @@ app.route('/failure-roster', failureRoster);
 app.route('/stats', stats);
 app.route('/attendance', attendance);
 app.route('/roster', roster);
+app.route('/inventory', inventory);
 app.route('/recon', recon);
 app.route('/unit-events', unitEvents);
 

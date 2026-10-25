@@ -15,13 +15,14 @@ import { FailureRoster } from './pages/FailureRoster';
 import { NptAnalysis, Statistics } from './pages/Statistics';
 import { Attendance } from './pages/Attendance';
 import { Roster } from './pages/Roster';
+import { Inventory } from './pages/Inventory';
 import { Reconciliation } from './pages/Reconciliation';
 import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users']);
 
 const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
@@ -41,6 +42,9 @@ const router = createBrowserRouter([
       { path: 'quality/npt', element: <NptAnalysis /> },
       { path: 'attendance', element: <Attendance /> },
       { path: 'attendance/roster', element: <Roster /> },
+      { path: 'inventory/explosive', element: <Inventory key="explosive" inv="explosive" /> },
+      { path: 'inventory/hardware', element: <Inventory key="hardware" inv="hardware" /> },
+      { path: 'inventory/mcr', element: <Inventory key="mcr" inv="mcr" /> },
       { path: 'operation/reconciliation', element: <Reconciliation /> },
       { path: 'operation/database', element: <Database /> },
       { path: 'admin/users', element: <AdminUsers /> },
