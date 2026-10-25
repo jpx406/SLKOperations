@@ -13,6 +13,7 @@ import { roster } from './roster';
 import { inventory } from './inventory';
 import { preJobNotes } from './preJobNotes';
 import { jra } from './jra';
+import { knowledge } from './knowledge';
 import { wires } from './wires';
 import { sendDigests } from './digest';
 import { bonus } from './bonus';
@@ -192,6 +193,7 @@ app.route('/inventory', inventory);
 app.route('/pre-job-notes', preJobNotes);
 app.route('/jra', jra);
 app.route('/wires', wires);
+app.route('/knowledge', knowledge);
 
 // Step-up: compensation and revenue need the password again, valid 30 minutes (replaces the original's access code)
 app.post('/step-up', async (c) => {

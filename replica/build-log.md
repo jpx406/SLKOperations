@@ -703,3 +703,20 @@ Every label, message and empty state was written here. No code, assets or copy f
   - API: bad email refused; approver saved; notify sent through the local email simulator (text checked); an SDM changing an approver got 403.
   - Browser: the group header shows Notify approver, or "no approver set".
   - Unit tests: email text and escaping; rules.
+
+## Milestone 6c: Knowledge Hub and toolbox talk (S21, S43)
+
+- **Library** (`/knowledge`, the `knowledge_hub` tab) over the existing `knowledge_docs` table:
+  - document count;
+  - a Lesson of the Week card (the latest pick on or before today, otherwise the newest lesson);
+  - search, a failure-type select with counts, Newest or A→Z sort, Show duplicates;
+  - type and category chips, each counted under the other filters;
+  - cards with type, category, title, summary, failure tags, date and RILR reference. Filters live in the URL.
+- **Reader** (S43): the full entry, the key action, and a link to the source document (http and https only), plus "This repeats …" for duplicates.
+- **Toolbox talk:** "Present these N as a toolbox talk", or Present on a single card, opens a full-screen slideshow with one entry per slide in large type. Arrow keys, Space or PageDown move between slides; Escape leaves.
+- **Editing** (the tab's edit right; Ops Manager by default): add and edit entries, mark an entry as a duplicate of another, and star an entry as the lesson of the week from today. Nothing is deleted, and every change is audited.
+- **Content:** none is shipped. The 147 documents stay with QHSE; entries link to them (features.csv "skip" row). `source_ref` holds the link.
+- **Verified 2026-10-25:**
+  - API: three made-up sample entries added; an ftp link refused; an SDM adding an entry got 403.
+  - Browser: the Wireline chip narrowed to 2 entries with correct counts; the slideshow went 1 → 2 of 2 and closed.
+  - Unit tests: link check, lesson-of-the-week rule, filters and chip counts, rules.

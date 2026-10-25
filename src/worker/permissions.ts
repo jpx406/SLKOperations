@@ -69,6 +69,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PUT', re: /^\/api\/admin\/role-permissions$/, menu: 'users', action: 'edit' },
   { method: 'POST', re: /^\/api\/admin\/import\/(dry-run|apply)$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/ai$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/knowledge$/, menu: 'knowledge_hub', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'edit' },
+  { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/lesson-of-week$/, menu: 'knowledge_hub', action: 'edit' },
   // asking the agent only reads; its tools go through READ_RULES with the asker's own session
   { method: 'POST', re: /^\/api\/ai\/chat$/, menu: 'ai_agent', action: 'view' },
   { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists)$/, menu: 'database', action: 'edit' },
@@ -140,6 +143,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/inventory\/mcr(\/(movements|reconciliation))?$/, menus: ['inventory_mcr'] },
   { re: /^\/api\/admin\//, menus: ['users'] },
   { re: /^\/api\/ai\/status$/, menus: ['ai_agent'] },
+  { re: /^\/api\/knowledge(\/[^/]+)?$/, menus: ['knowledge_hub'] },
 ];
 
 export function readAllowed(path: string, menus: Record<string, MenuRight>): boolean {
