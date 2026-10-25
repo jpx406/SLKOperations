@@ -692,3 +692,14 @@ Every label, message and empty state was written here. No code, assets or copy f
   - People who can view that inventory also see a per-job table: mobilized, consumed, returned and still at the well, from the existing reconciliation.
   - Anyone else is told to ask the explosives custodian.
 - **Verified 2026-10-25 in the browser:** on job DV-26062 (PERFORATORS service), the link opened the Mobilize dialog with the job picked and the well filled. Closed without saving.
+
+## Milestone 6b: attendance categories with approver email (User Manual 6)
+
+- A category is a reporting-line group on the sheet ("Reports to …", "No reporting line"), kept per country in the existing `attendance_categories` table.
+- **Manage categories** (Ops Manager and admin; people with Attendance edit see the button only when they may manage) sets each group's approver email.
+- **Notify approver**, on each group header, emails that approver that the month is ready. The email lists each person's present, field, leave and unmarked days, whether they are approved yet, and a link to the sheet. It uses the same EMAIL binding as the digest, and every send is audited.
+- **Refusals:** no approver set, no email binding (503), or someone other than the Ops Manager changing approvers.
+- **Verified 2026-10-25:**
+  - API: bad email refused; approver saved; notify sent through the local email simulator (text checked); an SDM changing an approver got 403.
+  - Browser: the group header shows Notify approver, or "no approver set".
+  - Unit tests: email text and escaping; rules.

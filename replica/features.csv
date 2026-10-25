@@ -74,7 +74,7 @@ Attendance monthly code grid,attendance,must,yes,yes,"S17 15 codes; 2j: 15 codes
 Attendance multi-select range apply,attendance,should,yes,yes,"S17; 2j: click or Shift-click a rectangle, apply or clear one code"
 Weekend holiday and leave-while-assigned shading,attendance,should,yes,yes,"S17; 2j: Fri/Sat, holidays managed in the sheet, red outline for leave while crewed, dot for crewed days"
 Attendance approve per row,attendance,should,yes,yes,"S17; 2j: approval locks the row for the month until unapproved"
-Attendance categories with approver email,attendance,could,yes,no,manual §6
+Attendance categories with approver email,attendance,could,yes,yes,manual §6; 6b: approver per reporting-line group, Notify approver email
 Attendance XLSX and HTML export,attendance,should,yes,yes,"S17; 2j: XLSX all and per group, standalone HTML"
 Explosive inventory by location with KPIs,inventory,must,yes,yes,"S18; 2k: ledger balances by location, 6 KPIs, category pills, search, archived, CSV and PDF"
 Hardware inventory,inventory,should,yes,yes,"S19; 2k: same module and ledger as explosives, own tab and rights"

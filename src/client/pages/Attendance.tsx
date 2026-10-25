@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Check, FileSpreadsheet, FileText, MousePointerClick, Search, Trash2, X } from 'lucide-react';
+import { CalendarDays, Check, FileSpreadsheet, FileText, Mail, MousePointerClick, Search, Tags, Trash2, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { CODES, CODE_LIST, LEAVE, assignmentsOn, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
+import { CODES, CODE_LIST, LEAVE, assignmentsOn, groupLabel, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
 import { workbook } from '../../shared/xlsx';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
@@ -44,6 +44,15 @@ export function Attendance() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
   const [holidaysOpen, setHolidaysOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const cats = useQuery({ queryKey: ['attendance-categories'], queryFn: () => api<CategoryData>('/attendance/categories'), enabled: canEdit });
+  const approverOf = (country: string, name: string) => cats.data?.categories.find((x) => x.country === country && x.name === name)?.approver_email ?? null;
+  const [notifying, setNotifying] = useState<string | null>(null);
+  const notify = async (country: string, name: string) => {
+    setNotifying(name); setNotice(null);
+    try { const r = await api<{ to: string }>('/attendance/notify', { method: 'POST', json: { month, country, name } }); setNotice({ tone: 'success', text: `Sent ${name} for approval to ${r.to}.` }); }
+    catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); } finally { setNotifying(null); }
+  };
 
   useEffect(() => { setPending({}); setPicked(new Set()); setAnchor(null); }, [month]);
   useEffect(() => {
@@ -62,7 +71,7 @@ export function Attendance() {
     (!filter.q || `${p.full_name} ${p.eid}`.toLowerCase().includes(filter.q.toLowerCase())) && (!filter.account || p.account === filter.account) && (!filter.title || p.title === filter.title));
   const groups = useMemo(() => {
     const m = new Map<string, Person[]>();
-    for (const p of people) { const g = p.group_name ? `Reports to ${p.group_name}` : 'No reporting line'; m.set(g, [...(m.get(g) ?? []), p]); }
+    for (const p of people) { const g = groupLabel(p.group_name); m.set(g, [...(m.get(g) ?? []), p]); }
     return [...m.entries()];
   }, [people]);
   const flat = groups.flatMap(([, list]) => list);
@@ -146,6 +155,7 @@ export function Attendance() {
           <Button size="sm" onClick={() => exportXlsx(flat, 'all')} disabled={!flat.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
           <Button size="sm" onClick={exportHtml} disabled={!flat.length}><FileText aria-hidden className="size-4" />HTML</Button>
           {canEdit && <Button size="sm" onClick={() => setHolidaysOpen(true)}><CalendarDays aria-hidden className="size-4" />Holidays</Button>}
+          {canEdit && cats.data?.canManage && <Button size="sm" onClick={() => setCategoriesOpen(true)}><Tags aria-hidden className="size-4" />Manage categories</Button>}
         </div>
       }><span id="att-title">Attendance</span></PageTitle>
 
@@ -217,6 +227,12 @@ export function Attendance() {
                     <th colSpan={days.length + 3} scope="colgroup" className="sticky left-0 border-b border-border bg-bg px-2 py-1.5 text-left">
                       <span className="font-semibold">{g}</span> <span className="font-normal text-text-muted">· {list.length} people</span>
                       <Button size="sm" variant="ghost" className="ml-2" onClick={() => exportXlsx(list, g.replace(/\W+/g, '-').toLowerCase())}><FileSpreadsheet aria-hidden className="size-3.5" />XLSX this group</Button>
+                      {canEdit && (() => {
+                        const to = approverOf(list[0].country, g);
+                        return to
+                          ? <Button size="sm" variant="ghost" loading={notifying === g} onClick={() => notify(list[0].country, g)} title={`Email ${to} that this month is ready`}><Mail aria-hidden className="size-3.5" />Notify approver</Button>
+                          : <span className="ml-2 text-xs font-normal text-text-subtle">no approver set</span>;
+                      })()}
                     </th>
                   </tr>
                   {list.map((p) => {
@@ -273,6 +289,7 @@ export function Attendance() {
           </table>
         </div>
       )}
+      {categoriesOpen && <Categories groups={groups.map(([g, list]) => ({ name: g, country: list[0].country }))} data={cats.data} onClose={() => { setCategoriesOpen(false); qc.invalidateQueries({ queryKey: ['attendance-categories'] }); }} />}
       {holidaysOpen && sheet && <Holidays sheet={sheet} onClose={() => { setHolidaysOpen(false); qc.invalidateQueries({ queryKey: ['attendance', month] }); }} />}
     </section>
   );
@@ -305,6 +322,42 @@ function Holidays({ sheet, onClose }: { sheet: Sheet; onClose: () => void }) {
           <Field id="hol-name" label="Name"><input id="hol-name" className={inputClass} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. National Day" /></Field>
         </div>
         <Button className="mt-3" variant="primary" onClick={add} disabled={!f.name.trim() || !f.day || !f.country}>Add holiday</Button>
+      </Card>
+    </div>
+  );
+}
+
+interface CategoryData { categories: { id: string; country: string; name: string; approver_email: string | null }[]; canManage: boolean }
+
+/** Manage categories (Ops Manager): which approver is emailed for each reporting-line group. */
+function Categories({ groups, data, onClose }: { groups: { name: string; country: string }[]; data: CategoryData | undefined; onClose: () => void }) {
+  const known = [...groups, ...(data?.categories ?? []).filter((c) => !groups.some((g) => g.name === c.name && g.country === c.country))];
+  const [emails, setEmails] = useState<Record<string, string>>(() => Object.fromEntries(known.map((g) => [`${g.country}|${g.name}`, data?.categories.find((c) => c.country === g.country && c.name === g.name)?.approver_email ?? ''])));
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const save = async (g: { name: string; country: string }) => {
+    setError(null); setSaved(null);
+    try { await api('/attendance/categories', { method: 'PUT', json: { country: g.country, name: g.name, approver_email: emails[`${g.country}|${g.name}`] || null } }); setSaved(g.name); }
+    catch (e) { setError((e as Error).message); }
+  };
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="cat-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+      <Card className="max-h-[85vh] w-full max-w-2xl overflow-y-auto">
+        <div className="mb-3 flex items-start gap-3"><h2 id="cat-title" className="flex-1 font-display text-lg font-bold">Attendance categories</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
+        <p className="mb-3 text-sm text-text-muted">Each reporting-line group is a category. Its approver gets the email when someone presses Notify approver on the sheet.</p>
+        {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+        <ul className="divide-y divide-border">
+          {known.map((g) => {
+            const k = `${g.country}|${g.name}`;
+            return (
+              <li key={k} className="grid grid-cols-1 items-end gap-2 py-2 sm:grid-cols-[1fr_16rem_auto]">
+                <span className="text-sm"><span className="font-semibold">{g.name}</span> <span className="text-xs text-text-subtle">{g.country}</span></span>
+                <input aria-label={`Approver email for ${g.name}`} type="email" className={inputClass} placeholder="approver@nesr.com" value={emails[k] ?? ''} onChange={(e) => setEmails({ ...emails, [k]: e.target.value })} />
+                <Button size="sm" onClick={() => save(g)}>{saved === g.name ? <><Check aria-hidden className="size-3.5" />Saved</> : 'Save'}</Button>
+              </li>
+            );
+          })}
+        </ul>
       </Card>
     </div>
   );

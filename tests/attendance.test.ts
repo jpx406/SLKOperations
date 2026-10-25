@@ -50,3 +50,26 @@ describe('attendance and roster rights', () => {
     expect(ruleFor('DELETE', '/api/roster/x')?.action).toBe('delete');
   });
 });
+
+describe('attendance categories', () => {
+  it('names a category after the reporting line the sheet groups by', async () => {
+    const { groupLabel } = await import('../src/shared/attendance');
+    expect(groupLabel('Omar Haddad')).toBe('Reports to Omar Haddad');
+    expect(groupLabel(null)).toBe('No reporting line');
+  });
+  it('writes the approval email with each person and escapes names', async () => {
+    const { approvalEmail } = await import('../src/shared/attendance');
+    const m = approvalEmail({ category: 'Reports to A', month: '2026-09', by: 'Ops <Mgr>', url: 'https://slkops.nesrapp.com/attendance?month=2026-09',
+      people: [{ name: 'P One', eid: '101', present: 20, field: 12, leave: 2, blank: 8, approved: false }, { name: 'P Two', eid: '102', present: 22, field: 0, leave: 0, blank: 8, approved: true }] });
+    expect(m.subject).toBe('Attendance September 2026: Reports to A ready for approval (1 to approve)');
+    expect(m.text).toContain('P One (101): present 20, field 12, leave 2, unmarked 8, waiting');
+    expect(m.html).toContain('Ops &lt;Mgr&gt;');
+    expect(m.html).not.toContain('<Mgr>');
+  });
+  it('keeps category approvers and notifying behind the attendance edit right', async () => {
+    const { ruleFor, readAllowed } = await import('../src/worker/permissions');
+    expect(ruleFor('PUT', '/api/attendance/categories')).toMatchObject({ menu: 'attendance', action: 'edit' });
+    expect(ruleFor('POST', '/api/attendance/notify')).toMatchObject({ menu: 'attendance', action: 'edit' });
+    expect(readAllowed('/api/attendance/categories', { attendance: { view: true, edit: false, delete: false } })).toBe(true);
+  });
+});

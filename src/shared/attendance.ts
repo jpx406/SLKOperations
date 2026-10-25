@@ -42,3 +42,25 @@ export function rowSummary(codes: (Code | undefined)[]) {
 }
 
 export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+export const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
+
+/** The sheet groups people by reporting line; each group is an attendance category with its own approver. */
+export const groupLabel = (groupName: string | null) => (groupName ? `Reports to ${groupName}` : 'No reporting line');
+
+const escHtml = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** "Ready for approval" email to a category's approver: one line per person with the month's totals. */
+export function approvalEmail(p: { category: string; month: string; by: string; url: string; people: { name: string; eid: string; present: number; field: number; leave: number; blank: number; approved: boolean }[] }) {
+  const label = new Date(`${p.month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const waiting = p.people.filter((x) => !x.approved).length;
+  const subject = `Attendance ${label}: ${p.category} ready for approval (${waiting} to approve)`;
+  const rows = p.people.map((x) => [x.name, x.eid, x.present, x.field, x.leave, x.blank, x.approved ? 'approved' : 'waiting'] as const);
+  const text = [`${p.by} marked the ${label} attendance for ${p.category} ready for your approval.`, '',
+    ...rows.map((r) => `${r[0]} (${r[1]}): present ${r[2]}, field ${r[3]}, leave ${r[4]}, unmarked ${r[5]}, ${r[6]}`), '', `Open the sheet: ${p.url}`].join('\n');
+  const html = `<p>${escHtml(p.by)} marked the ${escHtml(label)} attendance for <b>${escHtml(p.category)}</b> ready for your approval.</p>
+<table style="border-collapse:collapse;font:13px sans-serif"><tr>${['Name', 'EID', 'Present', 'Field', 'Leave', 'Unmarked', 'Status'].map((h) => `<th style="border:1px solid #ccc;padding:3px 6px;text-align:left">${h}</th>`).join('')}</tr>
+${rows.map((r) => `<tr>${r.map((c) => `<td style="border:1px solid #ccc;padding:3px 6px">${escHtml(c)}</td>`).join('')}</tr>`).join('\n')}</table>
+<p><a href="${escHtml(p.url)}">Open the attendance sheet</a></p>`;
+  return { subject, text, html };
+}

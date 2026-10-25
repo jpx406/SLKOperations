@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { MONTH_RE, isCode, monthDays } from '../shared/attendance';
+import { EMAIL_RE, MONTH_RE, approvalEmail, groupLabel, isCode, monthDays, rowSummary, type Code } from '../shared/attendance';
 import type { AppBindings, AuthedUser, Env } from './env';
 
 // Attendance (S17). People with the Attendance edit right see and edit the whole sheet for their countries;
@@ -128,4 +128,61 @@ attendance.delete('/holidays/:id', async (c) => {
   if (!h || !user.countries.includes(h.country)) return c.json({ error: 'Not found' }, 404);
   await c.env.DB.batch([c.env.DB.prepare('DELETE FROM holidays WHERE id = ?').bind(h.id), audit(c.env, user, 'delete', 'holidays', h.id, `${h.country} ${h.day} ${h.name}`)]);
   return c.json({ ok: true });
+});
+
+// ---- categories: an approver email per reporting-line group (set by the Ops Manager) ----
+
+const categoryManager = (user: AuthedUser) => user.role === 'admin' || user.role === 'operations_manager';
+
+attendance.get('/categories', async (c) => {
+  const user = c.get('user');
+  const { results } = await c.env.DB.prepare('SELECT id, country, name, approver_email FROM attendance_categories WHERE country IN (SELECT value FROM json_each(?)) ORDER BY country, name')
+    .bind(JSON.stringify(user.countries)).all();
+  return c.json({ categories: results, canManage: categoryManager(user) });
+});
+
+attendance.put('/categories', async (c) => {
+  const user = c.get('user');
+  if (!categoryManager(user)) return c.json({ error: 'Only the Ops Manager sets category approvers' }, 403);
+  const b = await c.req.json<{ country?: string; name?: string; approver_email?: string | null }>().catch(() => ({} as { country?: string; name?: string; approver_email?: string | null }));
+  if (!b.country || !user.countries.includes(b.country)) return c.json({ error: 'Pick one of your countries' }, 400);
+  const name = String(b.name ?? '').trim().slice(0, 120);
+  if (!name) return c.json({ error: 'Name the category' }, 400);
+  const email = String(b.approver_email ?? '').trim().toLowerCase();
+  if (email && !EMAIL_RE.test(email)) return c.json({ error: 'That isn’t an email address' }, 400);
+  await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO attendance_categories (id, country, name, approver_email) VALUES (?, ?, ?, ?)
+      ON CONFLICT (country, name) DO UPDATE SET approver_email = excluded.approver_email`).bind(crypto.randomUUID(), b.country, name, email || null),
+    audit(c.env, user, 'update', 'attendance_categories', `${b.country}|${name}`, `${b.country} ${name}: approver ${email || 'none'}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+/** Emails the category's approver that the month is ready, with each person's totals. */
+attendance.post('/notify', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json<{ month?: string; country?: string; name?: string }>().catch(() => ({} as { month?: string; country?: string; name?: string }));
+  const month = String(b.month ?? '');
+  if (!MONTH_RE.test(month)) return c.json({ error: 'month must be YYYY-MM' }, 400);
+  if (!b.country || !user.countries.includes(b.country)) return c.json({ error: 'Pick one of your countries' }, 400);
+  const cat = await c.env.DB.prepare('SELECT approver_email FROM attendance_categories WHERE country = ? AND name = ?').bind(b.country, b.name ?? '').first<{ approver_email: string | null }>();
+  if (!cat?.approver_email) return c.json({ error: 'This category has no approver email yet. The Ops Manager sets it under Manage categories.' }, 400);
+  if (!c.env.EMAIL) return c.json({ error: 'Email sending isn’t set up on the server yet' }, 503);
+  const days = monthDays(month);
+  const [people, entries, approvals] = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT e.id, e.eid, e.full_name, m.full_name AS group_name FROM employees e LEFT JOIN employees m ON m.id = e.reports_to_id WHERE e.active = 1 AND e.country = ? ORDER BY e.full_name`).bind(b.country),
+    c.env.DB.prepare(`SELECT a.employee_id, a.day, a.code FROM attendance_entries a JOIN employees e ON e.id = a.employee_id WHERE e.country = ? AND a.day BETWEEN ? AND ?`).bind(b.country, days[0], days[days.length - 1]),
+    c.env.DB.prepare(`SELECT p.employee_id FROM attendance_approvals p JOIN employees e ON e.id = p.employee_id WHERE e.country = ? AND p.month = ?`).bind(b.country, month),
+  ]);
+  const inGroup = (people.results as { id: string; eid: string; full_name: string; group_name: string | null }[]).filter((p) => groupLabel(p.group_name) === b.name);
+  if (!inGroup.length) return c.json({ error: 'Nobody is in that category this month' }, 400);
+  const codes = new Map((entries.results as { employee_id: string; day: string; code: Code }[]).map((e) => [`${e.employee_id}|${e.day}`, e.code]));
+  const done = new Set((approvals.results as { employee_id: string }[]).map((a) => a.employee_id));
+  const mail = approvalEmail({
+    category: b.name!, month, by: user.fullName, url: `${c.env.APP_URL}/attendance?month=${month}`,
+    people: inGroup.map((p) => ({ name: p.full_name, eid: p.eid, approved: done.has(p.id), ...rowSummary(days.map((d) => codes.get(`${p.id}|${d}`))) })),
+  });
+  await c.env.EMAIL.send({ to: cat.approver_email, from: { email: c.env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations' }, subject: mail.subject, html: mail.html, text: mail.text });
+  await audit(c.env, user, 'notify', 'attendance_categories', `${b.country}|${b.name}`, `${month} ${b.name}: sent to ${cat.approver_email}`).run();
+  return c.json({ ok: true, to: cat.approver_email });
 });
