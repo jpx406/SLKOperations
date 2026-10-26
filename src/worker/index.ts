@@ -13,7 +13,7 @@ import { emf } from './emf';
 import { failureRoster } from './failureRoster';
 import { filterOptions, jobLog } from './jobLog';
 import { stats } from './stats';
-import { attendance } from './attendance';
+import { attendance, nightlyJobDays } from './attendance';
 import { roster } from './roster';
 import { inventory } from './inventory';
 import { preJobNotes } from './preJobNotes';
@@ -257,6 +257,8 @@ export default {
         await sendDigests(env);
         // WIREGUARD's people: names, emails, employee IDs and who is still active (Users & Roles)
         await importWgUsers(env, 'nightly sync').catch((e) => console.error('WIREGUARD user import failed', e));
+        // the month's attendance days from the jobs, ready before anyone opens the sheet
+        await nightlyJobDays(env).catch((e) => console.error('attendance from jobs failed', e));
       })());
       return;
     }

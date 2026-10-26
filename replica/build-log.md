@@ -1144,3 +1144,33 @@ Every label, message and empty state was written here. No code, assets or copy f
   - Approvals shows the five groups and 7 JRA levels, and changing "Ticket value" to SDM only took effect on the server, then Reset;
   - typing "SL-4" in a job's unit and "spare" in the maintenance dialog filtered the lists;
   - a sweep of 23 pages showed no page errors.
+
+## 6u — Attendance categories you manage, Field Supervisors / Engineers, days from the jobs, two-step approval
+
+- **Categories as data** (migration 0013, `attendance_sheets`). Users & Roles → Attendance categories:
+  - add, rename, reorder and delete categories; delete is refused while a role or a person still uses one;
+  - per category: who fills (their foreman for a crew, the fill roles for everyone, or each person), one or two approval steps, whether days come from jobs, and the code for job days;
+  - below that, the role → category map, which offers whatever categories exist;
+  - a person can still be moved by hand (`employees.attendance_category`);
+  - each category's fill / review / approve roles are rules under Approvals → Attendance.
+- **New category: Field Supervisors / Engineers.**
+  - Days come from their jobs, the SDM fills the rest and reviews, and the Operations Manager gives the final approval.
+  - The SLK Supervisor role moves to it.
+- **Days from the jobs** (owner's answer; also for Operators & Helpers):
+  - for people in a category set that way, every day crewed on an ongoing or completed job gets the category's code: start to end for completed jobs, start to today for ongoing ones;
+  - this is worked out again whenever the sheet is read and nightly, so it follows schedule changes and is rechecked when a job completes;
+  - only cells the app filled are touched: typed cells stay, and reviewed or approved rows are left alone;
+  - job-filled cells say "(from the job)" and have a dashed edge.
+- **Two-step approval** (`attendance_reviews`):
+  - Review, then Final approval, per row or "Review all" / "Approve all";
+  - the final approval is refused until the review is done;
+  - a reviewed row is locked for filling;
+  - Notify goes to the reviewers while rows wait for review, then to the approvers.
+- **Verified:**
+  - tests 236 (rewritten category tests);
+  - locally:
+    - the Foreman's row got exactly 4–7, 15–18 and 25–26 Oct from three completed jobs and one ongoing to today, not the planned 22–24;
+    - the supervisor's row got 10–11;
+    - approval before review was refused, review locked the row, then approval passed;
+    - "Drivers" was added, renamed to "Drivers & Riggers" and deleted, with Operators & Helpers' delete disabled;
+    - Approvals lists the review and final approval rules.

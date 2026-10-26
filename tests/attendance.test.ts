@@ -30,7 +30,7 @@ describe('roster checks', () => {
     expect(cleanEmployee({ full_name: 'A', title: 'B' }, true)).toEqual({ error: 'EID is needed' });
     expect(cleanEmployee({ eid: 'E 1', full_name: 'A', title: 'B' }, true)).toEqual({ error: 'EID takes letters, digits and dashes only' });
     expect(cleanEmployee({ eid: 'E1', full_name: ' A ', title: 'B', wg_username: 'nesr-90002', is_slk_contact: true }, true))
-      .toEqual({ values: { eid: 'E1', full_name: 'A', title: 'B', wg_username: 'NESR-90002', is_slk_contact: 1, attendance_sheet: 'shop' } });
+      .toEqual({ values: { eid: 'E1', full_name: 'A', title: 'B', wg_username: 'NESR-90002', is_slk_contact: 1 } });
   });
   it('checks usernames, email, mobile and rotation on edit', () => {
     expect(cleanEmployee({ wg_username: 'bob' }, false)).toHaveProperty('error');

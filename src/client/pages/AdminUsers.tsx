@@ -9,11 +9,12 @@ import { useRoles, useRules, type RoleRow } from '../rules';
 import { SearchSelect, type Option } from '../components/SearchSelect';
 import { MultiSelect } from '../components/FilterBar';
 import type { RuleGroup } from '../../shared/approvalRules';
-import { SHEETS, SHEET_KEYS, type SheetKey } from '../../shared/attendanceSheets';
+import { FILL_SCOPE_LABEL, type Category, type FillScope } from '../../shared/attendanceSheets';
+import { CODES, CODE_LIST } from '../../shared/attendance';
 import type { Role, WgStatus } from '../../shared/types';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
 type Change = { menu_key: string; effect: 'grant' | 'deny'; can_edit: number };
 interface UserRow {
@@ -22,9 +23,9 @@ interface UserRow {
   grants: Change[]; is_contact: boolean; effective: { menu_key: string; edit: boolean }[];
   email: string | null; employee_eid: string | null; wg_active: number | null; wg_country: string | null; wg_field: string | null; wg_synced_at: string | null;
   passkey_allowed: number; passkeys: number;
-  employee_id: string | null; job_title: string | null; account: string | null; crew_role: string | null; sheet_override: SheetKey | null;
+  employee_id: string | null; job_title: string | null; account: string | null; crew_role: string | null; sheet_override: string | null;
   reports_to_id: string | null; self_updated: number | null; is_slk_contact: number | null; contact_mobile: string | null; attendance_country: string | null;
-  role_sheet: SheetKey | 'none' | null;
+  role_sheet: string | null;
 }
 interface Matrix { roles: Role[]; menus: string[]; rows: { role: Role; menu_key: string; can_view: number; can_edit: number; can_delete: number }[] }
 interface AuditRow { occurred_at: string; username: string; action: string; entity_type: string; entity_id: string; summary: string }
@@ -160,7 +161,7 @@ function People() {
                     </td>
                     <td className="px-3 py-2 text-text-muted">{u.role === 'admin' ? 'All' : u.countries.join(', ') || <span className="text-danger">none</span>}</td>
                     <td className="px-3 py-2 text-xs text-text-muted">
-                      {sheetOfUser(u) === 'none' ? <span className="text-text-subtle">Not on attendance</span> : <>{SHEETS[sheetOfUser(u) as SheetKey].label}{u.sheet_override && <span className="ml-1 text-warning">(moved)</span>}</>}
+                      {sheetOfUser(u) === 'none' ? <span className="text-text-subtle">Not on attendance</span> : <>{catLabel(sheetOfUser(u))}{u.sheet_override && <span className="ml-1 text-warning">(moved)</span>}</>}
                     </td>
                     <td className="px-3 py-2 text-text-muted">
                       {u.effective.length} tab{u.effective.length === 1 ? '' : 's'}
@@ -538,46 +539,50 @@ function PersonPasskeys({ user, self }: { user: UserRow; self: boolean }) {
   );
 }
 
-const sheetOfUser = (u: UserRow): SheetKey | 'none' => u.sheet_override ?? u.role_sheet ?? 'none';
-const SHEET_CHOICES: [SheetKey | 'none', string][] = [...SHEET_KEYS.map((k) => [k, SHEETS[k].label] as [SheetKey, string]), ['none', 'Not on attendance']];
+const sheetOfUser = (u: UserRow): string => u.sheet_override ?? u.role_sheet ?? 'none';
+type CategoryRow = Category & { roles: number; moved: number };
+/** The attendance categories (Users & Roles → Attendance categories), shared by the tabs on this page. */
+function useCategories() {
+  return useQuery({ queryKey: ['attendance-sheets'], queryFn: () => api<CategoryRow[]>('/admin/attendance-sheets'), staleTime: 30_000 });
+}
+let CAT_LABELS = new Map<string, string>();
+const catLabel = (k: string) => CAT_LABELS.get(k) ?? k;
 const CREW_ROLE: Record<string, string> = {
   slickline_supervisor: 'Slickline supervisor', slickline_operator: 'Slickline operator', assistant_operator: 'Assistant operator', helper: 'Helper', trainee: 'Trainee', other: 'Other',
 };
 
-/** Attendance categories: which sheet each SLK Ops role is on. Everyone with the role follows it, unless moved by hand. */
+/** Attendance categories: the categories themselves (add, rename, settings, delete), then which one each role is in. */
 function AttendanceCategories() {
   const qc = useQueryClient();
   const { data: me } = useMe();
-  const q = useQuery({ queryKey: ['attendance-categories-roles'], queryFn: () => api<{ role: Role; sheet: SheetKey | 'none' }[]>('/admin/attendance-categories') });
+  const cats = useCategories();
+  const q = useQuery({ queryKey: ['attendance-categories-roles'], queryFn: () => api<{ role: Role; sheet: string }[]>('/admin/attendance-categories') });
   const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api<UserRow[]>('/admin/users') });
   const [error, setError] = useState<string | null>(null);
+  const refresh = () => ['attendance-sheets', 'attendance-categories-roles', 'admin-users', 'attendance', 'rules'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const save = useMutation({
     mutationFn: (v: { role: Role; sheet: string }) => api('/admin/attendance-categories', { method: 'PUT', json: v }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['attendance-categories-roles'] }); qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['attendance'] }); },
-    onError: (e: ApiError) => setError(e.message),
+    onSuccess: refresh, onError: (e: ApiError) => setError(e.message),
   });
   const count = (r: Role) => (users.data ?? []).filter((u) => u.role === r && u.active).length;
   const canEdit = !!me?.menus.users?.edit;
+  CAT_LABELS = new Map((cats.data ?? []).map((c) => [c.key, c.label]));
+  const choices: [string, string][] = [...(cats.data ?? []).map((c) => [c.key, c.label] as [string, string]), ['none', 'Not on attendance']];
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl">
+      <CategoryManager cats={cats.data} canEdit={canEdit} canDelete={!!me?.menus.users?.delete} onChanged={refresh} />
+      <h2 className="label-caps mt-6 mb-2 text-text-muted">Which category each role is in</h2>
       <p className="mb-3 text-sm text-text-muted">
-        Everyone in Users &amp; Roles is on the attendance sheet their role is assigned to here. Move one person to another sheet from their Edit page.
+        Everyone in Users &amp; Roles is in the category their role is assigned to here. Move one person to another category from their Edit page.
+        Who fills, reviews and approves each category is set under Approvals.
       </p>
-      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {SHEET_KEYS.map((k) => (
-          <div key={k} className="rounded-md border border-border p-3 text-sm">
-            <p className="font-display font-bold text-accent-text">{SHEETS[k].label}</p>
-            <p className="text-text-muted">Filled by {SHEETS[k].filledBy} · approved by {SHEETS[k].approvedBy}</p>
-          </div>
-        ))}
-      </div>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       {q.isPending ? <Skeleton className="h-64" /> : q.isError ? <Banner tone="danger">{q.error.message}</Banner> : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
-            <caption className="sr-only">Attendance sheet for each role</caption>
+            <caption className="sr-only">Attendance category for each role</caption>
             <thead className="bg-surface-2"><tr className="label-caps text-left text-text-muted">
-              <th scope="col" className="px-3 py-2">Role</th><th scope="col" className="px-3 py-2">People</th><th scope="col" className="px-3 py-2">Attendance sheet</th>
+              <th scope="col" className="px-3 py-2">Role</th><th scope="col" className="px-3 py-2">People</th><th scope="col" className="px-3 py-2">Attendance category</th>
             </tr></thead>
             <tbody>
               {q.data.map((r) => (
@@ -585,10 +590,9 @@ function AttendanceCategories() {
                   <th scope="row" className="px-3 py-2 text-left font-semibold">{roleLabel(r.role)}</th>
                   <td className="px-3 py-2 font-mono text-xs text-text-muted">{count(r.role)}</td>
                   <td className="px-3 py-2">
-                    <label className="sr-only" htmlFor={`sheet-${r.role}`}>Attendance sheet for {roleLabel(r.role)}</label>
-                    <Select id={`sheet-${r.role}`} className={cx(inputClass, 'w-64')} value={r.sheet} disabled={!canEdit || save.isPending}
+                    <Select search aria-label={`Attendance category for ${roleLabel(r.role)}`} className={cx(inputClass, 'w-72')} value={r.sheet} disabled={!canEdit || save.isPending}
                       onChange={(e) => { setError(null); save.mutate({ role: r.role, sheet: e.target.value }); }}>
-                      {SHEET_CHOICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      {choices.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </Select>
                   </td>
                 </tr>
@@ -596,6 +600,100 @@ function AttendanceCategories() {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+const SCOPES: [FillScope, string][] = [['crew', 'Their foreman (crew)'], ['any', 'Fill roles, everyone'], ['self', 'Each person (self)']];
+
+/** Add, rename, reorder, set up and delete attendance categories. */
+function CategoryManager({ cats, canEdit, canDelete, onChanged }: { cats: CategoryRow[] | undefined; canEdit: boolean; canDelete: boolean; onChanged: () => void }) {
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const [add, setAdd] = useState({ label: '', fill_scope: 'any' as FillScope, two_step: false, auto_from_jobs: false, job_code: 'JBFS' });
+  const [names, setNames] = useState<Record<string, string>>({});
+  const fail = (e: ApiError) => setMsg({ tone: 'danger', text: e.message });
+  const create = useMutation({ mutationFn: () => api('/admin/attendance-sheets', { method: 'POST', json: add }), onSuccess: () => { setMsg({ tone: 'success', text: `Added ${add.label}. Assign roles to it below, and set who fills and approves it under Approvals.` }); setAdd({ ...add, label: '' }); onChanged(); }, onError: fail });
+  const patch = useMutation({ mutationFn: (v: { key: string } & Partial<Category>) => { const { key, ...body } = v; return api(`/admin/attendance-sheets/${key}`, { method: 'PATCH', json: { ...body, two_step: body.two_step === undefined ? undefined : !!body.two_step, auto_from_jobs: body.auto_from_jobs === undefined ? undefined : !!body.auto_from_jobs } }); }, onSuccess: () => { setMsg(null); onChanged(); }, onError: fail });
+  const remove = useMutation({ mutationFn: (c: CategoryRow) => api(`/admin/attendance-sheets/${c.key}`, { method: 'DELETE' }), onSuccess: (_d, c) => { setMsg({ tone: 'success', text: `Deleted ${c.label}` }); onChanged(); }, onError: fail });
+  if (!cats) return <Skeleton className="h-48" />;
+  return (
+    <div>
+      <h2 className="label-caps mb-2 text-text-muted">Categories</h2>
+      {msg && <div className="mb-3"><Banner tone={msg.tone} action={<Button size="sm" variant="ghost" aria-label="Dismiss" onClick={() => setMsg(null)}><X aria-hidden className="size-4" /></Button>}>{msg.text}</Banner></div>}
+      <div className="flex flex-col gap-3">
+        {cats.map((c) => {
+          const renaming = c.key in names;
+          const inUse = c.roles + c.moved;
+          return (
+            <Card key={c.key} className="p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {renaming ? (
+                  <>
+                    <input aria-label={`New name for ${c.label}`} autoFocus className={cx(inputClass, 'w-72')} value={names[c.key]} onChange={(e) => setNames({ ...names, [c.key]: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { patch.mutate({ key: c.key, label: names[c.key] }); setNames((n) => { const x = { ...n }; delete x[c.key]; return x; }); } }} />
+                    <Button size="sm" variant="primary" onClick={() => { patch.mutate({ key: c.key, label: names[c.key] }); setNames((n) => { const x = { ...n }; delete x[c.key]; return x; }); }}>Save</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setNames((n) => { const x = { ...n }; delete x[c.key]; return x; })}>Cancel</Button>
+                  </>
+                ) : <h3 className="font-display text-lg font-bold text-accent-text">{c.label}</h3>}
+                <span className="font-mono text-xs text-text-subtle">{c.key}</span>
+                <span className="text-xs text-text-muted">· {c.roles} role{c.roles === 1 ? '' : 's'}{c.moved ? `, ${c.moved} moved by hand` : ''}</span>
+                <span className="ml-auto flex items-center gap-1">
+                  {canEdit && !renaming && <Button size="sm" onClick={() => setNames({ ...names, [c.key]: c.label })}>Rename</Button>}
+                  {canDelete && (
+                    <Button size="sm" variant="ghost" aria-label={`Delete ${c.label}`} disabled={inUse > 0 || remove.isPending} title={inUse ? 'Still used: assign its roles and people to another category first' : undefined}
+                      onClick={() => { if (window.confirm(`Delete the ${c.label} category? Its approvals go with it.`)) remove.mutate(c); }}><Trash2 aria-hidden className="size-4" /></Button>
+                  )}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <Field id={`cat-scope-${c.key}`} label="Filled by" hint={FILL_SCOPE_LABEL[c.fill_scope]}>
+                  <Select id={`cat-scope-${c.key}`} search={false} className={inputClass} value={c.fill_scope} disabled={!canEdit} onChange={(e) => patch.mutate({ key: c.key, fill_scope: e.target.value as FillScope })}>
+                    {SCOPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </Select>
+                </Field>
+                <Field id={`cat-steps-${c.key}`} label="Approval">
+                  <Select id={`cat-steps-${c.key}`} search={false} className={inputClass} value={c.two_step ? '2' : '1'} disabled={!canEdit} onChange={(e) => patch.mutate({ key: c.key, two_step: e.target.value === '2' ? 1 : 0 })}>
+                    <option value="1">One step</option><option value="2">Two steps (review, then final approval)</option>
+                  </Select>
+                </Field>
+                <Field id={`cat-jobs-${c.key}`} label="Days from jobs" hint={c.auto_from_jobs ? 'Days on assigned jobs fill in by themselves; ongoing jobs up to today' : undefined}>
+                  <Select id={`cat-jobs-${c.key}`} search={false} className={inputClass} value={c.auto_from_jobs ? '1' : '0'} disabled={!canEdit} onChange={(e) => patch.mutate({ key: c.key, auto_from_jobs: e.target.value === '1' ? 1 : 0 })}>
+                    <option value="1">Yes, from the schedule</option><option value="0">No, filled by hand</option>
+                  </Select>
+                </Field>
+                <Field id={`cat-code-${c.key}`} label="Code for job days">
+                  <Select id={`cat-code-${c.key}`} search className={inputClass} value={c.job_code} disabled={!canEdit || !c.auto_from_jobs} onChange={(e) => patch.mutate({ key: c.key, job_code: e.target.value })}>
+                    {CODE_LIST.map((k) => <option key={k} value={k}>{k} · {CODES[k]}</option>)}
+                  </Select>
+                </Field>
+              </div>
+              <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
+                <label htmlFor={`cat-sort-${c.key}`}>Order</label>
+                <input id={`cat-sort-${c.key}`} type="number" min={0} className={inputSized('w-20')} defaultValue={c.sort} disabled={!canEdit}
+                  onBlur={(e) => { if (Number(e.target.value) !== c.sort) patch.mutate({ key: c.key, sort: Number(e.target.value) }); }} />
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      {canEdit && (
+        <Card className="mt-3 p-4">
+          <h3 className="label-caps mb-2 text-text-muted">Add a category</h3>
+          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
+            <Field id="cat-new-label" label="Name"><input id="cat-new-label" className={inputClass} value={add.label} onChange={(e) => setAdd({ ...add, label: e.target.value })} placeholder="e.g. Drivers" /></Field>
+            <Field id="cat-new-scope" label="Filled by">
+              <Select id="cat-new-scope" search={false} className={inputClass} value={add.fill_scope} onChange={(e) => setAdd({ ...add, fill_scope: e.target.value as FillScope })}>{SCOPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
+            </Field>
+            <Field id="cat-new-steps" label="Approval">
+              <Select id="cat-new-steps" search={false} className={inputClass} value={add.two_step ? '2' : '1'} onChange={(e) => setAdd({ ...add, two_step: e.target.value === '2' })}><option value="1">One step</option><option value="2">Two steps</option></Select>
+            </Field>
+            <Field id="cat-new-jobs" label="Days from jobs">
+              <Select id="cat-new-jobs" search={false} className={inputClass} value={add.auto_from_jobs ? '1' : '0'} onChange={(e) => setAdd({ ...add, auto_from_jobs: e.target.value === '1' })}><option value="0">No</option><option value="1">Yes</option></Select>
+            </Field>
+            <Button variant="primary" loading={create.isPending} onClick={() => { setMsg(null); if (!add.label.trim()) { setMsg({ tone: 'danger', text: 'Name the category' }); return; } create.mutate(); }}><Plus aria-hidden className="size-4" />Add category</Button>
+          </div>
+        </Card>
       )}
     </div>
   );
@@ -616,7 +714,9 @@ function PersonAttendance({ user }: { user: UserRow }) {
     onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
   });
   if (!user.employee_id) return <p className="mb-5 text-xs text-text-subtle">Not on attendance yet: give {user.full_name} a country first.</p>;
-  const sheet = (f.attendance_sheet || user.role_sheet || 'none') as SheetKey | 'none';
+  const cats = useCategories();
+  const sheet = f.attendance_sheet || user.role_sheet || 'none';
+  const catName = (k: string | null) => cats.data?.find((c) => c.key === k)?.label ?? (k && k !== 'none' ? k : 'not on attendance');
   // foremen in the same country, for the Operators & Helpers sheet
   const foremen = (users.data ?? []).filter((u) => u.role === 'foreman' && u.active && u.employee_id && u.employee_id !== user.employee_id && u.attendance_country === user.attendance_country);
   const set = (k: keyof typeof f, v: string | boolean) => { setMsg(null); setF((c) => ({ ...c, [k]: v })); };
@@ -625,13 +725,13 @@ function PersonAttendance({ user }: { user: UserRow }) {
     <div className="mb-5 rounded-md border border-border p-3">
       <p className="label-caps mb-2 text-text-muted">Attendance and crew · {user.attendance_country}</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field id={id('sheet')} label="Attendance sheet" hint={sheet === 'none' ? 'Not on attendance' : `Filled by ${SHEETS[sheet].filledBy}, approved by ${SHEETS[sheet].approvedBy}`}>
+        <Field id={id('sheet')} label="Attendance category" hint={sheet === 'none' ? 'Not on attendance' : `In ${catName(sheet)}; who fills and approves it is under Approvals`}>
           <Select id={id('sheet')} className={inputClass} value={f.attendance_sheet} onChange={(e) => set('attendance_sheet', e.target.value)}>
-            <option value="">From the role ({user.role_sheet && user.role_sheet !== 'none' ? SHEETS[user.role_sheet].label : 'not on attendance'})</option>
-            {SHEET_KEYS.map((k) => <option key={k} value={k}>{SHEETS[k].label}</option>)}
+            <option value="">From the role ({catName(user.role_sheet)})</option>
+            {(cats.data ?? []).map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
           </Select>
         </Field>
-        <Field id={id('foreman')} label="Foreman" hint={sheet === 'field' ? 'The foreman fills this person’s attendance' : 'Only used on Operators & Helpers'}>
+        <Field id={id('foreman')} label="Foreman" hint="Fills this person’s attendance when their category is filled by the crew’s foreman">
           <Select id={id('foreman')} search className={inputClass} value={f.reports_to_id} onChange={(e) => set('reports_to_id', e.target.value)}>
             <option value="">{foremen.length ? 'Nobody' : 'No foreman in this country yet'}</option>
             {foremen.map((m) => <option key={m.employee_id!} value={m.employee_id!}>{m.full_name}</option>)}

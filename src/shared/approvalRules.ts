@@ -1,6 +1,6 @@
 import type { Role } from './types';
 
-// Who approves, signs or fills each part of a job, and the attendance sheets (owner request, 2026-10-26).
+// Who approves, signs or fills each part of a job, and the attendance categories (owner request, 2026-10-26).
 // Every rule has a default (what the app did before); Users & Roles → Approvals can change the roles of any rule,
 // and the change is stored in approval_rules. Admin is always allowed and isn't listed.
 // JRA approval levels come from the JRA forms themselves (each form names its levels, like "Cell Leader" or
@@ -29,11 +29,6 @@ export const STATIC_RULES: RuleDef[] = [
   { key: 'closure.revenue', group: 'Closure checklist', label: 'Ticket value (revenue)', defaults: ['sdm', 'sales'] },
   { key: 'bonus.approve', group: 'Bonus', label: 'Distribute and approve the crew bonus on Closure', defaults: ['sdm', 'deputy_sdm'] },
   { key: 'bonus.reopen', group: 'Bonus', label: 'Reopen an approved bonus distribution', defaults: [] },
-  { key: 'attendance.field.fill', group: 'Attendance', label: 'Operators & Helpers: fill (their own crew)', defaults: ['foreman'] },
-  { key: 'attendance.field.approve', group: 'Attendance', label: 'Operators & Helpers: approve', defaults: ['sdm'] },
-  { key: 'attendance.shop.fill', group: 'Attendance', label: 'Support Staff (Shop): fill', defaults: ['maintenance_supervisor'] },
-  { key: 'attendance.shop.approve', group: 'Attendance', label: 'Support Staff (Shop): approve', defaults: ['maintenance_manager'] },
-  { key: 'attendance.management.approve', group: 'Attendance', label: 'Management: approve', help: 'Management rows are filled by the person themselves', defaults: ['operations_manager'] },
 ];
 
 export const jraLevelKey = (label: string) => `jra.level:${label.trim().toLowerCase()}`;
@@ -56,10 +51,11 @@ export function jraLevelRule(label: string): RuleDef {
 
 export type Rules = Record<string, Role[]>;
 
-/** The rules in force: stored overrides on top of the defaults, for the static rules and the JRA levels given. */
-export function resolveRules(stored: { key: string; roles: string }[], jraLevels: string[] = []): Rules {
+/** The rules in force: stored overrides on top of the defaults, for the static rules, the JRA levels given and any
+ *  other rules passed in (the attendance categories bring theirs, see attendanceSheets.categoryRules). */
+export function resolveRules(stored: { key: string; roles: string }[], jraLevels: string[] = [], extra: RuleDef[] = []): Rules {
   const out: Rules = {};
-  for (const r of [...STATIC_RULES, ...jraLevels.map(jraLevelRule)]) out[r.key] = r.defaults;
+  for (const r of [...STATIC_RULES, ...jraLevels.map(jraLevelRule), ...extra]) out[r.key] = r.defaults;
   for (const s of stored) {
     try { const v = JSON.parse(s.roles); if (Array.isArray(v)) out[s.key] = v.filter((x) => typeof x === 'string'); } catch { /* keep the default */ }
   }

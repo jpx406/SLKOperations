@@ -70,6 +70,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/admin\/import\/(dry-run|apply)$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/ai$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/attendance-categories$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/admin\/attendance-sheets$/, menu: 'users', action: 'edit' },
+  { method: 'PATCH', re: /^\/api\/admin\/attendance-sheets\/[^/]+$/, menu: 'users', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/admin\/attendance-sheets\/[^/]+$/, menu: 'users', action: 'delete' },
   // Users & Roles → Roles and → Approvals
   { method: 'POST', re: /^\/api\/admin\/roles$/, menu: 'users', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/admin\/roles\/[^/]+$/, menu: 'users', action: 'edit' },
@@ -184,7 +187,7 @@ export const OPEN_WRITES: { method: string; re: RegExp }[] = [
   // attendance saves and approvals follow the sheet rules row by row (shared/attendanceSheets.ts): a manager who
   // only views the tab still fills their own management row, so the check lives in the handler
   { method: 'PUT', re: /^\/api\/attendance$/ },
-  { method: 'POST', re: /^\/api\/attendance\/approve$/ },
+  { method: 'POST', re: /^\/api\/attendance\/(approve|review)$/ },
   // everyone manages the Face ID devices on their own account
   { method: 'POST', re: /^\/api\/passkeys\/(register-options|register)$/ },
   { method: 'DELETE', re: /^\/api\/passkeys\/[^/]+$/ },

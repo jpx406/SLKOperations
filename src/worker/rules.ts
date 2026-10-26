@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { STATIC_RULES, jraLevelKey, jraLevelRule, resolveRules, type Rules } from '../shared/approvalRules';
+import { DEFAULT_CATEGORIES, categoryRules, type Category } from '../shared/attendanceSheets';
 import type { AppBindings, AuthedUser, Env } from './env';
 
 // Roles and approval rules as data (Users & Roles → Roles and → Approvals). See shared/approvalRules.ts.
@@ -24,13 +25,24 @@ export async function jraLevels(env: Env): Promise<string[]> {
   return [...out].sort();
 }
 
+/** The attendance categories, in order (Users & Roles → Attendance categories). */
+export async function loadCategories(env: Env): Promise<Category[]> {
+  try {
+    const { results } = await env.DB.prepare('SELECT key, label, sort, fill_scope, two_step, auto_from_jobs, job_code, builtin FROM attendance_sheets ORDER BY sort, label').all<Category>();
+    return results;
+  } catch {
+    return DEFAULT_CATEGORIES; // before migration 0013
+  }
+}
+
 /** The rules in force (stored overrides on top of the defaults). */
 export async function loadRules(env: Env): Promise<Rules> {
-  const [stored, levels] = await Promise.all([
+  const [stored, levels, cats] = await Promise.all([
     env.DB.prepare('SELECT key, roles FROM approval_rules').all<{ key: string; roles: string }>(),
     jraLevels(env),
+    loadCategories(env),
   ]);
-  return resolveRules(stored.results, levels);
+  return resolveRules(stored.results, levels, categoryRules(cats));
 }
 
 /** Usernames holding any of the roles a rule allows (admins included), active, optionally in a country. */
@@ -56,14 +68,15 @@ rulesApi.get('/roles', async (c) => {
 });
 
 rulesApi.get('/rules', async (c) => {
-  const [stored, levels] = await Promise.all([
+  const [stored, levels, cats] = await Promise.all([
     c.env.DB.prepare('SELECT key, roles, updated_by, updated_at FROM approval_rules').all<{ key: string; roles: string; updated_by: string; updated_at: string }>(),
     jraLevels(c.env),
+    loadCategories(c.env),
   ]);
-  const defs = [...STATIC_RULES, ...levels.map(jraLevelRule)];
+  const defs = [...STATIC_RULES, ...levels.map(jraLevelRule), ...categoryRules(cats)];
   const changed = new Map(stored.results.map((s) => [s.key, s]));
   return c.json({
-    rules: resolveRules(stored.results, levels),
+    rules: resolveRules(stored.results, levels, categoryRules(cats)),
     defs: defs.map((d) => ({ ...d, changed: changed.has(d.key), updated_by: changed.get(d.key)?.updated_by ?? null, updated_at: changed.get(d.key)?.updated_at ?? null })),
   });
 });
@@ -135,7 +148,8 @@ rulesApi.put('/admin/rules', async (c) => {
   const me = c.get('user');
   const b = await c.req.json<{ key?: string; roles?: string[] }>().catch(() => ({} as { key?: string; roles?: string[] }));
   const key = String(b.key ?? '');
-  const known = STATIC_RULES.some((r) => r.key === key) || (key.startsWith('jra.level:') && (await jraLevels(c.env)).some((l) => jraLevelKey(l) === key));
+  const known = STATIC_RULES.some((r) => r.key === key) || (key.startsWith('jra.level:') && (await jraLevels(c.env)).some((l) => jraLevelKey(l) === key))
+    || categoryRules(await loadCategories(c.env)).some((r) => r.key === key);
   if (!known) return c.json({ error: 'Unknown rule' }, 400);
   const all = await roleKeys(c.env);
   const roles = [...new Set((b.roles ?? []).filter((r) => typeof r === 'string' && r !== 'admin'))];

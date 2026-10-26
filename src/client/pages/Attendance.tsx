@@ -4,7 +4,6 @@ import { CalendarDays, Check, Download, FileSpreadsheet, Mail, MousePointerClick
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { CODES, CODE_LIST, LEAVE, assignmentsOn, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
-import { SHEETS, SHEET_KEYS, type SheetKey } from '../../shared/attendanceSheets';
 import { roleLabel } from '../../shared/roles';
 import type { Role } from '../../shared/types';
 import { workbook } from '../../shared/xlsx';
@@ -25,10 +24,11 @@ import { Banner, Button, Card, EmptyState, Field, Skeleton, cx, inputClass, inpu
 interface Person {
   id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null;
   reports_to_id: string | null; reports_to_name: string | null; wg_username: string | null; self_updated: number;
-  sheet: SheetKey; can_fill: boolean; can_approve: boolean; updated_by: string | null; user_role: Role;
+  sheet: string; can_fill: boolean; can_review: boolean; can_approve: boolean; updated_by: string | null; user_role: Role;
 }
 interface Sheet {
-  month: string; days: string[]; full: boolean; people: Person[]; entries: { employee_id: string; day: string; code: Code }[];
+  month: string; days: string[]; full: boolean; people: Person[]; entries: { employee_id: string; day: string; code: Code; auto: number }[];
+  categories: CategoryInfo[]; reviews: { employee_id: string; reviewed_by: string; reviewed_at: string }[];
   approvals: { employee_id: string; approved_by: string; approved_at: string }[]; holidays: { id: string; country: string; day: string; name: string }[]; assignments: Assignment[];
 }
 
@@ -38,7 +38,12 @@ const CODE_TONE: Partial<Record<Code, string>> = {
 const thisMonth = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }).slice(0, 7);
 const cellKey = (p: string, d: string) => `${p}|${d}`;
 const weekday = (d: string) => 'SMTWTFS'[new Date(`${d}T00:00:00Z`).getUTCDay()];
-const filledBy = (p: Person) => (p.self_updated || p.sheet === 'management' ? 'Self' : SHEETS[p.sheet].filledBy);
+/** A category and who does each step, as the server sends them. */
+interface CategoryInfo { key: string; label: string; fill_scope: 'crew' | 'any' | 'self'; two_step: number; auto_from_jobs: number; job_code: string; fill_by: string; review_by: string | null; approve_by: string }
+let CATS: CategoryInfo[] = [];
+const catOf = (k: string) => CATS.find((c) => c.key === k);
+const filledBy = (p: Person) => (p.self_updated || catOf(p.sheet)?.fill_scope === 'self' ? 'Self' : catOf(p.sheet)?.fill_by ?? '—');
+const steps = (c: CategoryInfo) => [`${c.auto_from_jobs ? 'jobs + ' : ''}${c.fill_by === 'Self' ? 'self' : c.fill_by} fill`, c.review_by && `${c.review_by} reviews`, `${c.approve_by} ${c.review_by ? 'gives the final approval' : 'approves'}`].filter(Boolean).join(' → ');
 
 type FilterKey = 'role' | 'reports' | 'account' | 'updated' | 'filler' | 'title';
 const FILTERS: [FilterKey, string, (p: Person) => string][] = [
@@ -68,7 +73,7 @@ export function Attendance() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Partial<Record<FilterKey, string>>>({});
   // quick filters for fast entry: one sheet, a status, and "only rows I fill" (remembered on this device)
-  const [sheetPick, setSheetPick] = useState<SheetKey | ''>('');
+  const [sheetPick, setSheetPick] = useState<string>('');
   const [status, setStatus] = useState<Status>('');
   const [mine, setMine] = useState(() => { try { return localStorage.getItem(MINE_KEY) === '1'; } catch { return false; } });
   const toggleMine = () => { const v = !mine; setMine(v); try { localStorage.setItem(MINE_KEY, v ? '1' : '0'); } catch { /* not remembered */ } };
@@ -91,6 +96,9 @@ export function Attendance() {
 
   const saved = useMemo(() => new Map((sheet?.entries ?? []).map((e) => [cellKey(e.employee_id, e.day), e.code])), [sheet]);
   const approved = useMemo(() => new Map((sheet?.approvals ?? []).map((a) => [a.employee_id, a])), [sheet]);
+  const reviewed = useMemo(() => new Map((sheet?.reviews ?? []).map((a) => [a.employee_id, a])), [sheet]);
+  const autoCells = useMemo(() => new Set((sheet?.entries ?? []).filter((e) => e.auto).map((e) => cellKey(e.employee_id, e.day))), [sheet]);
+  CATS = sheet?.categories ?? [];
   const holidays = useMemo(() => new Map((sheet?.holidays ?? []).map((h) => [`${h.country}|${h.day}`, h.name])), [sheet]);
   const code = (p: string, d: string): Code | undefined => { const k = cellKey(p, d); return k in pending ? pending[k] ?? undefined : saved.get(k); };
 
@@ -103,18 +111,18 @@ export function Attendance() {
     && (!sheetPick || p.sheet === sheetPick)
     && (!mine || p.can_fill)
     && (!status || (status === 'approved' ? approved.has(p.id) : status === 'waiting' ? !approved.has(p.id) && blanks(p) === 0 : !approved.has(p.id) && blanks(p) > 0)));
-  // one card per sheet; Operators & Helpers split by foreman crew inside the card
-  const groups = useMemo(() => SHEET_KEYS.map((k) => ({
+  // one card per category; a category filled by foremen is split by crew inside the card
+  const groups = useMemo(() => (sheet?.categories ?? []).map(({ key: k, fill_scope }) => ({
     key: k,
-    crews: k === 'field'
+    crews: fill_scope === 'crew'
       ? [...new Map(people.filter((p) => p.sheet === k).map((p) => [p.reports_to_name ?? '', null])).keys()].sort((a, b) => (a ? (b ? a.localeCompare(b) : -1) : 1))
         .map((boss) => ({ boss, list: people.filter((p) => p.sheet === k && (p.reports_to_name ?? '') === boss) }))
       : [{ boss: null as string | null, list: people.filter((p) => p.sheet === k) }],
-  })).filter((g) => g.crews.some((c) => c.list.length)), [people]);
+  })).filter((g) => g.crews.some((c) => c.list.length)), [people, sheet]);
   const flat = groups.flatMap((g) => g.crews.flatMap((c) => c.list));
   const nPending = Object.keys(pending).length;
   const byId = useMemo(() => new Map(all.map((p) => [p.id, p])), [all]);
-  const editable = (p: Person) => p.can_fill && !approved.has(p.id);
+  const editable = (p: Person) => p.can_fill && !approved.has(p.id) && !reviewed.has(p.id);
 
   const setCodes = (keys: string[], c: Code | null) => {
     setPending((cur) => {
@@ -172,9 +180,18 @@ export function Attendance() {
       if (list.length > 1) setNotice({ tone: 'success', text: `Approved ${list.length} people.` });
     } catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); qc.invalidateQueries({ queryKey: ['attendance', month] }); }
   };
-  const notify = async (key: SheetKey, country: string) => {
+  /** First step of a two-step category; locks the row for filling. */
+  const review = async (list: Person[], yes: boolean) => {
+    setNotice(null);
+    try {
+      for (const p of list) await api('/attendance/review', { method: 'POST', json: { employee_id: p.id, month, reviewed: yes } });
+      await qc.invalidateQueries({ queryKey: ['attendance', month] });
+      if (list.length > 1) setNotice({ tone: 'success', text: `Reviewed ${list.length} people. They now wait for the final approval.` });
+    } catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); qc.invalidateQueries({ queryKey: ['attendance', month] }); }
+  };
+  const notify = async (key: string, country: string) => {
     setBusyGroup(key); setNotice(null);
-    try { const r = await api<{ to: string }>('/attendance/notify', { method: 'POST', json: { month, country, sheet: key } }); setNotice({ tone: 'success', text: `Sent ${SHEETS[key].label} for approval to ${r.to}.` }); }
+    try { const r = await api<{ to: string }>('/attendance/notify', { method: 'POST', json: { month, country, sheet: key } }); setNotice({ tone: 'success', text: `Sent ${catOf(key)?.label ?? key} to ${r.to}.` }); }
     catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); } finally { setBusyGroup(null); }
   };
 
@@ -183,7 +200,7 @@ export function Attendance() {
     rows: list.map((p) => {
       const cs = days.map((d) => code(p.id, d));
       const s = rowSummary(cs);
-      return [p.eid, p.full_name, p.title, p.account, SHEETS[p.sheet].label, p.reports_to_name ?? '', ...cs.map((c) => c ?? ''), s.present, s.field, s.leave, approved.get(p.id)?.approved_by ?? ''];
+      return [p.eid, p.full_name, p.title, p.account, catOf(p.sheet)?.label ?? p.sheet, p.reports_to_name ?? '', ...cs.map((c) => c ?? ''), s.present, s.field, s.leave, approved.get(p.id)?.approved_by ?? ''];
     }),
   });
   const exportXlsx = (list: Person[], name: string) => {
@@ -241,7 +258,7 @@ export function Attendance() {
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-card-edge bg-surface p-3">
         <div role="radiogroup" aria-label="Sheet" onKeyDown={rovingKeys} className="flex flex-wrap gap-1.5">
-          {([['', 'All sheets'], ...SHEET_KEYS.map((k) => [k, SHEETS[k].label])] as [SheetKey | '', string][]).map(([k, l]) => (
+          {([['', 'All categories'], ...(sheet?.categories ?? []).map((k) => [k.key, k.label])] as [string, string][]).map(([k, l]) => (
             <button key={k || 'all'} type="button" role="radio" aria-checked={sheetPick === k} tabIndex={sheetPick === k ? 0 : -1} onClick={() => setSheetPick(k)}
               className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', sheetPick === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
@@ -295,7 +312,7 @@ export function Attendance() {
         </p>
         <p className="mt-2 text-text-muted"><span className="mr-1.5 inline-block size-2 rounded-full bg-success align-middle" />Click a person's EID or name to highlight their whole row. Click again to clear.</p>
         <p className="mt-2 text-text-muted">
-          {SHEET_KEYS.map((k, i) => <span key={k}>{i > 0 && ' · '}<b className="text-text">{SHEETS[k].label}</b>: filled by {SHEETS[k].filledBy}, approved by {SHEETS[k].approvedBy}</span>)}
+          {(sheet?.categories ?? []).map((k, i) => <span key={k.key}>{i > 0 && ' · '}<b className="text-text">{k.label}</b>: {k.auto_from_jobs ? `days from jobs (${k.job_code}), ` : ''}filled by {k.fill_by}{k.review_by ? `, reviewed by ${k.review_by}` : ''}, {k.review_by ? 'final approval' : 'approved'} by {k.approve_by}</span>)}
         </p>
       </Card>
 
@@ -306,25 +323,27 @@ export function Attendance() {
 
       <div className="flex flex-col gap-4">
         {groups.map((g) => {
-          const meta = SHEETS[g.key];
+          const meta = catOf(g.key)!;
           const list = g.crews.flatMap((c) => c.list);
-          const toApprove = list.filter((p) => p.can_approve && !approved.has(p.id));
+          const toReview = meta.two_step ? list.filter((p) => p.can_review && !reviewed.has(p.id) && !approved.has(p.id)) : [];
+          const toApprove = list.filter((p) => p.can_approve && !approved.has(p.id) && (!meta.two_step || reviewed.has(p.id)));
           const fills = list.some((p) => p.can_fill);
           const unsaved = list.some((p) => days.some((d) => cellKey(p.id, d) in pending));
           return (
             <Card key={g.key} className="p-0!">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-4 pb-3">
-                <h2 className="font-display text-xl font-extrabold text-accent-text">{meta.label} <span className="font-sans font-semibold text-text-muted">— {meta.filledBy} → {meta.approvedBy}</span></h2>
+                <h2 className="font-display text-xl font-extrabold text-accent-text">{meta.label} <span className="font-sans font-semibold text-text-muted">— {steps(meta)}</span></h2>
                 <span className="text-sm text-text-muted">{list.length} employee{list.length === 1 ? '' : 's'}</span>
                 <span className="ml-auto flex flex-wrap gap-2">
-                  {fills && <Button size="sm" loading={busyGroup === g.key} onClick={() => notify(g.key, list[0].country)}><Mail aria-hidden className="size-3.5" />Notify {meta.approvedBy}</Button>}
+                  {fills && <Button size="sm" loading={busyGroup === g.key} onClick={() => notify(g.key, list[0].country)}><Mail aria-hidden className="size-3.5" />Notify {meta.two_step && list.some((p) => !reviewed.has(p.id)) ? meta.review_by : meta.approve_by}</Button>}
+                  {toReview.length > 0 && <Button size="sm" variant="primary" disabled={unsaved} title={unsaved ? 'Save first' : undefined} onClick={() => review(toReview, true)}><Check aria-hidden className="size-3.5" />Review all ({toReview.length})</Button>}
                   {toApprove.length > 0 && <Button size="sm" variant="primary" disabled={unsaved} title={unsaved ? 'Save first' : undefined} onClick={() => approve(toApprove, true)}><Check aria-hidden className="size-3.5" />Approve all ({toApprove.length})</Button>}
                   <Button size="sm" onClick={() => exportXlsx(list, g.key)}><FileSpreadsheet aria-hidden className="size-3.5" />XLSX — this group</Button>
                 </span>
               </div>
               <div className="max-h-[70vh] overflow-auto border-t border-border">
                 <table className="border-separate border-spacing-0 text-xs">
-                  <caption className="sr-only">{meta.label} attendance for {month}, filled by {meta.filledBy} and approved by {meta.approvedBy}.</caption>
+                  <caption className="sr-only">{meta.label} attendance for {month}: {steps(meta)}.</caption>
                   <thead className="sticky top-0 z-20">
                     <tr className="bg-surface-2 text-accent-text">
                       <th scope="col" className="label-caps sticky left-0 z-30 w-20 min-w-20 bg-surface-2 px-2 py-2 text-left">EID</th>
@@ -344,7 +363,7 @@ export function Attendance() {
                   <tbody>
                     {g.crews.map((crew) => (
                       <Fragment key={crew.boss ?? 'all'}>
-                        {g.key === 'field' && g.crews.length > 1 && (
+                        {meta.fill_scope === 'crew' && g.crews.length > 1 && (
                           <tr><th colSpan={days.length + 6} scope="colgroup" className="sticky left-0 bg-bg px-2 py-1.5 text-left text-xs font-semibold text-text-muted">
                             {crew.boss ? `Crew of ${crew.boss}` : 'No foreman set in Users & Roles'} · {crew.list.length}
                           </th></tr>
@@ -374,13 +393,13 @@ export function Attendance() {
                                 const hol = holidays.get(`${p.country}|${d}`);
                                 const jobs = assignmentsOn(sheet!.assignments, p.id, d);
                                 const clash = !!c && LEAVE.includes(c) && jobs.length > 0;
-                                const tip = [c && `${c}: ${CODES[c]}`, hol, jobs.length && `Crewed on ${jobs.map((j) => j.ticket_no ?? 'a job without ticket').join(', ')}`, clash && 'On leave while assigned to a job'].filter(Boolean).join(' · ');
+                                const tip = [c && `${c}: ${CODES[c]}${autoCells.has(k) && !(k in pending) ? ' (from the job)' : ''}`, hol, jobs.length && `Crewed on ${jobs.map((j) => j.ticket_no ?? 'a job without ticket').join(', ')}`, clash && 'On leave while assigned to a job'].filter(Boolean).join(' · ');
                                 return (
                                   <td key={d} className={cx('relative border-b border-border p-0.5 text-center', isWeekend(d) && 'bg-surface-3/60', hol && 'hatch-blocked')}>
                                     <button type="button" aria-label={`${p.full_name}, ${d}: ${c ? CODES[c] : 'no code'}${clash ? ', on leave while assigned to a job' : ''}`} title={tip || undefined}
                                       aria-pressed={multi ? picked.has(k) : undefined} disabled={!editable(p)}
                                       onClick={(e) => clickCell(pi, di, e.shiftKey)}
-                                      className={cx('h-8 w-8 rounded-xs bg-surface-2/70 font-mono text-[11px] font-semibold disabled:cursor-default in-data-[density=touch]:h-11 in-data-[density=touch]:w-11', CODE_TONE[c as Code], k in pending && 'italic underline', picked.has(k) && 'bg-accent/30', clash && 'outline-2 -outline-offset-2 outline-danger')}>
+                                      className={cx('h-8 w-8 rounded-xs bg-surface-2/70 font-mono', autoCells.has(k) && !(k in pending) && 'border border-dashed border-accent-edge/50', ' text-[11px] font-semibold disabled:cursor-default in-data-[density=touch]:h-11 in-data-[density=touch]:w-11', CODE_TONE[c as Code], k in pending && 'italic underline', picked.has(k) && 'bg-accent/30', clash && 'outline-2 -outline-offset-2 outline-danger')}>
                                       {c ?? ''}
                                       {jobs.length > 0 && <span aria-hidden className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-accent" />}
                                     </button>
@@ -405,8 +424,17 @@ export function Attendance() {
                                   <span className="inline-flex items-center gap-1 text-success" title={`Approved by ${appr.approved_by}`}><Check aria-hidden className="size-3.5" />{appr.approved_by}
                                     <SignedToggle type="attendance" id={`${p.id}|${month}`} />
                                     {p.can_approve && <Button size="sm" variant="ghost" onClick={() => approve([p], false)}>Unapprove</Button>}</span>
-                                ) : p.can_approve ? <Button size="sm" onClick={() => approve([p], true)} disabled={days.some((d) => cellKey(p.id, d) in pending)}>Approve</Button>
-                                  : <span className="text-text-subtle">waiting for {meta.approvedBy}</span>}
+                                ) : meta.two_step && !reviewed.has(p.id) ? (
+                                  p.can_review ? <Button size="sm" onClick={() => review([p], true)} disabled={days.some((d) => cellKey(p.id, d) in pending)}>Review</Button>
+                                    : <span className="text-text-subtle">waiting for review by {meta.review_by}</span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5">
+                                    {meta.two_step && <span className="text-info" title={`Reviewed by ${reviewed.get(p.id)?.reviewed_by}`}>Reviewed by {reviewed.get(p.id)?.reviewed_by}</span>}
+                                    {p.can_approve ? <Button size="sm" onClick={() => approve([p], true)} disabled={days.some((d) => cellKey(p.id, d) in pending)}>{meta.two_step ? 'Final approval' : 'Approve'}</Button>
+                                      : <span className="text-text-subtle">waiting for {meta.approve_by}</span>}
+                                    {meta.two_step && p.can_review && <Button size="sm" variant="ghost" onClick={() => review([p], false)}>Undo review</Button>}
+                                  </span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -420,7 +448,7 @@ export function Attendance() {
           );
         })}
       </div>
-      {categoriesOpen && <Categories countries={me?.countries ?? []} data={cats.data} onClose={() => { setCategoriesOpen(false); qc.invalidateQueries({ queryKey: ['attendance-categories'] }); }} />}
+      {categoriesOpen && <Categories countries={me?.countries ?? []} sheets={sheet?.categories ?? []} data={cats.data} onClose={() => { setCategoriesOpen(false); qc.invalidateQueries({ queryKey: ['attendance-categories'] }); }} />}
       {holidaysOpen && sheet && <Holidays sheet={sheet} onClose={() => { setHolidaysOpen(false); qc.invalidateQueries({ queryKey: ['attendance', month] }); }} />}
     </section>
   );
@@ -464,8 +492,8 @@ interface CategoryData { categories: { id: string; country: string; name: string
  * Approver emails (Ops Manager). Notify approver emails everyone holding the sheet's approving role in that country
  * (their email comes from WIREGUARD). An address entered here is added, for an approver without an account.
  */
-function Categories({ countries, data, onClose }: { countries: string[]; data: CategoryData | undefined; onClose: () => void }) {
-  const known = countries.flatMap((country) => SHEET_KEYS.map((k) => ({ country, name: SHEETS[k].label, approvedBy: SHEETS[k].approvedBy })));
+function Categories({ countries, sheets, data, onClose }: { countries: string[]; sheets: CategoryInfo[]; data: CategoryData | undefined; onClose: () => void }) {
+  const known = countries.flatMap((country) => sheets.map((k) => ({ country, name: k.label, approvedBy: k.review_by ? `${k.review_by}, then ${k.approve_by}` : k.approve_by })));
   const [emails, setEmails] = useState<Record<string, string>>(() => Object.fromEntries(known.map((g) => [`${g.country}|${g.name}`, data?.categories.find((c) => c.country === g.country && c.name === g.name)?.approver_email ?? ''])));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);

@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { defaultSheet, isSheet } from '../shared/attendanceSheets';
 import type { AppBindings, AuthedUser, Env } from './env';
 
 // Headcount Roster (S44): the one people list behind Attendance, job crews and the SLK Contacts list
@@ -34,9 +33,8 @@ export function cleanEmployee(b: Body, creating: boolean): { values: Record<stri
   if ('wg_username' in b) { const u = t(b.wg_username, 40).toUpperCase(); if (u && !USERNAME.test(u)) return { error: 'WIREGUARD username looks like NESR-12345' }; v.wg_username = u || null; }
   if ('contact_email' in b) { const e = t(b.contact_email, 120); if (e && !EMAIL.test(e)) return { error: 'That email address looks wrong' }; v.contact_email = e || null; }
   if ('contact_mobile' in b) { const m = t(b.contact_mobile, 30); if (m && !/^[+0-9 ()-]{6,30}$/.test(m)) return { error: 'Mobile takes digits, spaces and + only' }; v.contact_mobile = m || null; }
-  // which attendance sheet the person is on (field / shop / management); a new entry follows the crew role
-  if ('attendance_sheet' in b && b.attendance_sheet) { if (!isSheet(b.attendance_sheet)) return { error: 'Unknown attendance sheet' }; v.attendance_sheet = b.attendance_sheet; }
-  else if (creating) v.attendance_sheet = defaultSheet(typeof v.crew_role === 'string' ? v.crew_role : null);
+  // a person moved by hand to another attendance category (checked against the categories by the caller)
+  if ('attendance_category' in b && b.attendance_category) { const k = t(b.attendance_category, 40); if (!/^[a-z0-9_]+$/.test(k)) return { error: 'Unknown attendance category' }; v.attendance_category = k; }
   for (const k of ['is_slk_contact', 'active', 'self_updated'] as const) if (k in b) v[k] = b[k] === true || b[k] === 1 ? 1 : 0;
   return { values: v };
 }

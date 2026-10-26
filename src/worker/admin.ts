@@ -7,7 +7,8 @@ import { MENU_KEYS, effectiveMenus } from './permissions';
 import { syncPeople } from './people';
 import { roleKeys } from './rules';
 import { cleanEmployee } from './roster';
-import { isSheet } from '../shared/attendanceSheets';
+import { loadCategories } from './rules';
+import { isCode } from '../shared/attendance';
 
 // Users & Roles (S34). Accounts live in WIREGUARD; here an admin sets each person's SLK Ops role,
 // sets their countries, switches access off, adds or removes tabs per person and edits the role × menu matrix.
@@ -56,7 +57,7 @@ admin.get('/users', async (c) => {
               user_roles.last_login_at, user_roles.updated_by, user_roles.updated_at, user_roles.email, user_roles.employee_eid,
               user_roles.wg_active, user_roles.wg_country, user_roles.wg_field, user_roles.wg_synced_at, user_roles.passkey_allowed,
               (SELECT count(*) FROM passkeys p WHERE p.username = user_roles.username) AS passkeys,
-              e.id AS employee_id, e.title AS job_title, e.account, e.crew_role, e.attendance_sheet AS sheet_override, e.reports_to_id,
+              e.id AS employee_id, e.title AS job_title, e.account, e.crew_role, e.attendance_category AS sheet_override, e.reports_to_id,
               e.self_updated, e.is_slk_contact, e.contact_mobile, e.country AS attendance_country,
               (SELECT sheet FROM attendance_role_sheets rs WHERE rs.role = user_roles.role) AS role_sheet
        FROM user_roles LEFT JOIN employees e ON lower(e.wg_username) = lower(user_roles.username)
@@ -228,7 +229,7 @@ admin.put('/attendance-categories', async (c) => {
   const me = c.get('user');
   const b = await c.req.json<{ role?: Role; sheet?: string }>().catch(() => ({} as { role?: Role; sheet?: string }));
   if (!b.role || !(await roleKeys(c.env)).includes(b.role)) return c.json({ error: 'Unknown role' }, 400);
-  if (b.sheet !== 'none' && !isSheet(b.sheet)) return c.json({ error: 'Unknown attendance sheet' }, 400);
+  if (b.sheet !== 'none' && !(await loadCategories(c.env)).some((k) => k.key === b.sheet)) return c.json({ error: 'Unknown attendance category' }, 400);
   await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO attendance_role_sheets (role, sheet, updated_by, updated_at) VALUES (?1, ?2, ?3, ?4)
       ON CONFLICT (role) DO UPDATE SET sheet = ?2, updated_by = ?3, updated_at = ?4`).bind(b.role, b.sheet, me.username, new Date().toISOString()),
@@ -245,10 +246,12 @@ admin.put('/users/:username/attendance', async (c) => {
   const e = await c.env.DB.prepare('SELECT id, full_name FROM employees WHERE lower(wg_username) = lower(?)').bind(username).first<{ id: string; full_name: string }>();
   if (!e) return c.json({ error: 'This person has no country yet, so they can’t be on attendance. Give them a country first.' }, 400);
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  const clearSheet = 'attendance_sheet' in b && !b.attendance_sheet;
-  const r = cleanEmployee(Object.fromEntries(Object.entries(b).filter(([k]) => ['title', 'account', 'crew_role', 'attendance_sheet', 'reports_to_id', 'self_updated', 'is_slk_contact', 'contact_mobile'].includes(k))), false);
+  if ('attendance_sheet' in b) { b.attendance_category = b.attendance_sheet; delete b.attendance_sheet; }
+  const clearSheet = 'attendance_category' in b && !b.attendance_category;
+  if (b.attendance_category && !(await loadCategories(c.env)).some((k) => k.key === b.attendance_category)) return c.json({ error: 'Unknown attendance category' }, 400);
+  const r = cleanEmployee(Object.fromEntries(Object.entries(b).filter(([k]) => ['title', 'account', 'crew_role', 'attendance_category', 'reports_to_id', 'self_updated', 'is_slk_contact', 'contact_mobile'].includes(k))), false);
   if ('error' in r) return c.json({ error: r.error }, 400);
-  const v: Record<string, unknown> = { ...r.values, ...(clearSheet ? { attendance_sheet: null } : {}) };
+  const v: Record<string, unknown> = { ...r.values, ...(clearSheet ? { attendance_category: null } : {}) };
   if (v.reports_to_id === e.id) return c.json({ error: 'Someone can’t be their own foreman' }, 400);
   const cols = Object.keys(v);
   if (!cols.length) return c.json({ ok: true });
@@ -256,6 +259,85 @@ admin.put('/users/:username/attendance', async (c) => {
     c.env.DB.prepare(`UPDATE employees SET ${cols.map((k, i) => `${k} = ?${i + 1}`).join(', ')}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?${cols.length + 1}`)
       .bind(...cols.map((k) => v[k]), e.id),
     audit(c.env, me, 'edit', 'employee', e.id, `${e.full_name}: ${cols.map((k) => `${k} = ${v[k]}`).join(', ')}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+// ---- attendance categories: add, rename, settings, delete ----------------------------------------------------
+
+const FILL_SCOPES = ['crew', 'any', 'self'];
+type CatBody = { label?: string; sort?: number; fill_scope?: string; two_step?: boolean; auto_from_jobs?: boolean; job_code?: string };
+
+admin.get('/attendance-sheets', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT s.*, (SELECT count(*) FROM attendance_role_sheets r WHERE r.sheet = s.key) AS roles,
+            (SELECT count(*) FROM employees e WHERE e.attendance_category = s.key) AS moved
+     FROM attendance_sheets s ORDER BY s.sort, s.label`,
+  ).all();
+  return c.json(results);
+});
+
+function cleanCategory(b: CatBody): { values: Record<string, unknown> } | { error: string } {
+  const v: Record<string, unknown> = {};
+  if (b.label !== undefined) { const l = String(b.label).trim().slice(0, 60); if (!l) return { error: 'Name the category' }; v.label = l; }
+  if (b.sort !== undefined) v.sort = Math.max(0, Math.min(999, Math.round(Number(b.sort) || 0)));
+  if (b.fill_scope !== undefined) { if (!FILL_SCOPES.includes(String(b.fill_scope))) return { error: 'Pick who fills the category' }; v.fill_scope = b.fill_scope; }
+  if (b.two_step !== undefined) v.two_step = b.two_step ? 1 : 0;
+  if (b.auto_from_jobs !== undefined) v.auto_from_jobs = b.auto_from_jobs ? 1 : 0;
+  if (b.job_code !== undefined) { if (!isCode(b.job_code)) return { error: 'Pick the code for job days' }; v.job_code = b.job_code; }
+  return { values: v };
+}
+
+admin.post('/attendance-sheets', async (c) => {
+  const me = c.get('user');
+  const b = await c.req.json<CatBody>().catch(() => ({} as CatBody));
+  const r = cleanCategory({ fill_scope: 'any', two_step: false, auto_from_jobs: false, job_code: 'JBFS', ...b });
+  if ('error' in r) return c.json({ error: r.error }, 400);
+  if (!r.values.label) return c.json({ error: 'Name the category' }, 400);
+  const key = String(r.values.label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  if (!key) return c.json({ error: 'Use letters or digits in the name' }, 400);
+  if (await c.env.DB.prepare('SELECT 1 FROM attendance_sheets WHERE key = ? OR lower(label) = lower(?)').bind(key, r.values.label).first()) return c.json({ error: `There is already a category called ${r.values.label}` }, 409);
+  const sort = r.values.sort ?? ((await c.env.DB.prepare('SELECT coalesce(max(sort), 0) + 1 AS n FROM attendance_sheets').first<{ n: number }>())?.n ?? 1);
+  await c.env.DB.batch([
+    c.env.DB.prepare('INSERT INTO attendance_sheets (key, label, sort, fill_scope, two_step, auto_from_jobs, job_code, builtin, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)')
+      .bind(key, r.values.label, sort, r.values.fill_scope, r.values.two_step, r.values.auto_from_jobs, r.values.job_code, me.username),
+    audit(c.env, me, 'create', 'attendance_sheet', key, `Added attendance category ${r.values.label}`),
+  ]);
+  return c.json({ ok: true, key }, 201);
+});
+
+admin.patch('/attendance-sheets/:key', async (c) => {
+  const me = c.get('user');
+  const key = c.req.param('key');
+  const cur = await c.env.DB.prepare('SELECT key, label FROM attendance_sheets WHERE key = ?').bind(key).first<{ key: string; label: string }>();
+  if (!cur) return c.json({ error: 'No such category' }, 404);
+  const r = cleanCategory(await c.req.json<CatBody>().catch(() => ({} as CatBody)));
+  if ('error' in r) return c.json({ error: r.error }, 400);
+  const cols = Object.keys(r.values);
+  if (!cols.length) return c.json({ ok: true });
+  if (r.values.label && await c.env.DB.prepare('SELECT 1 FROM attendance_sheets WHERE lower(label) = lower(?) AND key <> ?').bind(r.values.label, key).first()) return c.json({ error: `There is already a category called ${r.values.label}` }, 409);
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE attendance_sheets SET ${cols.map((k, i) => `${k} = ?${i + 1}`).join(', ')}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE key = ?${cols.length + 1}`)
+      .bind(...cols.map((k) => r.values[k]), key),
+    audit(c.env, me, 'edit', 'attendance_sheet', key, `${cur.label}: ${cols.map((k) => `${k} = ${r.values[k]}`).join(', ')}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+admin.delete('/attendance-sheets/:key', async (c) => {
+  const me = c.get('user');
+  const key = c.req.param('key');
+  const cur = await c.env.DB.prepare('SELECT key, label FROM attendance_sheets WHERE key = ?').bind(key).first<{ key: string; label: string }>();
+  if (!cur) return c.json({ error: 'No such category' }, 404);
+  const use = await c.env.DB.prepare(`SELECT (SELECT count(*) FROM attendance_role_sheets WHERE sheet = ?1) AS roles, (SELECT count(*) FROM employees WHERE attendance_category = ?1) AS moved`)
+    .bind(key).first<{ roles: number; moved: number }>();
+  if (use?.roles || use?.moved) {
+    return c.json({ error: `${cur.label} is still used by ${[use.roles ? `${use.roles} role${use.roles === 1 ? '' : 's'}` : '', use.moved ? `${use.moved} ${use.moved === 1 ? 'person' : 'people'} moved by hand` : ''].filter(Boolean).join(' and ')}. Assign them to another category first.` }, 409);
+  }
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM attendance_sheets WHERE key = ?').bind(key),
+    c.env.DB.prepare(`DELETE FROM approval_rules WHERE key IN (?, ?, ?)`).bind(`attendance.${key}.fill`, `attendance.${key}.review`, `attendance.${key}.approve`),
+    audit(c.env, me, 'delete', 'attendance_sheet', key, `Deleted attendance category ${cur.label}`),
   ]);
   return c.json({ ok: true });
 });
