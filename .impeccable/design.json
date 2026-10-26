@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-26T06:02:58.235Z",
+  "generatedAt": "2026-10-26T07:52:43.760Z",
   "title": "Design System: SLK Operations",
   "extensions": {
     "colorMeta": {
@@ -394,24 +394,24 @@
           "#f8f0f1"
         ]
       },
-      "paper": {
+      "sun-page": {
         "role": "neutral",
-        "displayName": "Paper (light theme page)",
-        "canonical": "#f5f7fa",
+        "displayName": "Sun Page (Sunlight page)",
+        "canonical": "#e9eef3",
         "tonalRamp": [
-          "#68696b",
-          "#a3a5a7",
-          "#d1d3d6",
-          "#f5f7fa",
-          "#f6f8fa",
-          "#f6f8fb",
-          "#f7f9fb",
-          "#f7f9fb"
+          "#636568",
+          "#9b9ea2",
+          "#c7cbd0",
+          "#e9eef3",
+          "#edf1f5",
+          "#f0f4f7",
+          "#f4f6f9",
+          "#f6f8fa"
         ]
       },
-      "paper-panel": {
+      "sun-card": {
         "role": "neutral",
-        "displayName": "Paper Panel (light theme card)",
+        "displayName": "Sun Card",
         "canonical": "#ffffff",
         "tonalRamp": [
           "#6d6d6d",
@@ -424,19 +424,199 @@
           "#f8fafb"
         ]
       },
-      "paper-ink": {
-        "role": "primary",
-        "displayName": "Paper Ink (light theme accent and text)",
-        "canonical": "#111821",
+      "sun-raised": {
+        "role": "neutral",
+        "displayName": "Sun Raised",
+        "canonical": "#f1f5f9",
         "tonalRamp": [
-          "#090e13",
-          "#0c1118",
-          "#0e151d",
-          "#111821",
-          "#86878a",
+          "#66686b",
+          "#a0a3a6",
+          "#ced1d5",
+          "#f1f5f9",
+          "#f3f6fa",
+          "#f4f7fa",
+          "#f6f8fb",
+          "#f6f9fb"
+        ]
+      },
+      "sun-ink": {
+        "role": "primary",
+        "displayName": "Sun Ink (Sunlight text and accent)",
+        "canonical": "#0f172a",
+        "tonalRamp": [
+          "#080d16",
+          "#0a111d",
+          "#0d1424",
+          "#0f172a",
+          "#85878b",
           "#b6b8ba",
           "#dadcde",
           "#eceef0"
+        ]
+      },
+      "sun-ink-muted": {
+        "role": "neutral",
+        "displayName": "Sun Ink Muted",
+        "canonical": "#334155",
+        "tonalRamp": [
+          "#141b24",
+          "#202a38",
+          "#2b3748",
+          "#334155",
+          "#8b8f97",
+          "#b8bcc0",
+          "#dbdde0",
+          "#eceef1"
+        ]
+      },
+      "sun-ink-subtle": {
+        "role": "neutral",
+        "displayName": "Sun Ink Subtle",
+        "canonical": "#3f4b5c",
+        "tonalRamp": [
+          "#181f27",
+          "#28313c",
+          "#353f4e",
+          "#3f4b5c",
+          "#8e929a",
+          "#babdc1",
+          "#dbdee1",
+          "#eceff1"
+        ]
+      },
+      "sun-field-outline": {
+        "role": "neutral",
+        "displayName": "Field Outline",
+        "canonical": "#475569",
+        "tonalRamp": [
+          "#1b232c",
+          "#2d3745",
+          "#3c4859",
+          "#475569",
+          "#90969f",
+          "#bbbfc4",
+          "#dcdee2",
+          "#edeff1"
+        ]
+      },
+      "sun-card-edge": {
+        "role": "neutral",
+        "displayName": "Card Edge",
+        "canonical": "#6b7889",
+        "tonalRamp": [
+          "#2b313a",
+          "#454e5a",
+          "#5b6675",
+          "#6b7889",
+          "#9ea5af",
+          "#c2c6cd",
+          "#dfe2e5",
+          "#eef0f3"
+        ]
+      },
+      "sun-rule": {
+        "role": "neutral",
+        "displayName": "Sun Rule",
+        "canonical": "#cbd5e1",
+        "tonalRamp": [
+          "#555a60",
+          "#868d96",
+          "#adb6c0",
+          "#cbd5e1",
+          "#d7dfe8",
+          "#e2e8ee",
+          "#edf1f5",
+          "#f3f6f9"
+        ]
+      },
+      "sun-focus": {
+        "role": "tertiary",
+        "displayName": "Sun Focus",
+        "canonical": "#1d4ed8",
+        "tonalRamp": [
+          "#0c205c",
+          "#123290",
+          "#1842b9",
+          "#1d4ed8",
+          "#8794e1",
+          "#b7bdea",
+          "#dadef3",
+          "#eceff8"
+        ]
+      },
+      "sun-planned": {
+        "role": "secondary",
+        "displayName": "Sun Planned (solid)",
+        "canonical": "#1d4ed8",
+        "tonalRamp": [
+          "#0c205c",
+          "#123290",
+          "#1842b9",
+          "#1d4ed8",
+          "#8794e1",
+          "#b7bdea",
+          "#dadef3",
+          "#eceff8"
+        ]
+      },
+      "sun-ongoing": {
+        "role": "secondary",
+        "displayName": "Sun Running (solid)",
+        "canonical": "#facc15",
+        "tonalRamp": [
+          "#6a5611",
+          "#a68712",
+          "#d6ae14",
+          "#facc15",
+          "#f9d888",
+          "#f9e4b9",
+          "#f8efdd",
+          "#f7f5f0"
+        ]
+      },
+      "sun-done": {
+        "role": "secondary",
+        "displayName": "Sun Done (solid)",
+        "canonical": "#15803d",
+        "tonalRamp": [
+          "#0a351c",
+          "#0e5429",
+          "#126d34",
+          "#15803d",
+          "#86a98f",
+          "#b6c9bc",
+          "#dae3df",
+          "#ecf0f0"
+        ]
+      },
+      "sun-danger": {
+        "role": "secondary",
+        "displayName": "Sun Alert (text)",
+        "canonical": "#7f1d1d",
+        "tonalRamp": [
+          "#330f12",
+          "#531416",
+          "#6c191a",
+          "#7f1d1d",
+          "#a88889",
+          "#c7b8ba",
+          "#e1dcdd",
+          "#eeeef0"
+        ]
+      },
+      "sun-amber-ink": {
+        "role": "secondary",
+        "displayName": "Sun Amber Ink (text)",
+        "canonical": "#713f12",
+        "tonalRamp": [
+          "#2d1a10",
+          "#492911",
+          "#603511",
+          "#713f12",
+          "#a18f88",
+          "#c3bbb9",
+          "#dfdddd",
+          "#eeeef0"
         ]
       }
     },
@@ -476,6 +656,14 @@
       "label": {
         "displayName": "Label",
         "purpose": "Mono capitals for field labels, section rules, pills, units, IDs and fingerprints."
+      },
+      "body-touch": {
+        "displayName": "Body (touch)",
+        "purpose": "Body text under touch density (tablets, phones)."
+      },
+      "label-touch": {
+        "displayName": "Label (touch)",
+        "purpose": "Mono labels under touch density."
       }
     },
     "shadows": [
@@ -485,9 +673,9 @@
         "purpose": "Every card on the dark theme; cards carry no outline."
       },
       {
-        "name": "card-lift-light",
-        "value": "0 1px 2px rgba(16,24,40,.06), 0 6px 16px rgba(16,24,40,.08), 0 16px 32px rgba(16,24,40,.06)",
-        "purpose": "Every card on the light theme."
+        "name": "card-sunlight",
+        "value": "none (1px #6b7889 border instead)",
+        "purpose": "Sunlight cards: outlined, because shadows wash out in glare."
       },
       {
         "name": "pop",
@@ -495,9 +683,9 @@
         "purpose": "Dialogs, dropdowns, popovers, the assistant drawer (dark)."
       },
       {
-        "name": "pop-light",
-        "value": "0 12px 32px rgba(16,24,40,.16)",
-        "purpose": "The same on the light theme."
+        "name": "pop-sunlight",
+        "value": "0 0 0 1px #6b7889, 0 12px 32px rgba(15,23,42,.24)",
+        "purpose": "Menus and dialogs in Sunlight: edge ring plus separation."
       }
     ],
     "motion": [
@@ -520,6 +708,18 @@
         "name": "motion-ease",
         "value": "cubic-bezier(.2,.8,.2,1)",
         "purpose": "Default easing; all durations drop to 0 under prefers-reduced-motion."
+      }
+    ],
+    "density": [
+      {
+        "name": "desk",
+        "value": "controls 32 / 36 / 44px, answer 32px, body 14px",
+        "purpose": "Default with a mouse."
+      },
+      {
+        "name": "touch",
+        "value": "controls 44 / 44 / 48px, answer 48px, body 16px, label 12px",
+        "purpose": "Default on touch screens (pointer: coarse); set on <html data-density=\"touch\">."
       }
     ],
     "breakpoints": [
@@ -609,16 +809,33 @@
       "description": "The Signed Record lens: who signed, the live verdict, and the fingerprint.",
       "html": "<div class=\"ds-sig\"><p class=\"ds-sig-head\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/><path d=\"m9 12 2 2 4-4\"/></svg>Digitally signed by Ali Abdulhakim (SDM) · 25 Oct 2026, 12:17</p><p class=\"ds-sig-sub\">Signature valid: the record is exactly as approved · fingerprint <span class=\"ds-mono\">8a76809e3f1c</span></p></div>",
       "css": ".ds-sig { max-width: 520px; font: 400 12px/16px Inter, system-ui, sans-serif; } .ds-sig-head { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; color: var(--color-success, #3ecf8e); } .ds-sig-sub { margin: 2px 0 0; color: var(--color-text-muted, #9aa4b1); } .ds-mono { font-family: \"JetBrains Mono\", ui-monospace, monospace; }"
+    },
+    {
+      "name": "Sunlight Card",
+      "kind": "card",
+      "refersTo": "card-sunlight",
+      "description": "A card in Sunlight: white on the grey page with a 1px Card Edge outline and no shadow.",
+      "html": "<section class=\"ds-sun-card\"><h3 class=\"ds-sun-rule\">Sign-off</h3><p class=\"ds-sun-text\">Job log signed · Field ticket signed</p><span class=\"ds-sun-pill\">completed</span></section>",
+      "css": ".ds-sun-card { width: 360px; padding: 16px; border: 1px solid #6b7889; border-radius: 12px; background: #ffffff; color: #0f172a; box-shadow: none; } .ds-sun-rule { margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #cbd5e1; font: 600 12px/16px \"JetBrains Mono\", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; color: #334155; } .ds-sun-text { margin: 0 0 10px; font: 400 16px/24px Inter, system-ui, sans-serif; } .ds-sun-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #15803d; color: #ffffff; font: 600 12px/16px \"JetBrains Mono\", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; }"
+    },
+    {
+      "name": "Touch Answer Toggle",
+      "kind": "custom",
+      "refersTo": "answer-toggle-touch",
+      "description": "JRA Yes / No under touch density in Sunlight: 48px tall; a risky answer fills amber-brown with white text.",
+      "html": "<span class=\"ds-toggle\" role=\"radiogroup\" aria-label=\"A2\"><button role=\"radio\" aria-checked=\"false\">Yes</button><button role=\"radio\" aria-checked=\"true\" class=\"ds-risky\">No</button></span>",
+      "css": ".ds-toggle { display: inline-flex; overflow: hidden; border: 1px solid #7d8a9c; border-radius: 8px; } .ds-toggle button { height: 48px; min-width: 56px; padding: 0 12px; border: 0; background: #ffffff; color: #334155; font: 600 13px/18px Inter, system-ui, sans-serif; cursor: pointer; } .ds-toggle button:hover { background: #f1f5f9; } .ds-toggle button:focus-visible { outline: 2px solid #1d4ed8; outline-offset: -2px; } .ds-toggle .ds-risky { background: #713f12; color: #ffffff; }"
     }
   ],
   "narrative": {
     "northStar": "One Job Record, Three Lenses",
-    "overview": "SLK Operations is a single record per slickline job, and the interface changes lens with the person reading it:\n- **The Control Room** is the office's view (schedule, dashboards, reconciliation, attendance sheets). It is dense, calm and dark, built so a full fleet reads at a glance and colour appears only when something needs attention.\n- **The Field Logbook** is the wellsite's view (job stages, JRA, job log, attachments). It is plain, sturdy and legible, with large targets and short labels, filled in outdoors on a phone or tablet over weak signal.\n- **The Signed Record** is the view of approvals, reports and PDFs. It is precise and evidential: values, signatures and fingerprints are set in monospace, and nothing decorative competes with the facts.\n\nThe three lenses share one world: a near-black night palette (paper-light on demand), chalk-white type, a monochrome accent, and a strict status palette. Density is high but never cramped: 14px body text, 36px controls on desk and 44px in field pages, and section labels in small monospace capitals that work like the ruled headings of a logbook. The accent stays neutral on purpose. NESR's brand colour is not in the repository yet; when it arrives it joins as a brand accent, and the monochrome action colour stays (owner decision, 2026-10-26).\n\nRejected: the original WL Operations Hub's look, emoji icons and colours (none are reused), and any decoration that would make a field user hunt for the next field.",
+    "overview": "SLK Operations is a single record per slickline job, and the interface changes lens with the person reading it:\n- **The Control Room** is the office's view (schedule, dashboards, reconciliation, attendance sheets). It is dense, calm and dark, built so a full fleet reads at a glance and colour appears only when something needs attention.\n- **The Field Logbook** is the wellsite's view (job stages, JRA, job log, attachments). It is plain, sturdy and legible, with large targets and short labels, filled in outdoors on a phone or tablet over weak signal.\n- **The Signed Record** is the view of approvals, reports and PDFs. It is precise and evidential: values, signatures and fingerprints are set in monospace, and nothing decorative competes with the facts.\n\nThe three lenses share one world in two light conditions. **Control Room** is the near-black night theme, the default on a desk with a mouse. **Sunlight** is a high-contrast light theme built for tablets outdoors, the default on touch screens. Both use chalk/ink type, a monochrome accent and a strict status palette. Control size follows the hand: **desk** density on a mouse, **touch** density (44–48px controls, 16px text) on a touch screen. Everyone can override both from the account menu, and the choice is remembered on that device (owner request, 2026-10-26). Density is high but never cramped on a desk (14px body text, 32–36px controls). Touch density raises every control to 44px, answer toggles to 48px and body text to 16px. Section labels stay in small monospace capitals that work like the ruled headings of a logbook. The accent stays neutral on purpose. NESR's brand colour is not in the repository yet; when it arrives it joins as a brand accent, and the monochrome action colour stays (owner decision, 2026-10-26).\n\nRejected: the original WL Operations Hub's look, emoji icons and colours (none are reused), and any decoration that would make a field user hunt for the next field.",
     "keyCharacteristics": [
-      "Dark by default with a full light theme; both are tokens, never hard-coded hex in components.",
-      "A monochrome accent (chalk on night, ink on paper) for actions; colour is reserved for status, severity and risk.",
+      "Two themes chosen by device: dark Control Room on desks, Sunlight on touch screens. Both are tokens, never hard-coded hex in components.",
+      "Two densities chosen by pointer: desk (mouse) and touch (finger or glove). Control heights and text sizes are tokens that grow under touch.",
+      "A monochrome accent (chalk on night, ink in Sunlight) for actions; colour is reserved for status, severity and risk.",
       "Monospace capitals for section labels, units, IDs, timestamps and fingerprints; Manrope for page and stage titles; Inter for everything people read and type.",
-      "Cards are lifted by shadow alone, with no outline; inner divisions use 1px rules.",
+      "Cards declare depth once per theme: a lifting shadow in Control Room, a 1px outline in Sunlight (shadows wash out in glare).",
       "Every state has a word next to its colour; colour is never the only signal."
     ],
     "rules": [
@@ -633,6 +850,11 @@
         "section": "colors"
       },
       {
+        "name": "The Sunlight Rule",
+        "body": "In Sunlight, body and secondary text stay at 7 : 1 or more, field outlines at 4.5 : 1 or more, and card edges at 3 : 1 or more. The plain accessibility minimum is not enough in glare.",
+        "section": "colors"
+      },
+      {
         "name": "The Mono Is Evidence Rule",
         "body": "Monospace is for things that are measured, identified or proven: labels, units (ft, psi, ppm), tickets, timestamps, fingerprints, form codes (QAF14021 Rev 3). Never for decoration or prose.",
         "section": "typography"
@@ -643,13 +865,18 @@
         "section": "typography"
       },
       {
+        "name": "The Nothing Floats Over Work Rule",
+        "body": "No floating buttons over content. Actions live in the header, in the page, or in a pinned bar that takes its own space. (A floating help button covered the JRA answer column on tablets until it moved into the header.)",
+        "section": "layout"
+      },
+      {
         "name": "The One Card Per Concern Rule",
         "body": "A stage, a panel or a dialog is one card. Inside it, structure comes from label rules and 1px dividers, never from a card within a card.",
         "section": "layout"
       },
       {
         "name": "The Declare Depth Once Rule",
-        "body": "A surface is either lifted by shadow (cards, overlays) or divided by a 1px rule (everything inside them). Never both on the same element.",
+        "body": "Each surface declares depth once per theme: a shadow (Control Room cards and overlays) or a 1px line (Sunlight cards, and everything inside a card in both themes). Never both on the same element. Sunlight overlays are the one deliberate pairing: a 1px ring plus a shadow, because a menu over a white page needs both edge and separation.",
         "section": "elevation"
       }
     ],
@@ -657,12 +884,15 @@
       "**Do** reference tokens (`bg-surface`, `text-text-muted`, `rounded-lg`, `shadow-card`), never raw hex, so the light theme and NESR's future brand colour can swap in one place.",
       "**Do** put a word next to every coloured state (status pills, risk points \"+5\", \"Exemption Required\").",
       "**Do** use mono capitals for labels, units, IDs, timestamps and fingerprints, and Inter for anything people read or type.",
-      "**Do** give field pages (job stages, JRA, job log, attachments) 44px touch targets and the strongest input outline (Rule Input).",
+      "**Do** size interactive controls with `h-(--layout-control-sm|md|lg)` (and `--layout-control-answer` for answer toggles), so touch density reaches 44–48px everywhere.",
+      "**Do** test field screens in Sunlight under touch density (a 1280 × 800 touch tablet) as well as dark on a desk.",
       "**Do** lift cards with the card shadow and divide their insides with 1px rules.",
       "**Do** show \"why\" on every locked or disabled control (lock hint, tooltip, or hint text under the field)."
     ],
     "donts": [
-      "**Don't** add a 1px outline to a card that already has the card shadow, and don't nest cards.",
+      "**Don't** add a 1px outline to a Control Room card that already has the card shadow, and don't nest cards.",
+      "**Don't** place floating buttons over content.",
+      "**Don't** use tinted status pills or pale text in Sunlight; keep to the Sunlight Rule's contrast floors.",
       "**Don't** introduce new hues for decoration; colour is for status, severity, risk and focus only.",
       "**Don't** reuse anything from the original WL Operations Hub: colours, emoji icons, copy or assets.",
       "**Don't** add coloured side stripes thicker than 1px to cards, list items or callouts (the banner edge is a known exception to remove).",

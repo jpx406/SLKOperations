@@ -55,7 +55,7 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
         <div onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); void upload(e.dataTransfer.files); }}
           className={cx('mb-3 flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3 text-sm', over ? 'border-accent bg-surface-2' : 'border-border-strong')}>
           <label className="sr-only" htmlFor={`att-cat-${id}`}>What the files are</label>
-          <select id={`att-cat-${id}`} className={inputSized('h-8 w-44')} value={category} onChange={(e) => setCategory(e.target.value as Category)}>
+          <select id={`att-cat-${id}`} className={inputSized('h-(--layout-control-sm) w-44')} value={category} onChange={(e) => setCategory(e.target.value as Category)}>
             {Object.entries(CATEGORIES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
           <input ref={input} type="file" multiple accept={ACCEPT} className="hidden" aria-label="Files to attach" onChange={(e) => upload(e.target.files)} />
@@ -75,8 +75,8 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
                 <span className="block truncate font-semibold">{f.file_name}</span>
                 <span className="text-xs text-text-muted">{CATEGORIES[f.category]} · {sizeText(f.size_bytes)} · {f.uploaded_by_name} · {when(f.uploaded_at)}</span>
               </span>
-              {INLINE.has(f.content_type) && <a className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-text-muted hover:bg-surface-2 hover:text-text" href={url(f, true)} target="_blank" rel="noreferrer"><Eye aria-hidden className="size-3.5" />View</a>}
-              <a className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-text-muted hover:bg-surface-2 hover:text-text" href={url(f)} download={f.file_name}><Download aria-hidden className="size-3.5" />Download</a>
+              {INLINE.has(f.content_type) && <a className="inline-flex h-(--layout-control-sm) items-center gap-1 rounded-md px-2 text-xs font-semibold text-text-muted hover:bg-surface-2 hover:text-text" href={url(f, true)} target="_blank" rel="noreferrer"><Eye aria-hidden className="size-3.5" />View</a>}
+              <a className="inline-flex h-(--layout-control-sm) items-center gap-1 rounded-md px-2 text-xs font-semibold text-text-muted hover:bg-surface-2 hover:text-text" href={url(f)} download={f.file_name}><Download aria-hidden className="size-3.5" />Download</a>
               {canEdit && <Button size="sm" variant="ghost" aria-label={`Remove ${f.file_name}`} onClick={() => remove(f)}><Trash2 aria-hidden className="size-3.5" /></Button>}
             </li>
           ))}

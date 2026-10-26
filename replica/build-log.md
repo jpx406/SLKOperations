@@ -863,3 +863,28 @@ Every label, message and empty state was written here. No code, assets or copy f
   - on DV-26072, opening the JRA created its draft (QAF14021 Rev 3), and an answer clicked 50 ms before leaving the page was saved;
   - unit tests (204) check the PDF's cross-reference offsets and stream lengths and the text it draws.
 - **Not checked:** how the PDF looks on screen. There's no PDF renderer here; a sample file was sent to the owner to open.
+
+## Milestone 6j: Sunlight field mode
+
+**Owner request, 2026-10-26:** the app must work on tablets in bright light.
+
+- **Sunlight theme:** the light theme was rebuilt for outdoor tablets.
+  - Text and secondary text at 7 : 1 or more, field outlines at 7.6 : 1, card edges at 3 : 1 or more; 50 pairs checked by `build_tokens.py`.
+  - Cards are outlined instead of shadowed, because shadows wash out in glare.
+  - Status pills are solid (new `pill-*` tokens), because tints bleach out.
+- **Touch density** (`[data-density="touch"]` in `tokens.css`): controls 44px, JRA answer toggles 48px, body text 16px, labels 12px. Buttons, inputs, tabs and the field-page controls now take their height from `--layout-control-*` instead of fixed classes.
+- **Defaults by device** (`src/client/display.ts`, plus the same rules in `index.html` before the first paint): touch screens open in Sunlight with touch density; a desk with a mouse opens dark and compact. The account menu has Sunlight mode and Large touch controls (Auto / On / Off), remembered per device.
+- **Header:**
+  - one row: brand, country, WIREGUARD sync, clock, Help, Ask, account menu;
+  - the section tabs stay pinned to the top while scrolling;
+  - on phones the tools wrap and the country switch moves into the account menu;
+  - name, role, password, Data and Sign out moved into the account menu.
+- **Help button fix:** the floating help-assistant button covered the JRA answer column on tablets. It is now "Ask" in the header, and nothing floats over content.
+- **Also updated:** DESIGN.md (Sunlight colours, touch sizes, the Sunlight Rule, the Nothing Floats Over Work Rule), `.impeccable/design.json`, `components.md`, and the in-app guide.
+- **Verified 2026-10-26:**
+  - 1280 × 800 touch tablet: Sunlight and touch switch on by themselves; on Preparation and the JRA, 0 of 75 and 0 of 82 controls are under 44px (before: 46 of 52 and 59 of 59); body text 16px; no floating button; section tabs pinned at the top.
+  - 1440 desk with a mouse: still dark and compact, header 100px.
+  - 390 phone: no sideways scroll, nothing cut off in the header.
+  - Tests: 204 pass. Design checker: only the banner edge the owner chose to keep.
+- **Not done:** the Schedule's timeline cells stay below 44px (an office screen). Charts were already labelled on the bars, so they were left as they are.
+- **Dev note:** vite's pre-bundled dependency cache got stuck mid-rebuild, and every page load hung. Restarting with `--force` fixed it.

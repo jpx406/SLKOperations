@@ -61,7 +61,7 @@ export function JraPage() {
   return (
     <section aria-labelledby="jra-title">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link to={`/operation/jobs/${id}/preparation`} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3"><ArrowLeft aria-hidden className="size-4" />Job</Link>
+        <Link to={`/operation/jobs/${id}/preparation`} className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3"><ArrowLeft aria-hidden className="size-4" />Job</Link>
         <h1 id="jra-title" className="font-display text-xl font-extrabold uppercase">Job risk assessment</h1>
         <span className="font-mono text-sm text-text-muted">{d.job.ticket_no ?? 'no ticket'} · {d.template.code} rev {d.template.revision}</span>
         {canEdit && <span className="ml-auto"><JraUpload jobId={id} /></span>}
@@ -105,7 +105,7 @@ export function JraPage() {
                         <span role="radiogroup" aria-label={`${x.id}: ${x.text}`} className="flex overflow-hidden rounded-md border border-border-strong">
                           {optionsOf(x).map((o) => (
                             <button key={o} type="button" role="radio" aria-checked={a === o} disabled={!canEdit} onClick={() => answer(x.id, o)}
-                              className={cx('h-8 w-12 text-xs font-semibold disabled:cursor-default', a === o ? (pointsFor(x, o) > 0 || (x.requirement?.when.includes(o) ?? false) ? 'bg-warning text-on-accent' : 'bg-accent text-on-accent') : 'text-text-muted hover:bg-surface-2')}>{ANSWER_LABEL[o]}</button>
+                              className={cx('h-(--layout-control-answer) min-w-12 px-3 text-xs font-semibold disabled:cursor-default', a === o ? (pointsFor(x, o) > 0 || (x.requirement?.when.includes(o) ?? false) ? 'bg-warning text-on-accent' : 'bg-accent text-on-accent') : 'text-text-muted hover:bg-surface-2')}>{ANSWER_LABEL[o]}</button>
                           ))}
                         </span>
                       </div>
@@ -184,7 +184,7 @@ export function JraBanner({ jobId }: { jobId: string }) {
         <span className="font-mono text-xs text-text-subtle">{template.code} rev {template.revision}</span>
         <span className="ml-auto flex flex-wrap gap-2">
           {canUpload && <JraUpload jobId={jobId} />}
-          <Link className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-sm font-semibold text-on-accent hover:bg-accent-hover" to={`/operation/jobs/${jobId}/jra`}>{st === 'none' ? 'Start JRA' : 'Open JRA'}</Link>
+          <Link className="inline-flex h-(--layout-control-sm) items-center rounded-md bg-accent px-3 text-sm font-semibold text-on-accent hover:bg-accent-hover" to={`/operation/jobs/${jobId}/jra`}>{st === 'none' ? 'Start JRA' : 'Open JRA'}</Link>
         </span>
       </div>
       <p className="mt-1 text-xs text-text-muted">

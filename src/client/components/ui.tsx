@@ -11,7 +11,7 @@ const VARIANT: Record<Variant, string> = {
   ghost: 'bg-transparent text-text-muted hover:text-text hover:bg-surface-2',
   danger: 'bg-transparent text-danger border border-danger hover:bg-danger-subtle',
 };
-const SIZE = { sm: 'h-8 px-3 text-xs', md: 'h-9 px-3.5 text-sm', lg: 'h-11 px-4.5 text-base font-display font-bold' };
+const SIZE = { sm: 'h-(--layout-control-sm) px-3 text-xs', md: 'h-(--layout-control-md) px-3.5 text-sm', lg: 'h-(--layout-control-lg) px-4.5 text-base font-display font-bold' };
 
 export function Button({ variant = 'secondary', size = 'md', loading, children, className, disabled, ...rest }:
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: keyof typeof SIZE; loading?: boolean; ref?: Ref<HTMLButtonElement> }) {
@@ -30,11 +30,12 @@ export function Button({ variant = 'secondary', size = 'md', loading, children, 
   );
 }
 
+// tinted on dark, solid on Sunlight (tints bleach out in glare); the word is always there
 const STATUS_STYLE: Record<JobStatus, string> = {
-  planned: 'text-info bg-info-subtle border-info/40',
-  ongoing: 'text-warning bg-warning-subtle border-warning/40',
-  completed: 'text-success bg-success-subtle border-success/40',
-  canceled: 'text-neutral bg-neutral-subtle border-neutral/40 line-through',
+  planned: 'text-pill-planned-fg bg-pill-planned-bg border-pill-planned-border',
+  ongoing: 'text-pill-ongoing-fg bg-pill-ongoing-bg border-pill-ongoing-border',
+  completed: 'text-pill-completed-fg bg-pill-completed-bg border-pill-completed-border',
+  canceled: 'text-pill-canceled-fg bg-pill-canceled-bg border-pill-canceled-border line-through',
 };
 
 export function StatusPill({ status }: { status: JobStatus }) {
@@ -83,7 +84,8 @@ export function Banner({ tone = 'info', children, action }: { tone?: keyof typeo
 }
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx('rounded-lg bg-surface p-4 shadow-card', className)}>{children}</div>;
+  // depth is declared once per theme: a shadow on dark, an outline on Sunlight (card-edge is transparent on dark)
+  return <div className={cx('rounded-lg border border-card-edge bg-surface p-4 shadow-card', className)}>{children}</div>;
 }
 
 export function Skeleton({ className }: { className?: string }) {
@@ -118,7 +120,7 @@ export function PageTitle({ children, aside }: { children: ReactNode; aside?: Re
   );
 }
 
-const inputBase = 'w-full h-9 rounded-sm border border-border-input bg-input px-3 text-base text-text placeholder:text-text-subtle hover:border-border-strong focus:border-focus disabled:opacity-60 disabled:cursor-not-allowed aria-[invalid=true]:border-danger';
+const inputBase = 'w-full h-(--layout-control-md) rounded-sm border border-border-input bg-input px-3 text-base text-text placeholder:text-text-subtle hover:border-border-strong focus:border-focus disabled:opacity-60 disabled:cursor-not-allowed aria-[invalid=true]:border-danger';
 
 export function Field({ id, label, badge, hint, error, unit, children, required }: {
   id: string; label: string; badge?: string; hint?: ReactNode; error?: string | null; unit?: string; children: ReactNode; required?: boolean;

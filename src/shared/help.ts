@@ -8,7 +8,9 @@ export const HELP_SECTIONS: HelpSection[] = [
     id: 'start', title: 'Signing in and moving around', menus: 'any',
     body: `Sign in with your WIREGUARD username and password; SLK Operations has no passwords of its own, so change yours in WIREGUARD (the "Change password" link in the header). You are signed out after a period without activity.
 
-The header shows the WIREGUARD sync time (green when recent, amber after 30 minutes, red after an error), the Riyadh clock, your role, and the light/dark switch. If you cover more than one country, the country switch narrows every page to one of them.
+The header shows the WIREGUARD sync time (green when recent, amber after 30 minutes, red after an error), the Riyadh clock, Help, Ask (the help assistant) and your name and role. If you cover more than one country, the country switch narrows every page to one of them (on a phone it is in the account menu).
+
+The account menu (your name, top right) holds Sunlight mode and Large touch controls. Sunlight is a high-contrast light theme for working outdoors; Large touch controls makes buttons and text bigger for fingers and gloves. Both switch on by themselves on tablets and phones; on a desk with a mouse the app opens dark and compact. Whatever you choose is remembered on that device.
 
 The top row holds the groups (Operation, Service Quality, Attendance, Inventory and so on); the second row holds the pages in the group. You only see the tabs your role or your extra grants include.`,
   },
@@ -78,7 +80,7 @@ Rows are grouped by reporting line; each group is a category. The Ops Manager se
   },
   {
     id: 'ai', title: 'AI Agent and the help assistant', menus: ['ai_agent', 'ai_assistant'],
-    body: `The help assistant (the round button at the bottom right) answers questions about how to use SLK Operations from this guide; it can't see any job data. The AI Agent (Administration → AI Agent) answers questions about your data, reading only the pages you can open with your access; revenue needs the Sales or Bonus page unlocked first. Neither can change anything. An admin sets them on or off, the model, the monthly budget and the messages per person per day.`,
+    body: `The help assistant (Ask, in the header) answers questions about how to use SLK Operations from this guide; it can't see any job data. The AI Agent (Administration → AI Agent) answers questions about your data, reading only the pages you can open with your access; revenue needs the Sales or Bonus page unlocked first. Neither can change anything. An admin sets them on or off, the model, the monthly budget and the messages per person per day.`,
   },
   {
     id: 'admin', title: 'Administration', menus: ['users'], adminOnly: true,

@@ -44,11 +44,12 @@ LiveClock
   tokens    font mono xs
   used on   header
 
-AssistantFab + AssistantPanel
-  fab       56px circle, bg accent, on-accent icon (MessageCircle), bottom-right 24px, z fab
+AssistantButton + AssistantPanel
+  button    "Ask" ghost button in the header next to Help (icon-only below xl). Replaced the floating 56px circle on
+            2026-10-26: on tablets the floating button covered the JRA answer column
   panel     420px right drawer (full screen under md), header with a "Help only — no live data" note, message list, composer
   states    closed, open, streaming (typing dots), error (retry), rate-limited
-  a11y      the fab has aria-label "Open help assistant"; the panel is role="dialog" aria-modal="false"; Esc closes; focus returns to the fab
+  a11y      the button has aria-label "Open the help assistant"; the panel is role="dialog"; Esc closes
   used on   all (S23)
 ```
 

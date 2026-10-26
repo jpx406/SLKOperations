@@ -205,7 +205,7 @@ export function JobEditor() {
   return (
     <section aria-labelledby="job-title">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link to="/operation/jobs" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3">
+        <Link to="/operation/jobs" className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3">
           <ArrowLeft aria-hidden className="size-4" />Jobs
         </Link>
         <h1 id="job-title" className="min-w-0 truncate font-display text-xl font-extrabold uppercase">
@@ -213,7 +213,7 @@ export function JobEditor() {
         </h1>
         {job && <StatusPill status={job.status} />}
         <SaveIndicator state={save} />
-        {job && <Link to={`/operation/jobs/${job.id}/report`} className="inline-flex h-8 items-center rounded-md border border-border-strong px-3 text-xs font-semibold hover:bg-surface-2">Job report</Link>}
+        {job && <Link to={`/operation/jobs/${job.id}/report`} className="inline-flex h-(--layout-control-sm) items-center rounded-md border border-border-strong px-3 text-xs font-semibold hover:bg-surface-2">Job report</Link>}
         {job && me?.menus.jobs?.delete && <DeleteJob job={job} onDeleted={() => { qc.invalidateQueries({ queryKey: ['jobs'] }); qc.invalidateQueries({ queryKey: ['schedule'] }); navigate('/operation/jobs', { replace: true }); }} />}
       </div>
 
@@ -545,7 +545,7 @@ function ServicesPicker({ job, options, profiles, canEdit, onSaved }: { job: Job
             const on = selected.includes(name);
             return (
               <button key={name} type="button" role="checkbox" aria-checked={on} disabled={!canEdit || busy} onClick={() => toggle(name)}
-                className={cx('h-7 rounded-pill border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60',
+                className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60',
                   on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
                 {on && selected.length > 1 && <span className="mr-1 font-mono">{selected.indexOf(name) + 1}.</span>}{name}
               </button>

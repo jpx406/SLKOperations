@@ -14,7 +14,7 @@ export function HelpButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}><CircleHelp aria-hidden className="size-4" />Help</Button>
+      <Button size="sm" variant="ghost" aria-label="Help: the SLK Operations guide" onClick={() => setOpen(true)}><CircleHelp aria-hidden className="size-4" /><span className="hidden xl:inline">Help</span></Button>
       {open && <HelpDialog onClose={() => setOpen(false)} />}
     </>
   );
@@ -50,14 +50,12 @@ export function AssistantLauncher() {
   const { data: me } = useMe();
   const [open, setOpen] = useState(false);
   if (!me?.menus.ai_assistant?.view) return null;
+  // in the header, not floating: a floating button covered answers at the right edge on tablets
   return (
     <>
-      {!open && (
-        <button type="button" aria-label="Open the help assistant" onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 grid size-12 place-items-center rounded-full bg-accent text-on-accent shadow-lg hover:bg-accent-hover print:hidden">
-          <MessageCircleQuestion aria-hidden className="size-6" />
-        </button>
-      )}
+      <Button size="sm" variant="ghost" aria-label="Open the help assistant" aria-expanded={open} onClick={() => setOpen(true)}>
+        <MessageCircleQuestion aria-hidden className="size-4" /><span className="hidden xl:inline">Ask</span>
+      </Button>
       {open && <AssistantPanel onClose={() => setOpen(false)} />}
     </>
   );

@@ -168,7 +168,7 @@ export function CrewPanel({ job, canEdit }: { job: Job; canEdit: boolean }) {
               <legend className="px-1 text-xs font-semibold">{label}</legend>
               <label className="flex items-center gap-2 text-xs text-text-muted">
                 Planned
-                <input type="number" min={0} max={caps[head]} className={inputSized('h-8 w-16')} disabled={!canEdit || busy} value={headcount[head]}
+                <input type="number" min={0} max={caps[head]} className={inputSized('h-(--layout-control-sm) w-16')} disabled={!canEdit || busy} value={headcount[head]}
                   onChange={(e) => run('headcount', { ...headcount, [head]: Math.min(caps[head], Math.max(0, Number(e.target.value) || 0)) })} />
                 <span className="text-text-subtle">of {caps[head]}</span>
               </label>
@@ -182,7 +182,7 @@ export function CrewPanel({ job, canEdit }: { job: Job; canEdit: boolean }) {
                 ))}
               </ul>
               {members.length < caps[head] && (
-                <select aria-label={`Add to ${label.toLowerCase()}`} className={cx(inputClass, 'mt-2 h-8')} disabled={!canEdit || busy} value=""
+                <select aria-label={`Add to ${label.toLowerCase()}`} className={cx(inputClass, 'mt-2 h-(--layout-control-sm)')} disabled={!canEdit || busy} value=""
                   onChange={(e) => e.target.value && run('crew', { crew: [...crew.map(({ employee_id, crew_role }) => ({ employee_id, crew_role })), { employee_id: e.target.value, crew_role: role }] })}>
                   <option value="">Add person…</option>
                   {people.filter((p) => !taken.has(p.id)).sort((a, b) => Number(b.crew_role === role) - Number(a.crew_role === role))

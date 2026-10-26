@@ -1,6 +1,6 @@
 ---
 name: SLK Operations
-description: NESR's slickline operations hub — one job record seen through three lenses, dark by default, colour only where it carries meaning.
+description: NESR's slickline operations hub — one job record seen through three lenses; dark Control Room on desks, high-contrast Sunlight with large touch controls on tablets; colour only where it carries meaning.
 colors:
   ink-night: "#0b121a"
   panel: "#111820"
@@ -28,9 +28,21 @@ colors:
   sev-serious: "#f5c542"
   sev-major: "#ff9f43"
   sev-catastrophic: "#ff6b6b"
-  paper: "#f5f7fa"
-  paper-panel: "#ffffff"
-  paper-ink: "#111821"
+  sun-page: "#e9eef3"
+  sun-card: "#ffffff"
+  sun-raised: "#f1f5f9"
+  sun-ink: "#0f172a"
+  sun-ink-muted: "#334155"
+  sun-ink-subtle: "#3f4b5c"
+  sun-field-outline: "#475569"
+  sun-card-edge: "#6b7889"
+  sun-rule: "#cbd5e1"
+  sun-focus: "#1d4ed8"
+  sun-planned: "#1d4ed8"
+  sun-ongoing: "#facc15"
+  sun-done: "#15803d"
+  sun-danger: "#7f1d1d"
+  sun-amber-ink: "#713f12"
 typography:
   display:
     fontFamily: "Manrope, Inter, system-ui, sans-serif"
@@ -77,6 +89,17 @@ typography:
     fontSize: "11px"
     fontWeight: 600
     lineHeight: "14px"
+    letterSpacing: "0.06em"
+  body-touch:
+    fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+    fontSize: "16px"
+    fontWeight: 400
+    lineHeight: "24px"
+  label-touch:
+    fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
+    fontSize: "12px"
+    fontWeight: 600
+    lineHeight: "16px"
     letterSpacing: "0.06em"
 rounded:
   xs: "4px"
@@ -148,6 +171,34 @@ components:
     rounded: "{rounded.pill}"
     padding: "0 8px"
     height: "22px"
+  button-primary-sunlight:
+    backgroundColor: "{colors.sun-ink}"
+    textColor: "{colors.sun-card}"
+    rounded: "{rounded.md}"
+    padding: "0 14px"
+    height: "44px"
+  card-sunlight:
+    backgroundColor: "{colors.sun-card}"
+    textColor: "{colors.sun-ink}"
+    rounded: "{rounded.lg}"
+    padding: "16px"
+  input-touch:
+    backgroundColor: "{colors.sun-card}"
+    textColor: "{colors.sun-ink}"
+    typography: "{typography.body-touch}"
+    rounded: "{rounded.sm}"
+    padding: "0 12px"
+    height: "44px"
+  answer-toggle-touch:
+    textColor: "{colors.sun-ink-muted}"
+    typography: "{typography.caption}"
+    padding: "0 12px"
+    height: "48px"
+  status-pill-sunlight-planned:
+    backgroundColor: "{colors.sun-planned}"
+    textColor: "{colors.sun-card}"
+    typography: "{typography.label-touch}"
+    rounded: "{rounded.pill}"
 ---
 
 # Design System: SLK Operations
@@ -161,15 +212,16 @@ SLK Operations is a single record per slickline job, and the interface changes l
 - **The Field Logbook** is the wellsite's view (job stages, JRA, job log, attachments). It is plain, sturdy and legible, with large targets and short labels, filled in outdoors on a phone or tablet over weak signal.
 - **The Signed Record** is the view of approvals, reports and PDFs. It is precise and evidential: values, signatures and fingerprints are set in monospace, and nothing decorative competes with the facts.
 
-The three lenses share one world: a near-black night palette (paper-light on demand), chalk-white type, a monochrome accent, and a strict status palette. Density is high but never cramped: 14px body text, 36px controls on desk and 44px in field pages, and section labels in small monospace capitals that work like the ruled headings of a logbook. The accent stays neutral on purpose. NESR's brand colour is not in the repository yet; when it arrives it joins as a brand accent, and the monochrome action colour stays (owner decision, 2026-10-26).
+The three lenses share one world in two light conditions. **Control Room** is the near-black night theme, the default on a desk with a mouse. **Sunlight** is a high-contrast light theme built for tablets outdoors, the default on touch screens. Both use chalk/ink type, a monochrome accent and a strict status palette. Control size follows the hand: **desk** density on a mouse, **touch** density (44–48px controls, 16px text) on a touch screen. Everyone can override both from the account menu, and the choice is remembered on that device (owner request, 2026-10-26). Density is high but never cramped on a desk (14px body text, 32–36px controls). Touch density raises every control to 44px, answer toggles to 48px and body text to 16px. Section labels stay in small monospace capitals that work like the ruled headings of a logbook. The accent stays neutral on purpose. NESR's brand colour is not in the repository yet; when it arrives it joins as a brand accent, and the monochrome action colour stays (owner decision, 2026-10-26).
 
 Rejected: the original WL Operations Hub's look, emoji icons and colours (none are reused), and any decoration that would make a field user hunt for the next field.
 
 **Key Characteristics:**
-- Dark by default with a full light theme; both are tokens, never hard-coded hex in components.
-- A monochrome accent (chalk on night, ink on paper) for actions; colour is reserved for status, severity and risk.
+- Two themes chosen by device: dark Control Room on desks, Sunlight on touch screens. Both are tokens, never hard-coded hex in components.
+- Two densities chosen by pointer: desk (mouse) and touch (finger or glove). Control heights and text sizes are tokens that grow under touch.
+- A monochrome accent (chalk on night, ink in Sunlight) for actions; colour is reserved for status, severity and risk.
 - Monospace capitals for section labels, units, IDs, timestamps and fingerprints; Manrope for page and stage titles; Inter for everything people read and type.
-- Cards are lifted by shadow alone, with no outline; inner divisions use 1px rules.
+- Cards declare depth once per theme: a lifting shadow in Control Room, a 1px outline in Sunlight (shadows wash out in glare).
 - Every state has a word next to its colour; colour is never the only signal.
 
 ## Colors
@@ -177,7 +229,7 @@ Rejected: the original WL Operations Hub's look, emoji icons and colours (none a
 A night-instrument palette: blue-black surfaces in four steps, chalk-white text in three, and a status palette that only speaks when something is planned, running, done, blocked or at risk.
 
 ### Primary
-- **Chalk Accent** (accent-chalk): the action colour. Primary buttons, the active section pill, progress fills. On the light theme it inverts to Paper Ink (paper-ink), so the primary action is always the highest-contrast thing on screen.
+- **Chalk Accent** (accent-chalk): the action colour. Primary buttons, the active section pill, progress fills. In Sunlight it inverts to Sun Ink (sun-ink), so the primary action is always the highest-contrast thing on screen.
 
 ### Neutral
 - **Ink Night** (ink-night): the page background, the darkest step.
@@ -186,7 +238,15 @@ A night-instrument palette: blue-black surfaces in four steps, chalk-white text 
 - **Well** (well): the inside of inputs, a step *below* the panel, so fields read as recessed.
 - **Rule / Rule Strong / Rule Input** (rule, rule-strong, rule-input): 1px dividers, bordered controls and pills, and the input outline (the strongest, so empty fields stay findable in sunlight).
 - **Chalk / Chalk Muted / Chalk Subtle** (chalk, chalk-muted, chalk-subtle): primary text, secondary text and labels, placeholders and metadata.
-- **Paper, Paper Panel, Paper Ink** (paper, paper-panel, paper-ink): the light theme's page, card and text.
+
+### Sunlight (light theme, the touch default)
+Built for a tablet in direct sun. Every pair was checked with `replica/design/build_tokens.py`.
+- **Sun Page / Sun Card / Sun Raised** (sun-page, sun-card, sun-raised): a soft grey page so white cards stand apart even before their outline.
+- **Sun Ink / Muted / Subtle** (sun-ink, sun-ink-muted, sun-ink-subtle): text at 17.9 : 1, 10.4 : 1 and 8.9 : 1 on a card. Secondary text never drops below 7 : 1 on any surface.
+- **Field Outline** (sun-field-outline): input borders at 7.6 : 1, so empty fields stay findable.
+- **Card Edge** (sun-card-edge): the 1px card outline, 3.9 : 1 against the page and 4.5 : 1 against a card.
+- **Sun Rule** (sun-rule): inner dividers only. **Sun Focus** (sun-focus): the focus ring, 6.7 : 1.
+- **Status, solid:** Planned (sun-planned) and Done (sun-done) with white text, Running amber (sun-ongoing) with ink text, Alert (sun-danger) and Amber Ink (sun-amber-ink) for text on their pale tints at 8 : 1 or more. Tinted pills bleach out in sun, so pills are solid here.
 
 ### Status (functional, not decorative)
 - **Planned Blue** (status-planned), **Running Amber** (status-ongoing), **Done Green** (status-done), **Alert Red** (status-danger, with status-danger-solid for confirm dialogs), **Blocked Clay** (status-blocked): job status, banners and pills. Each has a deep "subtle" tint for the pill or banner background (for example #13233b behind Planned Blue).
@@ -197,6 +257,8 @@ A night-instrument palette: blue-black surfaces in four steps, chalk-white text 
 **The Colour Means Something Rule.** Hue appears only to carry status, severity, risk or focus. Everything else is night, panel and chalk. A screen with no problems is almost monochrome.
 
 **The Words Beside Colour Rule.** Every coloured state also says its name ("PLANNED", "Exemption Required", "+5"). Field users read in glare and some are colour-blind.
+
+**The Sunlight Rule.** In Sunlight, body and secondary text stay at 7 : 1 or more, field outlines at 4.5 : 1 or more, and card edges at 3 : 1 or more. The plain accessibility minimum is not enough in glare.
 
 ## Typography
 
@@ -216,6 +278,9 @@ A night-instrument palette: blue-black surfaces in four steps, chalk-white text 
 - **Body small / Caption** (400, 13px / 18px and 500, 12px / 16px): hints, metadata, button text at small size.
 - **Label** (600, 11px / 14px, 0.06em, uppercase, mono): field labels, section rules (WELL, SIGN-OFF), status pills, column heads.
 
+### Touch sizes
+Under touch density the same roles grow: label 12px / 16px, caption 13px / 18px, body small 15px / 22px, body 16px / 24px, body lead 17px / 26px. Titles and headlines keep their size. One set of components serves both densities because the sizes are tokens (`--text-*` under `[data-density="touch"]`).
+
 ### Named Rules
 **The Mono Is Evidence Rule.** Monospace is for things that are measured, identified or proven: labels, units (ft, psi, ppm), tickets, timestamps, fingerprints, form codes (QAF14021 Rev 3). Never for decoration or prose.
 
@@ -223,28 +288,30 @@ A night-instrument palette: blue-black surfaces in four steps, chalk-white text 
 
 ## Layout
 
-The app shell is two header rows (brand, country switch, WIREGUARD sync, Riyadh clock, account) over the group tabs, then a pill row for the section's pages, then content in a 20px gutter (16px on phones) up to 1600px wide.
+The app shell is one header row (brand · country switch · WIREGUARD sync · Riyadh clock · Help · Ask · account menu) over the group tabs. Below that, the section's pill row **stays pinned to the top** while the page scrolls, then content in a 20px gutter (16px on phones) up to 1600px wide. The header is about 100px with the group tabs on a desk and 120px under touch. Display settings, password, Data and Sign out live in the account menu.
 
 - **Forms** are 1–4 column grids (`md:2`, `xl:4`) with 16–20px gaps. Sections are separated by mono label rules rather than nested boxes.
 - **The job editor** puts a four-step stage strip (number · percent, title, one-line purpose, progress bar) over one stage card at a time, with Attachments as the final card on every stage.
 - **Spacing** follows a 4px grid (4, 8, 12, 16, 20, 24, 32, 48).
-- **Breakpoints** are 640, 768, 1024, 1280 and 1536px. On small screens, grids collapse to one column, secondary header items (name, clock, password link) hide, the tab rows scroll sideways, and wide tables scroll inside their card.
-- **Touch targets:** desk controls are 32–36px today. Field pages are meant to reach 44px (the lg size). That is a target, not yet applied everywhere.
+- **Breakpoints** are 640, 768, 1024, 1280 and 1536px. Below 1280px the Help and Ask labels shrink to icons and the name leaves the account button. Below 1024px the clock hides. On phones the header tools wrap under the brand, the country switch moves into the account menu, grids collapse to one column, tab rows scroll sideways, and wide tables scroll inside their card.
+- **Touch targets:** under touch density every button, input, select, tab and link control is 44px, and JRA answer toggles are 48px, with at least 8px between groups. Measured 2026-10-26 on a 1280 × 800 touch tablet: Preparation and JRA have no control under 44px. The Schedule's timeline cells are still smaller; it is an office screen.
 
 ### Named Rules
+**The Nothing Floats Over Work Rule.** No floating buttons over content. Actions live in the header, in the page, or in a pinned bar that takes its own space. (A floating help button covered the JRA answer column on tablets until it moved into the header.)
+
 **The One Card Per Concern Rule.** A stage, a panel or a dialog is one card. Inside it, structure comes from label rules and 1px dividers, never from a card within a card.
 
 ## Elevation & Depth
 
-Lifted, by owner decision (2026-10-26). Cards float off the page on a soft, offset shadow and carry no outline. On dark, the shadow is helped by a faint top highlight and the panel's one-step tonal lift; on light, the shadow does the work alone. Popovers, menus and dialogs use a deeper shadow. Everything else (rows, inputs, pills, inner sections) stays flat and is divided by 1px rules.
+Lifted in Control Room, outlined in Sunlight (owner decisions, 2026-10-26). In Control Room, cards float off the page on a soft, offset shadow with a faint top highlight and carry no outline. In Sunlight, shadows wash out in glare, so cards drop the shadow and take a 1px Card Edge outline instead. Popovers, menus and dialogs use a deeper shadow in both themes; in Sunlight they also carry the Card Edge ring. Everything else (rows, inputs, pills, inner sections) stays flat and is divided by 1px rules.
 
 ### Shadow Vocabulary
 - **Card lift, dark** (`box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 2px 6px rgba(0,0,0,.40), 0 10px 24px rgba(0,0,0,.32)`): every card.
-- **Card lift, light** (`box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 6px 16px rgba(16,24,40,.08), 0 16px 32px rgba(16,24,40,.06)`): every card on the light theme.
-- **Pop** (`box-shadow: 0 16px 40px rgba(0,0,0,.45)`; light `0 12px 32px rgba(16,24,40,.16)`): dialogs, dropdowns, the signature popover, the help assistant drawer.
+- **Card, Sunlight** (`box-shadow: none` plus a 1px Card Edge border): every card on the Sunlight theme.
+- **Pop** (`box-shadow: 0 16px 40px rgba(0,0,0,.45)`; Sunlight `0 0 0 1px #6b7889, 0 12px 32px rgba(15,23,42,.24)`): dialogs, dropdowns, the account menu, the signature popover, the help assistant drawer.
 
 ### Named Rules
-**The Declare Depth Once Rule.** A surface is either lifted by shadow (cards, overlays) or divided by a 1px rule (everything inside them). Never both on the same element.
+**The Declare Depth Once Rule.** Each surface declares depth once per theme: a shadow (Control Room cards and overlays) or a 1px line (Sunlight cards, and everything inside a card in both themes). Never both on the same element. Sunlight overlays are the one deliberate pairing: a 1px ring plus a shadow, because a menu over a white page needs both edge and separation.
 
 ## Shapes
 
@@ -256,34 +323,44 @@ Precise and quiet: controls look like tools, not decorations.
 
 ### Buttons
 - **Shape:** gently rounded (8px).
-- **Primary:** Chalk Accent fill, night text. 36px tall, 14px side padding, 13–14px semibold. On light, ink fill with white text.
+- **Primary:** Chalk Accent fill, night text. 36px tall on a desk, 44px under touch; 14px side padding, 13–15px semibold. In Sunlight, Sun Ink fill with white text.
 - **Hover / Focus:** hover steps to pure white (or lifted ink on light) over the fast transition (120ms). Keyboard focus shows a 2px Focus Blue ring with a 2px offset. Loading shows a spinner inside the button and keeps the label.
 - **Secondary:** raised panel with a strong rule outline.
 - **Ghost:** no fill, muted text that brightens on hover; used for toolbar and icon actions.
 - **Danger:** outlined in Alert Red; the solid red version appears only inside confirm dialogs.
-- **Sizes:** sm 32px, md 36px, lg 44px (lg uses Manrope bold, for field pages).
+- **Sizes:** sm 32px, md 36px, lg 44px on a desk. Under touch, sm and md become 44px and lg 48px. Heights come from `--layout-control-sm/md/lg`; never hard-code `h-8` on an interactive control.
 
 ### Chips and Pills
-- **Status pill:** 22px tall, mono label capitals, the status colour on its deep tint with a 40% outline. Canceled is struck through.
+- **Status pill:** 22px tall, mono label capitals. In Control Room, the status colour on its deep tint with a 40% outline. In Sunlight, a solid fill (white on Planned blue and Done green, ink on Running amber). Canceled is struck through. Colours come from the `pill-*` tokens.
 - **Severity pill:** solid severity colour with dark text; "No 8MF" is a dashed outline.
 - **Section pills:** outlined and muted; the active one is filled Chalk Accent.
 - **Role badges:** tiny mono capitals on Planned Blue's tint (PREP, CREW, SDM) beside field labels, showing who fills the field.
 
 ### Cards / Containers
 - **Corner Style:** 12px.
-- **Background:** Panel (Paper Panel on light).
-- **Shadow Strategy:** card lift (see Elevation & Depth); no outline.
+- **Background:** Panel (Sun Card in Sunlight).
+- **Depth:** card lift and no outline in Control Room; a 1px Card Edge outline and no shadow in Sunlight (see Elevation & Depth).
 - **Internal Padding:** 16px; field-heavy stage cards use 20px row gaps.
 
 ### Inputs / Fields
-- **Style:** Well background (one step darker than the card), a 1px Rule Input outline, 6px corners, 36px tall. The label is a mono capital above, with an optional role badge and a red asterisk when required. Units sit inside the right edge in mono.
+- **Style:** Well background (one step darker than the card; white in Sunlight), a 1px Rule Input outline (Field Outline in Sunlight), 6px corners, 36px tall (44px under touch). The label is a mono capital above, with an optional role badge and a red asterisk when required. Units sit inside the right edge in mono.
 - **Focus:** the outline turns Focus Blue, plus the global focus ring.
 - **Error / Disabled:** an error turns the outline red and puts an icon and message under the field. Disabled fields fade to 60%; a locked section shows a dashed lock hint saying why and when it opens.
 
 ### Navigation
-- **Group tabs:** 36px outlined tabs; the active group is filled Panel Pressed with a strong rule.
-- **Section pills:** the second row (see Chips).
-- **Mobile:** both rows scroll horizontally; nothing wraps into a hamburger.
+- **Header:** one row (see Layout). Help opens the guide; Ask opens the help assistant drawer. Both are ghost buttons that shrink to icons below 1280px.
+- **Account menu:** the name and role button at the right opens a 288px panel with:
+  - the person and role;
+  - **Sunlight mode** (an on/off switch);
+  - **Large touch controls** (Auto / On / Off; Auto follows the pointer);
+  - Change password in WIREGUARD, Data export & import (admins) and Sign out.
+  - It closes on Escape or a tap outside, and holds the country switch on phones.
+- **Group tabs:** outlined tabs at control height; the active group is filled Panel Pressed with a strong rule.
+- **Section pills:** the pinned row (see Chips).
+- **Mobile:** tab rows scroll horizontally; nothing wraps into a hamburger.
+
+### JRA answer toggle
+A segmented Yes / No (/ N/A) control, 32px tall on a desk and 48px under touch, at least 48px wide per option. The chosen answer fills with the accent. An answer that scores points or triggers MOC / Exemption fills amber instead, and "+points" plus the requirement tag appear beside it, so the risk reads without relying on colour.
 
 ### Banners
 - **Style:** tinted background in the tone's subtle colour, tone-coloured text and icon, an optional action at the right.
@@ -306,12 +383,15 @@ Four equal cards across the top of a job: a mono "01 · 17%", a Manrope stage ti
 - **Do** reference tokens (`bg-surface`, `text-text-muted`, `rounded-lg`, `shadow-card`), never raw hex, so the light theme and NESR's future brand colour can swap in one place.
 - **Do** put a word next to every coloured state (status pills, risk points "+5", "Exemption Required").
 - **Do** use mono capitals for labels, units, IDs, timestamps and fingerprints, and Inter for anything people read or type.
-- **Do** give field pages (job stages, JRA, job log, attachments) 44px touch targets and the strongest input outline (Rule Input).
+- **Do** size interactive controls with `h-(--layout-control-sm|md|lg)` (and `--layout-control-answer` for answer toggles), so touch density reaches 44–48px everywhere.
+- **Do** test field screens in Sunlight under touch density (a 1280 × 800 touch tablet) as well as dark on a desk.
 - **Do** lift cards with the card shadow and divide their insides with 1px rules.
 - **Do** show "why" on every locked or disabled control (lock hint, tooltip, or hint text under the field).
 
 ### Don't:
-- **Don't** add a 1px outline to a card that already has the card shadow, and don't nest cards.
+- **Don't** add a 1px outline to a Control Room card that already has the card shadow, and don't nest cards.
+- **Don't** place floating buttons over content.
+- **Don't** use tinted status pills or pale text in Sunlight; keep to the Sunlight Rule's contrast floors.
 - **Don't** introduce new hues for decoration; colour is for status, severity, risk and focus only.
 - **Don't** reuse anything from the original WL Operations Hub: colours, emoji icons, copy or assets.
 - **Don't** add coloured side stripes thicker than 1px to cards, list items or callouts (the banner edge is a known exception to remove).

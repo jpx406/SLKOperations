@@ -61,6 +61,15 @@ def build_css(t):
             lines.append(f"  --shadow-card: {t['shadow']['light-card']};")
             lines.append(f"  --shadow-pop: {t['shadow']['light-pop']};")
         lines.append("}")
+    for name, d in t.get("density", {}).items():
+        # bigger controls and text for touch screens; set by the app on <html data-density="touch">
+        lines += ["", f':root[data-density="{name}"] {{']
+        for k, px in d.get("layout", {}).items():
+            lines.append(f"  --layout-{k}: {px}px;")
+        for k, spec in d.get("type", {}).items():
+            lines.append(f"  --text-{k}: {spec['size']}px;")
+            lines.append(f"  --text-{k}--line-height: {spec['line']}px;")
+        lines.append("}")
     lines += [
         "",
         "@media (prefers-reduced-motion: reduce) {",
