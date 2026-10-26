@@ -28,11 +28,6 @@
 		{
 			"binding": "FILES",
 			"bucket_name": "slkops-files"
-		},
-		{
-			"bucket_name": "slkops-files",
-			"binding": "slkops_files",
-			"remote": true
 		}
 	],
 	// served at slkops.nesrapp.com (nesrapp.com is a zone in this account)
