@@ -1,3 +1,4 @@
+import { filterSql, parseFilters } from '../shared/filters';
 import { Hono } from 'hono';
 import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
@@ -154,17 +155,27 @@ app.get('/schedule', async (c) => {
   const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
   const countries = JSON.stringify(c.get('user').countries);
   const showCanceled = c.req.query('canceled') === '1';
-  const [units, jobsInMonth, events, undated, retired] = await c.env.DB.batch([
-    c.env.DB.prepare(`SELECT unit_number, country, year, wg_active FROM wg_units WHERE wg_active = 1 AND country IN (SELECT value FROM json_each(?)) ORDER BY unit_number`).bind(countries),
+  // the standard filters apply to the jobs drawn; Unit # also narrows the rows. Year and month don't apply: the
+  // schedule shows one month.
+  const f = parseFilters(new URL(c.req.url).searchParams);
+  const unitFilter = f.unit;
+  delete f.year; delete f.month;
+  const jf = filterSql(f);
+  const unitWhere = unitFilter?.length ? 'AND unit_number IN (SELECT value FROM json_each(?2))' : '';
+  const [units, jobsInMonth, events, undated, retired, wires] = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT unit_number, country, year, wg_active FROM wg_units WHERE wg_active = 1 AND country IN (SELECT value FROM json_each(?1)) ${unitWhere} ORDER BY unit_number`)
+      .bind(...(unitFilter?.length ? [countries, JSON.stringify(unitFilter)] : [countries])),
     c.env.DB.prepare(
-      `SELECT j.id, j.ticket_no, j.well, j.rig, j.unit_number, j.status, j.start_date, coalesce(j.end_date, j.start_date) AS end_date, j.sdm_username, j.location, j.updated_at
+      `SELECT j.id, j.ticket_no, j.well, j.rig, j.unit_number, j.status, j.start_date, coalesce(j.end_date, j.start_date) AS end_date, j.sdm_username,
+              coalesce((SELECT full_name FROM user_roles u WHERE u.username = j.sdm_username), j.sdm_username) AS sdm_name, j.location, j.field, j.updated_at
        FROM jobs j WHERE j.deleted_at IS NULL AND j.unit_number IS NOT NULL AND j.start_date IS NOT NULL
-         AND j.start_date <= ?2 AND coalesce(j.end_date, j.start_date) >= ?1
-         AND j.country IN (SELECT value FROM json_each(?3)) ${showCanceled ? '' : "AND j.status <> 'canceled'"}
+         AND j.start_date <= ? AND coalesce(j.end_date, j.start_date) >= ?
+         AND j.country IN (SELECT value FROM json_each(?)) ${showCanceled ? '' : "AND j.status <> 'canceled'"}
+         ${jf.where.map((w) => `AND ${w}`).join(' ')}
        ORDER BY j.start_date`,
-    ).bind(first, last, countries),
+    ).bind(last, first, countries, ...jf.binds),
     c.env.DB.prepare(
-      `SELECT id, unit_number, kind, starts_on, ends_on, note FROM unit_events
+      `SELECT id, unit_number, kind, detail, starts_on, ends_on, note FROM unit_events
        WHERE starts_on <= ?2 AND ends_on >= ?1 AND country IN (SELECT value FROM json_each(?3))`,
     ).bind(first, last, countries),
     c.env.DB.prepare(
@@ -176,8 +187,14 @@ app.get('/schedule', async (c) => {
       `SELECT j.id, j.ticket_no, j.well, j.unit_number, j.start_date FROM jobs j JOIN wg_units u ON u.unit_number = j.unit_number
        WHERE u.wg_active = 0 AND j.deleted_at IS NULL AND j.status IN ('planned','ongoing') AND j.country IN (SELECT value FROM json_each(?))`,
     ).bind(countries),
+    // the wire on each drum of the unit, as the WL Hub shows under the unit number ("Alloy, 9/32", 13,400'")
+    c.env.DB.prepare(
+      `SELECT d.unit_number, d.drum_position, w.wire_grade, w.wire_size, w.remaining_length_ft FROM wg_drums d JOIN wg_wires w ON w.drum_no = d.drum_no
+       WHERE d.wg_active = 1 AND w.wg_active = 1 AND lower(coalesce(w.status, 'active')) = 'active' AND d.country IN (SELECT value FROM json_each(?))
+       ORDER BY d.unit_number, d.drum_position DESC`,
+    ).bind(countries),
   ]);
-  return c.json({ month, first, last, units: units.results, jobs: jobsInMonth.results, events: events.results, unscheduled: undated.results, retiredUnitJobs: retired.results });
+  return c.json({ month, first, last, units: units.results, jobs: jobsInMonth.results, events: events.results, unscheduled: undated.results, retiredUnitJobs: retired.results, wires: wires.results });
 });
 
 app.route('/jobs', jobs);

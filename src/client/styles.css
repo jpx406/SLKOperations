@@ -32,6 +32,16 @@
     color-mix(in srgb, var(--color-blocked) 22%, var(--color-blocked-subtle)) 6px 12px);
 }
 
+/* schedule events, WL Hub style: maintenance in orange stripes, unit status in purple stripes */
+@utility hatch-maint {
+  background: repeating-linear-gradient(45deg, var(--color-maint-subtle) 0 6px,
+    color-mix(in srgb, var(--color-maint) 30%, var(--color-maint-subtle)) 6px 12px);
+}
+@utility hatch-status {
+  background: repeating-linear-gradient(45deg, var(--color-status-event-subtle) 0 6px,
+    color-mix(in srgb, var(--color-status-event) 28%, var(--color-status-event-subtle)) 6px 12px);
+}
+
 /* Reduced motion, tiered: spinning becomes a slow fade so loading still reads as loading,
    the skeleton pulse slows down, and colour transitions stay but shorten. */
 @keyframes slk-breathe { 50% { opacity: 0.35; } }

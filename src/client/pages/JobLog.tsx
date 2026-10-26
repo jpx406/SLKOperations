@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { activeFilterCount, filtersToQuery } from '../../shared/filters';
 import { JOB_LOG_COLUMNS, displayValue, jobLogTable, type JobLogRow } from '../../shared/jobLog';
 import { csv, workbook } from '../../shared/xlsx';
-import { api, formatDate } from '../api';
+import { api } from '../api';
 import { FilterBar, useFilters } from '../components/FilterBar';
 import { Banner, Button, EmptyState, PageTitle, Skeleton, StatusPill, cx, inputSized } from '../components/ui';
 import type { JobStatus } from '../../shared/types';
@@ -19,6 +19,17 @@ function save(name: string, data: BlobPart, type: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// JRA state as a pill like the job status: sent waiting (ongoing colours), approved (completed), draft and rejected muted
+const JRA_PILL: Record<string, string> = {
+  draft: 'border-pill-canceled-border bg-pill-canceled-bg text-pill-canceled-fg',
+  sent: 'border-pill-ongoing-border bg-pill-ongoing-bg text-pill-ongoing-fg',
+  approved: 'border-pill-completed-border bg-pill-completed-bg text-pill-completed-fg',
+  rejected: 'border-danger bg-danger-subtle text-danger',
+};
+function JraPill({ status }: { status: string }) {
+  return <span className={cx('label-caps inline-flex rounded-pill border px-2 py-0.5', JRA_PILL[status] ?? JRA_PILL.draft)}>{status}</span>;
 }
 
 export function JobLog() {
@@ -43,20 +54,23 @@ export function JobLog() {
     <section aria-labelledby="log-title">
       <PageTitle aside={
         <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <label className="relative">
-            <span className="sr-only">Search ticket, well, rig or DRSS</span>
-            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-            <input className={inputSized('h-(--layout-control-sm) w-56 pl-8')} placeholder="Ticket, well, rig, DRSS" value={q} onChange={(e) => search(e.target.value)} />
-          </label>
-          <Button size="sm" onClick={() => window.print()} disabled={!rows.length}><Printer aria-hidden className="size-4" />Print</Button>
-          <Button size="sm" onClick={exportCsv} disabled={!rows.length}><Download aria-hidden className="size-4" />CSV</Button>
-          <Button size="sm" variant="primary" onClick={exportXlsx} disabled={!rows.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
+          <Button onClick={() => window.print()} disabled={!rows.length}><Printer aria-hidden className="size-4" />Print</Button>
+          <Button variant="primary" onClick={exportCsv} disabled={!rows.length}><Download aria-hidden className="size-4" />Download</Button>
+          <Button onClick={exportXlsx} disabled={!rows.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
         </div>
       }>
         <span id="log-title">Job log</span>
         {log.data && <span className="ml-3 align-middle font-mono text-sm font-normal text-text-muted">{rows.length.toLocaleString()} job{rows.length === 1 ? '' : 's'}</span>}
       </PageTitle>
-      <FilterBar optionsPath="/filter-options" />
+      <FilterBar optionsPath="/filter-options" variant="panel">
+        <label className="col-span-2 block">
+          <span className="label-caps mb-1 block text-text-muted">Search</span>
+          <span className="relative block">
+            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-text-subtle" />
+            <input className={inputSized('w-full pl-9')} placeholder="Ticket, well, rig, DRSS" value={q} onChange={(e) => search(e.target.value)} />
+          </span>
+        </label>
+      </FilterBar>
       <p className="mb-3 hidden text-xs print:block">
         Printed {stamp()}{activeFilterCount(filters) ? ` · filters: ${Object.entries(filters).map(([k, v]) => `${k} ${v?.join('/')}`).join('; ')}` : ''}
       </p>
@@ -70,13 +84,13 @@ export function JobLog() {
       )}
       {rows.length > 0 && (
         <div className="max-h-[calc(100vh-15rem)] overflow-auto rounded-lg border border-border bg-surface print:max-h-none print:overflow-visible print:border-0">
-          <table className="w-max min-w-full border-separate border-spacing-0 text-xs print:text-[7pt]">
+          <table className="w-max min-w-full border-separate border-spacing-0 text-sm print:text-[7pt]">
             <caption className="sr-only">Job log, one row per job. Select a row to open the job.</caption>
             <thead className="sticky top-0 z-10 bg-surface-2 print:static">
               <tr>
                 {JOB_LOG_COLUMNS.map((c, i) => (
                   <th key={c.key} scope="col" style={{ minWidth: `${c.width * 0.55}rem` }}
-                    className={cx('border-b border-border px-2.5 py-2 text-left font-semibold whitespace-nowrap text-text-muted', c.num && 'text-right', i === 0 && 'sticky left-0 z-20 bg-surface-2 print:static')}>
+                    className={cx('label-caps border-b border-border px-3 py-3 text-left whitespace-nowrap text-text-muted', c.num && 'text-right', i === 0 && 'sticky left-0 z-20 bg-surface-2 print:static')}>
                     {c.label}
                   </th>
                 ))}
@@ -89,10 +103,10 @@ export function JobLog() {
                   {JOB_LOG_COLUMNS.map((c, i) => {
                     const v = displayValue(r, c.key);
                     return (
-                      <td key={c.key} className={cx('border-b border-border px-2.5 py-1.5 align-top', c.num && 'text-right font-mono', c.mono && 'font-mono',
-                        i === 0 && 'sticky left-0 bg-surface font-semibold print:static', c.width >= 26 ? 'max-w-80 whitespace-normal' : 'whitespace-nowrap')}>
+                      <td key={c.key} className={cx('border-b border-border px-3 py-3 align-middle', c.num && 'text-right font-mono', c.mono && 'font-mono',
+                        i === 0 && 'sticky left-0 bg-surface font-semibold text-accent-text print:static', c.key === 'sdm' || c.width >= 26 ? 'max-w-48 whitespace-normal' : 'whitespace-nowrap')}>
                         {c.key === 'status' ? <StatusPill status={r.status as JobStatus} />
-                          : (c.key === 'start_date' || c.key === 'end_date') && v ? formatDate(String(v))
+                          : c.key === 'jra_status' ? (v ? <JraPill status={String(r.jra_status)} /> : <span className="text-text-subtle">—</span>)
                           : c.key === 'ticket_no' && !v ? <span className="font-normal text-text-subtle">no ticket</span>
                           : v ?? <span className="text-text-subtle">—</span>}
                       </td>

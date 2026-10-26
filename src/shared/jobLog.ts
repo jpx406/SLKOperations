@@ -5,7 +5,7 @@ import type { Cell } from './xlsx';
 
 export interface JobLogRow {
   id: string; country: string; ticket_no: string | null; drss_no: string | null; dmr_no: string | null; status: string;
-  start_date: string | null; end_date: string | null; unit_number: string | null; sdm: string | null;
+  start_date: string | null; end_date: string | null; rig_up_at?: string | null; rig_down_at?: string | null; unit_number: string | null; sdm: string | null;
   location: string | null; field: string | null; rig: string | null; well: string | null; conveyance: string | null;
   services: string | null; domains: string | null; run_details: string | null;
   wire_serial_number: string | null; drum_no: string | null; max_depth_ft: number | null; wire_cut_ft: number | null;
@@ -18,21 +18,24 @@ export interface JobLogRow {
 type Col = { key: keyof JobLogRow; label: string; width: number; num?: boolean; mono?: boolean };
 
 export const JOB_LOG_COLUMNS: Col[] = [
-  { key: 'ticket_no', label: 'Field ticket', width: 12, mono: true },
-  { key: 'status', label: 'Status', width: 11 },
+  { key: 'ticket_no', label: 'Ticket', width: 12, mono: true },
+  { key: 'dmr_no', label: 'DMR #', width: 11, mono: true },
   { key: 'start_date', label: 'Start', width: 11, mono: true },
   { key: 'end_date', label: 'End', width: 11, mono: true },
-  { key: 'unit_number', label: 'Unit', width: 9, mono: true },
+  { key: 'rig_up_at', label: 'Rig up', width: 15, mono: true },
+  { key: 'rig_down_at', label: 'Rig down', width: 15, mono: true },
+  { key: 'status', label: 'Status', width: 11 },
+  { key: 'jra_status', label: 'JRA', width: 10 },
   { key: 'sdm', label: 'SDM', width: 18 },
   { key: 'location', label: 'Account', width: 12 },
   { key: 'field', label: 'Area', width: 14 },
   { key: 'rig', label: 'Rig / site', width: 12 },
   { key: 'well', label: 'Well', width: 12 },
+  { key: 'unit_number', label: 'Unit', width: 9, mono: true },
   { key: 'conveyance', label: 'Conveyance', width: 12 },
   { key: 'services', label: 'Services', width: 30 },
   { key: 'domains', label: 'Service domain', width: 22 },
   { key: 'drss_no', label: 'DRSS', width: 10, mono: true },
-  { key: 'dmr_no', label: 'DMR', width: 10, mono: true },
   { key: 'wire_serial_number', label: 'Wire', width: 12, mono: true },
   { key: 'drum_no', label: 'Drum', width: 10, mono: true },
   { key: 'runs_ok', label: 'Runs OK', width: 8, num: true },
@@ -49,7 +52,6 @@ export const JOB_LOG_COLUMNS: Col[] = [
   { key: 'assistants', label: 'Assistant operators', width: 22 },
   { key: 'helpers', label: 'Helpers', width: 22 },
   { key: 'third_parties', label: 'Third parties (PO)', width: 26 },
-  { key: 'jra_status', label: 'JRA', width: 10 },
   { key: 'report_closure_status', label: 'Report status', width: 13 },
   { key: 'run_details', label: 'Run details', width: 40 },
 ];
@@ -61,6 +63,7 @@ const REPORT: Record<string, string> = { open: 'Open', pending_review: 'Pending 
 export function displayValue(row: JobLogRow, key: keyof JobLogRow): Cell {
   const v = row[key];
   if (v === null || v === undefined || v === '') return null;
+  if (key === 'rig_up_at' || key === 'rig_down_at') return String(v).replace('T', ' ').slice(0, 16);
   if (key === 'status' || key === 'jra_status') return String(v)[0].toUpperCase() + String(v).slice(1);
   if (key === 'failure') return YN[String(v)] ?? String(v);
   if (key === 'report_closure_status') return REPORT[String(v)] ?? String(v);

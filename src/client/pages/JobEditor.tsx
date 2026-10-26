@@ -228,7 +228,7 @@ export function JobEditor() {
           const pct = stagePercent(preview, s);
           return (
             <Link key={s} role="tab" aria-selected={s === stage} to={`/operation/jobs/${id}/${s}`} replace
-              className={cx('rounded-lg border bg-surface p-3', s === stage ? 'border-accent bg-surface-2' : 'border-border hover:border-border-strong')}>
+              className={cx('rounded-lg border bg-surface p-3', s === stage ? 'border-accent-edge bg-surface-2' : 'border-border hover:border-border-strong')}>
               <span className="font-mono text-xs text-text-subtle">{STAGE_INFO[s].n} · {pct}%</span>
               <span className="mt-1 block font-display text-lg leading-none font-extrabold uppercase">{STAGE_INFO[s].title}</span>
               <span className="mt-1 mb-2 block text-xs text-text-muted">{STAGE_INFO[s].sub}</span>

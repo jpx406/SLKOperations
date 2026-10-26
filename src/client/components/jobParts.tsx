@@ -35,11 +35,11 @@ export function WirePanel({ job, canEdit, onPick }: { job: Job; canEdit: boolean
         return (
           <button key={d.drum_no} type="button" role="radio" aria-checked={on} tabIndex={radioTab(on, di === 0, drums.some((x) => x.drum_no === job.drum_no))} disabled={!canEdit || !usable}
             onClick={() => (on ? onPick(null, null) : onPick(d.drum_no, d.wire_serial_number))}
-            className={cx('rounded-md border p-3 text-left disabled:cursor-not-allowed', on ? 'border-accent bg-surface-2' : 'border-border hover:border-border-strong', !usable && 'opacity-60')}>
+            className={cx('rounded-md border p-3 text-left disabled:cursor-not-allowed', on ? 'border-accent-edge bg-surface-2' : 'border-border hover:border-border-strong', !usable && 'opacity-60')}>
             <span className="flex items-center gap-2">
               <span className="font-display text-base font-bold">{d.drum_no}</span>
               <span className="text-xs text-text-muted">{d.drum_position ?? 'Drum'}</span>
-              {on && <span className="ml-auto text-xs font-semibold text-accent">Selected</span>}
+              {on && <span className="ml-auto text-xs font-semibold text-accent-text">Selected</span>}
             </span>
             {d.wire_serial_number ? (
               <>

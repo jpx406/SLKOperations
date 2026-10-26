@@ -128,7 +128,7 @@ function NoteDocument({ note, contacts, job }: { note: Pick<Note, 'log_no' | 'cu
   const row = (k: string, v: React.ReactNode) => <tr><th scope="row" className="w-44 py-1 pr-3 text-left align-top font-semibold text-text-muted">{k}</th><td className="py-1 align-top">{v || '—'}</td></tr>;
   return (
     <article className="pjn-doc space-y-4 text-sm">
-      <header className="flex items-baseline justify-between border-b-2 border-accent pb-2"><span className="font-display text-lg font-extrabold uppercase">SLK Operations · Pre-Job Note</span><span className="font-mono">{note.log_no} · v{note.current_version}</span></header>
+      <header className="flex items-baseline justify-between border-b-2 border-accent-edge pb-2"><span className="font-display text-lg font-extrabold uppercase">SLK Operations · Pre-Job Note</span><span className="font-mono">{note.log_no} · v{note.current_version}</span></header>
       <section><h3 className="label-caps mb-1 text-text-muted">1 · Job information</h3><table className="w-full"><tbody>
         {row('Client', c.client)}{row('Field ticket', job.ticket_no)}{row('Rig / well', `${job.rig ?? '—'} / ${job.well ?? '—'}`)}{row('Rig type', c.rig_type)}{row('RDD department', c.rdd_dept)}
         {row('Casing size', c.casing)}{row('Suite #', c.suite_no)}{row('Expected dates', c.date_from ? `${formatDate(c.date_from)}${c.date_to ? ` to ${formatDate(c.date_to)}` : ''}` : '')}

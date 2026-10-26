@@ -1,3 +1,4 @@
+import { filterSql, parseFilters } from '../shared/filters';
 import { Hono, type Context } from 'hono';
 import { EXECUTION_FIELDS, FAILURE_GATED, SERVICE_GATED, canEditField, filterPatch } from '../shared/fieldPolicy';
 import { jraReasons } from '../shared/jra';
@@ -138,7 +139,7 @@ export async function blockConflict(env: Env, unit: string | null, start: string
     `SELECT kind, starts_on, ends_on FROM unit_events
      WHERE unit_number = ?1 AND starts_on <= ?3 AND ends_on >= ?2 AND kind IN (SELECT value FROM json_each(?4)) ORDER BY starts_on LIMIT 1`,
   ).bind(unit, start, end ?? start, JSON.stringify(BLOCKING)).first<{ kind: string; starts_on: string; ends_on: string }>();
-  return hit ? `Unit ${unit} is ${BLOCK_WORD[hit.kind]} from ${hit.starts_on} to ${hit.ends_on}` : null;
+  return hit ? `Unit ${unit} is ${BLOCK_WORD[hit.kind]} from ${hit.starts_on}${hit.ends_on === '9999-12-31' ? ' until further notice' : ` to ${hit.ends_on}`}` : null;
 }
 
 function updateStatement(env: Env, id: string, patch: Record<string, unknown>, username: string, at: string) {
@@ -173,6 +174,10 @@ jobs.get('/', async (c) => {
   const where = [`j.deleted_at IS NULL`, inCountries()];
   const binds: unknown[] = [JSON.stringify(user.countries)];
   if (status && status !== 'all') { where.push('j.status = ?'); binds.push(status); }
+  // the standard filter bar (year, month, account, area, domain, service, SDM, unit, conveyance, status)
+  const f = filterSql(parseFilters(new URL(c.req.url).searchParams));
+  where.push(...f.where);
+  binds.push(...f.binds);
   if (q) {
     where.push('(j.ticket_no LIKE ? OR j.well LIKE ? OR j.rig LIKE ? OR j.sdm_username LIKE ? OR j.unit_number LIKE ?)');
     const like = `%${q.replace(/[%_]/g, '')}%`;

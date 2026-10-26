@@ -10,7 +10,7 @@ const crew = (role: string) =>
   `(SELECT group_concat(full_name, ${SEP}) FROM (SELECT e.full_name FROM job_crew c JOIN employees e ON e.id = c.employee_id WHERE c.job_id = j.id AND c.crew_role = '${role}' ORDER BY c.slot))`;
 
 const ROW = `
-  j.id, j.country, j.ticket_no, j.drss_no, j.dmr_no, j.status, j.start_date, j.end_date, j.unit_number,
+  j.id, j.country, j.ticket_no, j.drss_no, j.dmr_no, j.status, j.start_date, j.end_date, j.rig_up_at, j.rig_down_at, j.unit_number,
   coalesce((SELECT full_name FROM user_roles u WHERE u.username = j.sdm_username), j.sdm_username, j.sdm_other) AS sdm,
   j.location, j.field, j.rig, j.well, j.conveyance, j.run_details, j.wire_serial_number, j.drum_no, j.max_depth_ft, j.wire_cut_ft,
   j.runs_ok, j.runs_failed, m.op_hours, j.npt_hours, j.failure, m.job_efficiency_pct, m.run_efficiency_pct, j.report_closure_status, j.updated_at,

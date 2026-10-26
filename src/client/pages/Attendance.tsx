@@ -20,7 +20,7 @@ interface Sheet {
 }
 
 const CODE_TONE: Partial<Record<Code, string>> = {
-  P: 'text-success', TR: 'text-info', A: 'text-danger', JBFS: 'text-accent', JO: 'text-accent', FA: 'text-accent', JBOF: 'text-accent', JBOFS: 'text-accent',
+  P: 'text-success', TR: 'text-info', A: 'text-danger', JBFS: 'text-accent-text', JO: 'text-accent-text', FA: 'text-accent-text', JBOF: 'text-accent-text', JBOFS: 'text-accent-text',
 };
 const thisMonth = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }).slice(0, 7);
 const cellKey = (p: string, d: string) => `${p}|${d}`;

@@ -62,6 +62,12 @@
   --color-pill-canceled-bg: var(--color-pill-canceled-bg);
   --color-pill-canceled-fg: var(--color-pill-canceled-fg);
   --color-pill-canceled-border: var(--color-pill-canceled-border);
+  --color-maint: var(--color-maint);
+  --color-maint-subtle: var(--color-maint-subtle);
+  --color-status-event: var(--color-status-event);
+  --color-status-event-subtle: var(--color-status-event-subtle);
+  --color-today: var(--color-today);
+  --color-accent-edge: var(--color-accent-edge);
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);

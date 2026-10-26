@@ -1,35 +1,52 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, Check, ChevronLeft, ChevronRight, Play, Plus, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Check, ChevronLeft, ChevronRight, Filter, Play, Plus, Tag, Wrench, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { canEditField } from '../../shared/fieldPolicy';
+import { activeFilterCount, filtersToQuery } from '../../shared/filters';
+import { EVENT_LABEL, MAINTENANCE_TYPES, STATUS_KINDS, isOpenEnd } from '../../shared/unitEvents';
+import { FilterBar, useFilters } from '../components/FilterBar';
 import type { JobStatus } from '../../shared/types';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
-import { Banner, Button, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Banner, Button, EmptyState, Field, Skeleton, cx, inputClass } from '../components/ui';
 import { ReconBanner } from '../components/ReconBanner';
 
-interface SJob { id: string; ticket_no: string | null; well: string | null; unit_number: string; status: JobStatus; start_date: string; end_date: string; updated_at: string; sdm_username: string | null; location: string | null }
-interface SEvent { id: string; unit_number: string; kind: string; starts_on: string; ends_on: string; note: string | null }
+interface SJob { id: string; ticket_no: string | null; well: string | null; unit_number: string; status: JobStatus; start_date: string; end_date: string; updated_at: string; sdm_username: string | null; sdm_name: string | null; location: string | null }
+interface SEvent { id: string; unit_number: string; kind: string; detail: string | null; starts_on: string; ends_on: string; note: string | null }
+interface SWire { unit_number: string; drum_position: string | null; wire_grade: string | null; wire_size: string | null; remaining_length_ft: number | null }
 interface ScheduleData {
   month: string; first: string; last: string;
   units: { unit_number: string; country: string; year: number | null }[];
   jobs: SJob[]; events: SEvent[];
   unscheduled: { id: string; ticket_no: string | null; well: string | null }[];
   retiredUnitJobs: { id: string; ticket_no: string | null; well: string | null; unit_number: string; start_date: string | null }[];
+  wires: SWire[];
 }
 
+/** 0.28125 → 9/32, the way the crews say wire sizes. */
+function inchFraction(size: string | null) {
+  const v = Number(size);
+  if (!size || !Number.isFinite(v) || v <= 0) return size ?? '';
+  const n = Math.round(v * 32);
+  if (Math.abs(n / 32 - v) > 0.002) return String(v);
+  let num = n, den = 32;
+  while (num % 2 === 0 && den > 1) { num /= 2; den /= 2; }
+  return `${num}/${den}`;
+}
+const wireLine = (w: SWire) => [w.wire_grade?.split(' ')[0], `${inchFraction(w.wire_size)}"`, w.remaining_length_ft != null ? `${Math.round(w.remaining_length_ft).toLocaleString()}'` : null].filter(Boolean).join(', ');
+
+// WL Hub bars: a full outline in the status colour over a tinted fill
 const BAR: Record<JobStatus, string> = {
   planned: 'border-info bg-info-subtle text-info',
   ongoing: 'border-warning bg-warning-subtle text-warning',
   completed: 'border-success bg-success-subtle text-success',
   canceled: 'border-neutral bg-neutral-subtle text-neutral line-through',
 };
+const DOT: Record<string, string> = { planned: 'bg-info', ongoing: 'bg-warning', completed: 'bg-success' };
 // a shape per status, so the bar doesn't depend on its colour alone
 const BAR_ICON: Record<JobStatus, LucideIcon> = { planned: CalendarClock, ongoing: Play, completed: Check, canceled: X };
-const BLOCK_LABEL: Record<string, string> = {
-  maintenance: 'Maintenance', loan: 'On loan', transferred: 'Transferred', junk: 'Junk', backup_on_location: 'Backup on site',
-};
+const BLOCK_LABEL = EVENT_LABEL;
 
 const thisMonth = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }).slice(0, 7);
 function shiftMonth(month: string, by: number) {
@@ -69,27 +86,31 @@ function targetOf(d: Drag): Target {
 export function Schedule() {
   const [params, setParams] = useSearchParams();
   const month = params.get('month') ?? thisMonth();
-  const [showCanceled, setShowCanceled] = useState(false);
-  // SDM and account filters only change what is drawn; blocks and units stay so free days are still visible
-  const [only, setOnly] = useState({ sdm: '', account: '' });
-  const sdmsQ = useQuery({ queryKey: ['sdms'], queryFn: () => api<{ username: string; full_name: string }[]>('/sdms'), staleTime: 300_000 });
-  const shown = (j: SJob) => (!only.sdm || j.sdm_username === only.sdm) && (!only.account || j.location === only.account);
+  const showCanceled = params.get('canceled') === '1';
+  // the standard filters (SDM, account, area, service, unit ...) narrow the jobs drawn; Unit # also narrows the rows.
+  // Events and free days stay visible.
+  const [filters] = useFilters();
+  const fq = filtersToQuery({ ...filters, year: undefined, month: undefined });
+  const nFilters = activeFilterCount({ ...filters, year: undefined, month: undefined });
+  const [showFilters, setShowFilters] = useState(nFilters > 0);
+  const setParam = (k: string, v: string | null) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); setParams(n, { replace: true }); };
+  const shown = (_j: SJob) => true;
   const { data: me } = useMe();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const canCreate = !!me?.menus.jobs?.edit;
   const canMove = !!me?.menus.schedule?.edit && !!me && canEditField(me.role, 'unit_number') && canEditField(me.role, 'start_date');
   const canBlock = !!me?.menus.schedule?.edit;
-  const key = ['schedule', month, showCanceled];
+  const key = ['schedule', month, showCanceled, fq];
   const q = useQuery({
     queryKey: key,
-    queryFn: () => api<ScheduleData>(`/schedule?month=${month}${showCanceled ? '&canceled=1' : ''}`),
+    queryFn: () => api<ScheduleData>(`/schedule?month=${month}${showCanceled ? '&canceled=1' : ''}${fq ? `&${fq}` : ''}`),
     refetchInterval: 30_000,
   });
   const [drag, setDrag] = useState<Drag | null>(null);
   const [pending, setPending] = useState<{ id: string; t: Target } | null>(null);
   const [notice, setNotice] = useState<{ tone: 'danger' | 'success'; text: string } | null>(null);
-  const [blockDialog, setBlockDialog] = useState<{ event?: SEvent; unit?: string } | null>(null);
+  const [blockDialog, setBlockDialog] = useState<{ event?: SEvent; unit?: string; mode: 'maintenance' | 'status' } | null>(null);
   const [live, setLive] = useState('');
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -202,38 +223,45 @@ export function Schedule() {
     if (t) { e.preventDefault(); move.mutate({ job, t }); }
   };
 
+  const wiresOf = (unit: string) => (q.data?.wires ?? []).filter((w) => w.unit_number === unit);
+  const outline = 'inline-flex h-(--layout-control-md) items-center gap-2 rounded-md border px-4 text-sm font-bold';
+
   return (
     <section aria-labelledby="sched-title">
-      <PageTitle aside={
-        <>
-          <Button size="sm" onClick={() => setParams({ month: shiftMonth(month, -1) })} aria-label="Previous month"><ChevronLeft aria-hidden className="size-4" /></Button>
-          <span className="min-w-36 text-center font-mono text-sm font-semibold" aria-live="polite">{monthLabel}</span>
-          <Button size="sm" onClick={() => setParams({ month: shiftMonth(month, 1) })} aria-label="Next month"><ChevronRight aria-hidden className="size-4" /></Button>
-          <Button size="sm" onClick={() => setParams({})}>Today</Button>
-          {canBlock && <Button size="sm" onClick={() => setBlockDialog({})}><Plus aria-hidden className="size-4" />Unit block</Button>}
-          {canCreate && <Link to="/operation/jobs/new" className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-semibold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />New job</Link>}
-        </>
-      }>
-        <span id="sched-title">Unit schedule</span>
-      </PageTitle>
-
-      <div className="mb-3 flex flex-wrap items-center gap-4 text-sm">
-        <label className="inline-flex items-center gap-2 text-text-muted">
-          <input type="checkbox" checked={showCanceled} onChange={(e) => setShowCanceled(e.target.checked)} /> Show canceled jobs
-        </label>
-        <select aria-label="Show jobs of one SDM" className={inputSized('h-(--layout-control-sm) w-48')} value={only.sdm} onChange={(e) => setOnly({ ...only, sdm: e.target.value })}>
-          <option value="">All SDMs</option>{(sdmsQ.data ?? []).map((m) => <option key={m.username} value={m.username}>{m.full_name}</option>)}
-        </select>
-        <select aria-label="Show jobs of one account" className={inputSized('h-(--layout-control-sm) w-44')} value={only.account} onChange={(e) => setOnly({ ...only, account: e.target.value })}>
-          <option value="">All accounts</option>{[...new Set((q.data?.jobs ?? []).map((j) => j.location).filter(Boolean) as string[])].sort().map((a) => <option key={a}>{a}</option>)}
-        </select>
-        <span className="flex flex-wrap gap-3 text-xs text-text-muted" aria-label="Legend">
-          {(['planned', 'ongoing', 'completed'] as JobStatus[]).map((s) => (
-            <span key={s} className="inline-flex items-center gap-1.5"><i className={cx('inline-flex size-4 items-center justify-center rounded-xs border-l-3 not-italic', BAR[s])}><StatusGlyph status={s} /></i>{s}</span>
-          ))}
-          <span className="inline-flex items-center gap-1.5"><i className="hatch-blocked inline-block size-2.5 rounded-xs" />unit blocked</span>
-        </span>
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+        <h1 id="sched-title" className="font-display text-3xl font-extrabold tracking-wide uppercase">Unit schedule</h1>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setParam('month', shiftMonth(month, -1))} aria-label="Previous month"><ChevronLeft aria-hidden className="size-4" /></Button>
+          <span className="min-w-36 text-center font-mono text-base font-bold text-accent-text" aria-live="polite">{monthLabel}</span>
+          <Button onClick={() => setParam('month', shiftMonth(month, 1))} aria-label="Next month"><ChevronRight aria-hidden className="size-4" /></Button>
+          <Button onClick={() => setParam('month', null)}>Today</Button>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="flex flex-wrap gap-3 text-sm text-text-muted" aria-label="Legend">
+            {(['planned', 'ongoing', 'completed'] as JobStatus[]).map((s) => (
+              <span key={s} className="inline-flex items-center gap-1.5"><i className={cx('inline-block size-3 rounded-xs', DOT[s])} />{s[0].toUpperCase() + s.slice(1)}</span>
+            ))}
+          </span>
+          {canCreate && <Link to="/operation/jobs/new" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md bg-accent px-4 text-sm font-bold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />Create Job</Link>}
+          <Button aria-expanded={showFilters} aria-controls="sched-filters" onClick={() => setShowFilters(!showFilters)}>
+            <Filter aria-hidden className="size-4" />Filters{nFilters > 0 && <span className="rounded-pill bg-accent px-1.5 font-mono text-xs text-on-accent">{nFilters}</span>}
+          </Button>
+          <label className="inline-flex items-center gap-2 text-sm text-text-muted">
+            <input type="checkbox" className="size-4" checked={showCanceled} onChange={(e) => setParam('canceled', e.target.checked ? '1' : null)} /> Show canceled jobs
+          </label>
+        </div>
       </div>
+      {canBlock && (
+        <div className="mb-4 flex flex-wrap justify-end gap-2">
+          <button type="button" className={cx(outline, 'border-maint text-maint hover:bg-maint-subtle')} onClick={() => setBlockDialog({ mode: 'maintenance' })}>
+            <Wrench aria-hidden className="size-4" />+ Maintenance Event
+          </button>
+          <button type="button" className={cx(outline, 'border-status-event text-status-event hover:bg-status-event-subtle')} onClick={() => setBlockDialog({ mode: 'status' })}>
+            <Tag aria-hidden className="size-4" />+ Unit Status Event
+          </button>
+        </div>
+      )}
+      {showFilters && <div id="sched-filters"><FilterBar optionsPath="/filter-options" variant="panel" dims={['account', 'area', 'domain', 'service', 'sdm', 'unit', 'conveyance']} /></div>}
 
       <p aria-live="polite" className="sr-only">{live}</p>
       <ReconBanner />
@@ -247,31 +275,31 @@ export function Schedule() {
         </div>
       )}
       {q.data && q.data.unscheduled.length > 0 && (
-        <div className="mb-3">
-          <Banner tone="warning">
-            {q.data.unscheduled.length} job{q.data.unscheduled.length === 1 ? ' has' : 's have'} no unit or start date and {q.data.unscheduled.length === 1 ? "isn't" : "aren't"} on the schedule:{' '}
-            {q.data.unscheduled.slice(0, 5).map((j, i) => <span key={j.id}>{i > 0 && ', '}<Link className="font-semibold underline" to={`/operation/jobs/${j.id}/design`}>{j.ticket_no ?? j.well ?? 'untitled job'}</Link></span>)}
-            {q.data.unscheduled.length > 5 && ` and ${q.data.unscheduled.length - 5} more`}
-          </Banner>
-        </div>
+        <p className="mb-3 flex flex-wrap items-center gap-1.5 text-sm text-text-muted">
+          <AlertTriangle aria-hidden className="size-4 text-warning" />
+          {q.data.unscheduled.length} job{q.data.unscheduled.length === 1 ? '' : 's'} without dates or unit not shown:{' '}
+          {q.data.unscheduled.slice(0, 5).map((j, i) => <span key={j.id}>{i > 0 && ', '}<Link className="underline hover:text-text" to={`/operation/jobs/${j.id}/design`}>{j.ticket_no ?? j.well ?? 'untitled job'}</Link></span>)}
+          {q.data.unscheduled.length > 5 && '…'} — set Start / End date and unit in the Design tab.
+        </p>
       )}
 
       {q.isPending && <Skeleton className="h-96" />}
       {q.isError && <Banner tone="danger" action={<Button size="sm" onClick={() => q.refetch()}>Retry</Button>}>Couldn't load the schedule. {q.error.message}</Banner>}
       {q.data && q.data.units.length === 0 && (
-        <EmptyState title="No units yet">Units come from WIREGUARD. Run a sync from the header, or check that WIREGUARD has units for your country.</EmptyState>
+        <EmptyState title={nFilters ? 'No units match the filters' : 'No units yet'}>{nFilters ? 'Clear the Unit # filter to see every unit.' : 'Units come from WIREGUARD. Run a sync from the header, or check that WIREGUARD has units for your country.'}</EmptyState>
       )}
 
       {q.data && q.data.units.length > 0 && (
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className="overflow-x-auto rounded-lg border border-card-edge bg-surface shadow-card">
           <div ref={gridRef} role="grid" aria-label={`Unit schedule, ${monthLabel}`} className={cx('grid w-full', drag && 'cursor-grabbing select-none')}
-            style={{ gridTemplateColumns: `calc(var(--spacing) * 36) repeat(${days.length}, minmax(0, 1fr))`, minWidth: `calc(var(--spacing) * (36 + ${days.length} * 9))` }}>
+            style={{ gridTemplateColumns: `calc(var(--spacing) * 56) repeat(${days.length}, minmax(0, 1fr))`, minWidth: `calc(var(--spacing) * (56 + ${days.length} * 11))` }}>
             <div role="row" className="contents">
-              <div role="columnheader" className="label-caps sticky left-0 z-10 border-r border-b border-border bg-surface-2 px-3 py-2 text-text-muted">Unit</div>
+              <div role="columnheader" className="label-caps sticky left-0 z-10 flex items-center border-r border-b border-border bg-surface-2 px-4 py-2 text-text-muted">Unit</div>
               {days.map((d) => (
                 <div role="columnheader" key={d.day} aria-label={d.iso}
-                  className={cx('border-b border-border py-1 text-center font-mono text-xs text-text-muted', d.weekend && 'bg-surface-2', d.iso === today && 'text-text shadow-[inset_0_-2px_0_var(--color-accent)]')}>
-                  <div>{d.weekday}</div><div>{d.day}</div>
+                  className={cx('border-b border-border py-1.5 text-center font-mono', d.iso === today ? 'bg-today text-accent-text' : d.weekend ? 'bg-surface-2 text-text-muted' : 'text-text-muted')}>
+                  <div className="text-label">{d.weekday}</div>
+                  <div className={cx('text-sm font-semibold', d.iso === today ? 'text-accent-text underline decoration-2 underline-offset-4' : 'text-text')}>{d.day}</div>
                 </div>
               ))}
             </div>
@@ -282,37 +310,47 @@ export function Schedule() {
                 ...q.data.events.filter((e) => e.unit_number === u.unit_number).map((e) => ({ kind: 'block' as const, block: e, start: col(e.starts_on), end: col(e.ends_on) })),
               ]);
               const laneCount = Math.max(1, ...bars.map((b) => b.lane + 1));
+              const ws = wiresOf(u.unit_number);
               return (
                 <div role="row" key={u.unit_number} className="contents">
-                  <div role="rowheader" className="sticky left-0 z-10 flex items-baseline gap-2 border-r border-b border-border bg-surface px-3 py-2 whitespace-nowrap">
-                    <span className="font-display text-sm font-bold">{u.unit_number}</span>
-                    {(me?.countries.length ?? 0) > 1 && <span className="truncate font-mono text-xs text-text-subtle">{u.country}</span>}
+                  <div role="rowheader" className="sticky left-0 z-10 border-r border-b border-border bg-surface px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-base font-bold whitespace-nowrap">{u.unit_number}</span>
+                      <span className="label-caps ml-auto rounded-xs border border-pill-completed-border bg-pill-completed-bg px-1.5 text-pill-completed-fg">Active</span>
+                    </div>
+                    {ws.length ? ws.map((w, i) => <p key={i} className="font-mono text-xs leading-snug font-semibold text-text-muted">{wireLine(w)}</p>)
+                      : <p className="font-mono text-xs text-text-subtle">no wire on file</p>}
+                    {(me?.countries.length ?? 0) > 1 && <p className="truncate text-xs text-text-subtle">{u.country}</p>}
                   </div>
                   <div role="gridcell" data-unit={u.unit_number}
                     className={cx('relative grid border-b border-border', drag?.mode === 'move' && drag.moved && drag.unit === u.unit_number && 'bg-surface-2')}
-                    style={{ gridColumn: `2 / span ${days.length}`, gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${laneCount}, calc(var(--spacing) * 7))`, rowGap: 'var(--spacing)', paddingBlock: 'var(--spacing)' }}>
-                    {days.map((d) => d.weekend && <div key={d.day} aria-hidden className="bg-surface-2" style={{ gridColumn: d.day, gridRow: `1 / span ${laneCount}`, marginBlock: 'calc(var(--spacing) * -1)' }} />)}
+                    style={{ gridColumn: `2 / span ${days.length}`, gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${laneCount}, calc(var(--spacing) * 7)) minmax(0, 1fr)`, rowGap: 'calc(var(--spacing) * 1.5)', paddingBlock: 'calc(var(--spacing) * 2)' }}>
+                    {days.map((d) => (d.weekend || d.iso === today) && <div key={d.day} aria-hidden className={d.iso === today ? 'bg-today' : 'bg-surface-2/60'} style={{ gridColumn: d.day, gridRow: '1 / -1', marginBlock: 'calc(var(--spacing) * -2)' }} />)}
                     {bars.map((b) => b.kind === 'job' ? (
-                      <a key={b.job.id} href={`/operation/jobs/${b.job.id}/design`}
+                      <a key={b.job.id} href={`/operation/jobs/${b.job.id}/design`} title={`${b.job.ticket_no ?? 'No ticket'} · ${b.job.well ?? ''}${b.job.sdm_name ? ` · SDM ${b.job.sdm_name}` : ''}`}
                         onClick={(e) => e.preventDefault()}
                         onPointerDown={(e) => (canMove ? onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'move') : undefined)}
                         onPointerUp={() => { if (!canMove) navigate(`/operation/jobs/${b.job.id}/design`); }}
                         onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/operation/jobs/${b.job.id}/design`); else onBarKey(e, q.data.jobs.find((j) => j.id === b.job.id)!); }}
-                        aria-label={`Job ${b.job.ticket_no ?? 'without ticket'}, ${b.job.well ?? 'no well'}, ${b.job.start_date} to ${b.job.end_date}, ${b.job.status}, unit ${u.unit_number}${canMove ? '. Shift+arrows move a day, Alt+up or down changes unit, [ and ] change the end, { and } change the start' : ''}`}
-                        className={cx('group relative z-[1] mx-0.5 flex touch-none items-center overflow-hidden rounded-sm border-l-3 px-1.5 font-mono text-xs font-semibold whitespace-nowrap hover:brightness-125',
+                        aria-label={`Job ${b.job.ticket_no ?? 'without ticket'}, ${b.job.well ?? 'no well'}, ${b.job.start_date} to ${b.job.end_date}, ${b.job.status}, unit ${u.unit_number}${b.job.sdm_name ? `, SDM ${b.job.sdm_name}` : ''}${canMove ? '. Shift+arrows move a day, Alt+up or down changes unit, [ and ] change the end, { and } change the start' : ''}`}
+                        className={cx('group relative z-[1] mx-0.5 flex touch-none items-center gap-1.5 overflow-hidden rounded-md border px-2 font-mono text-xs font-bold whitespace-nowrap hover:brightness-125',
                           BAR[b.job.status], canMove && 'cursor-grab', (drag?.job.id === b.job.id || pending?.id === b.job.id) && 'opacity-80 shadow-pop')}
                         style={{ gridColumn: `${b.start} / ${b.end + 1}`, gridRow: b.lane + 1 }}>
                         {canMove && <span aria-hidden className="absolute inset-y-0 left-0 w-2.5 cursor-ew-resize" onPointerDown={(e) => onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'start')} />}
-                        <StatusGlyph status={b.job.status} className="mr-1" />
-                        {b.job.ticket_no ?? 'No ticket'}{b.job.well ? ` · ${b.job.well}` : ''}
+                        <StatusGlyph status={b.job.status} />
+                        <span>{b.job.ticket_no ?? 'No ticket'}</span>
+                        {b.job.well && <span className="font-sans font-medium text-text">{b.job.well}</span>}
                         {canMove && <span aria-hidden className="absolute inset-y-0 right-0 w-2.5 cursor-ew-resize" onPointerDown={(e) => onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'end')} />}
                       </a>
                     ) : (
-                      <button key={b.block.id} type="button" disabled={!canBlock} onClick={() => setBlockDialog({ event: b.block })}
-                        aria-label={`${BLOCK_LABEL[b.block.kind]} on ${u.unit_number}, ${b.block.starts_on} to ${b.block.ends_on}${b.block.note ? `: ${b.block.note}` : ''}`}
-                        className="hatch-blocked z-[1] mx-0.5 flex items-center overflow-hidden rounded-sm border-l-3 border-blocked px-1.5 text-left font-mono text-xs text-blocked disabled:cursor-default"
+                      <button key={b.block.id} type="button" disabled={!canBlock} onClick={() => setBlockDialog({ event: b.block, mode: b.block.kind === 'maintenance' ? 'maintenance' : 'status' })}
+                        aria-label={`${b.block.kind === 'maintenance' ? `Maintenance, ${b.block.detail ?? ''}` : BLOCK_LABEL[b.block.kind]} on ${u.unit_number}, ${b.block.starts_on} to ${isOpenEnd(b.block.ends_on) ? 'ongoing' : b.block.ends_on}${b.block.note ? `: ${b.block.note}` : ''}`}
+                        title={b.block.note ?? undefined}
+                        className={cx('z-[1] mx-0.5 flex items-center gap-1.5 overflow-hidden rounded-md border border-dashed px-2 text-left text-xs font-bold whitespace-nowrap disabled:cursor-default',
+                          b.block.kind === 'maintenance' ? 'hatch-maint border-maint text-maint' : 'hatch-status border-status-event text-status-event')}
                         style={{ gridColumn: `${b.start} / ${b.end + 1}`, gridRow: b.lane + 1 }}>
-                        {BLOCK_LABEL[b.block.kind] ?? b.block.kind}
+                        {b.block.kind === 'maintenance' ? <Wrench aria-hidden className="size-3.5 shrink-0" /> : <Tag aria-hidden className="size-3.5 shrink-0" />}
+                        <span className="rounded-xs bg-surface/80 px-1">{b.block.kind === 'maintenance' ? b.block.detail ?? 'Maintenance' : BLOCK_LABEL[b.block.kind]}{isOpenEnd(b.block.ends_on) ? ' · ongoing' : ''}</span>
                       </button>
                     ))}
                   </div>
@@ -323,9 +361,10 @@ export function Schedule() {
         </div>
       )}
       <p className="mt-3 text-xs text-text-subtle">
-        Units come from WIREGUARD. {canMove ? 'Drag a bar to another day or unit, or drag its ends to change the dates. Click to open the job. By keyboard: Tab to a bar, Shift+arrows move it a day, Alt+up or down changes the unit, [ ] change the end and { } the start, Enter opens it.' : 'Click a bar to open the job.'}
+        Units and wires come from WIREGUARD. {canMove ? 'Drag a bar to another day or unit, or drag its ends to change the dates. Click to open the job. By keyboard: Tab to a bar, Shift+arrows move it a day, Alt+up or down changes the unit, [ ] change the end and { } the start, Enter opens it.' : 'Click a bar to open the job.'}
+        {canBlock && ' Click a maintenance or status event to change or remove it.'}
       </p>
-      {blockDialog && <BlockDialog init={blockDialog} units={unitsList} onClose={(msg) => { setBlockDialog(null); if (msg) { setNotice({ tone: 'success', text: msg }); qc.invalidateQueries({ queryKey: ['schedule'] }); } }} />}
+      {blockDialog && <EventDialog init={blockDialog} units={unitsList} onClose={(msg) => { setBlockDialog(null); if (msg) { setNotice({ tone: 'success', text: msg }); qc.invalidateQueries({ queryKey: ['schedule'] }); } }} />}
     </section>
   );
 }
@@ -335,20 +374,29 @@ function StatusGlyph({ status, className }: { status: JobStatus; className?: str
   return <I aria-hidden className={cx('size-3 shrink-0', className)} />;
 }
 
-function BlockDialog({ init, units, onClose }: { init: { event?: SEvent; unit?: string }; units: string[]; onClose: (msg?: string) => void }) {
+/**
+ * The WL Hub's two dialogs in one: a maintenance event (type, start and end) or a unit status event (loan,
+ * transferred, junk, backup on location; no end date = ongoing). Both adjust the unit's utilization and, except
+ * backup on location, stop bookings on those days.
+ */
+function EventDialog({ init, units, onClose }: { init: { event?: SEvent; unit?: string; mode: 'maintenance' | 'status' }; units: string[]; onClose: (msg?: string) => void }) {
   const ev = init.event;
-  const [unit, setUnit] = useState(ev?.unit_number ?? init.unit ?? '');
-  const [kind, setKind] = useState(ev?.kind ?? 'maintenance');
-  const [start, setStart] = useState(ev?.starts_on ?? '');
-  const [end, setEnd] = useState(ev?.ends_on ?? '');
+  const maint = init.mode === 'maintenance';
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+  const [unit, setUnit] = useState(ev?.unit_number ?? init.unit ?? units[0] ?? '');
+  const [kind, setKind] = useState<string>(ev?.kind ?? (maint ? 'maintenance' : 'loan'));
+  const [detail, setDetail] = useState<string>(ev?.detail ?? MAINTENANCE_TYPES[0]);
+  const [start, setStart] = useState(ev?.starts_on ?? today);
+  const [end, setEnd] = useState(ev ? (isOpenEnd(ev.ends_on) ? '' : ev.ends_on) : maint ? today : '');
   const [note, setNote] = useState(ev?.note ?? '');
   const [conflict, setConflict] = useState<{ ticket_no: string | null; well: string | null; start_date: string; end_date: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const body = (confirmOverlap: boolean) => ({ kind, detail: maint ? detail : null, starts_on: start, ends_on: end || null, note, confirmOverlap });
   const save = useMutation({
     mutationFn: (confirmOverlap: boolean) => ev
-      ? api(`/unit-events/${ev.id}`, { method: 'PATCH', json: { kind, starts_on: start, ends_on: end, note, confirmOverlap } })
-      : api('/unit-events', { method: 'POST', json: { unit_number: unit, kind, starts_on: start, ends_on: end, note, confirmOverlap } }),
-    onSuccess: () => onClose(`${BLOCK_LABEL[kind]} saved for ${unit}, ${start} to ${end}`),
+      ? api(`/unit-events/${ev.id}`, { method: 'PATCH', json: body(confirmOverlap) })
+      : api('/unit-events', { method: 'POST', json: { unit_number: unit, ...body(confirmOverlap) } }),
+    onSuccess: () => onClose(`${maint ? detail : BLOCK_LABEL[kind]} saved for unit ${unit}, ${start} to ${end || 'ongoing'}`),
     onError: (e: ApiError) => {
       if (e.status === 409 && e.body.needsConfirmation) setConflict(e.body.jobs as typeof conflict);
       else setError(e.message);
@@ -356,45 +404,61 @@ function BlockDialog({ init, units, onClose }: { init: { event?: SEvent; unit?: 
   });
   const del = useMutation({
     mutationFn: () => api(`/unit-events/${ev!.id}`, { method: 'DELETE' }),
-    onSuccess: () => onClose(`Block removed from ${unit}`),
+    onSuccess: () => onClose(`Event removed from unit ${unit}`),
     onError: (e: ApiError) => setError(e.message),
   });
+  const tone = maint ? 'text-maint' : 'text-status-event';
+  const missing = !unit ? 'Pick the unit.' : !start ? 'Enter the start date.' : maint && !end ? 'Enter the end date.' : null;
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="block-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <form className="w-full max-w-lg rounded-lg border border-border bg-surface p-5 shadow-pop" onSubmit={(e) => { e.preventDefault(); setError(null); setConflict(null); save.mutate(false); }}>
+    <div role="dialog" aria-modal="true" aria-labelledby="ev-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+      <form className="w-full max-w-lg rounded-xl border border-border bg-surface p-7 shadow-pop" onSubmit={(e) => { e.preventDefault(); setError(null); setConflict(null); if (missing) { setError(missing); return; } save.mutate(false); }}>
         <div className="mb-4 flex items-start gap-3">
-          <h2 id="block-title" className="flex-1 font-display text-lg font-bold">{ev ? 'Unit block' : 'New unit block'}</h2>
+          <h2 id="ev-title" className={cx('flex-1 font-display text-xl font-extrabold uppercase', tone)}>{ev ? (maint ? 'Maintenance event' : 'Unit status event') : maint ? 'New maintenance event' : 'New unit status event'}</h2>
           <Button size="sm" variant="ghost" onClick={() => onClose()} aria-label="Close"><X aria-hidden className="size-4" /></Button>
         </div>
-        <p className="mb-4 text-sm text-text-muted">Blocked days can't be booked, and they don't count as available days in utilization. "Backup on site" marks the unit without blocking it.</p>
+        {!maint && <p className="-mt-2 mb-4 text-sm text-text-muted">Days inside this period adjust that unit's utilization calculation.</p>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field id="b-unit" label="Unit">
-            <select id="b-unit" className={inputClass} value={unit} disabled={!!ev} onChange={(e) => setUnit(e.target.value)} autoFocus={!ev}>
-              <option value="">Choose…</option>{units.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </Field>
-          <Field id="b-kind" label="Kind">
-            <select id="b-kind" className={inputClass} value={kind} onChange={(e) => setKind(e.target.value)}>
-              {Object.entries(BLOCK_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
-          </Field>
-          <Field id="b-start" label="First day"><input id="b-start" type="date" className={inputClass} value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-          <Field id="b-end" label="Last day"><input id="b-end" type="date" className={inputClass} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-          <div className="sm:col-span-2"><Field id="b-note" label="Note"><input id="b-note" className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Drum change, lubricator test" /></Field></div>
+          <div className="sm:col-span-2">
+            <Field id="ev-unit" label="Unit">
+              <select id="ev-unit" className={inputClass} value={unit} disabled={!!ev} onChange={(e) => setUnit(e.target.value)} autoFocus={!ev}>
+                {units.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </Field>
+          </div>
+          <div className="sm:col-span-2">
+            {maint ? (
+              <Field id="ev-type" label="Maintenance type">
+                <select id="ev-type" className={inputClass} value={detail} onChange={(e) => setDetail(e.target.value)}>
+                  {MAINTENANCE_TYPES.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </Field>
+            ) : (
+              <Field id="ev-status" label="Status">
+                <select id="ev-status" className={inputClass} value={kind} onChange={(e) => setKind(e.target.value)}>
+                  {STATUS_KINDS.map((k) => <option key={k} value={k}>{BLOCK_LABEL[k]}</option>)}
+                </select>
+              </Field>
+            )}
+          </div>
+          <Field id="ev-start" label="Start date"><input id="ev-start" type="date" className={inputClass} value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+          <Field id="ev-end" label="End date" hint={maint ? undefined : 'Blank = ongoing'}><input id="ev-end" type="date" className={inputClass} value={end} min={start} onChange={(e) => setEnd(e.target.value)} /></Field>
+          <div className="sm:col-span-2"><Field id="ev-note" label="Notes"><textarea id="ev-note" rows={3} className={cx(inputClass, 'h-auto py-2')} value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
         </div>
         {error && <div className="mt-3"><Banner tone="danger">{error}</Banner></div>}
         {conflict && (
           <div className="mt-3">
             <Banner tone="warning">
-              Jobs are booked on {unit} in that period: {conflict.map((j) => `${j.ticket_no ?? j.well ?? 'job'} (${j.start_date}–${j.end_date})`).join(', ')}. Save the block anyway?
+              Jobs are booked on unit {unit} in that period: {conflict.map((j) => `${j.ticket_no ?? j.well ?? 'job'} (${j.start_date}–${j.end_date})`).join(', ')}. Save the event anyway?
             </Banner>
             <div className="mt-2 flex gap-2"><Button variant="primary" loading={save.isPending} onClick={() => save.mutate(true)}>Save anyway</Button><Button variant="ghost" onClick={() => setConflict(null)}>Back</Button></div>
           </div>
         )}
-        <div className="mt-5 flex flex-wrap gap-2">
-          {!conflict && <Button type="submit" variant="primary" loading={save.isPending} disabled={!unit || !start || !end}>Save</Button>}
-          <Button variant="ghost" onClick={() => onClose()}>Cancel</Button>
-          {ev && <Button variant="danger" className="ml-auto" loading={del.isPending} onClick={() => del.mutate()}>Remove block</Button>}
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          {ev && <Button variant="danger" loading={del.isPending} onClick={() => del.mutate()}>Remove event</Button>}
+          <span className="ml-auto flex gap-2">
+            <Button onClick={() => onClose()}>Cancel</Button>
+            {!conflict && <Button type="submit" variant="primary" size="lg" loading={save.isPending}>Save Event</Button>}
+          </span>
         </div>
       </form>
     </div>

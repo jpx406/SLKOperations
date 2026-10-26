@@ -48,7 +48,7 @@ export function QuickPlan() {
               <div key={col.key} aria-label={`${col.label} column`} role="region"
                 onDragOver={(e) => { if (dragging) { e.preventDefault(); setOver(col.key); } }} onDragLeave={() => setOver(null)}
                 onDrop={(e) => { e.preventDefault(); const c = cards.find((x) => x.id === dragging); setOver(null); setDragging(null); if (c && c.column_key !== col.key) void move(c, col.key); }}
-                className={cx('rounded-md border border-border bg-surface-2/40 p-2', over === col.key && 'border-accent')}>
+                className={cx('rounded-md border border-border bg-surface-2/40 p-2', over === col.key && 'border-accent-edge')}>
                 <h2 className="label-caps mb-2 px-1 text-text-muted">{col.label} <span className="font-mono">{list.length}</span></h2>
                 <ul className="space-y-2">
                   {list.map((c) => (

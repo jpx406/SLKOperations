@@ -12,10 +12,10 @@
   --color-text: #e8ecf1;
   --color-text-muted: #9aa4b1;
   --color-text-subtle: #8591a0;
-  --color-accent: #e6e9ee;
-  --color-accent-hover: #ffffff;
+  --color-accent: #c8d400;
+  --color-accent-hover: #d8e32a;
   --color-on-accent: #0b121a;
-  --color-accent-text: #e6e9ee;
+  --color-accent-text: #d4e000;
   --color-focus: #8ab4f8;
   --color-danger: #ff7b7b;
   --color-danger-subtle: #3a1b1f;
@@ -61,6 +61,12 @@
   --color-pill-canceled-bg: #1e2630;
   --color-pill-canceled-fg: #9aa4b1;
   --color-pill-canceled-border: rgba(154,164,177,.4);
+  --color-maint: #f59e0b;
+  --color-maint-subtle: #2b1d08;
+  --color-status-event: #c084fc;
+  --color-status-event-subtle: #24173a;
+  --color-today: rgba(200,212,0,.10);
+  --color-accent-edge: #c8d400;
   --font-display: Manrope, Inter, system-ui, sans-serif;
   --font-sans: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -134,10 +140,10 @@
   --color-text: #0f172a;
   --color-text-muted: #334155;
   --color-text-subtle: #3f4b5c;
-  --color-accent: #0f172a;
-  --color-accent-hover: #1e293b;
-  --color-on-accent: #ffffff;
-  --color-accent-text: #0f172a;
+  --color-accent: #c8d400;
+  --color-accent-hover: #b5c000;
+  --color-on-accent: #0b121a;
+  --color-accent-text: #465000;
   --color-focus: #1d4ed8;
   --color-danger: #7f1d1d;
   --color-danger-subtle: #fee2e2;
@@ -183,6 +189,12 @@
   --color-pill-canceled-bg: #475569;
   --color-pill-canceled-fg: #ffffff;
   --color-pill-canceled-border: #475569;
+  --color-maint: #9a3412;
+  --color-maint-subtle: #ffedd5;
+  --color-status-event: #6b21a8;
+  --color-status-event-subtle: #f3e8ff;
+  --color-today: rgba(200,212,0,.28);
+  --color-accent-edge: #465000;
   --shadow-card: none;
   --shadow-pop: 0 0 0 1px #6b7889, 0 12px 32px rgba(15,23,42,.24);
 }

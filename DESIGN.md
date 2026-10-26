@@ -13,8 +13,8 @@ colors:
   chalk: "#e8ecf1"
   chalk-muted: "#9aa4b1"
   chalk-subtle: "#8591a0"
-  accent-chalk: "#e6e9ee"
-  accent-chalk-hover: "#ffffff"
+  accent-chalk: "#c8d400"
+  accent-chalk-hover: "#d8e32a"
   on-accent: "#0b121a"
   focus-blue: "#8ab4f8"
   status-planned: "#6aa8ff"
@@ -212,14 +212,14 @@ SLK Operations is a single record per slickline job, and the interface changes l
 - **The Field Logbook** is the wellsite's view (job stages, JRA, job log, attachments). It is plain, sturdy and legible, with large targets and short labels, filled in outdoors on a phone or tablet over weak signal.
 - **The Signed Record** is the view of approvals, reports and PDFs. It is precise and evidential: values, signatures and fingerprints are set in monospace, and nothing decorative competes with the facts.
 
-The three lenses share one world in two light conditions. **Control Room** is the near-black night theme, the default on a desk with a mouse. **Sunlight** is a high-contrast light theme built for tablets outdoors, the default on touch screens. Both use chalk/ink type, a monochrome accent and a strict status palette. Control size follows the hand: **desk** density on a mouse, **touch** density (44–48px controls, 16px text) on a touch screen. Everyone can override both from the account menu, and the choice is remembered on that device (owner request, 2026-10-26). Density is high but never cramped on a desk (14px body text, 32–36px controls). Touch density raises every control to 44px, answer toggles to 48px and body text to 16px. Section labels stay in small monospace capitals that work like the ruled headings of a logbook. The accent stays neutral on purpose. NESR's brand colour is not in the repository yet; when it arrives it joins as a brand accent, and the monochrome action colour stays (owner decision, 2026-10-26).
+The three lenses share one world in two light conditions. **Control Room** is the near-black night theme, the default on a desk with a mouse. **Sunlight** is a high-contrast light theme built for tablets outdoors, the default on touch screens. Both use chalk/ink type, a monochrome accent and a strict status palette. Control size follows the hand: **desk** density on a mouse, **touch** density (44–48px controls, 16px text) on a touch screen. Everyone can override both from the account menu, and the choice is remembered on that device (owner request, 2026-10-26). Density is high but never cramped on a desk (14px body text, 32–36px controls). Touch density raises every control to 44px, answer toggles to 48px and body text to 16px. Section labels stay in small monospace capitals that work like the ruled headings of a logbook. The action colour is the WL Operations Hub lime (#c8d400) with dark text, the same in both themes, so SLK Operations reads as part of the same family (owner request, 2026-10-26, replacing the earlier monochrome accent). Lime used as text is bright on night and deep olive (#465000) in Sunlight, where lime text would bleach; the word SLK in the name is lime on night and dark on a lime marker in Sunlight.
 
 Rejected: the original WL Operations Hub's look, emoji icons and colours (none are reused), and any decoration that would make a field user hunt for the next field.
 
 **Key Characteristics:**
 - Two themes chosen by device: dark Control Room on desks, Sunlight on touch screens. Both are tokens, never hard-coded hex in components.
 - Two densities chosen by pointer: desk (mouse) and touch (finger or glove). Control heights and text sizes are tokens that grow under touch.
-- A monochrome accent (chalk on night, ink in Sunlight) for actions; colour is reserved for status, severity and risk.
+- A lime action colour (WL Hub family) for primary buttons, the active pill and ticket numbers; other colour is reserved for status, severity, risk and the schedule's events (maintenance orange, unit status purple).
 - Monospace capitals for section labels, units, IDs, timestamps and fingerprints; Manrope for page and stage titles; Inter for everything people read and type.
 - Cards declare depth once per theme: a lifting shadow in Control Room, a 1px outline in Sunlight (shadows wash out in glare).
 - Every state has a word next to its colour; colour is never the only signal.
@@ -229,7 +229,7 @@ Rejected: the original WL Operations Hub's look, emoji icons and colours (none a
 A night-instrument palette: blue-black surfaces in four steps, chalk-white text in three, and a status palette that only speaks when something is planned, running, done, blocked or at risk.
 
 ### Primary
-- **Chalk Accent** (accent-chalk): the action colour. Primary buttons, the active section pill, progress fills. In Sunlight it inverts to Sun Ink (sun-ink), so the primary action is always the highest-contrast thing on screen.
+- **Hub Lime** (accent-chalk token, #c8d400): the action colour. Primary buttons, the active section pill, progress fills, filter highlights, always with dark text. Lime text (accent-text) is #d4e000 on night and #465000 in Sunlight; lime borders use accent-edge for the same reason.
 
 ### Neutral
 - **Ink Night** (ink-night): the page background, the darkest step.
@@ -323,7 +323,7 @@ Precise and quiet: controls look like tools, not decorations.
 
 ### Buttons
 - **Shape:** gently rounded (8px).
-- **Primary:** Chalk Accent fill, night text. 36px tall on a desk, 44px under touch; 14px side padding, 13–15px semibold. In Sunlight, Sun Ink fill with white text.
+- **Primary:** Chalk Accent fill, night text. 36px tall on a desk, 44px under touch; 14px side padding, 13–15px semibold. The same lime fill with dark text in Sunlight.
 - **Hover / Focus:** hover steps to pure white (or lifted ink on light) over the fast transition (120ms). Keyboard focus shows a 2px Focus Blue ring with a 2px offset. Loading shows a spinner inside the button and keeps the label.
 - **Secondary:** raised panel with a strong rule outline.
 - **Ghost:** no fill, muted text that brightens on hover; used for toolbar and icon actions.
@@ -333,7 +333,7 @@ Precise and quiet: controls look like tools, not decorations.
 ### Chips and Pills
 - **Status pill:** 22px tall, mono label capitals. In Control Room, the status colour on its deep tint with a 40% outline. In Sunlight, a solid fill (white on Planned blue and Done green, ink on Running amber). Canceled is struck through. Colours come from the `pill-*` tokens.
 - **Severity pill:** solid severity colour with dark text; "No 8MF" is a dashed outline.
-- **Section pills:** outlined and muted; the active one is filled Chalk Accent.
+- **Section pills:** outlined and muted; the active one is filled Hub Lime.
 - **Role badges:** tiny mono capitals on Planned Blue's tint (PREP, CREW, SDM) beside field labels, showing who fills the field.
 
 ### Cards / Containers

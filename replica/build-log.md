@@ -979,3 +979,38 @@ Every label, message and empty state was written here. No code, assets or copy f
   - tests 204 (the PDF test checks the embedded image);
   - the sample PDF parses under pypdf strict mode with its 200×156 JPEG;
   - in the browser, the header shows the white mark on dark and the dark mark on Sunlight, `/brand/icon-64.png` is served, and Sales and Bonus load without a prompt.
+
+## 6n — WL Operations Hub look: lime accent, Unit schedule, Job log, Job board
+
+- **Colour and name:**
+  - the action colour is the WL Hub lime (#c8d400, dark text) in both themes;
+  - lime text is bright on night and deep olive (#465000) in Sunlight;
+  - "SLK" in the name is lime on night and dark on a lime marker in Sunlight;
+  - under the name: Juan Lopez (jceron@nesr.com) / Mohamed Manna (mmana@nesr.com), on the sign-in page and in the header from laptop width;
+  - new tokens: maint / status-event (orange / purple, with subtle fills), today, accent-edge. All 55 pairs pass AA in both themes.
+- **Filter panel:**
+  - `FilterBar variant="panel"` lays out the WL Hub filter card (label above an "All" dropdown, Clear at the end);
+  - the same nine dimensions plus Job status are used on the Job log, the Job board and (without year and month) the Unit schedule.
+- **Unit schedule:**
+  - laid out like the WL Hub: month in lime, legend dots, Create Job, Filters (with a count), Show canceled;
+  - "+ Maintenance Event" (orange) and "+ Unit Status Event" (purple) open the WL Hub dialogs:
+    - maintenance has a type (Cable Maintenance, Mechanic, Electrical, Hydraulic, Pressure Test, Inspection / Certification, Other);
+    - a status event (Loan, Transferred, Junk, Backup on location) may have no end date ("ongoing", stored as 9999-12-31);
+  - events are drawn in orange or purple stripes with their type; clicking one edits or removes it;
+  - unit rows show ACTIVE and each drum's wire from WIREGUARD ("Supernova, 1/8", 24,970'");
+  - today's column is tinted lime;
+  - the filters (SDM, account, area, service domain, service, unit, conveyance, status) narrow the jobs, and Unit # narrows the rows;
+  - migration 0008 adds `unit_events.detail`.
+- **Job log:**
+  - the filter panel holds the search;
+  - Print, Download (CSV) and XLSX;
+  - columns follow the WL Hub: Ticket, DMR #, Start, End, Rig up, Rig down, Status, JRA, SDM, Account, Area, Rig/Site, Well, then the rest;
+  - ticket numbers are lime and the JRA shows as a pill.
+- **Job board:**
+  - WL Hub cards (lime ticket, well · rig, dates; SDM, account / area · services; the four stage bars; efficiency; status; × to delete with a confirm step);
+  - the full filter panel, search, and "Needs attention" with its count;
+  - the jobs API takes the standard filters.
+- **Verified:**
+  - tests 207;
+  - in the browser (desk, dark and Sunlight): sign-in, schedule, job log and job board, with no page errors;
+  - a Mechanic maintenance event and an open Loan were created from the new dialogs and drawn on the schedule.

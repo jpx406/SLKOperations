@@ -53,7 +53,7 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
       {errors.length > 0 && <div className="mb-2"><Banner tone="danger"><ul>{errors.map((e, i) => <li key={i}>{e}</li>)}</ul></Banner></div>}
       {canEdit && (
         <div onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); void upload(e.dataTransfer.files); }}
-          className={cx('mb-3 flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3 text-sm', over ? 'border-accent bg-surface-2' : 'border-border-strong')}>
+          className={cx('mb-3 flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3 text-sm', over ? 'border-accent-edge bg-surface-2' : 'border-border-strong')}>
           <label className="sr-only" htmlFor={`att-cat-${id}`}>What the files are</label>
           <select id={`att-cat-${id}`} className={inputSized('h-(--layout-control-sm) w-44')} value={category} onChange={(e) => setCategory(e.target.value as Category)}>
             {Object.entries(CATEGORIES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}

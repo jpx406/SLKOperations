@@ -34,22 +34,43 @@ export function useFilters(): [Filters, (k: FilterKey, v: string[]) => void, () 
   return [filters, set, clear];
 }
 
-export function FilterBar({ optionsPath, withStatus = true }: { optionsPath: string; withStatus?: boolean }) {
+/**
+ * `panel` is the WL Hub layout: a card of labelled dropdowns (label above, "All" below) with Clear at the end.
+ * `dims` limits the dimensions shown (the schedule has no year or month: it shows one month).
+ */
+export function FilterBar({ optionsPath, withStatus = true, variant = 'row', dims, children }: {
+  optionsPath: string; withStatus?: boolean; variant?: 'row' | 'panel'; dims?: FilterKey[]; children?: React.ReactNode;
+}) {
   const [filters, set, clear] = useFilters();
   const options = useQuery({ queryKey: ['filter-options', optionsPath], queryFn: () => api<FilterOptions>(optionsPath), staleTime: 60_000 });
   const opts = (k: FilterKey): Option[] => (k === 'month' ? MONTH_OPTIONS : k === 'status' ? STATUS_OPTIONS : options.data?.[k] ?? []);
   const n = activeFilterCount(filters);
+  const shown = FILTER_DIMS.filter((d) => !dims || dims.includes(d.key));
+  if (variant === 'panel') {
+    return (
+      <div role="group" aria-label="Filters" className="mb-4 rounded-lg border border-card-edge bg-surface p-4 shadow-card print:hidden">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))]">
+          {children}
+          {withStatus && <MultiSelect stacked label="Job status" options={opts('status')} value={filters.status ?? []} onChange={(v) => set('status', v)} />}
+          {shown.map((d) => <MultiSelect stacked key={d.key} label={d.label} options={opts(d.key)} value={filters[d.key] ?? []} onChange={(v) => set(d.key, v)} />)}
+          <div className="flex items-end">
+            <Button variant="ghost" disabled={!n} onClick={clear}><X aria-hidden className="size-4" />Clear{n > 1 ? ` ${n}` : ''}</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div role="group" aria-label="Filters" className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
       {withStatus && <MultiSelect label="Status" options={opts('status')} value={filters.status ?? []} onChange={(v) => set('status', v)} />}
-      {FILTER_DIMS.map((d) => <MultiSelect key={d.key} label={d.label} options={opts(d.key)} value={filters[d.key] ?? []} onChange={(v) => set(d.key, v)} />)}
+      {shown.map((d) => <MultiSelect key={d.key} label={d.label} options={opts(d.key)} value={filters[d.key] ?? []} onChange={(v) => set(d.key, v)} />)}
       {n > 0 && <Button size="sm" variant="ghost" onClick={clear}><X aria-hidden className="size-3.5" />Clear {n === 1 ? 'filter' : `${n} filters`}</Button>}
     </div>
   );
 }
 
 /** A dropdown of checkboxes. Nothing ticked means "all". */
-export function MultiSelect({ label, options, value, onChange }: { label: string; options: Option[]; value: string[]; onChange: (v: string[]) => void }) {
+export function MultiSelect({ label, options, value, onChange, stacked }: { label: string; options: Option[]; value: string[]; onChange: (v: string[]) => void; stacked?: boolean }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const box = useRef<HTMLDivElement>(null);
@@ -65,12 +86,22 @@ export function MultiSelect({ label, options, value, onChange }: { label: string
   const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   return (
     <div ref={box} className="relative" onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); } }}>
-      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}
-        className={cx('inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs', value.length ? 'border-accent bg-surface-2 text-text' : 'border-border-strong text-text-muted hover:text-text')}>
-        <span className="font-semibold">{label}</span><span className="max-w-32 truncate">{summary}</span><ChevronDown aria-hidden className="size-3.5" />
-      </button>
+      {stacked ? (
+        <>
+          <span id={`${id}-l`} className="label-caps mb-1 block text-text-muted">{label}</span>
+          <button type="button" aria-expanded={open} aria-controls={id} aria-labelledby={`${id}-l ${id}-v`} onClick={() => setOpen(!open)}
+            className={cx('flex h-(--layout-control-md) w-full items-center justify-between gap-1.5 rounded-md border bg-input px-3 text-sm', value.length ? 'border-accent-edge font-semibold text-text' : 'border-border-input text-text')}>
+            <span id={`${id}-v`} className="truncate">{summary}</span><ChevronDown aria-hidden className="size-4 shrink-0 text-text-muted" />
+          </button>
+        </>
+      ) : (
+        <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}
+          className={cx('inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border px-2.5 text-xs', value.length ? 'border-accent-edge bg-surface-2 text-text' : 'border-border-strong text-text-muted hover:text-text')}>
+          <span className="font-semibold">{label}</span><span className="max-w-32 truncate">{summary}</span><ChevronDown aria-hidden className="size-3.5" />
+        </button>
+      )}
       {open && (
-        <div id={id} role="group" aria-label={label} className="absolute top-9 left-0 z-40 w-64 rounded-md border border-border bg-surface p-2 shadow-pop">
+        <div id={id} role="group" aria-label={label} className={cx('absolute left-0 z-40 w-64 rounded-md border border-border bg-surface p-2 shadow-pop', stacked ? 'top-full mt-1' : 'top-9')}>
           {options.length > 8 && <input aria-label={`Search ${label.toLowerCase()}`} autoFocus className={cx(inputClass, 'mb-2 h-(--layout-control-sm)')} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />}
           {!options.length && <p className="px-1 py-2 text-xs text-text-subtle">No values in your jobs yet.</p>}
           <ul className="max-h-64 overflow-y-auto">
@@ -79,7 +110,7 @@ export function MultiSelect({ label, options, value, onChange }: { label: string
                 <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-surface-2">
                   <input type="checkbox" checked={value.includes(o.value)} onChange={() => toggle(o.value)} />
                   <span className="flex-1 truncate">{o.label}</span>
-                  {value.includes(o.value) && <Check aria-hidden className="size-3.5 text-accent" />}
+                  {value.includes(o.value) && <Check aria-hidden className="size-3.5 text-accent-text" />}
                 </label>
               </li>
             ))}

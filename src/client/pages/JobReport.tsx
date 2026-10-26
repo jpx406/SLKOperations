@@ -60,7 +60,7 @@ export function JobReport() {
         <span className="text-xs text-text-muted">The package holds this report, the job data and its tables, for filing with the signed documents.</span>
       </div>
       <article ref={ref} className="space-y-4 rounded-lg border border-border bg-surface p-6 text-sm print:border-0 print:p-0">
-        <header className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-accent pb-2">
+        <header className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-accent-edge pb-2">
           <h1 className="font-display text-xl font-extrabold uppercase">Job report · {j.ticket_no ?? 'no ticket'}</h1>
           <span className="font-mono text-xs">{j.country} · {j.status} · generated {when(new Date().toISOString())}</span>
         </header>
