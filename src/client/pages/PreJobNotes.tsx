@@ -46,16 +46,16 @@ export function PreJobNotesList() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <label className="relative"><span className="sr-only">Search log number, ticket, rig or well</span>
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-          <input className={inputSized('h-8 w-60 pl-8')} placeholder="Log #, ticket, rig, well" defaultValue={params.get('q') ?? ''} onChange={(e) => set('q', e.target.value.trim())} />
+          <input className={inputSized('h-(--layout-control-sm) w-60 pl-8')} placeholder="Log #, ticket, rig, well" defaultValue={params.get('q') ?? ''} onChange={(e) => set('q', e.target.value.trim())} />
         </label>
         <div role="radiogroup" aria-label="Status" className="flex gap-1.5">
           {[['', 'All'], ['sent', 'Sent'], ['not_sent', 'Not sent']].map(([v, l]) => (
             <button key={v} type="button" role="radio" aria-checked={(params.get('status') ?? '') === v} onClick={() => set('status', v)}
-              className={cx('h-8 rounded-pill border px-3.5 text-sm font-semibold', (params.get('status') ?? '') === v ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+              className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', (params.get('status') ?? '') === v ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-text-muted">From<input type="date" className={inputSized('h-8 w-38')} value={params.get('from') ?? ''} onChange={(e) => set('from', e.target.value)} /></label>
-        <label className="flex items-center gap-1.5 text-xs text-text-muted">To<input type="date" className={inputSized('h-8 w-38')} value={params.get('to') ?? ''} onChange={(e) => set('to', e.target.value)} /></label>
+        <label className="flex items-center gap-1.5 text-xs text-text-muted">From<input type="date" className={inputSized('h-(--layout-control-sm) w-38')} value={params.get('from') ?? ''} onChange={(e) => set('from', e.target.value)} /></label>
+        <label className="flex items-center gap-1.5 text-xs text-text-muted">To<input type="date" className={inputSized('h-(--layout-control-sm) w-38')} value={params.get('to') ?? ''} onChange={(e) => set('to', e.target.value)} /></label>
       </div>
       {list.isPending && <Skeleton className="h-64" />}
       {list.isError && <Banner tone="danger">{list.error.message}</Banner>}
@@ -213,7 +213,7 @@ export function PreJobNoteEditor() {
   return (
     <section aria-labelledby="pjn-ed-title">
       <div className="mb-4 flex flex-wrap items-center gap-3 print:hidden">
-        <Link to={job ? `/operation/jobs/${job.id}/design` : '/operation/pre-job-notes'} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3"><ArrowLeft aria-hidden className="size-4" />Job</Link>
+        <Link to={job ? `/operation/jobs/${job.id}/design` : '/operation/pre-job-notes'} className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3"><ArrowLeft aria-hidden className="size-4" />Job</Link>
         <h1 id="pjn-ed-title" className="font-display text-xl font-extrabold uppercase">Pre-Job Note{note ? ` ${note.log_no}` : ''}</h1>
         {note && <span className="font-mono text-sm text-text-muted">v{note.current_version} · {note.status === 'sent' ? 'Sent' : 'Not sent'}</span>}
         <span role="status" className="text-xs font-semibold">{dirty ? <span className="text-text-muted">Unsaved changes</span> : note ? <span className="inline-flex items-center gap-1 text-success"><Check aria-hidden className="size-3.5" />All changes saved</span> : null}</span>
@@ -378,7 +378,7 @@ export function PreJobNotesPrint() {
   return (
     <section aria-label="Pre-Job Notes for printing">
       <div className="mb-4 flex items-center gap-2 print:hidden">
-        <Link to="/operation/pre-job-notes" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold"><ArrowLeft aria-hidden className="size-4" />Pre-Job Notes</Link>
+        <Link to="/operation/pre-job-notes" className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold"><ArrowLeft aria-hidden className="size-4" />Pre-Job Notes</Link>
         <Button size="sm" variant="primary" onClick={() => window.print()} disabled={!notes.data}><Printer aria-hidden className="size-4" />Print or save as PDF</Button>
       </div>
       {notes.isPending ? <Skeleton className="h-96" /> : notes.isError ? <Banner tone="danger">{notes.error.message}</Banner> : (
@@ -400,7 +400,7 @@ export function PreJobNotePanel({ jobId }: { jobId: string }) {
       <span className="label-caps text-text-muted">Pre-Job Note</span>
       {n ? <span className="text-sm"><span className="font-mono font-semibold">{n.log_no}</span> · v{n.current_version} · {n.status === 'sent' ? <span className="text-success">Sent {n.sent_at ? formatDate(n.sent_at.slice(0, 10)) : ''}</span> : 'Not sent'}</span>
         : <span className="text-sm text-text-muted">None yet</span>}
-      {(n || canStart) && <Link className="ml-auto inline-flex h-8 items-center rounded-md border border-border-strong px-3 text-xs font-semibold hover:bg-surface-3" to={n ? `/operation/pre-job-notes/${n.id}` : `/operation/pre-job-notes/new?job=${jobId}`}>
+      {(n || canStart) && <Link className="ml-auto inline-flex h-(--layout-control-sm) items-center rounded-md border border-border-strong px-3 text-xs font-semibold hover:bg-surface-3" to={n ? `/operation/pre-job-notes/${n.id}` : `/operation/pre-job-notes/new?job=${jobId}`}>
         {n ? 'Open Pre-Job Note' : 'Create Pre-Job Note'}
       </Link>}
     </div>

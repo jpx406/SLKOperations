@@ -6,6 +6,7 @@ import { SignatureBadge } from '../components/Signature';
 import { ANSWER_LABEL, approvalLevel, exemptions, flags, optionsOf, pointsFor, progress, riskScore, type Answer, type Template } from '../../shared/jra';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
+import { ROLE_LABEL } from '../../shared/roles';
 import { Banner, Button, Card, Field, ProgressBar, Skeleton, cx, inputClass } from '../components/ui';
 
 // JRA (S28): answers save as you go while it is a draft; Send for approval needs every required answer;
@@ -30,6 +31,7 @@ export function JraPage() {
   const [error, setError] = useState<string | null>(null);
   const [to, setTo] = useState('');
   const [rejectNote, setRejectNote] = useState('');
+  const [signing, setSigning] = useState(false);
   const d = q.data;
   const status = d?.jra?.status ?? 'draft';
   const canEdit = !!me?.menus.jobs?.edit && status === 'draft';
@@ -69,7 +71,7 @@ export function JraPage() {
       </div>
       {restored && <div className="mb-3"><Banner tone="info">Answers that hadn’t reached the server were kept on this device and have been restored. They are saving now.</Banner></div>}
       {d.reasons.length > 0 ? <div className="mb-3"><Banner tone="warning">This job needs an approved JRA before Execution: it has {d.reasons.join(', ')}.</Banner></div>
-        : <div className="mb-3"><Banner tone="info">This job doesn’t need a JRA, but you can still complete one.</Banner></div>}
+        : status === 'draft' && !d.jra?.decided_by && <div className="mb-3"><Banner tone="info">This job doesn’t need a JRA, but you can still complete one.</Banner></div>}
       {status === 'approved' && <div className="mb-3"><Banner tone="success" action={me?.menus.jobs?.edit && <Button size="sm" onClick={() => act('pdf', {})}>File approved PDF again</Button>}>Approved by {d.jra?.decided_by} on {when(d.jra?.decided_at ?? null)}. Answers are locked. The approved JRA is filed as a PDF in the job’s attachments.</Banner><SignatureBadge className="mt-2" type="jra" id={id} /></div>}
       {status === 'sent' && <div className="mb-3"><Banner tone="info">Sent to {d.jra?.sent_to} on {when(d.jra?.sent_at ?? null)} for approval.</Banner></div>}
       {status === 'draft' && d.jra?.decided_by && <div className="mb-3"><Banner tone="warning">Rejected by {d.jra.decided_by} on {when(d.jra.decided_at)}. Update the answers and send it again.</Banner></div>}
@@ -133,7 +135,7 @@ export function JraPage() {
             <div className="mt-3"><p className="mb-1 text-xs text-text-muted">{prog.answered} of {prog.total} answered</p><ProgressBar value={(prog.answered / Math.max(1, prog.total)) * 100} label="JRA progress" done={!prog.missing.length} /></div>
             {(() => { const fl = flags(d.template, answers); const ex = exemptions(d.template, answers); return (
               <div className="mt-3 text-xs">
-                <p><span className="font-semibold">{fl.filter((f) => f.requirement).length}</span> MOC / exemption{fl.filter((f) => f.requirement).length === 1 ? '' : 's'}{d.template.exemption_points ? ` · ${ex} exemption${ex === 1 ? '' : 's'} × ${d.template.exemption_points} pts in the score` : ''}</p>
+                <p>{fl.filter((f) => f.requirement).length ? <><span className="font-semibold">{fl.filter((f) => f.requirement).length}</span> MOC / exemption{fl.filter((f) => f.requirement).length === 1 ? '' : 's'}{ex && d.template.exemption_points ? ` (exemptions add ${ex * d.template.exemption_points} points)` : ''}</> : <span className="text-text-muted">No MOC or exemption needed</span>}</p>
                 {fl.length > 0 && <ul className="mt-1 space-y-0.5 text-text-muted">{fl.map((f) => <li key={f.id}><span className="font-mono">{f.id}</span> {f.requirement ?? ''}{f.approver ? ` → ${f.approver}` : ''}</li>)}</ul>}
               </div>
             ); })()}
@@ -148,11 +150,20 @@ export function JraPage() {
               </div>
             )}
             {mayDecide && (
-              <div className="mt-4 space-y-2 border-t border-border pt-3">
-                <Button variant="primary" className="w-full" onClick={() => act('decide', { decision: 'approved' })}><ShieldCheck aria-hidden className="size-4" />Approve</Button>
-                <Field id="jra-reject" label="Reason for rejecting"><input id="jra-reject" className={inputClass} value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} /></Field>
-                <Button variant="danger" className="w-full" disabled={!rejectNote.trim()} onClick={() => act('decide', { decision: 'rejected', note: rejectNote })}><X aria-hidden className="size-4" />Reject</Button>
+              <div className="mt-4 space-y-3 border-t border-border pt-3">
+                <Button variant="primary" className="w-full" onClick={() => setSigning(true)}><ShieldCheck aria-hidden className="size-4" />Review and sign…</Button>
+                <details className="text-sm">
+                  <summary className="cursor-pointer font-semibold text-text-muted">Reject instead…</summary>
+                  <div className="mt-2 space-y-2">
+                    <Field id="jra-reject" label="Reason for rejecting"><input id="jra-reject" className={inputClass} value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} /></Field>
+                    <Button variant="danger" className="w-full" disabled={!rejectNote.trim()} onClick={() => act('decide', { decision: 'rejected', note: rejectNote })}><X aria-hidden className="size-4" />Reject and return to draft</Button>
+                  </div>
+                </details>
               </div>
+            )}
+            {signing && me && (
+              <SignDialog score={score} level={level} flags={flags(d.template, answers)} signer={`${me.fullName} (${ROLE_LABEL[me.role]})`} form={`${d.template.code} rev ${d.template.revision}`} ticket={d.job.ticket_no}
+                onCancel={() => setSigning(false)} onSign={async () => { await act('decide', { decision: 'approved' }); setSigning(false); }} />
             )}
             {status === 'approved' && <p className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-success"><Check aria-hidden className="size-4" />Approved · Execution is open</p>}
           </Card>
@@ -360,5 +371,38 @@ function SaveStatus({ state, at, message }: { state: SaveState; at: string | nul
     <span role="status" aria-live="polite" className={cx('text-xs font-semibold', state === 'offline' || message ? 'text-warning' : 'text-text-muted')}>
       {message ?? (state === 'saving' ? 'Saving…' : state === 'saved' ? `All changes saved · ${time}` : '')}
     </span>
+  );
+}
+
+/** Approving a JRA is a digital signature: show exactly what is being signed, and who signs, before it happens. */
+function SignDialog({ score, level, flags: fl, signer, form, ticket, onCancel, onSign }: {
+  score: number; level: string; flags: { id: string; requirement: string | null; approver: string | null }[]; signer: string; form: string; ticket: string | null;
+  onCancel: () => void; onSign: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onCancel(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [busy, onCancel]);
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="sign-title" className="fixed inset-0 z-(--z-modal) grid place-items-center bg-bg/70 p-4">
+      <Card className="w-full max-w-lg shadow-pop">
+        <h2 id="sign-title" className="flex items-center gap-2 font-display text-lg font-bold"><ShieldCheck aria-hidden className="size-5" />Sign this JRA</h2>
+        <p className="mt-1 text-sm text-text-muted">Approving records a digital signature with a fingerprint of these answers. If the answers change later, the signature shows it.</p>
+        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <dt className="label-caps text-text-muted">Job</dt><dd className="font-mono">{ticket ?? 'no ticket'} · {form}</dd>
+          <dt className="label-caps text-text-muted">Risk index</dt><dd className="font-semibold">{score}</dd>
+          <dt className="label-caps text-text-muted">Approval level</dt><dd className="font-semibold">{level}</dd>
+          <dt className="label-caps text-text-muted">Signing as</dt><dd className="font-semibold">{signer}</dd>
+        </dl>
+        {fl.length > 0 && (
+          <div className="mt-4 rounded-md bg-warning-subtle p-3 text-sm text-warning">
+            <p className="font-semibold">{fl.length} answer{fl.length === 1 ? '' : 's'} need{fl.length === 1 ? 's' : ''} more than a signature</p>
+            <ul className="mt-1 space-y-0.5">{fl.map((f) => <li key={f.id}><span className="font-mono">{f.id}</span> {f.requirement ?? ''}{f.approver ? ` → ${f.approver}` : ''}</li>)}</ul>
+          </div>
+        )}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button onClick={onCancel} disabled={busy}>Cancel</Button>
+          <Button variant="primary" loading={busy} onClick={async () => { setBusy(true); try { await onSign(); } finally { setBusy(false); } }}><ShieldCheck aria-hidden className="size-4" />Approve and sign</Button>
+        </div>
+      </Card>
+    </div>
   );
 }

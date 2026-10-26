@@ -71,7 +71,7 @@ export function MultiSelect({ label, options, value, onChange }: { label: string
       </button>
       {open && (
         <div id={id} role="group" aria-label={label} className="absolute top-9 left-0 z-40 w-64 rounded-md border border-border bg-surface p-2 shadow-pop">
-          {options.length > 8 && <input aria-label={`Search ${label.toLowerCase()}`} autoFocus className={cx(inputClass, 'mb-2 h-8')} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />}
+          {options.length > 8 && <input aria-label={`Search ${label.toLowerCase()}`} autoFocus className={cx(inputClass, 'mb-2 h-(--layout-control-sm)')} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />}
           {!options.length && <p className="px-1 py-2 text-xs text-text-subtle">No values in your jobs yet.</p>}
           <ul className="max-h-64 overflow-y-auto">
             {shown.map((o) => (

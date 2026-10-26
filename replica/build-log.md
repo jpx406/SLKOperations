@@ -888,3 +888,43 @@ Every label, message and empty state was written here. No code, assets or copy f
   - Tests: 204 pass. Design checker: only the banner edge the owner chose to keep.
 - **Not done:** the Schedule's timeline cells stay below 44px (an office screen). Charts were already labelled on the bars, so they were left as they are.
 - **Dev note:** vite's pre-bundled dependency cache got stuck mid-rebuild, and every page load hung. Restarting with `--force` fixed it.
+
+## Milestone 6k: critique, redo of the two weakest screens, polish
+
+**Owner request, 2026-10-26:** critique each screen, redo the two weakest, polish all.
+
+- **Critique:** two isolated assessments, a design review of 21 screens at desk and touch tablet, and the Impeccable detector with browser overlays. The median score was about 28.5/40; the weakest were Reconciliation (25) and the Job board (26). The snapshot is in `.impeccable/critique/`.
+- **Redo: Reconciliation.** A status header in three states replaces four zero tiles that sat above a "Nothing to reconcile" message, shown even when no check had ever run:
+  - "Never checked", with "Run first check";
+  - "All checked jobs agree", with the check time;
+  - "N open findings", with the counts.
+  - Findings are grouped by severity in one card with count chips.
+  - Coverage is one table with a unit / SDM switch. Units with jobs but no WIREGUARD runs say "No WIREGUARD runs".
+  - The morning digest is linked from the header.
+- **Redo: Job board.**
+  - Dense rows replace 121 tall cards, grouped as Needs attention / Ongoing / Planned / Closed (Closed collapses past 20).
+  - Each flagged job says why ("Incomplete: Prep 0% · Execution 67% · Closure 14%", "Missing unit and start date"). There is a "Needs attention only" switch with a count, and status filters as chips.
+  - Stage values show as numbers plus bars. SDM names come from the SDM list. The page is 9,458px tall instead of 13,309px at desk.
+- **Polish:**
+  - **JRA:**
+    - approving opens "Sign this JRA": job, risk index, approval level, who signs, and the answers needing MOC / exemption;
+    - Reject sits behind "Reject instead…";
+    - the "doesn't need a JRA" banner hides once the JRA is sent or decided;
+    - the counts line reads plainly.
+  - **Touch sizes:** 64 fixed control heights across 18 files now follow the density tokens; 24–28px controls keep their desk size and grow to 44px under touch.
+  - **Colour, type and buttons:**
+    - 10px labels moved onto the type scale;
+    - Wires shows "none on file" muted (red only for expired or failed MPI) and "1 alert" in words;
+    - the Knowledge Hub toolbox slide drops its side stripe;
+    - disabled primary buttons are a quiet surface with readable text.
+  - **Layout and copy:**
+    - crew groups in Preparation use rules instead of boxes inside the card;
+    - the "No one holds the SDM role yet" hint shows only when no SDM is set;
+    - the AI budget "USD" sits next to its input.
+- **Detector:** 20 → 14 findings. The rest are Word and email export templates, the schedule bar encodings, and the banner style the owner chose to keep.
+- **Not done here** (planned for the owner's step 4, or later):
+  - reduced-motion for the spinner and skeleton animations;
+  - the Execution layout (job log above the computed tiles);
+  - Statistics targets on the gauges;
+  - the 8 Min. Facts backlog in its empty state.
+- **Verified:** tests 204; screenshots in `design/after/` (desktop 1440 dark, phone 390 touch) compared against `design/before/`.

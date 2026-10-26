@@ -206,7 +206,7 @@ export function Schedule() {
           <Button size="sm" onClick={() => setParams({ month: shiftMonth(month, 1) })} aria-label="Next month"><ChevronRight aria-hidden className="size-4" /></Button>
           <Button size="sm" onClick={() => setParams({})}>Today</Button>
           {canBlock && <Button size="sm" onClick={() => setBlockDialog({})}><Plus aria-hidden className="size-4" />Unit block</Button>}
-          {canCreate && <Link to="/operation/jobs/new" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-semibold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />New job</Link>}
+          {canCreate && <Link to="/operation/jobs/new" className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-semibold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />New job</Link>}
         </>
       }>
         <span id="sched-title">Unit schedule</span>
@@ -216,10 +216,10 @@ export function Schedule() {
         <label className="inline-flex items-center gap-2 text-text-muted">
           <input type="checkbox" checked={showCanceled} onChange={(e) => setShowCanceled(e.target.checked)} /> Show canceled jobs
         </label>
-        <select aria-label="Show jobs of one SDM" className={inputSized('h-8 w-48')} value={only.sdm} onChange={(e) => setOnly({ ...only, sdm: e.target.value })}>
+        <select aria-label="Show jobs of one SDM" className={inputSized('h-(--layout-control-sm) w-48')} value={only.sdm} onChange={(e) => setOnly({ ...only, sdm: e.target.value })}>
           <option value="">All SDMs</option>{(sdmsQ.data ?? []).map((m) => <option key={m.username} value={m.username}>{m.full_name}</option>)}
         </select>
-        <select aria-label="Show jobs of one account" className={inputSized('h-8 w-44')} value={only.account} onChange={(e) => setOnly({ ...only, account: e.target.value })}>
+        <select aria-label="Show jobs of one account" className={inputSized('h-(--layout-control-sm) w-44')} value={only.account} onChange={(e) => setOnly({ ...only, account: e.target.value })}>
           <option value="">All accounts</option>{[...new Set((q.data?.jobs ?? []).map((j) => j.location).filter(Boolean) as string[])].sort().map((a) => <option key={a}>{a}</option>)}
         </select>
         <span className="flex flex-wrap gap-3 text-xs text-text-muted" aria-label="Legend">

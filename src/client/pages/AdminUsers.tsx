@@ -40,7 +40,7 @@ export function AdminUsers() {
       <div role="tablist" aria-label="Users and roles" className="mb-4 flex flex-wrap gap-2">
         {tabs.map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setParams({ tab: k }, { replace: true })}
-            className={cx('h-8 rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+            className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
             {label}
           </button>
         ))}
@@ -130,7 +130,7 @@ function People() {
                     </th>
                     <td className="px-3 py-2">
                       <label className="sr-only" htmlFor={`role-${u.username}`}>Role for {u.full_name}</label>
-                      <select id={`role-${u.username}`} className={`${inputClass} h-8 w-44`} value={u.role} disabled={self || update.isPending}
+                      <select id={`role-${u.username}`} className={`${inputClass} h-(--layout-control-sm) w-44`} value={u.role} disabled={self || update.isPending}
                         title={self ? 'You cannot change your own role' : undefined}
                         onChange={(e) => update.mutate({ username: u.username, patch: { role: e.target.value as Role } })}>
                         {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}

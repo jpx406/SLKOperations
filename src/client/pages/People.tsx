@@ -147,9 +147,9 @@ export function Competency() {
       {comp && data && (
         <>
           <div className="mb-4 flex flex-wrap gap-2 print:hidden">
-            <select aria-label="Service" className={inputSized('h-8 w-56')} value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{comp.services.map((s) => <option key={s}>{s}</option>)}</select>
-            <select aria-label="Person" className={inputSized('h-8 w-52')} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">All people</option>{data.people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select>
-            <select aria-label="Role" className={inputSized('h-8 w-48')} value={role} onChange={(e) => setRole(e.target.value)}>
+            <select aria-label="Service" className={inputSized('h-(--layout-control-sm) w-56')} value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{comp.services.map((s) => <option key={s}>{s}</option>)}</select>
+            <select aria-label="Person" className={inputSized('h-(--layout-control-sm) w-52')} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">All people</option>{data.people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select>
+            <select aria-label="Role" className={inputSized('h-(--layout-control-sm) w-48')} value={role} onChange={(e) => setRole(e.target.value)}>
               <option value="">All roles</option><option value="slickline_supervisor">Supervisors</option><option value="slickline_operator">Operators</option><option value="assistant_operator">Assistant operators</option><option value="helper">Helpers</option>
             </select>
           </div>

@@ -44,7 +44,7 @@ export function EightMinFactsList() {
   const navigate = useNavigate();
   return (
     <section aria-labelledby="emf-title">
-      <PageTitle aside={me?.menus.eight_min_facts?.edit && <Link to="/operation/8-min-facts/new" className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3.5 text-sm font-semibold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />New 8 Min. Facts</Link>}>
+      <PageTitle aside={me?.menus.eight_min_facts?.edit && <Link to="/operation/8-min-facts/new" className="inline-flex h-(--layout-control-md) items-center gap-2 rounded-md bg-accent px-3.5 text-sm font-semibold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />New 8 Min. Facts</Link>}>
         <span id="emf-title">8 Min. Facts</span>
       </PageTitle>
       <p className="-mt-3 mb-4 text-sm text-text-muted">One report per failure or NPT event, per field ticket. Saving updates the job’s NPT and the Failure Roster; print, Word and email from the report.</p>
@@ -52,13 +52,13 @@ export function EightMinFactsList() {
         <div role="radiogroup" aria-label="Status" className="flex gap-1.5">
           {[['', 'All'], ['saved', 'Saved'], ['sent', 'Sent']].map(([v, l]) => (
             <button key={v} type="button" role="radio" aria-checked={status === v} onClick={() => set('status', v)}
-              className={cx('h-8 rounded-pill border px-3.5 text-sm font-semibold', status === v ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+              className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', status === v ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
         </div>
         <label className="relative ml-auto">
           <span className="sr-only">Search log number, title, well or ticket</span>
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-          <input className={inputSized('h-8 w-64 pl-8')} placeholder="Log #, title, well, ticket" defaultValue={q} onChange={(e) => set('q', e.target.value.trim())} />
+          <input className={inputSized('h-(--layout-control-sm) w-64 pl-8')} placeholder="Log #, title, well, ticket" defaultValue={q} onChange={(e) => set('q', e.target.value.trim())} />
         </label>
       </div>
       {list.isPending && <Skeleton className="h-64" />}
@@ -174,7 +174,7 @@ export function EightMinFactsEditor() {
   return (
     <section aria-labelledby="emf-ed-title" className="emf-print">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link to="/operation/8-min-facts" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3 print:hidden"><ArrowLeft aria-hidden className="size-4" />8 Min. Facts</Link>
+        <Link to="/operation/8-min-facts" className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3 print:hidden"><ArrowLeft aria-hidden className="size-4" />8 Min. Facts</Link>
         <h1 id="emf-ed-title" className="min-w-0 truncate font-display text-xl font-extrabold uppercase">{head.title || (isNew ? 'New 8 Min. Facts' : report?.title)}</h1>
         {report && <span className="font-mono text-sm text-text-muted">{report.log_no} · v{report.current_version}</span>}
         <span role="status" aria-live="polite" className="text-xs font-semibold">
@@ -333,7 +333,7 @@ function FailedItems({ items, readOnly, idPrefix, onChange }: { items: string[];
       </ul>
       {!readOnly && (
         <div className="flex gap-2 print:hidden">
-          <input id={`${idPrefix}-item`} className={cx(inputClass, 'h-8')} placeholder="e.g. 0.125 in wire, rope socket" value={draft} onChange={(e) => setDraft(e.target.value)}
+          <input id={`${idPrefix}-item`} className={cx(inputClass, 'h-(--layout-control-sm)')} placeholder="e.g. 0.125 in wire, rope socket" value={draft} onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
           <Button size="sm" onClick={add} disabled={!draft.trim()}><Plus aria-hidden className="size-3.5" />Add item</Button>
         </div>

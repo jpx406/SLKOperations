@@ -6,7 +6,7 @@ export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Bool
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 const VARIANT: Record<Variant, string> = {
-  primary: 'bg-accent text-on-accent hover:bg-accent-hover',
+  primary: 'bg-accent text-on-accent hover:bg-accent-hover disabled:bg-surface-3 disabled:text-text-muted',
   secondary: 'bg-surface-2 text-text border border-border-strong hover:bg-surface-3',
   ghost: 'bg-transparent text-text-muted hover:text-text hover:bg-surface-2',
   danger: 'bg-transparent text-danger border border-danger hover:bg-danger-subtle',
@@ -22,7 +22,7 @@ export function Button({ variant = 'secondary', size = 'md', loading, children, 
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cx('inline-flex items-center justify-center gap-2 rounded-md font-semibold whitespace-nowrap transition-colors duration-(--motion-fast)',
-        'disabled:opacity-50 disabled:cursor-not-allowed', VARIANT[variant], SIZE[size], className)}
+        'disabled:cursor-not-allowed', variant !== 'primary' && 'disabled:opacity-50', VARIANT[variant], SIZE[size], className)}
     >
       {loading && <Loader2 aria-hidden className="size-4 animate-spin" />}
       {children}

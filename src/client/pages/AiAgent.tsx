@@ -130,9 +130,12 @@ function AiAdmin() {
             {q.data.models.map((m) => <option key={m.id} value={m.id}>{m.label} (${m.inUsd} / ${m.outUsd} per M tokens)</option>)}
           </select>
         </Field>
-        <Field id="ai-budget" label="Monthly budget" unit="USD" hint="Shared with the help assistant. Resets on the 1st (UTC).">
-          <input id="ai-budget" type="number" min={0} step={1} className={inputSized('w-32')} value={form.monthly_budget_cents / 100}
-            onChange={(e) => setForm({ ...form, monthly_budget_cents: Math.round(Number(e.target.value) * 100) })} />
+        <Field id="ai-budget" label="Monthly budget (USD)" hint="Shared with the help assistant. Resets on the 1st (UTC).">
+          <span className="flex items-center gap-2">
+            <input id="ai-budget" type="number" min={0} step={1} className={inputSized('w-32')} value={form.monthly_budget_cents / 100}
+              onChange={(e) => setForm({ ...form, monthly_budget_cents: Math.round(Number(e.target.value) * 100) })} />
+            <span aria-hidden className="font-mono text-xs text-text-subtle">USD</span>
+          </span>
         </Field>
         <Field id="ai-daily" label="Messages per person per day" hint="Resets at midnight UTC.">
           <input id="ai-daily" type="number" min={0} step={1} className={inputSized('w-24')} value={form.messages_per_user_day}

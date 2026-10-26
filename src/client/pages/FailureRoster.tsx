@@ -106,12 +106,12 @@ export function FailureRoster() {
       <FilterBar optionsPath="/filter-options" withStatus={false} />
       <div className="mb-4 flex flex-wrap gap-2 print:hidden">
         <label className="flex items-center gap-2 text-xs text-text-muted">Severity
-          <select className={inputSized('h-8 w-40')} value={severity} onChange={(e) => setP('severity', e.target.value)}>
+          <select className={inputSized('h-(--layout-control-sm) w-40')} value={severity} onChange={(e) => setP('severity', e.target.value)}>
             <option value="">All</option>{SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}<option value="none">No 8MF (added by hand)</option>
           </select>
         </label>
         <label className="flex items-center gap-2 text-xs text-text-muted">Action
-          <select className={inputSized('h-8 w-36')} value={action} onChange={(e) => setP('action', e.target.value)}>
+          <select className={inputSized('h-(--layout-control-sm) w-36')} value={action} onChange={(e) => setP('action', e.target.value)}>
             <option value="">All</option>{Object.entries(ACTION_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </label>
@@ -171,7 +171,7 @@ export function FailureRoster() {
                   <td className="px-3 py-2 font-mono text-xs">{r.job_id ? <Link className="underline" to={`/operation/jobs/${r.job_id}/execution`}>{r.ticket_no ?? 'no ticket'}</Link> : '—'}</td>
                   <td className="px-3 py-2">{r.category ?? '—'}</td>
                   <td className="px-3 py-2">
-                    <select aria-label={`Action status for ${r.well ?? 'failure'} on ${r.occurred_on}`} className={cx(inputClass, 'h-8 w-36', r.action_status === 'open' && 'text-warning', r.action_status === 'closed' && 'text-success')}
+                    <select aria-label={`Action status for ${r.well ?? 'failure'} on ${r.occurred_on}`} className={cx(inputClass, 'h-(--layout-control-sm) w-36', r.action_status === 'open' && 'text-warning', r.action_status === 'closed' && 'text-success')}
                       disabled={!canEdit || patch.isPending} value={r.action_status} onChange={(e) => patch.mutate({ id: r.id, body: { action_status: e.target.value } })}>
                       {Object.entries(ACTION_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </select>

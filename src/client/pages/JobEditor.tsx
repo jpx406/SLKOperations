@@ -250,7 +250,7 @@ export function JobEditor() {
               {select('status', 'Job status', ['planned', 'ongoing', 'completed', 'canceled'].map((s) => ({ value: s, label: s[0].toUpperCase() + s.slice(1) })))}
               {select('unit_number', 'Slickline unit', (L?.units ?? []).map((u) => ({ value: u.unit_number, label: `${u.unit_number} · ${u.country}` })), 'From WIREGUARD')}
               {select('sdm_username', 'SDM', (sdms.data ?? []).map((s) => ({ value: s.username, label: s.full_name })),
-                sdms.data && !sdms.data.length ? 'No one holds the SDM role yet' : undefined)}
+                sdms.data && !sdms.data.length && !job?.sdm_username ? 'No one holds the SDM role yet' : undefined)}
               {text('start_date', 'Start date', { type: 'date' })}
               {text('end_date', 'End date', { type: 'date' })}
               {select('location', 'Location (account)', (L?.locations ?? []).map((v) => ({ value: v, label: v })), 'From WIREGUARD')}

@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Link2, Play, RotateCcw, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CircleDashed, ExternalLink, Link2, Play, RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { CHECKS, type CheckCode, type FieldDiff, type Severity } from '../../shared/recon';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
+import { Banner, Button, Card, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
 interface FindingRow {
   id: string; check_code: CheckCode; severity: Severity; status: 'open' | 'explained' | 'resolved'; job_id: string | null;
@@ -37,7 +37,7 @@ function DigestPreview() {
   if (!q.data || !q.data.receives) return null;
   const { digest, email, mailer } = q.data;
   return (
-    <details className="mt-8 rounded-lg border border-border bg-surface p-4">
+    <details id="digest" className="mt-8 rounded-lg bg-surface p-4 shadow-card">
       <summary className="cursor-pointer font-display text-lg font-bold">Your morning digest</summary>
       <p className="mt-2 text-sm text-text-muted">
         Sent after the nightly check (04:00 Riyadh){email ? ` to ${email}` : ''}.
@@ -54,6 +54,44 @@ function SeverityPill({ s }: { s: Severity }) {
   return <span className={cx('label-caps inline-flex h-5.5 items-center justify-self-start rounded-pill px-2', SEV_STYLE[s])}>{s}</span>;
 }
 
+const SEVERITIES: Severity[] = ['high', 'medium', 'low', 'info'];
+
+/**
+ * Where reconciliation stands, in words: never checked, all agree, or N open findings. A screen that says "all agree"
+ * before any check has run teaches people to trust a check that never happened, so the states are explicit.
+ */
+function StatusHeader({ s, canEdit, running, onRun, gaps }: { s: Summary; canEdit: boolean; running: boolean; onRun: () => void; gaps: number }) {
+  const total = SEVERITIES.reduce((a, k) => a + (s.open[k] ?? 0), 0);
+  if (!s.lastRun) {
+    return (
+      <div className="mb-5 rounded-lg border border-dashed border-border-strong bg-surface p-5">
+        <p className="flex items-center gap-2 font-display text-lg font-bold"><CircleDashed aria-hidden className="size-5 text-text-muted" />Never checked</p>
+        <p className="mt-1 max-w-2xl text-sm text-text-muted">
+          No comparison with WIREGUARD has run yet, so nothing below has been verified. Runs from {formatDate(s.from)} onward will be checked.
+          {!canEdit && ' Ask an SDM or manager to run the first check.'}
+        </p>
+        {canEdit && <Button className="mt-3" variant="primary" loading={running} onClick={onRun}><Play aria-hidden className="size-4" />Run first check</Button>}
+      </div>
+    );
+  }
+  const counts = SEVERITIES.filter((k) => s.open[k]).map((k) => `${s.open[k]} ${k}`).join(' · ');
+  return (
+    <Card className="mb-5">
+      {total === 0 ? (
+        <p className="flex items-center gap-2 font-semibold text-success"><CheckCircle2 aria-hidden className="size-5" />All checked jobs agree with WIREGUARD</p>
+      ) : (
+        <p className="flex items-center gap-2 font-semibold text-warning"><AlertTriangle aria-hidden className="size-5" />{total} open finding{total === 1 ? '' : 's'}<span className="font-normal text-text-muted">· {counts}</span></p>
+      )}
+      <p className="mt-1 font-mono text-xs text-text-muted">Last check {when(s.lastRun.occurred_at)} Riyadh by {s.lastRun.username} · {s.lastRun.summary}</p>
+      {gaps > 0 && (
+        <p className="mt-2 flex items-center gap-2 text-sm text-warning"><AlertTriangle aria-hidden className="size-4" />
+          {gaps} unit{gaps === 1 ? ' has' : 's have'} SLK Ops jobs in {s.month} but no WIREGUARD runs. See coverage below.</p>
+      )}
+      <p className="mt-2 text-xs"><a className="text-text-muted underline hover:text-text" href="#digest" onClick={() => { const d = document.getElementById('digest') as HTMLDetailsElement | null; if (d) d.open = true; }}>Preview your morning digest</a></p>
+    </Card>
+  );
+}
+
 export function Reconciliation() {
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
@@ -64,6 +102,7 @@ export function Reconciliation() {
   const severity = params.get('severity') ?? '';
   const unit = params.get('unit') ?? '';
   const sdm = params.get('sdm') ?? '';
+  const by = params.get('by') === 'sdm' ? 'sdm' : 'unit';
   const month = params.get('month') ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }).slice(0, 7);
   const open = params.get('finding');
   const set = (k: string, v: string) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); setParams(n, { replace: true }); };
@@ -78,138 +117,143 @@ export function Reconciliation() {
     onSuccess: (r) => { setNotice({ tone: 'success', text: `Checked ${r.jobs} jobs against ${r.runs} WIREGUARD runs: ${r.findings} findings, ${r.resolved} resolved since the last check.` }); qc.invalidateQueries({ queryKey: ['recon'] }); qc.invalidateQueries({ queryKey: ['recon-summary'] }); },
     onError: (e: ApiError) => setNotice({ tone: 'danger', text: e.message }),
   });
+  const s = summary.data;
+  const checked = !!s?.lastRun;
+  const gaps = (s?.units ?? []).filter((u) => u.jobs > 0 && u.runs === 0).length;
+  const filtered = !!(check || severity || unit || sdm || status !== 'open');
+  const groups = SEVERITIES.map((k) => ({ k, rows: (findings.data ?? []).filter((f) => f.severity === k) })).filter((g) => g.rows.length);
+  const chip = (on: boolean) => cx('inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-pill border px-3 text-sm font-semibold', on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
 
   return (
     <section aria-labelledby="recon-title">
-      <PageTitle aside={canEdit && <Button variant="primary" loading={run.isPending} onClick={() => run.mutate()}><Play aria-hidden className="size-4" />Check now</Button>}>
+      <PageTitle aside={canEdit && checked && <Button variant="primary" loading={run.isPending} onClick={() => run.mutate()}><Play aria-hidden className="size-4" />Check now</Button>}>
         <span id="recon-title">Reconciliation</span>
       </PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">
         Compares SLK Ops jobs with the runs logged in WIREGUARD. Fixes to a run are made in WIREGUARD; here you link runs to the right job or explain a difference.
-        {summary.data && <> Runs from {formatDate(summary.data.from)} onward are checked. Last check: {summary.data.lastRun ? `${when(summary.data.lastRun.occurred_at)} by ${summary.data.lastRun.username}` : 'not yet'}.</>}
       </p>
       {notice && <div className="mb-4"><Banner tone={notice.tone} action={<Button size="sm" variant="ghost" onClick={() => setNotice(null)} aria-label="Dismiss"><X aria-hidden className="size-4" /></Button>}>{notice.text}</Banner></div>}
+      {summary.isPending && <Skeleton className="mb-5 h-24" />}
+      {s && <StatusHeader s={s} canEdit={canEdit} running={run.isPending} onRun={() => run.mutate()} gaps={gaps} />}
 
-      <dl className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {(['high', 'medium', 'low'] as Severity[]).map((s) => (
-          <button key={s} onClick={() => { set('severity', severity === s ? '' : s); }} aria-pressed={severity === s}
-            className={cx('rounded-md border bg-surface p-3 text-left hover:border-border-strong', severity === s ? 'border-accent' : 'border-border')}>
-            <dt className="label-caps text-text-muted">Open · {s}</dt>
-            <dd className="mt-1 font-display text-kpi leading-none font-bold">{summary.data?.open[s] ?? 0}</dd>
-          </button>
-        ))}
-        <div className="rounded-md border border-border bg-surface p-3">
-          <dt className="label-caps text-text-muted">Open · all</dt>
-          <dd className="mt-1 font-display text-kpi leading-none font-bold">{Object.values(summary.data?.open ?? {}).reduce((a, b) => a + (b ?? 0), 0)}</dd>
-        </div>
-      </dl>
+      {checked && (
+        <>
+          <h2 className="label-caps mb-2 text-text-muted">Findings</h2>
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <div role="group" aria-label="Severity" className="flex flex-wrap gap-1.5">
+              <button type="button" aria-pressed={!severity} className={chip(!severity)} onClick={() => set('severity', '')}>All</button>
+              {SEVERITIES.filter((k) => k !== 'info' || s?.open.info).map((k) => (
+                <button key={k} type="button" aria-pressed={severity === k} className={chip(severity === k)} onClick={() => set('severity', severity === k ? '' : k)}>
+                  <span className="capitalize">{k}</span><span className="font-mono">{s?.open[k] ?? 0}</span>
+                </button>
+              ))}
+            </div>
+            <select aria-label="Status" className={inputSized('h-(--layout-control-sm) w-36')} value={status} onChange={(e) => set('status', e.target.value === 'open' ? '' : e.target.value)}>
+              <option value="open">Open</option><option value="explained">Explained</option><option value="resolved">Resolved</option><option value="all">All statuses</option>
+            </select>
+            <select aria-label="Check" className={inputSized('h-(--layout-control-sm) w-64')} value={check} onChange={(e) => set('check', e.target.value)}>
+              <option value="">All checks</option>
+              {(Object.keys(CHECKS) as CheckCode[]).map((k) => <option key={k} value={k}>{CHECKS[k].label}</option>)}
+            </select>
+            <select aria-label="Unit" className={inputSized('h-(--layout-control-sm) w-32')} value={unit} onChange={(e) => set('unit', e.target.value)}>
+              <option value="">All units</option>
+              {(s?.units ?? []).map((u) => <option key={u.unit_number} value={u.unit_number}>{u.unit_number}</option>)}
+            </select>
+            <select aria-label="SDM" className={inputSized('h-(--layout-control-sm) w-44')} value={sdm} onChange={(e) => set('sdm', e.target.value)}>
+              <option value="">All SDMs</option>
+              {(s?.sdms ?? []).map((x) => <option key={x.sdm} value={x.sdm}>{x.name}</option>)}
+            </select>
+            {filtered && <Button size="sm" variant="ghost" onClick={() => setParams({ month })}>Clear filters</Button>}
+          </div>
 
-      <div className="mb-3 flex flex-wrap items-end gap-3">
-        <Field id="f-status" label="Status">
-          <select id="f-status" className={`${inputClass} w-36`} value={status} onChange={(e) => set('status', e.target.value === 'open' ? '' : e.target.value)}>
-            <option value="open">Open</option><option value="explained">Explained</option><option value="resolved">Resolved</option><option value="all">All</option>
-          </select>
-        </Field>
-        <Field id="f-check" label="Check">
-          <select id="f-check" className={`${inputClass} w-72`} value={check} onChange={(e) => set('check', e.target.value)}>
-            <option value="">All checks</option>
-            {(Object.keys(CHECKS) as CheckCode[]).map((k) => <option key={k} value={k}>{CHECKS[k].label}</option>)}
-          </select>
-        </Field>
-        <Field id="f-unit" label="Unit">
-          <select id="f-unit" className={`${inputClass} w-32`} value={unit} onChange={(e) => set('unit', e.target.value)}>
-            <option value="">All units</option>
-            {(summary.data?.units ?? []).map((u) => <option key={u.unit_number} value={u.unit_number}>{u.unit_number}</option>)}
-          </select>
-        </Field>
-        <Field id="f-sdm" label="SDM">
-          <select id="f-sdm" className={`${inputClass} w-48`} value={sdm} onChange={(e) => set('sdm', e.target.value)}>
-            <option value="">All SDMs</option>
-            {(summary.data?.sdms ?? []).map((x) => <option key={x.sdm} value={x.sdm}>{x.name}</option>)}
-          </select>
-        </Field>
-        {(check || severity || unit || sdm || status !== 'open') && <Button variant="ghost" onClick={() => setParams({ month })}>Clear filters</Button>}
-      </div>
-
-      {findings.isPending && <div className="flex flex-col gap-2">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-16" />)}</div>}
-      {findings.isError && <Banner tone="danger" action={<Button size="sm" onClick={() => findings.refetch()}>Retry</Button>}>{findings.error.message}</Banner>}
-      {findings.data?.length === 0 && (
-        <EmptyState title={status === 'open' && !check && !severity && !unit ? 'Nothing to reconcile' : 'No findings match'}>
-          {status === 'open' && !check && !severity && !unit ? 'Every checked job agrees with WIREGUARD. Run a check after new runs are logged.' : 'Try another status, check or unit.'}
-        </EmptyState>
+          {findings.isPending && <Skeleton className="h-40" />}
+          {findings.isError && <Banner tone="danger" action={<Button size="sm" onClick={() => findings.refetch()}>Retry</Button>}>{findings.error.message}</Banner>}
+          {findings.data?.length === 0 && (
+            <p className="rounded-lg bg-surface px-4 py-3 text-sm text-text-muted">{filtered ? 'No findings match these filters.' : 'No open findings.'}</p>
+          )}
+          {groups.length > 0 && (
+            <Card className="p-0!">
+              {groups.map((g) => (
+                <section key={g.k} aria-label={`${g.k} severity`}>
+                  <h3 className="label-caps flex items-center gap-2 border-b border-border px-4 py-2 text-text-muted"><SeverityPill s={g.k} /><span className="font-mono">{g.rows.length}</span></h3>
+                  <ul className="divide-y divide-border">
+                    {g.rows.map((f) => (
+                      <li key={f.id}>
+                        <button onClick={() => set('finding', f.id)} aria-haspopup="dialog"
+                          className={cx('grid min-h-(--layout-control-lg) w-full grid-cols-1 items-center gap-x-4 gap-y-1 px-4 py-2.5 text-left hover:bg-surface-2 md:grid-cols-[minmax(0,1fr)_minmax(0,16rem)_9rem]', f.status !== 'open' && 'text-text-muted')}>
+                          <span className="min-w-0">
+                            <span className="block truncate font-semibold">{CHECKS[f.check_code].label}</span>
+                            <span className="block truncate text-sm text-text-muted">{f.detail.summary}</span>
+                          </span>
+                          <span className="min-w-0 truncate text-sm">
+                            {f.job_id ? <>{f.ticket_no ?? 'No ticket'} · {f.unit_number ?? '—'} · {f.start_date ? formatDate(f.start_date) : '—'}</> : <span className="text-text-subtle">{f.wg_run_ids.length} WIREGUARD run{f.wg_run_ids.length > 1 ? 's' : ''}, no job</span>}
+                          </span>
+                          <span className="label-caps text-text-subtle md:text-right">{f.status === 'explained' ? 'explained' : f.status === 'resolved' ? 'resolved' : `seen ${when(f.last_seen_at)}`}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </Card>
+          )}
+        </>
       )}
-      {!!findings.data?.length && (
-        <ul className="flex flex-col gap-2" aria-label="Findings">
-          {findings.data.map((f) => (
-            <li key={f.id}>
-              <button onClick={() => set('finding', f.id)} aria-haspopup="dialog"
-                className={cx('grid w-full grid-cols-1 items-center gap-2 rounded-lg border bg-surface p-3 text-left hover:border-border-strong md:grid-cols-[6rem_minmax(0,1fr)_minmax(0,16rem)_8rem]',
-                  f.status !== 'open' ? 'border-border text-text-muted' : 'border-border')}>
-                <SeverityPill s={f.severity} />
-                <span className="min-w-0">
-                  <span className="block truncate font-semibold">{CHECKS[f.check_code].label}</span>
-                  <span className="block truncate text-sm text-text-muted">{f.detail.summary}</span>
-                </span>
-                <span className="min-w-0 truncate text-sm">
-                  {f.job_id ? <>{f.ticket_no ?? 'No ticket'} · {f.unit_number ?? '—'} · {f.start_date ? formatDate(f.start_date) : '—'}</> : <span className="text-text-subtle">{f.wg_run_ids.length} WIREGUARD run{f.wg_run_ids.length > 1 ? 's' : ''}, no job</span>}
-                </span>
-                <span className="label-caps text-right text-text-subtle">{f.status === 'explained' ? 'explained' : f.status === 'resolved' ? 'resolved' : `seen ${when(f.last_seen_at)}`}</span>
-              </button>
-            </li>
+
+      <div className="mt-8 mb-2 flex flex-wrap items-center gap-3">
+        <h2 className="label-caps text-text-muted">Coverage in</h2>
+        <input type="month" aria-label="Month" className={inputSized('h-(--layout-control-sm) w-44')} value={month} onChange={(e) => set('month', e.target.value)} />
+        <div role="group" aria-label="Group coverage by" className="ml-auto flex overflow-hidden rounded-md border border-border-strong">
+          {(['unit', 'sdm'] as const).map((k) => (
+            <button key={k} type="button" aria-pressed={by === k} onClick={() => set('by', k === 'unit' ? '' : k)}
+              className={cx('h-(--layout-control-sm) px-3 text-xs font-semibold', by === k ? 'bg-accent text-on-accent' : 'text-text-muted hover:bg-surface-2')}>{k === 'unit' ? 'By unit' : 'By SDM'}</button>
           ))}
-        </ul>
-      )}
-
-      <h2 className="mt-8 mb-3 flex flex-wrap items-center gap-3 font-display text-lg font-bold">
-        Jobs and runs per unit
-        <span className="block w-44"><input type="month" aria-label="Month" className={inputClass} value={month} onChange={(e) => set('month', e.target.value)} /></span>
-      </h2>
-      {summary.data && (summary.data.units.length ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        </div>
+      </div>
+      {s && (by === 'unit' ? (s.units.length ? (
+        <Card className="overflow-x-auto p-0!">
           <table className="w-full text-sm">
             <caption className="sr-only">SLK Ops jobs and WIREGUARD runs per unit in {month}</caption>
-            <thead className="bg-surface-2"><tr className="label-caps text-left text-text-muted">
-              <th scope="col" className="px-3 py-2">Unit</th><th scope="col" className="px-3 py-2 text-right">SLK Ops jobs</th>
-              <th scope="col" className="px-3 py-2 text-right">WIREGUARD runs</th><th scope="col" className="px-3 py-2 text-right">Open findings</th>
+            <thead><tr className="label-caps border-b border-border text-left text-text-muted">
+              <th scope="col" className="px-4 py-2">Unit</th><th scope="col" className="px-4 py-2 text-right">SLK Ops jobs</th>
+              <th scope="col" className="px-4 py-2 text-right">WIREGUARD runs</th><th scope="col" className="px-4 py-2 text-right">Open findings</th>
             </tr></thead>
             <tbody>
-              {summary.data.units.map((u) => (
-                <tr key={u.unit_number} className="border-t border-border">
-                  <th scope="row" className="px-3 py-2 text-left font-display font-bold">{u.unit_number}</th>
-                  <td className="px-3 py-2 text-right font-mono">{u.jobs}</td>
-                  <td className="px-3 py-2 text-right font-mono">{u.runs}</td>
-                  <td className="px-3 py-2 text-right">
-                    {u.open_findings ? <button className="font-mono text-warning underline" onClick={() => setParams({ unit: u.unit_number, month })}>{u.open_findings}</button> : <span className="font-mono text-text-subtle">0</span>}
-                  </td>
+              {s.units.map((u) => {
+                const gap = u.jobs > 0 && u.runs === 0;
+                return (
+                  <tr key={u.unit_number} className="border-t border-border">
+                    <th scope="row" className="px-4 py-2 text-left font-display font-bold">{u.unit_number}</th>
+                    <td className="px-4 py-2 text-right font-mono">{u.jobs}</td>
+                    <td className="px-4 py-2 text-right">{gap ? <span className="font-semibold text-warning">0 · No WIREGUARD runs</span> : <span className="font-mono">{u.runs}</span>}</td>
+                    <td className="px-4 py-2 text-right">
+                      {u.open_findings ? <button className="font-mono text-warning underline" onClick={() => setParams({ unit: u.unit_number, month })}>{u.open_findings}</button> : <span className="font-mono text-text-subtle">0</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      ) : <p className="rounded-lg bg-surface px-4 py-3 text-sm text-text-muted">No jobs or runs in {month}.</p>) : (s.sdms.length ? (
+        <Card className="overflow-x-auto p-0!">
+          <table className="w-full text-sm">
+            <caption className="sr-only">Jobs in {month} and open findings per SDM</caption>
+            <thead><tr className="label-caps border-b border-border text-left text-text-muted">
+              <th scope="col" className="px-4 py-2">SDM</th><th scope="col" className="px-4 py-2 text-right">Jobs in {month}</th><th scope="col" className="px-4 py-2 text-right">Open findings on their jobs</th>
+            </tr></thead>
+            <tbody>
+              {s.sdms.map((x) => (
+                <tr key={x.sdm} className="border-t border-border">
+                  <th scope="row" className="px-4 py-2 text-left font-semibold">{x.name}</th>
+                  <td className="px-4 py-2 text-right font-mono">{x.jobs}</td>
+                  <td className="px-4 py-2 text-right">{x.open_findings ? <button className="font-mono text-warning underline" onClick={() => setParams({ sdm: x.sdm, month })}>{x.open_findings}</button> : <span className="font-mono text-text-subtle">0</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      ) : <EmptyState title={`No jobs or runs in ${month}`} />)}
-
-      {summary.data && summary.data.sdms.length > 0 && (
-        <>
-          <h2 className="mt-8 mb-3 font-display text-lg font-bold">Per SDM</h2>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <caption className="sr-only">Jobs in {month} and open findings per SDM</caption>
-              <thead className="bg-surface-2"><tr className="label-caps text-left text-text-muted">
-                <th scope="col" className="px-3 py-2">SDM</th><th scope="col" className="px-3 py-2 text-right">Jobs in {month}</th><th scope="col" className="px-3 py-2 text-right">Open findings on their jobs</th>
-              </tr></thead>
-              <tbody>
-                {summary.data.sdms.map((x) => (
-                  <tr key={x.sdm} className="border-t border-border">
-                    <th scope="row" className="px-3 py-2 text-left font-semibold">{x.name}</th>
-                    <td className="px-3 py-2 text-right font-mono">{x.jobs}</td>
-                    <td className="px-3 py-2 text-right">{x.open_findings ? <button className="font-mono text-warning underline" onClick={() => setParams({ sdm: x.sdm, month })}>{x.open_findings}</button> : <span className="font-mono text-text-subtle">0</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+        </Card>
+      ) : <p className="rounded-lg bg-surface px-4 py-3 text-sm text-text-muted">No SDM has jobs in {month}.</p>))}
 
       <DigestPreview />
 

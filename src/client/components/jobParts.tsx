@@ -164,7 +164,7 @@ export function CrewPanel({ job, canEdit }: { job: Job; canEdit: boolean }) {
           const members = crew.filter((m) => m.crew_role === role);
           const short = headcount[head] > members.length;
           return (
-            <fieldset key={role} className="rounded-md border border-border p-3">
+            <fieldset key={role} className="border-t border-border pt-3">
               <legend className="px-1 text-xs font-semibold">{label}</legend>
               <label className="flex items-center gap-2 text-xs text-text-muted">
                 Planned

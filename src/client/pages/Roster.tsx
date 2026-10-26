@@ -37,12 +37,12 @@ export function Roster() {
         <div role="tablist" aria-label="Roster views" className="flex gap-1.5">
           {[['people', 'All people'], ['contacts', 'SLK contacts']].map(([k, l]) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => setParams(k === 'people' ? {} : { tab: k }, { replace: true })}
-              className={cx('h-8 rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+              className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
         </div>
         <label className="relative ml-auto"><span className="sr-only">Search name, EID or title</span>
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-          <input className={inputSized('h-8 w-56 pl-8')} placeholder="Name, EID, title" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className={inputSized('h-(--layout-control-sm) w-56 pl-8')} placeholder="Name, EID, title" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
       </div>
       {notice && <div className="mb-3"><Banner tone="success">{notice}</Banner></div>}

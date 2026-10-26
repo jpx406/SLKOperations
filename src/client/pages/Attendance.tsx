@@ -149,7 +149,7 @@ export function Attendance() {
       <PageTitle aside={
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 text-sm text-text-muted"><span className="sr-only">Month</span>
-            <input type="month" className={inputSized('h-8 w-40')} value={month}
+            <input type="month" className={inputSized('h-(--layout-control-sm) w-40')} value={month}
               onChange={(e) => { if (nPending && !window.confirm('Leave this month without saving your changes?')) return; const n = new URLSearchParams(params); n.set('month', e.target.value || thisMonth()); setParams(n, { replace: true }); }} />
           </label>
           {canEdit && <Button size="sm" variant="primary" onClick={save} loading={saving} disabled={!nPending}>Save{nPending ? ` (${nPending})` : ''}</Button>}
@@ -167,10 +167,10 @@ export function Attendance() {
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <label className="relative"><span className="sr-only">Search name or EID</span>
             <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-            <input className={inputSized('h-8 w-52 pl-8')} placeholder="Name or EID" value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} />
+            <input className={inputSized('h-(--layout-control-sm) w-52 pl-8')} placeholder="Name or EID" value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} />
           </label>
-          <select aria-label="Account" className={inputSized('h-8 w-36')} value={filter.account} onChange={(e) => setFilter({ ...filter, account: e.target.value })}><option value="">All accounts</option>{accounts.map((a) => <option key={a}>{a}</option>)}</select>
-          <select aria-label="Job title" className={inputSized('h-8 w-48')} value={filter.title} onChange={(e) => setFilter({ ...filter, title: e.target.value })}><option value="">All titles</option>{titles.map((a) => <option key={a}>{a}</option>)}</select>
+          <select aria-label="Account" className={inputSized('h-(--layout-control-sm) w-36')} value={filter.account} onChange={(e) => setFilter({ ...filter, account: e.target.value })}><option value="">All accounts</option>{accounts.map((a) => <option key={a}>{a}</option>)}</select>
+          <select aria-label="Job title" className={inputSized('h-(--layout-control-sm) w-48')} value={filter.title} onChange={(e) => setFilter({ ...filter, title: e.target.value })}><option value="">All titles</option>{titles.map((a) => <option key={a}>{a}</option>)}</select>
           {canEdit && (
             <span className="ml-auto flex flex-wrap items-center gap-2">
               <Button size="sm" variant={multi ? 'primary' : 'secondary'} aria-pressed={multi} onClick={() => { setMulti(!multi); setPicked(new Set()); setMenu(null); }}>
@@ -179,7 +179,7 @@ export function Attendance() {
               {multi && (
                 <>
                   <span className="text-xs text-text-muted">{picked.size} cell{picked.size === 1 ? '' : 's'} · Shift-click for a range</span>
-                  <select aria-label="Apply code to the selected cells" className={inputSized('h-8 w-48')} value="" disabled={!picked.size}
+                  <select aria-label="Apply code to the selected cells" className={inputSized('h-(--layout-control-sm) w-48')} value="" disabled={!picked.size}
                     onChange={(e) => { if (!e.target.value) return; setCodes([...picked], e.target.value === 'clear' ? null : (e.target.value as Code)); setPicked(new Set()); }}>
                     <option value="">Apply code…</option>{CODE_LIST.map((c) => <option key={c} value={c}>{c} · {CODES[c]}</option>)}<option value="clear">Clear cells</option>
                   </select>
@@ -214,7 +214,7 @@ export function Attendance() {
                 {days.map((d) => {
                   const hol = (sheet.people[0] && holidays.get(`${sheet.people[0].country}|${d}`)) || null;
                   return <th key={d} scope="col" title={hol ?? undefined} className={cx('w-8 min-w-8 border-b border-border px-0 py-1 text-center font-mono font-normal', isWeekend(d) && 'text-text-subtle', hol && 'text-warning')}>
-                    <span className="block text-[10px]">{weekday(d)}</span>{Number(d.slice(8))}
+                    <span className="block text-label">{weekday(d)}</span>{Number(d.slice(8))}
                   </th>;
                 })}
                 <th scope="col" className="border-b border-border px-2 text-left">Summary</th>
@@ -243,7 +243,7 @@ export function Attendance() {
                     return (
                       <tr key={p.id} className={cx(rowOn === p.id && 'bg-surface-2')}>
                         <th scope="row" className={cx('sticky left-0 z-10 border-b border-border px-2 py-1 text-left font-normal', rowOn === p.id ? 'bg-surface-2' : 'bg-surface')}>
-                          <span className="block font-semibold">{p.full_name}</span><span className="font-mono text-[10px] text-text-subtle">{p.eid} · {p.title}</span>
+                          <span className="block font-semibold">{p.full_name}</span><span className="font-mono text-label text-text-subtle">{p.eid} · {p.title}</span>
                         </th>
                         {days.map((d, di) => {
                           const k = cellKey(p.id, d);

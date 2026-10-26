@@ -79,7 +79,7 @@ export function Inventory({ inv }: { inv: Inv }) {
       <PageTitle aside={
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           {(me?.countries.length ?? 0) > 1 && (
-            <select aria-label="Country" className={inputSized('h-8 w-40')} value={country} onChange={(e) => setP('country', e.target.value)}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</select>
+            <select aria-label="Country" className={inputSized('h-(--layout-control-sm) w-40')} value={country} onChange={(e) => setP('country', e.target.value)}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</select>
           )}
           <Button size="sm" onClick={exportCsv} disabled={!items.length}><Download aria-hidden className="size-4" />CSV</Button>
           <Button size="sm" onClick={() => window.print()} disabled={!items.length}><Printer aria-hidden className="size-4" />PDF</Button>
@@ -92,7 +92,7 @@ export function Inventory({ inv }: { inv: Inv }) {
         <div className="mb-4 flex flex-wrap gap-2 print:hidden">
           <Button variant="primary" onClick={() => setDialog({ kind: 'move', move: 'mobilize' })}><Truck aria-hidden className="size-4" />Mobilize to well</Button>
           <Button onClick={() => setDialog({ kind: 'consume' })}><PackagePlus aria-hidden className="size-4" />Consumption &amp; return</Button>
-          <select aria-label="Record another movement" className={inputSized('h-9 w-52')} value="" onChange={(e) => e.target.value && setDialog({ kind: 'move', move: e.target.value as Kind })}>
+          <select aria-label="Record another movement" className={inputSized('h-(--layout-control-md) w-52')} value="" onChange={(e) => e.target.value && setDialog({ kind: 'move', move: e.target.value as Kind })}>
             <option value="">Other movement…</option>{KINDS.filter((k) => !['mobilize', 'consume', 'return'].includes(k)).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
           </select>
           <Button onClick={() => setDialog({ kind: 'item', item: null })}><Plus aria-hidden className="size-4" />Add item</Button>
@@ -114,12 +114,12 @@ export function Inventory({ inv }: { inv: Inv }) {
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Category">
               {['', ...cats].map((c) => (
                 <button key={c || 'all'} type="button" role="radio" aria-checked={cat === c} onClick={() => setCat(c)}
-                  className={cx('h-7 rounded-pill border px-3 text-xs font-semibold', cat === c ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{c || 'All'}</button>
+                  className={cx('h-7 in-data-[density=touch]:h-11 rounded-pill border px-3 text-xs font-semibold', cat === c ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{c || 'All'}</button>
               ))}
             </div>
             <label className="relative ml-auto"><span className="sr-only">Search description, part or SAP number</span>
               <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-              <input className={inputSized('h-8 w-60 pl-8')} placeholder="Description, PN, SAP #" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input className={inputSized('h-(--layout-control-sm) w-60 pl-8')} placeholder="Description, PN, SAP #" value={q} onChange={(e) => setQ(e.target.value)} />
             </label>
             <Button size="sm" variant={archived ? 'primary' : 'ghost'} aria-pressed={archived} onClick={() => setArchived(!archived)}><Archive aria-hidden className="size-4" />Archived</Button>
           </div>
@@ -358,7 +358,7 @@ function ConsumeDialog({ inv, data, onClose }: { inv: Inv; data: Data; onClose: 
                     return (
                       <tr key={r.item_id} className="border-t border-border">
                         <th scope="row" className="py-1.5 text-left font-normal">{item?.description}</th><td className="py-1.5 text-right font-mono">{fmt(r.open)} {item?.uom}</td>
-                        {(['used', 'back'] as const).map((k) => <td key={k} className="py-1.5 pl-3"><input aria-label={`${k === 'used' ? 'Used' : 'Back to stock'}: ${item?.description}`} type="number" min={0} max={r.open} step="any" className={inputSized('h-8 w-24')}
+                        {(['used', 'back'] as const).map((k) => <td key={k} className="py-1.5 pl-3"><input aria-label={`${k === 'used' ? 'Used' : 'Back to stock'}: ${item?.description}`} type="number" min={0} max={r.open} step="any" className={inputSized('h-(--layout-control-sm) w-24')}
                           value={vals[r.item_id]?.[k] ?? ''} onChange={(e) => setVals({ ...vals, [r.item_id]: { used: vals[r.item_id]?.used ?? '', back: vals[r.item_id]?.back ?? '', [k]: e.target.value } })} /></td>)}
                       </tr>
                     );

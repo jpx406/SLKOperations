@@ -70,7 +70,7 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
             <li key={f.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
               {f.content_type.startsWith('image/') && INLINE.has(f.content_type)
                 ? <a href={url(f, true)} target="_blank" rel="noreferrer"><img src={url(f, true)} alt="" loading="lazy" className="size-12 rounded-sm border border-border object-cover" /></a>
-                : <span aria-hidden className="grid size-12 place-items-center rounded-sm border border-border font-mono text-[10px] uppercase text-text-muted">{f.file_name.split('.').pop()}</span>}
+                : <span aria-hidden className="grid size-12 place-items-center rounded-sm border border-border font-mono text-label uppercase text-text-muted">{f.file_name.split('.').pop()}</span>}
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{f.file_name}</span>
                 <span className="text-xs text-text-muted">{CATEGORIES[f.category]} · {sizeText(f.size_bytes)} · {f.uploaded_by_name} · {when(f.uploaded_at)}</span>

@@ -63,7 +63,7 @@ export function BonusReport() {
         <FilterBar optionsPath="/filter-options" withStatus={false} />
         <div className="mb-4 flex flex-wrap items-center gap-3 print:hidden">
           <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />Approved bonuses only</label>
-          <input aria-label="Search name or EID" className={inputSized('h-8 w-56')} placeholder="Name or EID" value={q2} onChange={(e) => setQ2(e.target.value)} />
+          <input aria-label="Search name or EID" className={inputSized('h-(--layout-control-sm) w-56')} placeholder="Name or EID" value={q2} onChange={(e) => setQ2(e.target.value)} />
           {me?.menus.bonus?.edit && <Link to="/bonus/rules" className="ml-auto text-sm underline">Bonus rules</Link>}
         </div>
         {notice && <div className="mb-3"><Banner tone={notice.tone}>{notice.text}</Banner></div>}
@@ -154,7 +154,7 @@ export function BonusRules() {
   const sum = Object.values(splits).reduce((a, v) => a + (Number(v) || 0), 0);
   return (
     <section aria-labelledby="rules-title">
-      <PageTitle aside={(me?.countries.length ?? 0) > 1 && <select aria-label="Country" className={inputSized('h-8 w-44')} value={c} onChange={(e) => setCountry(e.target.value)}>{me?.countries.map((x) => <option key={x}>{x}</option>)}</select>}>
+      <PageTitle aside={(me?.countries.length ?? 0) > 1 && <select aria-label="Country" className={inputSized('h-(--layout-control-sm) w-44')} value={c} onChange={(e) => setCountry(e.target.value)}>{me?.countries.map((x) => <option key={x}>{x}</option>)}</select>}>
         <span id="rules-title">Bonus rules</span><UnlockedBadge />
       </PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">A job’s pool comes from the rule of its main service (the first one picked with a rule): a fixed amount per job, an amount per successful run, or a share of the job’s revenue. The pool is then split by role, and the SDM can adjust it on Closure before approving.</p>
@@ -194,8 +194,8 @@ function RuleRow({ country, name, rule, onSave }: { country: string; name: strin
   return (
     <tr className="border-t border-border">
       <th scope="row" className="px-3 py-2 text-left font-normal">{name}{!rule && <span className="ml-2 text-xs text-text-subtle">no rule</span>}</th>
-      <td className="px-3 py-2"><select aria-label={`Basis for ${name}`} className={inputSized('h-8 w-52')} value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>{(Object.keys(BASIS_LABEL) as Basis[]).map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}</select></td>
-      <td className="px-3 py-2"><span className="relative inline-block"><input aria-label={`Amount for ${name}`} type="number" min={0} step="any" className={inputSized('h-8 w-32 pr-12')} value={value} onChange={(e) => setValue(e.target.value)} />
+      <td className="px-3 py-2"><select aria-label={`Basis for ${name}`} className={inputSized('h-(--layout-control-sm) w-52')} value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>{(Object.keys(BASIS_LABEL) as Basis[]).map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}</select></td>
+      <td className="px-3 py-2"><span className="relative inline-block"><input aria-label={`Amount for ${name}`} type="number" min={0} step="any" className={inputSized('h-(--layout-control-sm) w-32 pr-12')} value={value} onChange={(e) => setValue(e.target.value)} />
         <span aria-hidden className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 font-mono text-xs text-text-subtle">{basis === 'pct_revenue' ? '%' : 'USD'}</span></span></td>
       <td className="px-3 py-2"><input type="checkbox" aria-label={`${name} active`} checked={active} onChange={(e) => setActive(e.target.checked)} /></td>
       <td className="px-3 py-2 text-right"><Button size="sm" disabled={!dirty || value === ''} onClick={() => onSave({ country, job_type_name: name, basis, active, ...(basis === 'pct_revenue' ? { pct: Number(value) } : { amount_cents: Math.round(Number(value) * 100) }) })}>Save</Button></td>
@@ -252,9 +252,9 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
             {lines.map((l, i) => (
               <tr key={l.employee_id} className="border-t border-border">
                 <td className="py-1.5">{name(l.employee_id)}</td><td className="py-1.5 text-text-muted">{l.crew_role ? ROLE_LABEL[l.crew_role] : '—'}</td>
-                <td className="py-1.5"><input aria-label={`Share for ${name(l.employee_id)}`} type="number" min={0} max={100} step="any" disabled={locked} className={inputSized('h-8 w-24')} value={l.share_pct}
+                <td className="py-1.5"><input aria-label={`Share for ${name(l.employee_id)}`} type="number" min={0} max={100} step="any" disabled={locked} className={inputSized('h-(--layout-control-sm) w-24')} value={l.share_pct}
                   onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, share_pct: e.target.value, amount: e.target.value === '' ? x.amount : String(Math.round(d.pool.cents * Number(e.target.value) / 100) / 100) } : x)))} /></td>
-                <td className="py-1.5"><input aria-label={`Amount for ${name(l.employee_id)}`} type="number" min={0} step="0.01" disabled={locked} className={inputSized('h-8 w-32')} value={l.amount}
+                <td className="py-1.5"><input aria-label={`Amount for ${name(l.employee_id)}`} type="number" min={0} step="0.01" disabled={locked} className={inputSized('h-(--layout-control-sm) w-32')} value={l.amount}
                   onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, amount: e.target.value, share_pct: '' } : x)))} /></td>
               </tr>
             ))}

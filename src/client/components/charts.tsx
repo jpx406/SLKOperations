@@ -68,9 +68,9 @@ export function BarChart({ title, buckets, unit, horizontal, selected, onSelect,
               <button key={b.key} type="button" role="listitem" disabled={!onSelect} aria-pressed={selected === b.key}
                 aria-label={`${b.label}: ${fmt(b.value, unit)}, ${b.ids.length} job${b.ids.length === 1 ? '' : 's'}`} onClick={() => onSelect?.(b)}
                 className={cx('group flex h-full min-w-9 flex-1 flex-col items-center justify-end gap-1', selected && selected !== b.key && 'opacity-40')}>
-                <span className="font-mono text-[10px] text-text-muted">{b.value == null ? '' : fmt(b.value)}</span>
+                <span className="font-mono text-label text-text-muted">{b.value == null ? '' : fmt(b.value)}</span>
                 <span className={cx('w-full max-w-10 rounded-t-xs bg-accent', onSelect && 'group-hover:bg-accent-hover', b.value == null && 'bg-transparent')} style={{ height: `${Math.max(b.value ? 2 : 0, ((b.value ?? 0) / max) * 100)}%` }} />
-                <span className="text-[10px] whitespace-nowrap text-text-muted">{b.label}</span>
+                <span className="text-label whitespace-nowrap text-text-muted">{b.label}</span>
               </button>
             ))}
           </div>

@@ -36,7 +36,7 @@ export function Database() {
     <section aria-labelledby="db-title">
       <PageTitle aside={countries.length > 1 && (
         <label className="flex items-center gap-2 text-sm text-text-muted">Country
-          <select className={inputSized('h-8 w-48')} value={country} onChange={(e) => setCountry(e.target.value)}>
+          <select className={inputSized('h-(--layout-control-sm) w-48')} value={country} onChange={(e) => setCountry(e.target.value)}>
             <option value="">All my countries</option>
             {countries.map((c) => <option key={c}>{c}</option>)}
           </select>
@@ -50,7 +50,7 @@ export function Database() {
       <div role="tablist" aria-label="Database sections" className="mb-4 flex flex-wrap gap-2">
         {TABS.map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setParams({ tab: k }, { replace: true })}
-            className={cx('h-8 rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+            className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
             {label}
           </button>
         ))}
@@ -360,7 +360,7 @@ function Lists({ rows, canEdit, country }: { rows: ListRow[]; canEdit: boolean; 
               <li key={v.id} className={cx('flex items-center gap-2 py-1.5', !v.active && 'text-text-subtle')}>
                 {renaming?.id === v.id ? (
                   <form className="flex flex-1 gap-2" onSubmit={(e) => { e.preventDefault(); run.mutate({ path: `/${v.id}`, method: 'PATCH', json: { value: renaming.value } }); }}>
-                    <input aria-label={`Rename ${v.value}`} autoFocus className={cx(inputClass, 'h-8')} value={renaming.value} onChange={(e) => setRenaming({ id: v.id, value: e.target.value })}
+                    <input aria-label={`Rename ${v.value}`} autoFocus className={cx(inputClass, 'h-(--layout-control-sm)')} value={renaming.value} onChange={(e) => setRenaming({ id: v.id, value: e.target.value })}
                       onKeyDown={(e) => { if (e.key === 'Escape') setRenaming(null); }} />
                     <Button size="sm" type="submit">Save</Button>
                   </form>
@@ -402,7 +402,7 @@ function Profiles({ rows, domains, canEdit }: { rows: ProfileRow[]; domains: str
           Each WIREGUARD job type sits in a service domain and opens sections of the job editor (plug, fishing, memory survey, perforation).
           {missing > 0 && <span className="text-warning"> {missing} job type{missing === 1 ? ' has' : 's have'} no profile yet.</span>}
         </p>
-        <input aria-label="Search job types" className={inputSized('h-8 w-56')} placeholder="Search job types" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input aria-label="Search job types" className={inputSized('h-(--layout-control-sm) w-56')} placeholder="Search job types" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       {!rows.length ? <EmptyState title="No job types yet">Job types come from WIREGUARD. Run a sync first.</EmptyState> : (
@@ -411,7 +411,7 @@ function Profiles({ rows, domains, canEdit }: { rows: ProfileRow[]; domains: str
             <tr key={p.job_type_name} className="border-t border-border">
               <th scope="row" className="px-3 py-2 text-left font-semibold">{p.job_type_name}{!p.updated_at && <span className="ml-2 text-xs font-normal text-warning">no profile</span>}</th>
               <td className="px-3 py-2">
-                <select aria-label={`Service domain for ${p.job_type_name}`} className={cx(inputClass, 'h-8')} disabled={!canEdit || put.isPending} value={p.domain ?? ''}
+                <select aria-label={`Service domain for ${p.job_type_name}`} className={cx(inputClass, 'h-(--layout-control-sm)')} disabled={!canEdit || put.isPending} value={p.domain ?? ''}
                   onChange={(e) => put.mutate({ ...p, domain: e.target.value || null })}>
                   <option value="">Not set</option>
                   {domains.map((d) => <option key={d}>{d}</option>)}

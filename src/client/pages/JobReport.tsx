@@ -54,7 +54,7 @@ export function JobReport() {
   return (
     <section aria-label="Job report">
       <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
-        <Link to={`/operation/jobs/${id}/closure`} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3"><ArrowLeft aria-hidden className="size-4" />Job</Link>
+        <Link to={`/operation/jobs/${id}/closure`} className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3"><ArrowLeft aria-hidden className="size-4" />Job</Link>
         <Button size="sm" variant="primary" onClick={() => window.print()}><Printer aria-hidden className="size-4" />Print / PDF</Button>
         <Button size="sm" onClick={exportPackage} disabled={crew.isPending || events.isPending}><FolderArchive aria-hidden className="size-4" />Job package (.zip)</Button>
         <span className="text-xs text-text-muted">The package holds this report, the job data and its tables, for filing with the signed documents.</span>

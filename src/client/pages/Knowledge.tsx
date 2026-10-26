@@ -28,7 +28,7 @@ export function KnowledgeHub() {
   const canEdit = !!q.data?.canEdit;
   const refresh = () => qc.invalidateQueries({ queryKey: ['knowledge'] });
   const pick = async (d: KnowledgeDoc) => { await api(`/knowledge/${d.id}/lesson-of-week`, { method: 'POST' }); refresh(); };
-  const chip = (on: boolean) => cx('h-8 rounded-pill border px-3 text-sm font-semibold', on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
+  const chip = (on: boolean) => cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
 
   return (
     <section aria-labelledby="kh-title">
@@ -64,7 +64,7 @@ export function KnowledgeHub() {
               <option value="">All failure types</option>{lib.failures.map((x) => <option key={x.value} value={x.value}>{x.value} ({x.n})</option>)}
             </select>
             <select aria-label="Sort" className={inputSized('w-36')} value={f.sort} onChange={(e) => set('sort', e.target.value === 'az' ? 'az' : '')}><option value="newest">Newest</option><option value="az">A → Z</option></select>
-            <label className="flex h-9 items-center gap-2 text-sm"><input type="checkbox" checked={f.duplicates} onChange={(e) => set('dups', e.target.checked ? '1' : '')} />Show duplicates</label>
+            <label className="flex h-(--layout-control-md) items-center gap-2 text-sm"><input type="checkbox" checked={f.duplicates} onChange={(e) => set('dups', e.target.checked ? '1' : '')} />Show duplicates</label>
             {lib.docs.length > 0 && <Button className="ml-auto" onClick={() => setPresent(lib.docs)}><Play aria-hidden className="size-4" />Present these {lib.docs.length} as a toolbox talk</Button>}
           </div>
           <div role="group" aria-label="Document type" className="mb-2 flex flex-wrap gap-1.5">
@@ -127,7 +127,7 @@ function Reader({ doc, original, onClose, onPresent }: { doc: KnowledgeDoc; orig
       <div className="mt-4 rounded-md border border-border p-3"><Attachments entity="knowledge" id={doc.id} title="Files" /></div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button variant="primary" onClick={onPresent}><Play aria-hidden className="size-4" />Present to the crew</Button>
-        {doc.source_ref && <a href={doc.source_ref} target="_blank" rel="noreferrer noopener" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><ExternalLink aria-hidden className="size-4" />Open the source document</a>}
+        {doc.source_ref && <a href={doc.source_ref} target="_blank" rel="noreferrer noopener" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><ExternalLink aria-hidden className="size-4" />Open the source document</a>}
       </div>
     </Dialog>
   );
@@ -157,7 +157,7 @@ function Present({ docs, onClose }: { docs: KnowledgeDoc[]; onClose: () => void 
         <p className="label-caps text-warning">{DOC_TYPES[d.doc_type]} · {d.category}</p>
         <h2 className="mt-2 font-display text-3xl font-extrabold md:text-5xl">{d.title}</h2>
         {d.summary && <p className="mt-6 whitespace-pre-wrap text-lg md:text-2xl">{d.summary}</p>}
-        {d.key_action && <p className="mt-8 rounded-md border-l-4 border-l-warning bg-warning-subtle p-4 text-lg font-semibold md:text-2xl">Key action: {d.key_action}</p>}
+        {d.key_action && <p className="mt-8 rounded-md bg-warning-subtle p-4 text-lg font-semibold text-warning md:text-2xl">Key action: {d.key_action}</p>}
         {d.failure_types.length > 0 && <p className="mt-6 text-sm text-text-muted">{d.failure_types.join(' · ')}</p>}
       </div>
       <div className="flex items-center justify-center gap-3">
