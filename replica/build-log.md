@@ -1062,3 +1062,32 @@ Every label, message and empty state was written here. No code, assets or copy f
   - end to end in Chrome with a virtual Face ID authenticator on localhost (WebAuthn refuses bare IP addresses): set up a device, sign out, sign in with Face ID as NESR-90003;
   - QR: a "laptop" with no authenticator showed code 1577, the "phone" showed the same code and approved with Face ID, and the laptop signed in as NESR-90003; the used code then read "expired";
   - the import brought in 6 users, with the inactive one flagged.
+
+## 6r — Attendance by role: three sheets, who fills and who approves
+
+- **Three sheets** (owner request), set per person in the Headcount Roster ("Attendance sheet"; new entries follow the crew role):
+  - **Operators & Helpers:** the Foreman fills the crew who report to them, the SDM approves;
+  - **Support Staff (Shop):** the Maintenance Supervisor fills, the Maintenance Manager approves;
+  - **Management:** each person fills their own row (or an Admin does), the Operations Manager approves.
+- **Overrides:** Admin and Attendance Admin may fill any row; Admin may approve any row. "Fills own attendance (SELF)" in the roster lets a person fill their own row on any sheet.
+- **New roles:** Foreman and Maintenance Supervisor (owner's choice).
+  - Migration 0010 rebuilds `user_roles` to add them to the role CHECK; tab grants are kept aside and restored.
+  - The Foreman starts from the Slickline Supervisor's tabs and the Maintenance Supervisor from the Storekeeper's, both with Attendance edit.
+  - SDM, Maintenance Manager and Ops Manager get Attendance edit for approvals.
+- **Server rules:** `shared/attendanceSheets.ts` holds the rules, used by the server and the sheet alike.
+  - Each person sees the rows they fill or approve and their own; Admin, Attendance Admin, Ops Manager, Director and SQM see everything.
+  - Saves and approvals are checked row by row with a refusal that names the sheet and role. They no longer need the tab's edit right, so a manager can fill their own management row.
+- **The sheet**, laid out like the WL Operations Hub:
+  - the month and filters (account, updated by, filled by, reports to, EID, name, title) across the top, plus search;
+  - Multi-Select, Save, XLSX (all sheets), HTML;
+  - the codes legend always open;
+  - one card per sheet titled "Operators & Helpers — Foreman → SDM", with Operators & Helpers split by foreman crew;
+  - per card: Notify the approver, Approve all, XLSX for that group;
+  - SELF badges, and an account column in lime.
+- **Notify:** emails everyone with the sheet's approving role in that country, using their emails imported from WIREGUARD. "Approver emails" adds an address for an approver without an account.
+- **Verified:**
+  - tests 222, with new sheet-rule tests;
+  - signed in locally with the mock accounts:
+    - the Foreman saw only his crew and his own row, saved a crew cell, and was refused on a shop row;
+    - the SDM saw the field sheet, could approve but not fill, and was refused approving a shop row;
+    - the Admin saw all nine rows.

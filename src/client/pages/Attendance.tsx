@@ -1,19 +1,29 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Check, FileSpreadsheet, FileText, Mail, MousePointerClick, Search, Tags, Trash2, X } from 'lucide-react';
+import { CalendarDays, Check, Download, FileSpreadsheet, Mail, MousePointerClick, Save, Search, Tags, Trash2, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { CODES, CODE_LIST, LEAVE, assignmentsOn, groupLabel, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
+import { CODES, CODE_LIST, LEAVE, assignmentsOn, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
+import { SHEETS, SHEET_KEYS, type SheetKey } from '../../shared/attendanceSheets';
 import { workbook } from '../../shared/xlsx';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { saveFile } from '../components/charts';
 import { SignedToggle } from '../components/Signature';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized, rovingKeys } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, Skeleton, cx, inputClass, inputSized, rovingKeys } from '../components/ui';
 
-// Attendance (S17): one row per person, one column per day. Click a cell to pick a code, or switch on
-// Multi-select, pick cells (Shift-click for a range) and apply one code to all. Nothing is stored until Save.
+// Attendance (S17), laid out like the WL Operations Hub sheet: one card per sheet, one row per person, one column
+// per day. Who fills and who approves each sheet follows the roles (shared/attendanceSheets.ts):
+//   Operators & Helpers — the Foreman fills their crew, the SDM approves
+//   Support Staff (Shop) — the Maintenance Supervisor fills, the Maintenance Manager approves
+//   Management — each person (or an Admin) fills, the Operations Manager approves
+// Click a cell to pick a code, or switch on Multi-Select, pick cells (Shift-click for a range) and apply one code.
+// Nothing is stored until Save.
 
-interface Person { id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null; group_name: string | null }
+interface Person {
+  id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null;
+  reports_to_id: string | null; reports_to_name: string | null; wg_username: string | null; self_updated: number;
+  sheet: SheetKey; can_fill: boolean; can_approve: boolean; updated_by: string | null;
+}
 interface Sheet {
   month: string; days: string[]; full: boolean; people: Person[]; entries: { employee_id: string; day: string; code: Code }[];
   approvals: { employee_id: string; approved_by: string; approved_at: string }[]; holidays: { id: string; country: string; day: string; name: string }[]; assignments: Assignment[];
@@ -25,6 +35,13 @@ const CODE_TONE: Partial<Record<Code, string>> = {
 const thisMonth = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }).slice(0, 7);
 const cellKey = (p: string, d: string) => `${p}|${d}`;
 const weekday = (d: string) => 'SMTWTFS'[new Date(`${d}T00:00:00Z`).getUTCDay()];
+const filledBy = (p: Person) => (p.self_updated || p.sheet === 'management' ? 'Self' : SHEETS[p.sheet].filledBy);
+
+type FilterKey = 'account' | 'updated' | 'filler' | 'reports' | 'eid' | 'name' | 'title';
+const FILTERS: [FilterKey, string, (p: Person) => string][] = [
+  ['account', 'Account assignment', (p) => p.account], ['updated', 'Updated by', (p) => p.updated_by ?? '—'], ['filler', 'Filled by', filledBy],
+  ['reports', 'Reports to', (p) => p.reports_to_name ?? '—'], ['eid', 'EID', (p) => p.eid], ['name', 'Name', (p) => p.full_name], ['title', 'Title', (p) => p.title],
+];
 
 export function Attendance() {
   const [params, setParams] = useSearchParams();
@@ -33,7 +50,8 @@ export function Attendance() {
   const { data: me } = useMe();
   const sheetQ = useQuery({ queryKey: ['attendance', month], queryFn: () => api<Sheet>(`/attendance?month=${month}`) });
   const sheet = sheetQ.data;
-  const canEdit = !!sheet?.full && !!me?.menus.attendance?.edit;
+  const anyFill = !!sheet?.people.some((p) => p.can_fill);
+  const manager = !!me?.menus.attendance?.edit;
 
   const [pending, setPending] = useState<Record<string, Code | null>>({});
   const [multi, setMulti] = useState(false);
@@ -41,19 +59,14 @@ export function Attendance() {
   const [anchor, setAnchor] = useState<{ p: number; d: number } | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
   const [rowOn, setRowOn] = useState<string | null>(null);
-  const [filter, setFilter] = useState({ q: '', account: '', title: '' });
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<Partial<Record<FilterKey, string>>>({});
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
   const [holidaysOpen, setHolidaysOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const cats = useQuery({ queryKey: ['attendance-categories'], queryFn: () => api<CategoryData>('/attendance/categories'), enabled: canEdit });
-  const approverOf = (country: string, name: string) => cats.data?.categories.find((x) => x.country === country && x.name === name)?.approver_email ?? null;
-  const [notifying, setNotifying] = useState<string | null>(null);
-  const notify = async (country: string, name: string) => {
-    setNotifying(name); setNotice(null);
-    try { const r = await api<{ to: string }>('/attendance/notify', { method: 'POST', json: { month, country, name } }); setNotice({ tone: 'success', text: `Sent ${name} for approval to ${r.to}.` }); }
-    catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); } finally { setNotifying(null); }
-  };
+  const cats = useQuery({ queryKey: ['attendance-categories'], queryFn: () => api<CategoryData>('/attendance/categories'), enabled: manager });
+  const [busyGroup, setBusyGroup] = useState<string | null>(null);
 
   useEffect(() => { setPending({}); setPicked(new Set()); setAnchor(null); }, [month]);
   useEffect(() => {
@@ -68,32 +81,39 @@ export function Attendance() {
   const holidays = useMemo(() => new Map((sheet?.holidays ?? []).map((h) => [`${h.country}|${h.day}`, h.name])), [sheet]);
   const code = (p: string, d: string): Code | undefined => { const k = cellKey(p, d); return k in pending ? pending[k] ?? undefined : saved.get(k); };
 
-  const people = (sheet?.people ?? []).filter((p) =>
-    (!filter.q || `${p.full_name} ${p.eid}`.toLowerCase().includes(filter.q.toLowerCase())) && (!filter.account || p.account === filter.account) && (!filter.title || p.title === filter.title));
-  const groups = useMemo(() => {
-    const m = new Map<string, Person[]>();
-    for (const p of people) { const g = groupLabel(p.group_name); m.set(g, [...(m.get(g) ?? []), p]); }
-    return [...m.entries()];
-  }, [people]);
-  const flat = groups.flatMap(([, list]) => list);
+  const all = sheet?.people ?? [];
+  const people = all.filter((p) =>
+    (!q || `${p.eid} ${p.full_name} ${p.title}`.toLowerCase().includes(q.toLowerCase()))
+    && FILTERS.every(([k, , get]) => !filter[k] || get(p) === filter[k]));
+  // one card per sheet; Operators & Helpers split by foreman crew inside the card
+  const groups = useMemo(() => SHEET_KEYS.map((k) => ({
+    key: k,
+    crews: k === 'field'
+      ? [...new Map(people.filter((p) => p.sheet === k).map((p) => [p.reports_to_name ?? '', null])).keys()].sort((a, b) => (a ? (b ? a.localeCompare(b) : -1) : 1))
+        .map((boss) => ({ boss, list: people.filter((p) => p.sheet === k && (p.reports_to_name ?? '') === boss) }))
+      : [{ boss: null as string | null, list: people.filter((p) => p.sheet === k) }],
+  })).filter((g) => g.crews.some((c) => c.list.length)), [people]);
+  const flat = groups.flatMap((g) => g.crews.flatMap((c) => c.list));
   const days = sheet?.days ?? [];
   const nPending = Object.keys(pending).length;
+  const byId = useMemo(() => new Map(all.map((p) => [p.id, p])), [all]);
+  const editable = (p: Person) => p.can_fill && !approved.has(p.id);
 
   const setCodes = (keys: string[], c: Code | null) => {
     setPending((cur) => {
       const n = { ...cur };
       for (const k of keys) {
-        const [p] = k.split('|');
-        if (approved.has(p)) continue;
+        const p = byId.get(k.split('|')[0]);
+        if (!p || !editable(p)) continue;
         if ((saved.get(k) ?? null) === c) delete n[k]; else n[k] = c;
       }
       return n;
     });
   };
   const clickCell = (pi: number, di: number, shift: boolean) => {
-    const p = flat[pi].id, d = days[di], k = cellKey(p, d);
-    setRowOn(p);
-    if (!canEdit || approved.has(p)) return;
+    const p = flat[pi], d = days[di], k = cellKey(p.id, d);
+    setRowOn(p.id);
+    if (!editable(p)) return;
     if (!multi) { setMenu(menu === k ? null : k); return; }
     setPicked((cur) => {
       const n = new Set(cur);
@@ -115,185 +135,229 @@ export function Attendance() {
       setNotice({ tone: 'success', text: `Saved ${r.saved} cell${r.saved === 1 ? '' : 's'}.` });
     } catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); } finally { setSaving(false); }
   };
-  const approve = async (p: Person, yes: boolean) => {
-    try { await api('/attendance/approve', { method: 'POST', json: { employee_id: p.id, month, approved: yes } }); qc.invalidateQueries({ queryKey: ['attendance', month] }); }
-    catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); }
+  const approve = async (list: Person[], yes: boolean) => {
+    setNotice(null);
+    try {
+      for (const p of list) await api('/attendance/approve', { method: 'POST', json: { employee_id: p.id, month, approved: yes } });
+      await qc.invalidateQueries({ queryKey: ['attendance', month] });
+      if (list.length > 1) setNotice({ tone: 'success', text: `Approved ${list.length} people.` });
+    } catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); qc.invalidateQueries({ queryKey: ['attendance', month] }); }
+  };
+  const notify = async (key: SheetKey, country: string) => {
+    setBusyGroup(key); setNotice(null);
+    try { const r = await api<{ to: string }>('/attendance/notify', { method: 'POST', json: { month, country, sheet: key } }); setNotice({ tone: 'success', text: `Sent ${SHEETS[key].label} for approval to ${r.to}.` }); }
+    catch (e) { setNotice({ tone: 'danger', text: (e as ApiError).message }); } finally { setBusyGroup(null); }
   };
 
   const table = (list: Person[]) => ({
-    header: ['Name', 'EID', 'Title', 'Account', 'Reporting line', ...days.map((d) => d.slice(8)), 'Present', 'Field', 'Leave', 'Approved'],
+    header: ['EID', 'Name', 'Title', 'Account', 'Sheet', 'Reports to', ...days.map((d) => d.slice(8)), 'Present', 'Field', 'Leave', 'Approved by'],
     rows: list.map((p) => {
       const cs = days.map((d) => code(p.id, d));
       const s = rowSummary(cs);
-      return [p.full_name, p.eid, p.title, p.account, p.group_name ?? '', ...cs.map((c) => c ?? ''), s.present, s.field, s.leave, approved.has(p.id) ? approved.get(p.id)!.approved_by : ''];
+      return [p.eid, p.full_name, p.title, p.account, SHEETS[p.sheet].label, p.reports_to_name ?? '', ...cs.map((c) => c ?? ''), s.present, s.field, s.leave, approved.get(p.id)?.approved_by ?? ''];
     }),
   });
   const exportXlsx = (list: Person[], name: string) => {
     const t = table(list);
-    saveFile(`attendance-${month}-${name}.xlsx`, workbook(`Attendance ${month}`, t.header, t.rows, [24, 9, 18, 8, 20, ...days.map(() => 5), 8, 7, 7, 12]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    saveFile(`attendance-${month}-${name}.xlsx`, workbook(`Attendance ${month}`, t.header, t.rows, [9, 24, 20, 8, 18, 20, ...days.map(() => 5), 8, 7, 7, 14]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   };
   const exportHtml = () => {
     const t = table(flat);
     const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const html = `<!doctype html><meta charset="utf-8"><title>Attendance ${month}</title><style>body{font:12px sans-serif}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:2px 4px;text-align:center}td:first-child{text-align:left}</style>
+    const html = `<!doctype html><meta charset="utf-8"><title>Attendance ${month}</title><style>body{font:12px sans-serif}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:2px 4px;text-align:center}td:nth-child(2){text-align:left}</style>
 <h1>Attendance ${month}</h1><table><tr>${t.header.map((h) => `<th>${esc(h)}</th>`).join('')}</tr>${t.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table>
 <p>${CODE_LIST.map((c) => `${c} = ${CODES[c]}`).join(' · ')}</p>`;
     saveFile(`attendance-${month}.html`, html, 'text/html;charset=utf-8');
   };
-
-  const accounts = [...new Set((sheet?.people ?? []).map((p) => p.account))].sort();
-  const titles = [...new Set((sheet?.people ?? []).map((p) => p.title))].sort();
+  const options = (get: (p: Person) => string) => [...new Set(all.map(get))].sort();
+  const changeMonth = (v: string) => { if (nPending && !window.confirm('Leave this month without saving your changes?')) return; const n = new URLSearchParams(params); n.set('month', v || thisMonth()); setParams(n, { replace: true }); };
 
   return (
     <section aria-labelledby="att-title">
-      <PageTitle aside={
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-sm text-text-muted"><span className="sr-only">Month</span>
-            <input type="month" className={inputSized('h-(--layout-control-sm) w-40')} value={month}
-              onChange={(e) => { if (nPending && !window.confirm('Leave this month without saving your changes?')) return; const n = new URLSearchParams(params); n.set('month', e.target.value || thisMonth()); setParams(n, { replace: true }); }} />
+      <div className="mb-4 flex flex-wrap items-end gap-x-4 gap-y-3">
+        <h1 id="att-title" className="mr-2 font-display text-3xl font-extrabold tracking-wide uppercase">Attendance sheet</h1>
+        <label className="block"><span className="label-caps mb-1 block text-text-muted">Month</span>
+          <input type="month" className={inputSized('w-44 font-mono')} value={month} onChange={(e) => changeMonth(e.target.value)} />
+        </label>
+        {sheet?.full && FILTERS.map(([k, label, get]) => (
+          <label key={k} className="block"><span className="label-caps mb-1 block text-text-muted">{label}</span>
+            <select className={inputSized('w-36')} value={filter[k] ?? ''} onChange={(e) => setFilter({ ...filter, [k]: e.target.value || undefined })}>
+              <option value="">All</option>{options(get).map((o) => <option key={o}>{o}</option>)}
+            </select>
           </label>
-          {canEdit && <Button size="sm" variant="primary" onClick={save} loading={saving} disabled={!nPending}>Save{nPending ? ` (${nPending})` : ''}</Button>}
-          <Button size="sm" onClick={() => exportXlsx(flat, 'all')} disabled={!flat.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
-          <Button size="sm" onClick={exportHtml} disabled={!flat.length}><FileText aria-hidden className="size-4" />HTML</Button>
-          {canEdit && <Button size="sm" onClick={() => setHolidaysOpen(true)}><CalendarDays aria-hidden className="size-4" />Holidays</Button>}
-          {canEdit && cats.data?.canManage && <Button size="sm" onClick={() => setCategoriesOpen(true)}><Tags aria-hidden className="size-4" />Manage categories</Button>}
-        </div>
-      }><span id="att-title">Attendance</span></PageTitle>
+        ))}
+      </div>
 
-      {sheet && !sheet.full && <div className="mb-3"><Banner tone="info">This is your own attendance. Managers and the attendance administrator see and edit the whole sheet.</Banner></div>}
-      {notice && <div className="mb-3"><Banner tone={notice.tone}>{notice.text}</Banner></div>}
-
-      {sheet?.full && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <label className="relative"><span className="sr-only">Search name or EID</span>
-            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
-            <input className={inputSized('h-(--layout-control-sm) w-52 pl-8')} placeholder="Name or EID" value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} />
-          </label>
-          <select aria-label="Account" className={inputSized('h-(--layout-control-sm) w-36')} value={filter.account} onChange={(e) => setFilter({ ...filter, account: e.target.value })}><option value="">All accounts</option>{accounts.map((a) => <option key={a}>{a}</option>)}</select>
-          <select aria-label="Job title" className={inputSized('h-(--layout-control-sm) w-48')} value={filter.title} onChange={(e) => setFilter({ ...filter, title: e.target.value })}><option value="">All titles</option>{titles.map((a) => <option key={a}>{a}</option>)}</select>
-          {canEdit && (
-            <span className="ml-auto flex flex-wrap items-center gap-2">
-              <Button size="sm" variant={multi ? 'primary' : 'secondary'} aria-pressed={multi} onClick={() => { setMulti(!multi); setPicked(new Set()); setMenu(null); }}>
-                <MousePointerClick aria-hidden className="size-4" />Multi-select{multi ? ' on' : ''}
-              </Button>
-              {multi && (
-                <>
-                  <span className="text-xs text-text-muted">{picked.size} cell{picked.size === 1 ? '' : 's'} · Shift-click for a range</span>
-                  <select aria-label="Apply code to the selected cells" className={inputSized('h-(--layout-control-sm) w-48')} value="" disabled={!picked.size}
-                    onChange={(e) => { if (!e.target.value) return; setCodes([...picked], e.target.value === 'clear' ? null : (e.target.value as Code)); setPicked(new Set()); }}>
-                    <option value="">Apply code…</option>{CODE_LIST.map((c) => <option key={c} value={c}>{c} · {CODES[c]}</option>)}<option value="clear">Clear cells</option>
-                  </select>
-                </>
-              )}
+      <div className="mb-4 flex flex-wrap items-end gap-2">
+        {sheet?.full && (
+          <label className="block"><span className="label-caps mb-1 block text-text-muted">Search EID / name / title</span>
+            <span className="relative block">
+              <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-text-subtle" />
+              <input className={inputSized('w-72 pl-9')} placeholder="e.g. 20096, Fahad, Field Engineer" value={q} onChange={(e) => setQ(e.target.value)} />
             </span>
+          </label>
+        )}
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          {anyFill && (
+            <Button variant={multi ? 'primary' : 'secondary'} aria-pressed={multi} onClick={() => { setMulti(!multi); setPicked(new Set()); setMenu(null); }}>
+              <MousePointerClick aria-hidden className="size-4" />Multi-Select {multi ? 'ON' : 'OFF'}
+            </Button>
           )}
+          {anyFill && <Button variant="primary" onClick={save} loading={saving} disabled={!nPending}><Save aria-hidden className="size-4" />Save{nPending ? ` (${nPending})` : ''}</Button>}
+          <Button variant="primary" onClick={() => exportXlsx(flat, 'all-sheets')} disabled={!flat.length}><Download aria-hidden className="size-4" />XLSX (all sheets)</Button>
+          <Button onClick={exportHtml} disabled={!flat.length}><Download aria-hidden className="size-4" />HTML</Button>
+          {manager && <Button onClick={() => setHolidaysOpen(true)}><CalendarDays aria-hidden className="size-4" />Holidays</Button>}
+          {manager && cats.data?.canManage && <Button onClick={() => setCategoriesOpen(true)}><Tags aria-hidden className="size-4" />Approver emails</Button>}
+        </span>
+      </div>
+      {multi && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-text-muted">{picked.size} cell{picked.size === 1 ? '' : 's'} picked · Shift-click for a range</span>
+          <select aria-label="Apply code to the selected cells" className={inputSized('w-56')} value="" disabled={!picked.size}
+            onChange={(e) => { if (!e.target.value) return; setCodes([...picked], e.target.value === 'clear' ? null : (e.target.value as Code)); setPicked(new Set()); }}>
+            <option value="">Apply code…</option>{CODE_LIST.map((c) => <option key={c} value={c}>{c} · {CODES[c]}</option>)}<option value="clear">Clear cells</option>
+          </select>
         </div>
       )}
 
-      <details className="mb-3 text-xs text-text-muted">
-        <summary className="cursor-pointer select-none font-semibold">Codes and shading</summary>
-        <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1">{CODE_LIST.map((c) => <span key={c}><b className={cx('font-mono', CODE_TONE[c])}>{c}</b> {CODES[c]}</span>)}</p>
-        <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-          <span><span className="mr-1 inline-block size-3 rounded-xs bg-surface-2 align-middle" />Weekend (Fri, Sat)</span>
-          <span><span className="mr-1 inline-block size-3 rounded-xs hatch-blocked align-middle" />Public holiday</span>
-          <span><span className="mr-1 inline-block size-3 rounded-xs border-2 border-danger align-middle" />On leave while crewed on a job</span>
-          <span><span className="mr-1 inline-block size-1.5 rounded-full bg-accent align-middle" />Crewed on a job that day</span>
+      {notice && <div className="mb-3"><Banner tone={notice.tone} action={<Button size="sm" variant="ghost" aria-label="Dismiss" onClick={() => setNotice(null)}><X aria-hidden className="size-4" /></Button>}>{notice.text}</Banner></div>}
+
+      <Card className="mb-4 text-sm">
+        <p className="leading-relaxed text-text-muted"><b className="text-accent-text">Codes:</b> {CODE_LIST.map((c, i) => <span key={c}>{i > 0 && ' · '}<b className={cx('font-mono', CODE_TONE[c] ?? 'text-text')}>{c}</b> = {CODES[c]}</span>)}</p>
+        <p className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-text-muted">
+          <span><span className="mr-1.5 inline-block size-3 rounded-xs bg-surface-3 align-middle" />Weekend (Fri/Sat)</span>
+          <span><span className="hatch-blocked mr-1.5 inline-block size-3 rounded-xs align-middle" />National holiday</span>
+          <span><span className="mr-1.5 inline-block size-3 rounded-xs border-2 border-danger align-middle" />On leave while assigned to a job — hover the cell for details, SDM should review</span>
+          <span><span className="mr-1.5 inline-block size-1.5 rounded-full bg-accent align-middle" />Crewed on a job that day</span>
         </p>
-      </details>
+        <p className="mt-2 text-text-muted"><span className="mr-1.5 inline-block size-2 rounded-full bg-success align-middle" />Click a person's EID or name to highlight their whole row. Click again to clear.</p>
+        <p className="mt-2 text-text-muted">
+          {SHEET_KEYS.map((k, i) => <span key={k}>{i > 0 && ' · '}<b className="text-text">{SHEETS[k].label}</b>: filled by {SHEETS[k].filledBy}, approved by {SHEETS[k].approvedBy}</span>)}
+        </p>
+      </Card>
 
       {sheetQ.isPending && <Skeleton className="h-96" />}
       {sheetQ.isError && <Banner tone="danger">{sheetQ.error.message}</Banner>}
-      {sheet && !sheet.people.length && <EmptyState title={sheet.full ? 'Nobody on the roster yet' : 'Your attendance isn’t linked yet'}>{sheet.full ? 'Add people in the Headcount Roster.' : 'Ask the attendance administrator to put your WIREGUARD username on your roster entry.'}</EmptyState>}
-      {sheet && flat.length > 0 && (
-        <div className="max-h-[calc(100vh-17rem)] overflow-auto rounded-lg border border-border bg-surface">
-          <table className="border-separate border-spacing-0 text-xs">
-            <caption className="sr-only">Attendance for {month}. One row per person, one column per day.</caption>
-            <thead className="sticky top-0 z-20 bg-surface-2">
-              <tr>
-                <th scope="col" className="sticky left-0 z-30 min-w-52 border-b border-border bg-surface-2 px-2 py-1.5 text-left">Person</th>
-                {days.map((d) => {
-                  const hol = (sheet.people[0] && holidays.get(`${sheet.people[0].country}|${d}`)) || null;
-                  return <th key={d} scope="col" title={hol ?? undefined} className={cx('w-8 min-w-8 border-b border-border px-0 py-1 text-center font-mono font-normal', isWeekend(d) && 'text-text-subtle', hol && 'text-warning')}>
-                    <span className="block text-label">{weekday(d)}</span>{Number(d.slice(8))}
-                  </th>;
-                })}
-                <th scope="col" className="border-b border-border px-2 text-left">Summary</th>
-                <th scope="col" className="border-b border-border px-2 text-left">Approval</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map(([g, list]) => (
-                <Fragment key={g}>
-                  <tr>
-                    <th colSpan={days.length + 3} scope="colgroup" className="sticky left-0 border-b border-border bg-bg px-2 py-1.5 text-left">
-                      <span className="font-semibold">{g}</span> <span className="font-normal text-text-muted">· {list.length} people</span>
-                      <Button size="sm" variant="ghost" className="ml-2" onClick={() => exportXlsx(list, g.replace(/\W+/g, '-').toLowerCase())}><FileSpreadsheet aria-hidden className="size-3.5" />XLSX this group</Button>
-                      {canEdit && (() => {
-                        const to = approverOf(list[0].country, g);
-                        return to
-                          ? <Button size="sm" variant="ghost" loading={notifying === g} onClick={() => notify(list[0].country, g)} title={`Email ${to} that this month is ready`}><Mail aria-hidden className="size-3.5" />Notify approver</Button>
-                          : <span className="ml-2 text-xs font-normal text-text-subtle">no approver set</span>;
-                      })()}
-                    </th>
-                  </tr>
-                  {list.map((p) => {
-                    const pi = flat.indexOf(p);
-                    const appr = approved.get(p.id);
-                    const s = rowSummary(days.map((d) => code(p.id, d)));
-                    return (
-                      <tr key={p.id} className={cx(rowOn === p.id && 'bg-surface-2')}>
-                        <th scope="row" className={cx('sticky left-0 z-10 border-b border-border px-2 py-1 text-left font-normal', rowOn === p.id ? 'bg-surface-2' : 'bg-surface')}>
-                          <span className="block font-semibold">{p.full_name}</span><span className="font-mono text-label text-text-subtle">{p.eid} · {p.title}</span>
-                        </th>
-                        {days.map((d, di) => {
-                          const k = cellKey(p.id, d);
-                          const c = code(p.id, d);
-                          const hol = holidays.get(`${p.country}|${d}`);
-                          const jobs = assignmentsOn(sheet.assignments, p.id, d);
-                          const clash = !!c && LEAVE.includes(c) && jobs.length > 0;
-                          const tip = [c && `${c}: ${CODES[c]}`, hol, jobs.length && `Crewed on ${jobs.map((j) => j.ticket_no ?? 'a job without ticket').join(', ')}`, clash && 'On leave while assigned to a job'].filter(Boolean).join(' · ');
+      {sheet && !all.length && <EmptyState title={manager ? 'Nobody on the roster yet' : 'Your attendance isn’t linked yet'}>{manager ? 'Add people in the Headcount Roster.' : 'Ask the attendance administrator to put your WIREGUARD username on your roster entry.'}</EmptyState>}
+      {sheet && all.length > 0 && !flat.length && <EmptyState title="Nobody matches" action={<Button onClick={() => { setQ(''); setFilter({}); }}>Clear filters</Button>}>Try another name, EID or filter.</EmptyState>}
+
+      <div className="flex flex-col gap-4">
+        {groups.map((g) => {
+          const meta = SHEETS[g.key];
+          const list = g.crews.flatMap((c) => c.list);
+          const toApprove = list.filter((p) => p.can_approve && !approved.has(p.id));
+          const fills = list.some((p) => p.can_fill);
+          const unsaved = list.some((p) => days.some((d) => cellKey(p.id, d) in pending));
+          return (
+            <Card key={g.key} className="p-0!">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-4 pb-3">
+                <h2 className="font-display text-xl font-extrabold text-accent-text">{meta.label} <span className="font-sans font-semibold text-text-muted">— {meta.filledBy} → {meta.approvedBy}</span></h2>
+                <span className="text-sm text-text-muted">{list.length} employee{list.length === 1 ? '' : 's'}</span>
+                <span className="ml-auto flex flex-wrap gap-2">
+                  {fills && <Button size="sm" loading={busyGroup === g.key} onClick={() => notify(g.key, list[0].country)}><Mail aria-hidden className="size-3.5" />Notify {meta.approvedBy}</Button>}
+                  {toApprove.length > 0 && <Button size="sm" variant="primary" disabled={unsaved} title={unsaved ? 'Save first' : undefined} onClick={() => approve(toApprove, true)}><Check aria-hidden className="size-3.5" />Approve all ({toApprove.length})</Button>}
+                  <Button size="sm" onClick={() => exportXlsx(list, g.key)}><FileSpreadsheet aria-hidden className="size-3.5" />XLSX — this group</Button>
+                </span>
+              </div>
+              <div className="max-h-[70vh] overflow-auto border-t border-border">
+                <table className="border-separate border-spacing-0 text-xs">
+                  <caption className="sr-only">{meta.label} attendance for {month}, filled by {meta.filledBy} and approved by {meta.approvedBy}.</caption>
+                  <thead className="sticky top-0 z-20">
+                    <tr className="bg-surface-2 text-accent-text">
+                      <th scope="col" className="label-caps sticky left-0 z-30 w-20 min-w-20 bg-surface-2 px-2 py-2 text-left">EID</th>
+                      <th scope="col" className="label-caps sticky left-20 z-30 min-w-44 bg-surface-2 px-2 py-2 text-left">Name</th>
+                      <th scope="col" className="label-caps min-w-44 px-2 py-2 text-left">Title</th>
+                      <th scope="col" className="label-caps px-2 py-2 text-left">Acct</th>
+                      {days.map((d) => {
+                        const hol = (list[0] && holidays.get(`${list[0].country}|${d}`)) || null;
+                        return <th key={d} scope="col" title={hol ?? undefined} className={cx('w-9 min-w-9 px-0 py-1 text-center font-mono', isWeekend(d) && 'bg-surface-3', hol && 'text-warning')}>
+                          <span className="block text-label font-normal text-text-subtle">{weekday(d)}</span>{Number(d.slice(8))}
+                        </th>;
+                      })}
+                      <th scope="col" className="label-caps px-2 py-2 text-left">Summary</th>
+                      <th scope="col" className="label-caps px-2 py-2 text-left">Approval</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.crews.map((crew) => (
+                      <Fragment key={crew.boss ?? 'all'}>
+                        {g.key === 'field' && g.crews.length > 1 && (
+                          <tr><th colSpan={days.length + 6} scope="colgroup" className="sticky left-0 bg-bg px-2 py-1.5 text-left text-xs font-semibold text-text-muted">
+                            {crew.boss ? `Crew of ${crew.boss}` : 'No foreman set in the Headcount Roster'} · {crew.list.length}
+                          </th></tr>
+                        )}
+                        {crew.list.map((p) => {
+                          const pi = flat.indexOf(p);
+                          const appr = approved.get(p.id);
+                          const s = rowSummary(days.map((d) => code(p.id, d)));
+                          const on = rowOn === p.id;
+                          const self = p.wg_username && me && p.wg_username.toLowerCase() === me.username.toLowerCase();
                           return (
-                            <td key={d} className={cx('relative border-b border-border p-0 text-center', isWeekend(d) && 'bg-surface-2', hol && 'hatch-blocked')}>
-                              <button type="button" aria-label={`${p.full_name}, ${d}: ${c ? CODES[c] : 'no code'}${clash ? ', on leave while assigned to a job' : ''}`} title={tip || undefined}
-                                aria-pressed={multi ? picked.has(k) : undefined} disabled={!canEdit || !!appr}
-                                onClick={(e) => clickCell(pi, di, e.shiftKey)}
-                                className={cx('h-8 w-8 font-mono text-[11px] font-semibold disabled:cursor-default', CODE_TONE[c as Code], k in pending && 'italic underline', picked.has(k) && 'bg-accent/30', clash && 'outline-2 -outline-offset-2 outline-danger')}>
-                                {c ?? ''}
-                                {jobs.length > 0 && <span aria-hidden className="absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-accent" />}
-                              </button>
-                              {menu === k && (
-                                <div role="menu" aria-label={`Code for ${p.full_name} on ${d}`} className="absolute top-8 left-0 z-40 grid w-80 grid-cols-2 gap-1 rounded-md border border-border bg-surface p-1.5 text-left shadow-pop"
-                                  onKeyDown={(e) => { if (e.key === 'Escape') setMenu(null); else rovingKeys(e); }}>
-                                  {CODE_LIST.map((cc) => (
-                                    <button key={cc} type="button" role="menuitemradio" aria-checked={cc === c} autoFocus={cc === (c ?? 'P')} onClick={() => { setCodes([k], cc); setMenu(null); }}
-                                      className={cx('flex min-h-9 items-baseline gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-surface-2 in-data-[density=touch]:min-h-11', cc === c && 'bg-surface-2 font-bold')}>
-                                      <span className={cx('font-mono font-bold', CODE_TONE[cc])}>{cc}</span><span className="truncate text-text-muted">{CODES[cc]}</span>
+                            <tr key={p.id} className={cx(on && 'bg-accent/10')}>
+                              <th scope="row" className={cx('sticky left-0 z-10 border-b border-border px-2 py-1.5 text-left font-mono font-normal', on ? 'bg-surface-3' : 'bg-surface')}>
+                                <button type="button" className="hover:underline" aria-pressed={on} onClick={() => setRowOn(on ? null : p.id)}>{p.eid}</button>
+                              </th>
+                              <td className={cx('sticky left-20 z-10 border-b border-border px-2 py-1.5 font-semibold whitespace-nowrap', on ? 'bg-surface-3' : 'bg-surface')}>
+                                <button type="button" className="text-left hover:underline" aria-pressed={on} onClick={() => setRowOn(on ? null : p.id)}>{p.full_name}</button>
+                                {self && <span className="ml-1.5 text-label font-normal text-text-subtle">(you)</span>}
+                              </td>
+                              <td className="border-b border-border px-2 py-1.5 whitespace-nowrap text-text-muted">
+                                {p.title}{(p.self_updated || p.sheet === 'management') ? <span className="label-caps ml-1.5 rounded-pill border border-pill-completed-border bg-pill-completed-bg px-1.5 text-pill-completed-fg">Self</span> : null}
+                              </td>
+                              <td className="border-b border-border px-2 py-1.5 font-semibold text-accent-text">{p.account}</td>
+                              {days.map((d, di) => {
+                                const k = cellKey(p.id, d);
+                                const c = code(p.id, d);
+                                const hol = holidays.get(`${p.country}|${d}`);
+                                const jobs = assignmentsOn(sheet!.assignments, p.id, d);
+                                const clash = !!c && LEAVE.includes(c) && jobs.length > 0;
+                                const tip = [c && `${c}: ${CODES[c]}`, hol, jobs.length && `Crewed on ${jobs.map((j) => j.ticket_no ?? 'a job without ticket').join(', ')}`, clash && 'On leave while assigned to a job'].filter(Boolean).join(' · ');
+                                return (
+                                  <td key={d} className={cx('relative border-b border-border p-0.5 text-center', isWeekend(d) && 'bg-surface-3/60', hol && 'hatch-blocked')}>
+                                    <button type="button" aria-label={`${p.full_name}, ${d}: ${c ? CODES[c] : 'no code'}${clash ? ', on leave while assigned to a job' : ''}`} title={tip || undefined}
+                                      aria-pressed={multi ? picked.has(k) : undefined} disabled={!editable(p)}
+                                      onClick={(e) => clickCell(pi, di, e.shiftKey)}
+                                      className={cx('h-8 w-8 rounded-xs bg-surface-2/70 font-mono text-[11px] font-semibold disabled:cursor-default in-data-[density=touch]:h-11 in-data-[density=touch]:w-11', CODE_TONE[c as Code], k in pending && 'italic underline', picked.has(k) && 'bg-accent/30', clash && 'outline-2 -outline-offset-2 outline-danger')}>
+                                      {c ?? ''}
+                                      {jobs.length > 0 && <span aria-hidden className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-accent" />}
                                     </button>
-                                  ))}
-                                  <button type="button" role="menuitem" onClick={() => { setCodes([k], null); setMenu(null); }} className="col-span-2 min-h-9 rounded px-1.5 py-1 text-xs text-text-muted hover:bg-surface-2 in-data-[density=touch]:min-h-11">Clear</button>
-                                </div>
-                              )}
-                            </td>
+                                    {menu === k && (
+                                      <div role="menu" aria-label={`Code for ${p.full_name} on ${d}`} className="absolute top-9 left-0 z-40 grid w-80 grid-cols-2 gap-1 rounded-md border border-border bg-surface p-1.5 text-left shadow-pop"
+                                        onKeyDown={(e) => { if (e.key === 'Escape') setMenu(null); else rovingKeys(e); }}>
+                                        {CODE_LIST.map((cc) => (
+                                          <button key={cc} type="button" role="menuitemradio" aria-checked={cc === c} autoFocus={cc === (c ?? 'P')} onClick={() => { setCodes([k], cc); setMenu(null); }}
+                                            className={cx('flex min-h-9 items-baseline gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-surface-2 in-data-[density=touch]:min-h-11', cc === c && 'bg-surface-2 font-bold')}>
+                                            <span className={cx('font-mono font-bold', CODE_TONE[cc])}>{cc}</span><span className="truncate text-text-muted">{CODES[cc]}</span>
+                                          </button>
+                                        ))}
+                                        <button type="button" role="menuitem" onClick={() => { setCodes([k], null); setMenu(null); }} className="col-span-2 min-h-9 rounded px-1.5 py-1 text-xs text-text-muted hover:bg-surface-2 in-data-[density=touch]:min-h-11">Clear</button>
+                                      </div>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                              <td className="border-b border-border px-2 font-mono text-[11px] whitespace-nowrap text-text-muted" title={p.updated_by ? `Last saved by ${p.updated_by}` : undefined}>{s.present} on · {s.field} field · {s.leave} leave</td>
+                              <td className="border-b border-border px-2 whitespace-nowrap">
+                                {appr ? (
+                                  <span className="inline-flex items-center gap-1 text-success" title={`Approved by ${appr.approved_by}`}><Check aria-hidden className="size-3.5" />{appr.approved_by}
+                                    <SignedToggle type="attendance" id={`${p.id}|${month}`} />
+                                    {p.can_approve && <Button size="sm" variant="ghost" onClick={() => approve([p], false)}>Unapprove</Button>}</span>
+                                ) : p.can_approve ? <Button size="sm" onClick={() => approve([p], true)} disabled={days.some((d) => cellKey(p.id, d) in pending)}>Approve</Button>
+                                  : <span className="text-text-subtle">waiting for {meta.approvedBy}</span>}
+                              </td>
+                            </tr>
                           );
                         })}
-                        <td className="border-b border-border px-2 font-mono text-[11px] whitespace-nowrap text-text-muted">{s.present} on · {s.field} field · {s.leave} leave</td>
-                        <td className="border-b border-border px-2 whitespace-nowrap">
-                          {appr ? (
-                            <span className="inline-flex items-center gap-1 text-success" title={`Approved by ${appr.approved_by}`}><Check aria-hidden className="size-3.5" />{appr.approved_by}
-                              <SignedToggle type="attendance" id={`${p.id}|${month}`} />
-                              {canEdit && <Button size="sm" variant="ghost" onClick={() => approve(p, false)}>Unapprove</Button>}</span>
-                          ) : canEdit ? <Button size="sm" onClick={() => approve(p, true)} disabled={days.some((d) => cellKey(p.id, d) in pending)}>Approve</Button> : <span className="text-text-subtle">—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {categoriesOpen && <Categories groups={groups.map(([g, list]) => ({ name: g, country: list[0].country }))} data={cats.data} onClose={() => { setCategoriesOpen(false); qc.invalidateQueries({ queryKey: ['attendance-categories'] }); }} />}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      {categoriesOpen && <Categories countries={me?.countries ?? []} data={cats.data} onClose={() => { setCategoriesOpen(false); qc.invalidateQueries({ queryKey: ['attendance-categories'] }); }} />}
       {holidaysOpen && sheet && <Holidays sheet={sheet} onClose={() => { setHolidaysOpen(false); qc.invalidateQueries({ queryKey: ['attendance', month] }); }} />}
     </section>
   );
@@ -333,31 +397,34 @@ function Holidays({ sheet, onClose }: { sheet: Sheet; onClose: () => void }) {
 
 interface CategoryData { categories: { id: string; country: string; name: string; approver_email: string | null }[]; canManage: boolean }
 
-/** Manage categories (Ops Manager): which approver is emailed for each reporting-line group. */
-function Categories({ groups, data, onClose }: { groups: { name: string; country: string }[]; data: CategoryData | undefined; onClose: () => void }) {
-  const known = [...groups, ...(data?.categories ?? []).filter((c) => !groups.some((g) => g.name === c.name && g.country === c.country))];
+/**
+ * Approver emails (Ops Manager). Notify approver emails everyone holding the sheet's approving role in that country
+ * (their email comes from WIREGUARD). An address entered here is added, for an approver without an account.
+ */
+function Categories({ countries, data, onClose }: { countries: string[]; data: CategoryData | undefined; onClose: () => void }) {
+  const known = countries.flatMap((country) => SHEET_KEYS.map((k) => ({ country, name: SHEETS[k].label, approvedBy: SHEETS[k].approvedBy })));
   const [emails, setEmails] = useState<Record<string, string>>(() => Object.fromEntries(known.map((g) => [`${g.country}|${g.name}`, data?.categories.find((c) => c.country === g.country && c.name === g.name)?.approver_email ?? ''])));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const save = async (g: { name: string; country: string }) => {
     setError(null); setSaved(null);
-    try { await api('/attendance/categories', { method: 'PUT', json: { country: g.country, name: g.name, approver_email: emails[`${g.country}|${g.name}`] || null } }); setSaved(g.name); }
+    try { await api('/attendance/categories', { method: 'PUT', json: { country: g.country, name: g.name, approver_email: emails[`${g.country}|${g.name}`] || null } }); setSaved(`${g.country}|${g.name}`); }
     catch (e) { setError((e as Error).message); }
   };
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="cat-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
       <Card className="max-h-[85vh] w-full max-w-2xl overflow-y-auto">
-        <div className="mb-3 flex items-start gap-3"><h2 id="cat-title" className="flex-1 font-display text-lg font-bold">Attendance categories</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
-        <p className="mb-3 text-sm text-text-muted">Each reporting-line group is a category. Its approver gets the email when someone presses Notify approver on the sheet.</p>
+        <div className="mb-3 flex items-start gap-3"><h2 id="cat-title" className="flex-1 font-display text-lg font-bold">Approver emails</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
+        <p className="mb-3 text-sm text-text-muted">Notify emails everyone with the approving role in that country, using their email from WIREGUARD. Add an address here only for an approver without an SLK Ops account.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <ul className="divide-y divide-border">
           {known.map((g) => {
             const k = `${g.country}|${g.name}`;
             return (
               <li key={k} className="grid grid-cols-1 items-end gap-2 py-2 sm:grid-cols-[1fr_16rem_auto]">
-                <span className="text-sm"><span className="font-semibold">{g.name}</span> <span className="text-xs text-text-subtle">{g.country}</span></span>
-                <input aria-label={`Approver email for ${g.name}`} type="email" className={inputClass} placeholder="approver@nesr.com" value={emails[k] ?? ''} onChange={(e) => setEmails({ ...emails, [k]: e.target.value })} />
-                <Button size="sm" onClick={() => save(g)}>{saved === g.name ? <><Check aria-hidden className="size-3.5" />Saved</> : 'Save'}</Button>
+                <span className="text-sm"><span className="font-semibold">{g.name}</span> <span className="text-xs text-text-subtle">{g.country} · approved by {g.approvedBy}</span></span>
+                <input aria-label={`Extra approver email for ${g.name}, ${g.country}`} type="email" className={inputClass} placeholder="approver@nesr.com" value={emails[k] ?? ''} onChange={(e) => setEmails({ ...emails, [k]: e.target.value })} />
+                <Button size="sm" onClick={() => save(g)}>{saved === k ? <><Check aria-hidden className="size-3.5" />Saved</> : 'Save'}</Button>
               </li>
             );
           })}

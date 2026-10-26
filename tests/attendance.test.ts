@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CODE_LIST, assignmentsOn, isCode, isWeekend, monthDays, rowSummary } from '../src/shared/attendance';
 import { cleanEmployee } from '../src/worker/roster';
-import { readAllowed, ruleFor } from '../src/worker/permissions';
+import { isOpenWrite, readAllowed, ruleFor } from '../src/worker/permissions';
 
 describe('attendance codes and calendar', () => {
   it('has the 15 codes from the manual, including JO', () => {
@@ -30,7 +30,7 @@ describe('roster checks', () => {
     expect(cleanEmployee({ full_name: 'A', title: 'B' }, true)).toEqual({ error: 'EID is needed' });
     expect(cleanEmployee({ eid: 'E 1', full_name: 'A', title: 'B' }, true)).toEqual({ error: 'EID takes letters, digits and dashes only' });
     expect(cleanEmployee({ eid: 'E1', full_name: ' A ', title: 'B', wg_username: 'nesr-90002', is_slk_contact: true }, true))
-      .toEqual({ values: { eid: 'E1', full_name: 'A', title: 'B', wg_username: 'NESR-90002', is_slk_contact: 1 } });
+      .toEqual({ values: { eid: 'E1', full_name: 'A', title: 'B', wg_username: 'NESR-90002', is_slk_contact: 1, attendance_sheet: 'shop' } });
   });
   it('checks usernames, email, mobile and rotation on edit', () => {
     expect(cleanEmployee({ wg_username: 'bob' }, false)).toHaveProperty('error');
@@ -45,8 +45,10 @@ describe('attendance and roster rights', () => {
   it('maps reads and writes', () => {
     expect(readAllowed('/api/attendance', { attendance: { view: true, edit: false, delete: false } })).toBe(true);
     expect(readAllowed('/api/roster', { attendance: { view: true, edit: true, delete: false } })).toBe(false);
-    expect(ruleFor('PUT', '/api/attendance')?.action).toBe('edit');
-    expect(ruleFor('POST', '/api/attendance/approve')?.menu).toBe('attendance');
+    // saves and approvals are checked row by row against the sheet rules, not by the tab's edit right
+    expect(isOpenWrite('PUT', '/api/attendance')).toBe(true);
+    expect(isOpenWrite('POST', '/api/attendance/approve')).toBe(true);
+    expect(ruleFor('POST', '/api/attendance/notify')?.menu).toBe('attendance');
     expect(ruleFor('DELETE', '/api/roster/x')?.action).toBe('delete');
   });
 });

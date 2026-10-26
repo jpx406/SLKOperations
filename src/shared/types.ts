@@ -3,7 +3,8 @@ import type { ToolPart, WireTest } from './toolstring';
 export type Role =
   | 'admin' | 'operations_manager' | 'maintenance_manager' | 'sdm' | 'deputy_sdm' | 'sales' | 'director' | 'sqm'
   | 'slickline_supervisor' | 'slickline_operator' | 'assistant_operator' | 'crew' | 'viewer'
-  | 'explosive_manager' | 'explosive_admin' | 'storekeeper' | 'attendance_admin' | 'slk_contact';
+  | 'explosive_manager' | 'explosive_admin' | 'storekeeper' | 'attendance_admin' | 'slk_contact'
+  | 'foreman' | 'maintenance_supervisor';
 
 export type JobStatus = 'planned' | 'ongoing' | 'completed' | 'canceled';
 export type YesNo = 'yes' | 'no' | 'na' | 'other';

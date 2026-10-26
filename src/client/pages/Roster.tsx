@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { SHEETS, SHEET_KEYS, type SheetKey } from '../../shared/attendanceSheets';
 
 // Headcount Roster (S44): the people list behind Attendance and job crews, and the SLK Contacts list
 // that opens Pre-Job Notes (Administrator Manual 6 and 8.2).
@@ -12,6 +13,7 @@ import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, input
 interface Person {
   id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null; reports_to_id: string | null;
   reports_to_name: string | null; rotation: string; wg_username: string | null; is_slk_contact: number; contact_email: string | null; contact_mobile: string | null;
+  attendance_sheet: SheetKey | null; self_updated: number;
   active: number; jobs: number;
 }
 const CREW_ROLE: Record<string, string> = {
@@ -53,7 +55,7 @@ export function Roster() {
         <Card className="overflow-x-auto p-0">
           <table className="w-full min-w-[56rem] text-sm">
             <thead className="bg-surface-2"><tr className="text-left text-xs text-text-muted">
-              {(tab === 'contacts' ? ['Name', 'EID', 'Title', 'WIREGUARD user', 'Email', 'Mobile', ''] : ['Name', 'EID', 'Title', 'Account', 'Crew role', 'Reports to', 'Rotation', 'Jobs', 'Status', '']).map((h) => <th key={h} scope="col" className="px-3 py-2 font-semibold">{h}</th>)}
+              {(tab === 'contacts' ? ['Name', 'EID', 'Title', 'WIREGUARD user', 'Email', 'Mobile', ''] : ['Name', 'EID', 'Title', 'Account', 'Crew role', 'Reports to', 'Attendance sheet', 'Rotation', 'Jobs', 'Status', '']).map((h) => <th key={h} scope="col" className="px-3 py-2 font-semibold">{h}</th>)}
             </tr></thead>
             <tbody>
               {rows.map((p) => (
@@ -66,7 +68,9 @@ export function Roster() {
                   ) : (
                     <>
                       <td className="px-3 py-2">{p.account}</td><td className="px-3 py-2">{p.crew_role ? CREW_ROLE[p.crew_role] : '—'}</td>
-                      <td className="px-3 py-2">{p.reports_to_name ?? '—'}</td><td className="px-3 py-2 font-mono text-xs">{p.rotation}</td>
+                      <td className="px-3 py-2">{p.reports_to_name ?? '—'}</td>
+                      <td className="px-3 py-2">{SHEETS[p.attendance_sheet ?? 'shop'].label}{p.self_updated ? <span className="label-caps ml-1.5 rounded-xs border border-success px-1 text-success">Self</span> : null}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{p.rotation}</td>
                       <td className="px-3 py-2 font-mono text-xs">{p.jobs}</td><td className="px-3 py-2 text-xs">{p.active ? 'Active' : 'Switched off'}</td>
                     </>
                   )}
@@ -90,6 +94,7 @@ function PersonDialog({ row, people, canRemove, onClose, contact }: { row: Perso
     country: row?.country ?? me?.countries[0] ?? '', eid: row?.eid ?? '', full_name: row?.full_name ?? '', title: row?.title ?? '', account: row?.account ?? 'SLK',
     crew_role: row?.crew_role ?? '', reports_to_id: row?.reports_to_id ?? '', rotation: row?.rotation ?? '60/30', wg_username: row?.wg_username ?? '',
     is_slk_contact: row ? !!row.is_slk_contact : contact, contact_email: row?.contact_email ?? '', contact_mobile: row?.contact_mobile ?? '', active: row ? !!row.active : true,
+    attendance_sheet: row?.attendance_sheet ?? '', self_updated: row ? !!row.self_updated : false,
   });
   const set = (k: keyof typeof f, v: string | boolean) => setF((c) => ({ ...c, [k]: v }));
   const [error, setError] = useState<string | null>(null);
@@ -114,9 +119,15 @@ function PersonDialog({ row, people, canRemove, onClose, contact }: { row: Perso
           <Field id="p-title" label="Job title" required><input id="p-title" className={inputClass} value={f.title} onChange={(e) => set('title', e.target.value)} /></Field>
           <Field id="p-account" label="Account"><input id="p-account" className={inputClass} value={f.account} onChange={(e) => set('account', e.target.value)} /></Field>
           <Field id="p-role" label="Crew role" hint="Puts the person first in that crew picker"><select id="p-role" className={inputClass} value={f.crew_role} onChange={(e) => set('crew_role', e.target.value)}><option value="">Not on crews</option>{Object.entries(CREW_ROLE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
-          <Field id="p-reports" label="Reports to" hint="Groups the attendance sheet"><select id="p-reports" className={inputClass} value={f.reports_to_id} onChange={(e) => set('reports_to_id', e.target.value)}><option value="">Nobody</option>{managers.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}</select></Field>
+          <Field id="p-reports" label="Reports to" hint="The foreman of an operator or helper fills their attendance"><select id="p-reports" className={inputClass} value={f.reports_to_id} onChange={(e) => set('reports_to_id', e.target.value)}><option value="">Nobody</option>{managers.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}</select></Field>
+          <Field id="p-sheet" label="Attendance sheet" hint={f.attendance_sheet ? `Filled by ${SHEETS[f.attendance_sheet as SheetKey].filledBy}, approved by ${SHEETS[f.attendance_sheet as SheetKey].approvedBy}` : 'Follows the crew role when left empty'}>
+            <select id="p-sheet" className={inputClass} value={f.attendance_sheet} onChange={(e) => set('attendance_sheet', e.target.value)}>
+              <option value="">From the crew role</option>{SHEET_KEYS.map((k) => <option key={k} value={k}>{SHEETS[k].label}</option>)}
+            </select>
+          </Field>
           <Field id="p-rot" label="Rotation"><select id="p-rot" className={inputClass} value={f.rotation} onChange={(e) => set('rotation', e.target.value)}>{['60/30', '28/28', '42/21', '35/35', '5/2'].map((r) => <option key={r}>{r}</option>)}</select></Field>
           <Field id="p-wg" label="WIREGUARD username" hint="Links attendance and contact access to their sign-in"><input id="p-wg" className={inputClass} placeholder="NESR-12345" value={f.wg_username} onChange={(e) => set('wg_username', e.target.value)} /></Field>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.self_updated} onChange={(e) => set('self_updated', e.target.checked)} />Fills own attendance (SELF; needs the WIREGUARD username)</label>
           <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.is_slk_contact} onChange={(e) => set('is_slk_contact', e.target.checked)} />SLK contact (opens Pre-Job Notes and appears in its contact lists)</label>
           {f.is_slk_contact && (
             <>

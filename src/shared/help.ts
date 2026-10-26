@@ -60,7 +60,7 @@ The Failure Roster lists failures by month with category, severity and action st
     id: 'attendance', title: 'Attendance and headcount', menus: ['attendance', 'headcount_roster'],
     body: `Click a cell to set a code for that day, or switch on Multi-select, pick cells (Shift-click for a range) and set one code for all. Nothing is stored until Save. Weekends and public holidays are shaded; a red cell means the person was on leave while assigned to a job. Approving a person's month locks their row.
 
-Rows are grouped by reporting line; each group is a category. The Ops Manager sets each category's approver email under Manage categories, and Notify approver emails that approver the month's totals. Crew see only their own row. The headcount roster is the list of people Attendance and the job crew pickers read from.`,
+There are three sheets, set per person in the Headcount Roster. Operators & Helpers: the Foreman fills the crew who report to them, the SDM approves. Support Staff (Shop): the Maintenance Supervisor fills, the Maintenance Manager approves. Management: each person fills their own row (or an Admin does), the Operations Manager approves. Someone marked SELF in the roster fills their own row on any sheet. You see the rows you fill or approve and your own. Notify emails the month's totals to everyone with the approving role in that country. The headcount roster is the list of people Attendance and the job crew pickers read from.`,
   },
   {
     id: 'inventory', title: 'Inventories', menus: ['inventory_explosive', 'inventory_hardware', 'inventory_mcr'],

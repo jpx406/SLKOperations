@@ -97,8 +97,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/failure-roster$/, menu: 'failure_roster', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/failure-roster\/[^/]+$/, menu: 'failure_roster', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/failure-roster\/[^/]+$/, menu: 'failure_roster', action: 'delete' },
-  { method: 'PUT', re: /^\/api\/attendance$/, menu: 'attendance', action: 'edit' },
-  { method: 'POST', re: /^\/api\/attendance\/(approve|holidays|notify)$/, menu: 'attendance', action: 'edit' },
+  { method: 'POST', re: /^\/api\/attendance\/(holidays|notify)$/, menu: 'attendance', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/attendance\/holidays\/[^/]+$/, menu: 'attendance', action: 'edit' },
   { method: 'PUT', re: /^\/api\/attendance\/categories$/, menu: 'attendance', action: 'edit' },
   { method: 'POST', re: /^\/api\/roster$/, menu: 'headcount_roster', action: 'edit' },
@@ -174,6 +173,10 @@ export function readAllowed(path: string, menus: Record<string, MenuRight>): boo
 export const OPEN_WRITES: { method: string; re: RegExp }[] = [
   { method: 'POST', re: /^\/api\/auth\/login$/ },
   { method: 'POST', re: /^\/api\/auth\/logout$/ },
+  // attendance saves and approvals follow the sheet rules row by row (shared/attendanceSheets.ts): a manager who
+  // only views the tab still fills their own management row, so the check lives in the handler
+  { method: 'PUT', re: /^\/api\/attendance$/ },
+  { method: 'POST', re: /^\/api\/attendance\/approve$/ },
   // everyone manages the Face ID devices on their own account
   { method: 'POST', re: /^\/api\/passkeys\/(register-options|register)$/ },
   { method: 'DELETE', re: /^\/api\/passkeys\/[^/]+$/ },

@@ -30,4 +30,6 @@ export const ROLE_LABEL: Record<Role, string> = {
   storekeeper: 'Storekeeper',
   attendance_admin: 'Attendance Admin',
   slk_contact: 'SLK Contact',
+  foreman: 'Foreman',
+  maintenance_supervisor: 'Maint. Supervisor',
 };
