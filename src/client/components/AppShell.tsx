@@ -9,7 +9,7 @@ import { api, countryScope, setCountryScope } from '../api';
 import { useMe } from '../auth';
 import { useDisplay, type DensityChoice } from '../display';
 import { AssistantLauncher, HelpButton } from './Help';
-import { Button, cx } from './ui';
+import { Button, cx, rovingKeys } from './ui';
 
 /** Narrows every screen to one country for people who cover several. The server checks it against their countries. */
 function CountrySwitch({ countries }: { countries: string[] }) {
@@ -165,9 +165,9 @@ function AccountMenu({ name, role, admin, countries, passwordUrl, display, onSig
             </button>
             <div className="px-2.5 py-1.5">
               <p id="touch-label" className="mb-1.5 text-sm font-semibold">Large touch controls</p>
-              <div role="radiogroup" aria-labelledby="touch-label" className="flex overflow-hidden rounded-md border border-border-strong">
+              <div role="radiogroup" aria-labelledby="touch-label" onKeyDown={rovingKeys} className="flex overflow-hidden rounded-md border border-border-strong">
                 {DENSITY.map(([v, l]) => (
-                  <button key={v} type="button" role="radio" aria-checked={display.density === v} onClick={() => display.setDensity(v)}
+                  <button key={v} type="button" role="radio" aria-checked={display.density === v} tabIndex={display.density === v ? 0 : -1} onClick={() => display.setDensity(v)}
                     className={cx('h-(--layout-control-sm) flex-1 text-xs font-semibold', display.density === v ? 'bg-accent text-on-accent' : 'text-text-muted hover:bg-surface-2')}>{l}</button>
                 ))}
               </div>

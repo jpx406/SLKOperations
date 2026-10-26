@@ -928,3 +928,29 @@ Every label, message and empty state was written here. No code, assets or copy f
   - Statistics targets on the gauges;
   - the 8 Min. Facts backlog in its empty state.
 - **Verified:** tests 204; screenshots in `design/after/` (desktop 1440 dark, phone 390 touch) compared against `design/before/`.
+
+## 6l — Accessibility and motion fixes (ui-skills: fixing-accessibility, accessible-animation)
+
+- **Reduced motion, tiered:** under `prefers-reduced-motion` the spinners fade slowly instead of spinning (loading still reads as loading), the skeleton pulse slows to 3s, and transitions and smooth scrolling are cut.
+- **Keyboard:**
+  - every radiogroup (JRA answers, touch-controls switch, drum and wire, 8 Min. Facts status, Inventory category) is one Tab stop; arrows and Home/End move and choose (`rovingKeys`, `radioTab` in `ui.tsx`);
+  - the attendance code menu takes arrow keys, and its items are `menuitemradio`, showing the code with its name ("P Present"), so the legend isn't needed to choose;
+  - Schedule bars: `{` and `}` move the start date (`[` `]` already moved the end), and the keyboard moves are written under the grid, not only in the bar's accessible name;
+  - the drag handles widen from 6px to 10px.
+- **Focus:** inside segmented controls the ring is drawn inset in the text colour; the outside ring was clipped by the rounded border and faint on a chalk fill.
+- **Not by colour alone:**
+  - Schedule bars and their legend carry a status glyph (planned, ongoing, completed, canceled);
+  - gauges say "on target / below target" or "good / watch / low" under the value;
+  - on Wires, a passing tension test past its window shows "N days old, out of window" and is no longer green;
+  - the ADMIN-style badge uses the solid pill tokens in Sunlight.
+- **Forms:**
+  - the Execution log row has visible labels (Time, Run, Depth (ft), What happened) instead of placeholders, and the Log button explains that it needs "what happened";
+  - Sign in and Unlock are never dead buttons: an empty submit says what's missing and puts focus there;
+  - Save settings says "No changes to save";
+  - 8 Min. Facts print and Word say "Save to print or export".
+- **Headings:** the JRA briefing on Preparation is an h2 (it skipped from h1 to h3).
+- **Verified:**
+  - tests 204;
+  - in the browser with reduced motion, the spinner uses `slk-breathe`; a JRA answer group has tab stops `[0, -1]`, and ArrowRight selects and focuses "No" with an inset ring;
+  - 12 Schedule bars and the legend show glyphs;
+  - an empty Sign in announces "Enter your username." and focuses the field.

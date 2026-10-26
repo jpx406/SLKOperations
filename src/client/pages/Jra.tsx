@@ -7,7 +7,7 @@ import { ANSWER_LABEL, approvalLevel, exemptions, flags, optionsOf, pointsFor, p
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { ROLE_LABEL } from '../../shared/roles';
-import { Banner, Button, Card, Field, ProgressBar, Skeleton, cx, inputClass } from '../components/ui';
+import { Banner, Button, Card, Field, ProgressBar, Skeleton, cx, inputClass, radioTab, rovingKeys } from '../components/ui';
 
 // JRA (S28): answers save as you go while it is a draft; Send for approval needs every required answer;
 // the named approver (or an admin or operations manager) approves or rejects.
@@ -104,9 +104,9 @@ export function JraPage() {
                         <span className="w-8 font-mono text-xs text-text-muted">{x.id}</span>
                         <span className="min-w-0 flex-1 text-sm">{x.text}{!x.required && <span className="ml-1 text-xs text-text-subtle">(optional)</span>}</span>
                         {pts > 0 && <span className="inline-flex items-center gap-1 text-xs font-semibold text-warning"><AlertTriangle aria-hidden className="size-3.5" />+{pts}</span>}
-                        <span role="radiogroup" aria-label={`${x.id}: ${x.text}`} className="flex overflow-hidden rounded-md border border-border-strong">
-                          {optionsOf(x).map((o) => (
-                            <button key={o} type="button" role="radio" aria-checked={a === o} disabled={!canEdit} onClick={() => answer(x.id, o)}
+                        <span role="radiogroup" aria-label={`${x.id}: ${x.text}`} onKeyDown={rovingKeys} className="flex overflow-hidden rounded-md border border-border-strong">
+                          {optionsOf(x).map((o, oi) => (
+                            <button key={o} type="button" role="radio" aria-checked={a === o} tabIndex={radioTab(a === o, oi === 0, optionsOf(x).includes(a as never))} disabled={!canEdit} onClick={() => answer(x.id, o)}
                               className={cx('h-(--layout-control-answer) min-w-12 px-3 text-xs font-semibold disabled:cursor-default', a === o ? (pointsFor(x, o) > 0 || (x.requirement?.when.includes(o) ?? false) ? 'bg-warning text-on-accent' : 'bg-accent text-on-accent') : 'text-text-muted hover:bg-surface-2')}>{ANSWER_LABEL[o]}</button>
                           ))}
                         </span>
@@ -189,7 +189,7 @@ export function JraBanner({ jobId }: { jobId: string }) {
   return (
     <div className={cx('mb-4 rounded-md border p-3', st === 'approved' ? 'border-success' : reasons.length ? 'border-warning' : 'border-border')}>
       <div className="flex flex-wrap items-center gap-3">
-        <h3 className="font-display text-base font-bold uppercase">JRA briefing</h3>
+        <h2 className="font-display text-base font-bold uppercase">JRA briefing</h2>
         <span className="text-sm text-text-muted">Score {score} → {approvalLevel(template, score)}{fl ? ` · ${fl} MOC / exemption${fl === 1 ? '' : 's'}` : ''}</span>
         <span className={cx('label-caps rounded-pill px-2 py-0.5', st === 'approved' ? 'bg-success-subtle text-success' : st === 'sent' ? 'bg-info-subtle text-info' : 'bg-neutral-subtle text-text-muted')}>{STATUS_TEXT[st] ?? st}</span>
         <span className="font-mono text-xs text-text-subtle">{template.code} rev {template.revision}</span>

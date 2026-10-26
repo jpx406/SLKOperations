@@ -141,7 +141,10 @@ function AiAdmin() {
           <input id="ai-daily" type="number" min={0} step={1} className={inputSized('w-24')} value={form.messages_per_user_day}
             onChange={(e) => setForm({ ...form, messages_per_user_day: Math.round(Number(e.target.value)) })} />
         </Field>
-        <Button variant="primary" loading={save.isPending} disabled={!dirty} onClick={() => save.mutate(form)}>Save settings</Button>
+        <div className="flex items-center gap-3">
+          <Button variant="primary" loading={save.isPending} disabled={!dirty} aria-describedby="ai-save-hint" onClick={() => save.mutate(form)}>Save settings</Button>
+          {!dirty && <span id="ai-save-hint" className="text-xs text-text-subtle">No changes to save</span>}
+        </div>
       </div>
       <h3 className="label-caps mb-1 mt-5 text-text-muted">This month</h3>
       <p className="text-sm"><span className="font-mono">{usd(spent)}</span> of <span className="font-mono">{usd(budget)}</span>{budget > 0 && ` (${Math.round((spent / budget) * 100)}%)`}</p>

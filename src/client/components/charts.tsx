@@ -91,8 +91,10 @@ export function Gauge({ label, value, target, sub }: { label: string; value: num
   const arc = (p: number) => { const a = Math.PI * (1 - p / 100); return [50 + 40 * Math.cos(a), 50 - 40 * Math.sin(a)]; };
   const [x, y] = arc(v);
   const tone = value == null ? 'text-text-subtle' : target != null ? (v >= target ? 'text-success' : 'text-warning') : v >= 90 ? 'text-success' : v >= 75 ? 'text-warning' : 'text-danger';
+  // the colour has a word next to it, so the state reads without telling amber from green
+  const state = value == null ? null : target != null ? (v >= target ? 'on target' : 'below target') : v >= 90 ? 'good' : v >= 75 ? 'watch' : 'low';
   return (
-    <figure className="flex flex-col items-center" aria-label={`${label}: ${value == null ? 'no data' : `${value}%`}${target != null ? `, target ${target}%` : ''}`}>
+    <figure className="flex flex-col items-center" aria-label={`${label}: ${value == null ? 'no data' : `${value}%`}${target != null ? `, target ${target}%` : ''}${state ? `, ${state}` : ''}`}>
       <svg viewBox="0 0 100 58" className="w-full max-w-40" aria-hidden>
         <path d="M10 50 A40 40 0 0 1 90 50" fill="none" stroke="var(--color-surface-2)" strokeWidth="9" strokeLinecap="round" />
         {value != null && v > 0 && <path d={`M10 50 A40 40 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)}`} fill="none" stroke="currentColor" className={tone} strokeWidth="9" strokeLinecap="round" />}
@@ -100,7 +102,8 @@ export function Gauge({ label, value, target, sub }: { label: string; value: num
         <text x="50" y="49" textAnchor="middle" className="fill-current font-mono" fontSize="14" fontWeight="700">{value == null ? '—' : `${Math.round(value)}%`}</text>
       </svg>
       <figcaption className="mt-1 max-w-40 truncate text-center text-xs font-semibold" title={label}>{label}</figcaption>
-      {sub && <span className="text-[11px] text-text-subtle">{sub}</span>}
+      {state && <span aria-hidden className={cx('label-caps', tone)}>{state}</span>}
+      {sub && <span className="text-label text-text-subtle">{sub}</span>}
     </figure>
   );
 }

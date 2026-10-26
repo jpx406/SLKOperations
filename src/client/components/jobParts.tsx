@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { TOOLSTRING_COMPONENTS, preJobWireStatus, toolChecks, toolTotals, type ToolPart } from '../../shared/toolstring';
 import type { CrewMember, Employee, Job, JobCrew, Lookups, WireOptions } from '../../shared/types';
 import { api } from '../api';
-import { Banner, Button, LockHint, cx, inputClass, inputSized } from './ui';
+import { Banner, Button, LockHint, cx, inputClass, inputSized, radioTab, rovingKeys } from './ui';
 
 // Pieces of the job editor that hold more than one field: wire panel, toolstring builder, crew, gated detail sections.
 
@@ -27,13 +27,13 @@ export function WirePanel({ job, canEdit, onPick }: { job: Job; canEdit: boolean
   if (!drums.length) return <Banner tone="warning">WIREGUARD has no drums on unit {job.unit_number}. Assign a drum there, then sync.</Banner>;
   const start = job.start_date ?? new Date().toISOString().slice(0, 10);
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2" role="radiogroup" aria-label="Drum and wire">
-      {drums.map((d) => {
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2" role="radiogroup" aria-label="Drum and wire" onKeyDown={rovingKeys}>
+      {drums.map((d, di) => {
         const on = job.drum_no === d.drum_no;
         const status = d.wire_serial_number ? preJobWireStatus(tests.filter((t) => t.wire_serial_number === d.wire_serial_number), start, tensionDays) : null;
         const usable = !!d.wire_serial_number && /active/i.test(d.status ?? 'active');
         return (
-          <button key={d.drum_no} type="button" role="radio" aria-checked={on} disabled={!canEdit || !usable}
+          <button key={d.drum_no} type="button" role="radio" aria-checked={on} tabIndex={radioTab(on, di === 0, drums.some((x) => x.drum_no === job.drum_no))} disabled={!canEdit || !usable}
             onClick={() => (on ? onPick(null, null) : onPick(d.drum_no, d.wire_serial_number))}
             className={cx('rounded-md border p-3 text-left disabled:cursor-not-allowed', on ? 'border-accent bg-surface-2' : 'border-border hover:border-border-strong', !usable && 'opacity-60')}>
             <span className="flex items-center gap-2">

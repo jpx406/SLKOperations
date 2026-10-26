@@ -19,6 +19,11 @@ export function SignIn() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!username || !password) {
+      setError(!username ? 'Enter your username.' : 'Enter your password.');
+      document.getElementById(!username ? 'username' : 'password')?.focus();
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -55,7 +60,7 @@ export function SignIn() {
               {show ? <EyeOff aria-hidden className="size-4" /> : <Eye aria-hidden className="size-4" />}
             </button>
           </Field>
-          <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!username || !password}>Sign in</Button>
+          <Button type="submit" variant="primary" size="lg" loading={busy}>Sign in</Button>
         </form>
         <p className="mt-4 text-center text-sm">
           <a className="text-text-muted underline hover:text-text" href={wg ?? undefined} target="_blank" rel="noreferrer">Forgot your password? Reset it in WIREGUARD</a>

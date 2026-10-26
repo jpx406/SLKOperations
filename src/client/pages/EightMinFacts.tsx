@@ -6,7 +6,7 @@ import { SEVERITY_LABEL, SEVERITY_MATRIX, reportTotals, severityFromNpt, type Se
 import type { Job, JobCrew } from '../../shared/types';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass, inputSized, rovingKeys } from '../components/ui';
 
 // 8 Min. Facts: the list (S11) and the report editor (S12).
 
@@ -49,9 +49,9 @@ export function EightMinFactsList() {
       </PageTitle>
       <p className="-mt-3 mb-4 text-sm text-text-muted">One report per failure or NPT event, per field ticket. Saving updates the job’s NPT and the Failure Roster; print, Word and email from the report.</p>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Status" className="flex gap-1.5">
+        <div role="radiogroup" aria-label="Status" onKeyDown={rovingKeys} className="flex gap-1.5">
           {[['', 'All'], ['saved', 'Saved'], ['sent', 'Sent']].map(([v, l]) => (
-            <button key={v} type="button" role="radio" aria-checked={status === v} onClick={() => set('status', v)}
+            <button key={v} type="button" role="radio" aria-checked={status === v} tabIndex={status === v ? 0 : -1} onClick={() => set('status', v)}
               className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', status === v ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
         </div>
@@ -178,12 +178,12 @@ export function EightMinFactsEditor() {
         <h1 id="emf-ed-title" className="min-w-0 truncate font-display text-xl font-extrabold uppercase">{head.title || (isNew ? 'New 8 Min. Facts' : report?.title)}</h1>
         {report && <span className="font-mono text-sm text-text-muted">{report.log_no} · v{report.current_version}</span>}
         <span role="status" aria-live="polite" className="text-xs font-semibold">
-          {dirty ? <span className="text-text-muted">Unsaved changes</span> : report ? <span className="inline-flex items-center gap-1 text-success"><Check aria-hidden className="size-3.5" />All changes saved</span> : null}
+          {dirty ? <span id="mf-export-hint" className="text-text-muted">Unsaved changes. Save to print or export.</span> : report ? <span className="inline-flex items-center gap-1 text-success"><Check aria-hidden className="size-3.5" />All changes saved</span> : null}
         </span>
         <div className="ml-auto flex flex-wrap gap-2 print:hidden">
           {canEdit && <Button variant="primary" onClick={save} loading={saving} disabled={!dirty && !!report}>Save</Button>}
-          <Button onClick={() => window.print()} disabled={!report || dirty}><Printer aria-hidden className="size-4" />Print / PDF</Button>
-          <Button onClick={() => report && downloadWord(report)} disabled={!report || dirty}><FileText aria-hidden className="size-4" />Word</Button>
+          <Button onClick={() => window.print()} disabled={!report || dirty} aria-describedby="mf-export-hint"><Printer aria-hidden className="size-4" />Print / PDF</Button>
+          <Button onClick={() => report && downloadWord(report)} disabled={!report || dirty} aria-describedby="mf-export-hint"><FileText aria-hidden className="size-4" />Word</Button>
           {canEdit && <Button onClick={() => setPanel('email')} disabled={!report || dirty}><Mail aria-hidden className="size-4" />Email…</Button>}
           <Button onClick={() => setPanel('history')} disabled={!report}><History aria-hidden className="size-4" />History</Button>
         </div>

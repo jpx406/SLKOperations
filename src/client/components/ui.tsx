@@ -1,8 +1,25 @@
-import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
+import type { ButtonHTMLAttributes, KeyboardEvent, ReactNode, Ref } from 'react';
 import { AlertCircle, AlertTriangle, Check, Info, Loader2, Lock } from 'lucide-react';
 import type { JobStatus } from '../../shared/types';
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
+
+/** Arrow keys (and Home/End) for a radiogroup or menu: move focus to the next item, and in a radiogroup choose it too. */
+export function rovingKeys(e: KeyboardEvent<HTMLElement>) {
+  const step = ({ ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 } as Record<string, number>)[e.key];
+  if (!step && e.key !== 'Home' && e.key !== 'End') return;
+  const items = [...e.currentTarget.querySelectorAll<HTMLElement>('[role=radio]:not(:disabled), [role^=menuitem]:not(:disabled)')];
+  if (!items.length) return;
+  const i = items.indexOf(document.activeElement as HTMLElement);
+  const next = e.key === 'Home' ? items[0] : e.key === 'End' ? items[items.length - 1] : items[(i + step + items.length) % items.length];
+  e.preventDefault();
+  e.stopPropagation();
+  next.focus();
+  if (next.getAttribute('role') === 'radio') next.click();
+}
+
+/** Only the chosen radio (or the first, when none is) sits in the Tab order; arrows reach the rest. */
+export const radioTab = (checked: boolean, first: boolean, anyChecked: boolean) => (checked || (!anyChecked && first) ? 0 : -1);
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 const VARIANT: Record<Variant, string> = {
@@ -53,7 +70,7 @@ export function SeverityPill({ severity, auto }: { severity: string | null; auto
 }
 
 export function Badge({ children }: { children: ReactNode }) {
-  return <span className="label-caps inline-flex rounded-xs bg-info-subtle px-1.5 text-info">{children}</span>;
+  return <span className="label-caps inline-flex rounded-xs border border-pill-planned-border bg-pill-planned-bg px-1.5 text-pill-planned-fg">{children}</span>;
 }
 
 export function ProgressBar({ value, label, done }: { value: number; label: string; done?: boolean }) {

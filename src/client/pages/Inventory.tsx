@@ -10,7 +10,7 @@ import { csv } from '../../shared/xlsx';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { KpiTile, saveFile } from '../components/charts';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized, rovingKeys } from '../components/ui';
 
 // Explosive (S18), Hardware (S19) and MCR (S29) inventories: stock by location from the ledger, movements,
 // history with undo, and the per-well job reconciliation (S20).
@@ -111,9 +111,9 @@ export function Inventory({ inv }: { inv: Inv }) {
             <KpiTile label="On order" value={fmt(total('on_order'))} /><KpiTile label="Received (total)" value={fmt(received)} />
           </dl>
           <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
-            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Category">
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Category" onKeyDown={rovingKeys}>
               {['', ...cats].map((c) => (
-                <button key={c || 'all'} type="button" role="radio" aria-checked={cat === c} onClick={() => setCat(c)}
+                <button key={c || 'all'} type="button" role="radio" aria-checked={cat === c} tabIndex={cat === c ? 0 : -1} onClick={() => setCat(c)}
                   className={cx('h-7 in-data-[density=touch]:h-11 rounded-pill border px-3 text-xs font-semibold', cat === c ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{c || 'All'}</button>
               ))}
             </div>

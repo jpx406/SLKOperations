@@ -13,6 +13,8 @@
     -webkit-font-smoothing: antialiased;
   }
   :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  /* segmented controls clip an outside ring, and blue on a chalk fill is faint: draw it inside, in the text colour */
+  [role=radiogroup] > [role=radio]:focus-visible { outline-color: currentColor; outline-offset: -4px; }
   input, select, textarea, button { font: inherit; color: inherit; }
 }
 
@@ -28,6 +30,15 @@
 @utility hatch-blocked {
   background: repeating-linear-gradient(45deg, var(--color-blocked-subtle) 0 6px,
     color-mix(in srgb, var(--color-blocked) 22%, var(--color-blocked-subtle)) 6px 12px);
+}
+
+/* Reduced motion, tiered: spinning becomes a slow fade so loading still reads as loading,
+   the skeleton pulse slows down, and colour transitions stay but shorten. */
+@keyframes slk-breathe { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin { animation: slk-breathe 1.6s ease-in-out infinite; }
+  .animate-pulse { animation-duration: 3s; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
 /* Print one chart: everything else on the page is hidden while it prints. */

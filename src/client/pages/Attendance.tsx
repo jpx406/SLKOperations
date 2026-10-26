@@ -8,7 +8,7 @@ import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { saveFile } from '../components/charts';
 import { SignedToggle } from '../components/Signature';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized, rovingKeys } from '../components/ui';
 
 // Attendance (S17): one row per person, one column per day. Click a cell to pick a code, or switch on
 // Multi-select, pick cells (Shift-click for a range) and apply one code to all. Nothing is stored until Save.
@@ -262,13 +262,15 @@ export function Attendance() {
                                 {jobs.length > 0 && <span aria-hidden className="absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-accent" />}
                               </button>
                               {menu === k && (
-                                <div role="menu" aria-label={`Code for ${p.full_name} on ${d}`} className="absolute top-8 left-0 z-40 grid w-64 grid-cols-3 gap-1 rounded-md border border-border bg-surface p-1.5 text-left shadow-pop"
-                                  onKeyDown={(e) => { if (e.key === 'Escape') setMenu(null); }}>
+                                <div role="menu" aria-label={`Code for ${p.full_name} on ${d}`} className="absolute top-8 left-0 z-40 grid w-80 grid-cols-2 gap-1 rounded-md border border-border bg-surface p-1.5 text-left shadow-pop"
+                                  onKeyDown={(e) => { if (e.key === 'Escape') setMenu(null); else rovingKeys(e); }}>
                                   {CODE_LIST.map((cc) => (
-                                    <button key={cc} type="button" role="menuitem" autoFocus={cc === (c ?? 'P')} title={CODES[cc]} onClick={() => { setCodes([k], cc); setMenu(null); }}
-                                      className={cx('rounded px-1.5 py-1 font-mono text-xs hover:bg-surface-2', cc === c && 'bg-surface-2 font-bold', CODE_TONE[cc])}>{cc}</button>
+                                    <button key={cc} type="button" role="menuitemradio" aria-checked={cc === c} autoFocus={cc === (c ?? 'P')} onClick={() => { setCodes([k], cc); setMenu(null); }}
+                                      className={cx('flex min-h-9 items-baseline gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-surface-2 in-data-[density=touch]:min-h-11', cc === c && 'bg-surface-2 font-bold')}>
+                                      <span className={cx('font-mono font-bold', CODE_TONE[cc])}>{cc}</span><span className="truncate text-text-muted">{CODES[cc]}</span>
+                                    </button>
                                   ))}
-                                  <button type="button" role="menuitem" onClick={() => { setCodes([k], null); setMenu(null); }} className="col-span-3 rounded px-1.5 py-1 text-xs text-text-muted hover:bg-surface-2">Clear</button>
+                                  <button type="button" role="menuitem" onClick={() => { setCodes([k], null); setMenu(null); }} className="col-span-2 min-h-9 rounded px-1.5 py-1 text-xs text-text-muted hover:bg-surface-2 in-data-[density=touch]:min-h-11">Clear</button>
                                 </div>
                               )}
                             </td>

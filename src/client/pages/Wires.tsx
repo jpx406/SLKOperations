@@ -46,13 +46,18 @@ export function WiresRegister() {
     const p = K.params(q.data.settings);
     const unit = unitOf(data.drums);
     const lim = p.sop('retire_runs_limit', 220);
+    const tensionWindow = p.kpi('C1', 'tension_window_days');
     return data.wires.map((w) => {
       const sn = String(w.wireSerialNumber);
       const tests = data.maint.filter((d) => d.docType === 'wire_maintenance_entry' && String(d.wireSerialNumber) === sn).sort((a, b) => String(b.testDate).localeCompare(String(a.testDate)));
       const drum = data.drums.find((d) => d.drumNo === w.drumNo);
+      const age = tests[0] ? K.daysBetween(tests[0].testDate, today()) : null;
       return {
         w, sn, unit: unit(w.drumNo), remaining: K.wireRemaining(w, data.jobs), runs: K.wireRunCount(w, data.jobs), life: Math.round((K.wireRunCount(w, data.jobs) / lim) * 1000) / 10,
-        test: tests[0] ?? null, mpi: drum ? K.mpiStatus(drum, data.maint, today(), p).state : null,
+        test: tests[0] ?? null,
+        // a passing tension test past its window no longer counts, so it's said in words and not shown green
+        testStale: !!tests[0] && /tension|break/i.test(String(tests[0].testType ?? '')) && age != null && age > tensionWindow ? age : null,
+        mpi: drum ? K.mpiStatus(drum, data.maint, today(), p).state : null,
         alerts: data.notifications.filter((n) => !n.resolvedAt && String(n.wireSerialNumber ?? '') === sn).length,
         low: K.wireRemaining(w, data.jobs) < p.sop('low_length_warning_ft', 2000),
       };
@@ -93,7 +98,7 @@ export function WiresRegister() {
                   <td className="px-3 py-2 text-xs">{r.w.status ?? '—'}</td>
                   <td className={cx('px-3 py-2 font-mono', r.low && 'font-semibold text-warning')}>{Math.round(r.remaining).toLocaleString()} ft</td>
                   <td className={cx('px-3 py-2 font-mono text-xs', r.life >= 80 && 'text-danger')}>{r.runs} · {r.life}%</td>
-                  <td className="px-3 py-2 text-xs">{r.test ? <><span className={cx(r.test.result === 'Pass' ? 'text-success' : 'text-danger')}>{r.test.testType} {r.test.result}</span> · {formatDate(String(r.test.testDate).slice(0, 10))}</> : <span className="text-text-subtle">none</span>}</td>
+                  <td className="px-3 py-2 text-xs">{r.test ? <><span className={cx(r.test.result !== 'Pass' ? 'text-danger' : r.testStale ? 'text-text-muted' : 'text-success')}>{r.test.testType} {r.test.result}</span> · {formatDate(String(r.test.testDate).slice(0, 10))}{r.testStale && <span className="font-semibold text-warning"> · {r.testStale} days old, out of window</span>}</> : <span className="text-text-subtle">none</span>}</td>
                   <td className={cx('px-3 py-2 text-xs', r.mpi && ['expired', 'failed'].includes(r.mpi) && 'font-semibold text-danger', r.mpi === 'expiring' && 'text-warning', (!r.mpi || r.mpi === 'none') && 'text-text-subtle')}>{!r.mpi || r.mpi === 'none' ? 'none on file' : r.mpi}</td>
                   <td className={cx('px-3 py-2 text-xs', r.alerts > 0 && 'font-semibold text-warning')}>{r.alerts ? `${r.alerts} alert${r.alerts === 1 ? '' : 's'}` : '—'}</td>
                 </tr>

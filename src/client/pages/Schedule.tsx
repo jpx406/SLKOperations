@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { CalendarClock, Check, ChevronLeft, ChevronRight, Play, Plus, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { canEditField } from '../../shared/fieldPolicy';
@@ -25,6 +25,8 @@ const BAR: Record<JobStatus, string> = {
   completed: 'border-success bg-success-subtle text-success',
   canceled: 'border-neutral bg-neutral-subtle text-neutral line-through',
 };
+// a shape per status, so the bar doesn't depend on its colour alone
+const BAR_ICON: Record<JobStatus, LucideIcon> = { planned: CalendarClock, ongoing: Play, completed: Check, canceled: X };
 const BLOCK_LABEL: Record<string, string> = {
   maintenance: 'Maintenance', loan: 'On loan', transferred: 'Transferred', junk: 'Junk', backup_on_location: 'Backup on site',
 };
@@ -193,6 +195,9 @@ export function Schedule() {
     } else if (e.key === ']' || e.key === '[') {
       const end = addDays(job.end_date, e.key === ']' ? 1 : -1);
       if (end >= job.start_date) t = { unit_number: job.unit_number, start_date: job.start_date, end_date: end };
+    } else if (e.key === '}' || e.key === '{') {
+      const start = addDays(job.start_date, e.key === '}' ? 1 : -1);
+      if (start <= job.end_date) t = { unit_number: job.unit_number, start_date: start, end_date: job.end_date };
     }
     if (t) { e.preventDefault(); move.mutate({ job, t }); }
   };
@@ -224,7 +229,7 @@ export function Schedule() {
         </select>
         <span className="flex flex-wrap gap-3 text-xs text-text-muted" aria-label="Legend">
           {(['planned', 'ongoing', 'completed'] as JobStatus[]).map((s) => (
-            <span key={s} className="inline-flex items-center gap-1.5"><i className={cx('inline-block size-2.5 rounded-xs border-l-3', BAR[s])} />{s}</span>
+            <span key={s} className="inline-flex items-center gap-1.5"><i className={cx('inline-flex size-4 items-center justify-center rounded-xs border-l-3 not-italic', BAR[s])}><StatusGlyph status={s} /></i>{s}</span>
           ))}
           <span className="inline-flex items-center gap-1.5"><i className="hatch-blocked inline-block size-2.5 rounded-xs" />unit blocked</span>
         </span>
@@ -293,13 +298,14 @@ export function Schedule() {
                         onPointerDown={(e) => (canMove ? onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'move') : undefined)}
                         onPointerUp={() => { if (!canMove) navigate(`/operation/jobs/${b.job.id}/design`); }}
                         onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/operation/jobs/${b.job.id}/design`); else onBarKey(e, q.data.jobs.find((j) => j.id === b.job.id)!); }}
-                        aria-label={`Job ${b.job.ticket_no ?? 'without ticket'}, ${b.job.well ?? 'no well'}, ${b.job.start_date} to ${b.job.end_date}, ${b.job.status}, unit ${u.unit_number}${canMove ? '. Shift+arrows move a day, Alt+up or down changes unit, [ and ] change the end' : ''}`}
+                        aria-label={`Job ${b.job.ticket_no ?? 'without ticket'}, ${b.job.well ?? 'no well'}, ${b.job.start_date} to ${b.job.end_date}, ${b.job.status}, unit ${u.unit_number}${canMove ? '. Shift+arrows move a day, Alt+up or down changes unit, [ and ] change the end, { and } change the start' : ''}`}
                         className={cx('group relative z-[1] mx-0.5 flex touch-none items-center overflow-hidden rounded-sm border-l-3 px-1.5 font-mono text-xs font-semibold whitespace-nowrap hover:brightness-125',
                           BAR[b.job.status], canMove && 'cursor-grab', (drag?.job.id === b.job.id || pending?.id === b.job.id) && 'opacity-80 shadow-pop')}
                         style={{ gridColumn: `${b.start} / ${b.end + 1}`, gridRow: b.lane + 1 }}>
-                        {canMove && <span aria-hidden className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize" onPointerDown={(e) => onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'start')} />}
+                        {canMove && <span aria-hidden className="absolute inset-y-0 left-0 w-2.5 cursor-ew-resize" onPointerDown={(e) => onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'start')} />}
+                        <StatusGlyph status={b.job.status} className="mr-1" />
                         {b.job.ticket_no ?? 'No ticket'}{b.job.well ? ` · ${b.job.well}` : ''}
-                        {canMove && <span aria-hidden className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize" onPointerDown={(e) => onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'end')} />}
+                        {canMove && <span aria-hidden className="absolute inset-y-0 right-0 w-2.5 cursor-ew-resize" onPointerDown={(e) => onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'end')} />}
                       </a>
                     ) : (
                       <button key={b.block.id} type="button" disabled={!canBlock} onClick={() => setBlockDialog({ event: b.block })}
@@ -317,11 +323,16 @@ export function Schedule() {
         </div>
       )}
       <p className="mt-3 text-xs text-text-subtle">
-        Units come from WIREGUARD. {canMove ? 'Drag a bar to another day or unit, or drag its ends to change the dates. Click to open the job.' : 'Click a bar to open the job.'}
+        Units come from WIREGUARD. {canMove ? 'Drag a bar to another day or unit, or drag its ends to change the dates. Click to open the job. By keyboard: Tab to a bar, Shift+arrows move it a day, Alt+up or down changes the unit, [ ] change the end and { } the start, Enter opens it.' : 'Click a bar to open the job.'}
       </p>
       {blockDialog && <BlockDialog init={blockDialog} units={unitsList} onClose={(msg) => { setBlockDialog(null); if (msg) { setNotice({ tone: 'success', text: msg }); qc.invalidateQueries({ queryKey: ['schedule'] }); } }} />}
     </section>
   );
+}
+
+function StatusGlyph({ status, className }: { status: JobStatus; className?: string }) {
+  const I = BAR_ICON[status];
+  return <I aria-hidden className={cx('size-3 shrink-0', className)} />;
 }
 
 function BlockDialog({ init, units, onClose }: { init: { event?: SEvent; unit?: string }; units: string[]; onClose: (msg?: string) => void }) {

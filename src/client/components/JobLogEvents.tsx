@@ -94,12 +94,17 @@ export function JobLogEvents({ jobId, canEdit }: { jobId: string; canEdit: boole
         </ol>
       )}
       {canEdit && (
-        <form className="grid grid-cols-1 gap-2 md:grid-cols-[12rem_6rem_8rem_1fr_auto]" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-          <input aria-label="Time" type="datetime-local" className={inputClass} value={f.at} onChange={(e) => setF({ ...f, at: e.target.value })} />
-          <input aria-label="Run number" type="number" min={0} className={inputClass} placeholder="Run" value={f.run} onChange={(e) => setF({ ...f, run: e.target.value })} />
-          <input aria-label="Depth in feet" type="number" min={0} className={inputClass} placeholder="Depth ft" value={f.depth} onChange={(e) => setF({ ...f, depth: e.target.value })} />
-          <input aria-label="What happened" className={inputClass} placeholder="What happened" value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} />
-          <Button type="submit" disabled={!f.text.trim()}><Plus aria-hidden className="size-4" />Log</Button>
+        <form className="grid grid-cols-1 items-end gap-2 md:grid-cols-[12rem_6rem_8rem_1fr_auto]" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <label className="block"><span className="label-caps mb-1 block text-text-muted">Time</span>
+            <input type="datetime-local" className={inputClass} value={f.at} onChange={(e) => setF({ ...f, at: e.target.value })} /></label>
+          <label className="block"><span className="label-caps mb-1 block text-text-muted">Run</span>
+            <input type="number" min={0} className={inputClass} value={f.run} onChange={(e) => setF({ ...f, run: e.target.value })} /></label>
+          <label className="block"><span className="label-caps mb-1 block text-text-muted">Depth (ft)</span>
+            <input type="number" min={0} className={inputClass} value={f.depth} onChange={(e) => setF({ ...f, depth: e.target.value })} /></label>
+          <label className="block"><span className="label-caps mb-1 block text-text-muted">What happened</span>
+            <input className={inputClass} aria-describedby="log-hint" value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} /></label>
+          <Button type="submit" disabled={!f.text.trim()} aria-describedby="log-hint"><Plus aria-hidden className="size-4" />Log</Button>
+          {!f.text.trim() && <p id="log-hint" className="text-xs text-text-subtle md:col-span-5">Write what happened to log the entry. Run and depth are optional.</p>}
         </form>
       )}
     </div>

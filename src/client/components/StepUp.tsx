@@ -16,6 +16,7 @@ export function StepUpPrompt({ onDone }: { onDone?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
+    if (!password) { setError('Enter your WIREGUARD password.'); document.getElementById('stepup-pw')?.focus(); return; }
     setBusy(true); setError(null);
     try {
       await api('/step-up', { method: 'POST', json: { password } });
@@ -31,7 +32,7 @@ export function StepUpPrompt({ onDone }: { onDone?: () => void }) {
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="space-y-3">
         <Field id="stepup-pw" label="WIREGUARD password"><input id="stepup-pw" type="password" autoComplete="current-password" className={inputClass} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-        <Button type="submit" variant="primary" loading={busy} disabled={!password}>Unlock</Button>
+        <Button type="submit" variant="primary" loading={busy}>Unlock</Button>
       </form>
     </Card>
   );
