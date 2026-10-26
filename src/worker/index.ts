@@ -3,6 +3,8 @@ import { Hono } from 'hono';
 import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
 import { admin } from './admin';
+import { passkeyAdmin, passkeyAuth, passkeys } from './passkeys';
+import { importWgUsers } from './wgUsers';
 import { aiAdminGet, aiAdminPut, aiChat, aiStatus, assistantChat } from './ai';
 import { database } from './database';
 import { emf } from './emf';
@@ -57,6 +59,9 @@ app.post('/auth/login', async (c) => {
     throw e;
   }
 });
+
+// Face ID / fingerprint and QR sign-in (see passkeys.ts)
+app.route('/auth', passkeyAuth);
 
 // the sign-in page needs WIREGUARD's address for the forgot-password link, before anyone is signed in
 app.get('/public-config', (c) => c.json({ wireguardUrl: c.env.WG_APP_URL ?? 'https://slkwireguard.nesrapp.com' }));
@@ -201,6 +206,8 @@ app.route('/jobs', jobs);
 app.get('/admin/ai', aiAdminGet);
 app.put('/admin/ai', aiAdminPut);
 app.route('/admin', admin);
+app.route('/admin/access', passkeyAdmin);
+app.route('/passkeys', passkeys);
 app.route('/database', database);
 app.route('/job-log', jobLog);
 app.get('/filter-options', filterOptions);
@@ -244,6 +251,8 @@ export default {
         const { results } = await env.DB.prepare('SELECT DISTINCT country FROM wg_units WHERE wg_active = 1').all<{ country: string }>();
         await runReconciliation(env, results.map((r) => r.country), 'nightly');
         await sendDigests(env);
+        // WIREGUARD's people: names, emails, employee IDs and who is still active (Users & Roles)
+        await importWgUsers(env, 'nightly sync').catch((e) => console.error('WIREGUARD user import failed', e));
       })());
       return;
     }

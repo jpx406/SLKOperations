@@ -1033,3 +1033,32 @@ Every label, message and empty state was written here. No code, assets or copy f
 - Local development ("dev") never shows the bar.
 - Tokens: notice-bg #facc15 and notice-fg #0b121a, the same in both themes (12.3:1).
 - Verified with a simulated deploy (preview build A → page open → build B served): the bar appeared, and Refresh now loaded B with the bar gone.
+
+## 6q — Sign-in like NESR's field apps, Face ID / fingerprint, QR sign-in, WIREGUARD users
+
+- **Sign-in screen:**
+  - laid out like NESR's other field apps: the mark, "SLK Operations", "Slickline operations — sign in", "Employee ID or username" (a bare number becomes NESR-number), password with the eye beside it, Sign in on the right, then "Sign in with Face ID / fingerprint" and "Sign in with your phone (QR code)", "Forgot password?";
+  - the footer has the version (package.json version and the build stamp);
+  - the contact names and emails are off this screen (the header keeps them);
+  - the header shows the real version.
+- **Face ID / fingerprint (WebAuthn passkeys):**
+  - kept by SLK Ops in `passkeys` (migration 0009). WIREGUARD is never written to, and WIREGUARD's own passkeys are bound to its own site, so they couldn't be used here anyway;
+  - set up from Account menu → "Face ID / fingerprint sign-in": Face ID, Touch ID, Android fingerprint or Windows Hello; synced passkeys are marked;
+  - a Face ID session has no WIREGUARD token, so it is re-checked against WIREGUARD's user list through the sync account. Someone switched off in WIREGUARD loses access within minutes. A password session still re-checks its token as before.
+  - every sign-in also needs SLK Ops access on, and Face ID allowed for the person.
+- **QR sign-in for a laptop:**
+  - the laptop shows a QR code and a four-digit code;
+  - the phone opens `/qr/<id>`, which shows the computer (browser, OS, approximate place) and the code, and confirms with Face ID ("This wasn't me" refuses);
+  - the laptop polls with a secret only it holds, so only that screen can collect the session;
+  - three minutes, single use, every step audited.
+- **Users & Roles:**
+  - "Import from WIREGUARD" reads WIREGUARD's user list (sync account, read-only) and brings in everyone: name, email, employee ID, WIREGUARD role, country, field, active;
+  - new people get their mapped role and WIREGUARD countries; existing people keep the SLK Ops role and countries the admin set;
+  - the import also runs nightly at 01:00 UTC;
+  - People shows email, employee ID, "Inactive in WIREGUARD" and Face ID devices;
+  - Edit shows the WIREGUARD details, a per-person "Face ID allowed" switch, and their devices, each removable.
+- **Verified:**
+  - tests 213;
+  - end to end in Chrome with a virtual Face ID authenticator on localhost (WebAuthn refuses bare IP addresses): set up a device, sign out, sign in with Face ID as NESR-90003;
+  - QR: a "laptop" with no authenticator showed code 1577, the "phone" showed the same code and approved with Face ID, and the laptop signed in as NESR-90003; the used code then read "expired";
+  - the import brought in 6 users, with the inactive one flagged.

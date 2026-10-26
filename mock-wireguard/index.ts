@@ -76,6 +76,11 @@ export default {
     if (method !== 'GET') return json({ error: 'The mock only serves reads' }, 405);
     const params = new URL(request.url).searchParams;
     switch (pathname) {
+      // the user list, shaped like WIREGUARD's GET /users (never with passwords); fake test accounts only
+      case '/users': return json(userFile.users.map((u) => ({
+        id: u.id, username: u.username, employee_id: u.username.replace('NESR-', ''), full_name: u.fullName,
+        email: `${u.username.toLowerCase()}@example.test`, role: u.role, active: u.active, country: u.countries[0] ?? null, field: null, countries: u.countries,
+      })));
       case '/wires': return json(byCountry(data.wires, user));
       case '/drums': return json(byCountry(data.drums, user));
       case '/jobs': {

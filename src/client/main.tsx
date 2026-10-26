@@ -30,6 +30,7 @@ import { WireDetail, WireKpis, WiresRegister } from './pages/Wires';
 import { Reconciliation } from './pages/Reconciliation';
 import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
+import { QrApprove } from './pages/QrApprove';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
@@ -43,6 +44,8 @@ function MovedTo({ path }: { path: string }) {
 
 const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
+  // the phone side of QR sign-in: public, it signs another computer in after Face ID on this phone
+  { path: '/qr/:id', element: <QrApprove /> },
   {
     path: '/',
     element: <RequireAuth><AppShell /></RequireAuth>,

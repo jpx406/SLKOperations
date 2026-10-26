@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Plus, Search, X } from 'lucide-react';
+import { CloudDownload, ExternalLink, Fingerprint, Plus, Search, Smartphone, Trash2, X } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { MENU_LABELS, menuClusters } from '../../shared/menus';
@@ -14,6 +14,8 @@ interface UserRow {
   username: string; full_name: string; role: Role; wg_role: string | null; countries: string[];
   active: number; last_login_at: string | null; updated_by: string | null; updated_at: string;
   grants: Change[]; is_contact: boolean; effective: { menu_key: string; edit: boolean }[];
+  email: string | null; employee_eid: string | null; wg_active: number | null; wg_country: string | null; wg_field: string | null; wg_synced_at: string | null;
+  passkey_allowed: number; passkeys: number;
 }
 interface Matrix { roles: Role[]; menus: string[]; rows: { role: Role; menu_key: string; can_view: number; can_edit: number; can_delete: number }[] }
 interface AuditRow { occurred_at: string; username: string; action: string; entity_type: string; entity_id: string; summary: string }
@@ -73,10 +75,16 @@ function People() {
     onError: (e: ApiError) => { setNotice({ tone: 'danger', text: e.message }); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
   });
 
+  const importWg = useMutation({
+    mutationFn: () => api<{ total: number; added: number; updated: number; inactive: number }>('/admin/access/wg-import', { method: 'POST', json: {} }),
+    onSuccess: (r) => { setNotice({ tone: 'success', text: `Imported ${r.total} WIREGUARD users: ${r.added} new, ${r.updated} updated${r.inactive ? `, ${r.inactive} inactive in WIREGUARD` : ''}. New people got the role their WIREGUARD role maps to; everyone else kept their SLK Ops role and countries.` }); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
+    onError: (e: ApiError) => setNotice({ tone: 'danger', text: `WIREGUARD import failed: ${e.message}` }),
+  });
+
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
     return (users.data ?? []).filter((u) =>
-      (!s || `${u.username} ${u.full_name} ${ROLE_LABEL[u.role]}`.toLowerCase().includes(s))
+      (!s || `${u.username} ${u.full_name} ${ROLE_LABEL[u.role]} ${u.email ?? ''} ${u.employee_eid ?? ''}`.toLowerCase().includes(s))
       && (!roleFilter || u.role === roleFilter)
       && (!statusFilter || (statusFilter === 'on' ? !!u.active : !u.active)));
   }, [users.data, q, roleFilter, statusFilter]);
@@ -88,7 +96,7 @@ function People() {
         <label className="relative block w-72 max-w-full">
           <span className="sr-only">Search people</span>
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-text-subtle" />
-          <input className={`${inputClass} pl-8`} placeholder="Name, NESR number or role" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className={`${inputClass} pl-8`} placeholder="Name, NESR number, email or role" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
         <label><span className="sr-only">Filter by role</span>
           <select className={`${inputClass} w-44`} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
@@ -101,6 +109,7 @@ function People() {
           </select>
         </label>
         <Button variant="primary" onClick={() => setAdding(true)}><Plus aria-hidden className="size-4" />Add person</Button>
+        {me?.menus.users?.edit && <Button loading={importWg.isPending} onClick={() => importWg.mutate()}><CloudDownload aria-hidden className="size-4" />Import from WIREGUARD</Button>}
         {users.data && <span className="ml-auto font-mono text-xs text-text-muted">{shown.length} of {users.data.length}</span>}
       </div>
       {notice && <div className="mb-3"><Banner tone={notice.tone} action={<Button size="sm" variant="ghost" onClick={() => setNotice(null)} aria-label="Dismiss"><X aria-hidden className="size-4" /></Button>}>{notice.text}</Banner></div>}
@@ -114,7 +123,7 @@ function People() {
             <caption className="sr-only">People with access to SLK Operations</caption>
             <thead className="bg-surface-2">
               <tr className="label-caps text-left text-text-muted">
-                {['Person', 'SLK Ops role', 'Countries', 'Tabs', 'Last sign-in', 'Access', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
+                {['Person', 'SLK Ops role', 'Countries', 'Tabs', 'Face ID', 'Last sign-in', 'Access', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -126,7 +135,9 @@ function People() {
                   <tr key={u.username} className={cx('border-t border-border', !u.active && 'text-text-subtle')}>
                     <th scope="row" className="px-3 py-2 text-left font-normal">
                       <div className="font-semibold">{u.full_name}{self && <span className="ml-2 text-xs text-text-subtle">(you)</span>}</div>
-                      <div className="font-mono text-xs text-text-subtle">{u.username}{u.wg_role ? ` · WIREGUARD ${u.wg_role}` : ' · not signed in yet'}</div>
+                      <div className="font-mono text-xs text-text-subtle">{u.username}{u.employee_eid ? ` · ID ${u.employee_eid}` : ''}{u.wg_role ? ` · WIREGUARD ${u.wg_role}` : ' · not in WIREGUARD yet'}</div>
+                      {u.email && <div className="text-xs text-text-muted">{u.email}</div>}
+                      {u.wg_active === 0 && <div className="text-xs font-semibold text-danger">Inactive in WIREGUARD</div>}
                     </th>
                     <td className="px-3 py-2">
                       <label className="sr-only" htmlFor={`role-${u.username}`}>Role for {u.full_name}</label>
@@ -141,6 +152,11 @@ function People() {
                       {u.effective.length} tab{u.effective.length === 1 ? '' : 's'}
                       {(grants > 0 || denies > 0) && <span className="ml-1 text-xs">({grants > 0 ? `+${grants}` : ''}{grants > 0 && denies > 0 ? ' ' : ''}{denies > 0 ? `−${denies}` : ''})</span>}
                       {u.is_contact && <span className="ml-1 text-xs">· SLK contact</span>}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-text-muted">
+                      {!u.passkey_allowed ? <span className="font-semibold text-warning">Off</span>
+                        : u.passkeys ? <span className="inline-flex items-center gap-1"><Fingerprint aria-hidden className="size-3.5 text-success" />{u.passkeys} device{u.passkeys === 1 ? '' : 's'}</span>
+                        : 'Not set up'}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-text-muted">{when(u.last_login_at)}</td>
                     <td className="px-3 py-2">
@@ -267,6 +283,8 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
         </div>
         <p className="mb-4 text-sm text-text-muted">Role: {ROLE_LABEL[user.role]}. Changes apply on the person’s next click.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+        <WgDetails user={user} />
+        <PersonPasskeys user={user} self={self} />
 
         {user.role === 'admin'
           ? <p id="admin-tabs-note" className="mb-4 text-sm text-text-muted">Admins see every country and every tab; tab changes do not apply to them.</p>
@@ -442,5 +460,67 @@ function History() {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** What WIREGUARD knows about the person, from the last import. */
+function WgDetails({ user }: { user: UserRow }) {
+  if (!user.wg_synced_at) return <p className="mb-4 text-xs text-text-subtle">Not imported from WIREGUARD yet. Use "Import from WIREGUARD" on the People list.</p>;
+  const rows: [string, string | null][] = [
+    ['Employee ID', user.employee_eid], ['Email', user.email], ['WIREGUARD role', user.wg_role], ['Country', user.wg_country], ['Field', user.wg_field],
+    ['WIREGUARD account', user.wg_active === 0 ? 'Inactive' : 'Active'],
+  ];
+  return (
+    <div className="mb-5 rounded-md border border-border p-3">
+      <p className="label-caps mb-2 text-text-muted">From WIREGUARD · imported {when(user.wg_synced_at)}</p>
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+        {rows.map(([k, v]) => <div key={k} className="flex gap-2"><dt className="text-text-muted">{k}:</dt><dd className={cx('font-semibold', k === 'WIREGUARD account' && v === 'Inactive' && 'text-danger')}>{v ?? '—'}</dd></div>)}
+      </dl>
+    </div>
+  );
+}
+
+type AdminDevice = { id: string; device_name: string | null; backed_up: number; created_at: string; last_used_at: string | null };
+
+/** The person's Face ID / fingerprint sign-in: allowed or not, and the devices set up, each removable. */
+function PersonPasskeys({ user, self }: { user: UserRow; self: boolean }) {
+  const qc = useQueryClient();
+  const devices = useQuery({ queryKey: ['admin-passkeys', user.username], queryFn: () => api<AdminDevice[]>(`/admin/access/passkeys?username=${encodeURIComponent(user.username)}`) });
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['admin-passkeys', user.username] }); qc.invalidateQueries({ queryKey: ['admin-users'] }); };
+  const allow = useMutation({
+    mutationFn: (allowed: boolean) => api('/admin/access/passkey-allowed', { method: 'PUT', json: { username: user.username, allowed } }),
+    onSuccess: refresh, onError: (e: ApiError) => setError(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/admin/access/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    onSuccess: refresh, onError: (e: ApiError) => setError(e.message),
+  });
+  return (
+    <div className="mb-5 rounded-md border border-border p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        <p className="label-caps flex-1 text-text-muted">Face ID / fingerprint sign-in</p>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" className="size-4" checked={!!user.passkey_allowed} disabled={allow.isPending} onChange={(e) => allow.mutate(e.target.checked)} />
+          Allowed
+        </label>
+      </div>
+      {error && <div className="mb-2"><Banner tone="danger">{error}</Banner></div>}
+      {!user.passkey_allowed && <p className="mb-2 text-xs text-warning">Switched off: {self ? 'you' : 'they'} must sign in with the WIREGUARD password, and new devices can't be set up.</p>}
+      {devices.isPending ? <p className="text-sm text-text-muted">Loading…</p> : devices.data && devices.data.length > 0 ? (
+        <ul className="divide-y divide-border">
+          {devices.data.map((d) => (
+            <li key={d.id} className="flex items-center gap-3 py-1.5 text-sm">
+              <Smartphone aria-hidden className="size-4 shrink-0 text-text-muted" />
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{d.device_name ?? 'Device'}{d.backed_up ? <span className="ml-2 text-xs font-normal text-text-subtle">synced</span> : null}</span>
+                <span className="block text-xs text-text-subtle">Set up {d.created_at.slice(0, 10)} · {d.last_used_at ? `last used ${when(d.last_used_at)}` : 'not used yet'}</span>
+              </span>
+              <Button size="sm" variant="ghost" aria-label={`Remove ${d.device_name ?? 'device'}`} loading={remove.isPending && remove.variables === d.id} onClick={() => remove.mutate(d.id)}><Trash2 aria-hidden className="size-4" /></Button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-sm text-text-subtle">No device set up. {self ? 'You' : 'They'} can set one up from the account menu after signing in with the password.</p>}
+    </div>
   );
 }

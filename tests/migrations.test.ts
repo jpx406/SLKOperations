@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 // D1 traps recorded in WIREGUARD's handover note: a semicolon inside a SQL comment splits the statement,
 // window functions and long UNION ALL chains are refused. Checked here so they never reach a deploy.
-const files = ['replica/migrations/0001_init.sql', 'replica/migrations/0002_seed.sql', 'replica/migrations/0003_attendance_codes.sql', 'replica/migrations/0004_wg_raw_rows.sql', 'replica/migrations/0005_signatures.sql', 'replica/migrations/0006_jra_form_details.sql', 'replica/migrations/0007_attachments.sql', 'replica/migrations/0008_unit_event_detail.sql'];
+const files = ['replica/migrations/0001_init.sql', 'replica/migrations/0002_seed.sql', 'replica/migrations/0003_attendance_codes.sql', 'replica/migrations/0004_wg_raw_rows.sql', 'replica/migrations/0005_signatures.sql', 'replica/migrations/0006_jra_form_details.sql', 'replica/migrations/0007_attachments.sql', 'replica/migrations/0008_unit_event_detail.sql', 'replica/migrations/0009_passkeys_wg_users.sql'];
 
 describe('migrations stay inside D1 limits', () => {
   for (const f of files) {

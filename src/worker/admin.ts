@@ -48,7 +48,9 @@ admin.get('/countries', async (c) => c.json(await knownCountries(c.env)));
 admin.get('/users', async (c) => {
   const [users, grants, perms, contacts] = await c.env.DB.batch([
     c.env.DB.prepare(
-      `SELECT username, full_name, role, wg_role, countries, active, last_login_at, updated_by, updated_at
+      `SELECT username, full_name, role, wg_role, countries, active, last_login_at, updated_by, updated_at,
+              email, employee_eid, wg_active, wg_country, wg_field, wg_synced_at, passkey_allowed,
+              (SELECT count(*) FROM passkeys p WHERE p.username = user_roles.username) AS passkeys
        FROM user_roles ORDER BY active DESC, full_name COLLATE NOCASE`,
     ),
     c.env.DB.prepare('SELECT username, menu_key, effect, can_edit FROM tab_grants ORDER BY menu_key'),

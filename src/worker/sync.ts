@@ -17,7 +17,7 @@ async function syncToken(env: Env, fresh = false): Promise<string> {
   return token;
 }
 
-async function fetchAsSync<T>(env: Env, path: string): Promise<T> {
+export async function fetchAsSync<T>(env: Env, path: string): Promise<T> {
   try {
     return await wgGet<T>(env, await syncToken(env), path);
   } catch (e) {

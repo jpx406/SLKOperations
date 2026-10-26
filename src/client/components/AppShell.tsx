@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Clock, Database, KeyRound, LogOut, RefreshCw, Sun } from 'lucide-react';
+import { ChevronDown, Clock, Database, Fingerprint, KeyRound, LogOut, RefreshCw, Sun, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav } from '../../shared/menus';
@@ -12,6 +12,8 @@ import { AssistantLauncher, HelpButton } from './Help';
 import { Button, cx, rovingKeys } from './ui';
 import { Contacts, NesrLogo, Wordmark } from './Brand';
 import { NewVersionBar, useNewVersion } from './NewVersionBar';
+import { MyPasskeys } from './Passkeys';
+import { APP_VERSION, VERSION_TEXT } from '../version';
 
 /** Narrows every screen to one country for people who cover several. The server checks it against their countries. */
 function CountrySwitch({ countries }: { countries: string[] }) {
@@ -99,7 +101,7 @@ export function AppShell() {
               <Contacts className="hidden text-label leading-tight lg:block" />
             </div>
           </div>
-          <span className="hidden font-mono text-xs text-text-subtle md:inline">v0.1</span>
+          <span className="hidden font-mono text-xs text-text-subtle md:inline" title={VERSION_TEXT}>v{APP_VERSION}</span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {me && <span className="hidden sm:inline-flex"><CountrySwitch countries={me.allCountries ?? me.countries} /></span>}
             <SyncStatus canSync={!!me?.menus.schedule?.edit} />
@@ -157,6 +159,7 @@ function AccountMenu({ name, role, admin, countries, passwordUrl, display, onSig
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
   }, [open]);
+  const [faceId, setFaceId] = useState(false);
   const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm font-semibold hover:bg-surface-2 h-(--layout-control-sm)';
   const DENSITY: [DensityChoice, string][] = [['auto', 'Auto'], ['touch', 'On'], ['desk', 'Off']];
   return (
@@ -188,9 +191,21 @@ function AccountMenu({ name, role, admin, countries, passwordUrl, display, onSig
             </div>
           </div>
           <div className="border-t border-border pt-1.5">
+            <button type="button" className={item} onClick={() => { setOpen(false); setFaceId(true); }}><Fingerprint aria-hidden className="size-4" />Face ID / fingerprint sign-in</button>
             {passwordUrl && <a className={item} href={passwordUrl} target="_blank" rel="noreferrer"><KeyRound aria-hidden className="size-4" />Change password in WIREGUARD</a>}
             {admin && <NavLink to="/admin/data" className={item} onClick={() => setOpen(false)}><Database aria-hidden className="size-4" />Data export &amp; import</NavLink>}
             <button type="button" className={item} onClick={onSignOut}><LogOut aria-hidden className="size-4" />Sign out</button>
+          </div>
+        </div>
+      )}
+      {faceId && (
+        <div role="dialog" aria-modal="true" aria-labelledby="faceid-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') setFaceId(false); }}>
+          <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-pop">
+            <div className="mb-3 flex items-start gap-3">
+              <h2 id="faceid-title" className="flex-1 font-display text-lg font-bold">Face ID / fingerprint sign-in</h2>
+              <Button size="sm" variant="ghost" aria-label="Close" onClick={() => setFaceId(false)} autoFocus><X aria-hidden className="size-4" /></Button>
+            </div>
+            <MyPasskeys />
           </div>
         </div>
       )}

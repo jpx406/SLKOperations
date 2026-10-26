@@ -30,7 +30,11 @@ export interface Session {
   username: string;
   fullName: string;
   wgRole: string | null;
-  wgToken: string;
+  /** WIREGUARD's token from a password sign-in. A Face ID / fingerprint sign-in has none: WIREGUARD is then
+   *  asked through the sync account whether the person is still active. */
+  wgToken?: string;
+  /** How the person signed in. */
+  method?: 'password' | 'passkey' | 'qr';
   /** Countries WIREGUARD showed at sign-in; seeds a new person's access only. */
   countries: string[];
   createdAt: number;

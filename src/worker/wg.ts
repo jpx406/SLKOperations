@@ -6,7 +6,7 @@ import type { Env } from './env';
 const READ_ALLOW = new Set([
   '/health', '/auth/me', '/units', '/job-types', '/job-locations', '/fields', '/rigs',
   '/wires', '/drums', '/jobs', '/documents', '/notifications', '/kpi-settings', '/sop-settings',
-  '/sop-wire-size-thresholds', '/wire-alloy-database', '/wire-retirement-reasons', '/',
+  '/sop-wire-size-thresholds', '/wire-alloy-database', '/wire-retirement-reasons', '/', '/users',
 ]);
 
 export class WgError extends Error {

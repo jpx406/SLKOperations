@@ -69,6 +69,10 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PUT', re: /^\/api\/admin\/role-permissions$/, menu: 'users', action: 'edit' },
   { method: 'POST', re: /^\/api\/admin\/import\/(dry-run|apply)$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/ai$/, menu: 'users', action: 'edit' },
+  // Users & Roles: someone's Face ID devices, their Face ID switch, and the WIREGUARD user import
+  { method: 'DELETE', re: /^\/api\/admin\/access\/passkeys\/[^/]+$/, menu: 'users', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/admin\/access\/passkey-allowed$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/admin\/access\/wg-import$/, menu: 'users', action: 'edit' },
   { method: 'POST', re: /^\/api\/attachments\/job\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/attachments\/job\/[^/]+\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/attachments\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'edit' },
@@ -124,7 +128,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
 // Every read route and the tabs that open it (any one is enough). A read with no rule is refused,
 // so removing a tab from someone really closes its data, not just its menu entry.
 export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
-  { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status)$/, menus: 'any' },
+  { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status|passkeys)$/, menus: 'any' },
   { re: /^\/api\/schedule$/, menus: ['schedule'] },
   { re: /^\/api\/jobs(\/[^/]+)?$/, menus: ['jobs', 'schedule'] },
   { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options|events)$/, menus: ['jobs'] },
@@ -170,6 +174,9 @@ export function readAllowed(path: string, menus: Record<string, MenuRight>): boo
 export const OPEN_WRITES: { method: string; re: RegExp }[] = [
   { method: 'POST', re: /^\/api\/auth\/login$/ },
   { method: 'POST', re: /^\/api\/auth\/logout$/ },
+  // everyone manages the Face ID devices on their own account
+  { method: 'POST', re: /^\/api\/passkeys\/(register-options|register)$/ },
+  { method: 'DELETE', re: /^\/api\/passkeys\/[^/]+$/ },
 ];
 
 export function ruleFor(method: string, path: string) {

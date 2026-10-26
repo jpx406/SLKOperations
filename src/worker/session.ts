@@ -5,6 +5,7 @@ import type { Role } from '../shared/types';
 import type { AppBindings, AuthedUser, Env, Session } from './env';
 import { loadMenus } from './permissions';
 import { WgError, wgCountriesFor, wgGet, wgLogin } from './wg';
+import { wgUserActive } from './wgUsers';
 
 const COOKIE = 'slk_session';
 const REVALIDATE_MS = 60_000;          // re-check with WIREGUARD at most once a minute
@@ -31,12 +32,18 @@ export async function login(c: Context<AppBindings>, username: string, password:
       .bind(crypto.randomUUID(), user.username, 'login', 'auth', user.username, `Signed in through WIREGUARD (${user.role})`),
   ]);
 
+  await openSession(c, { username: user.username, fullName: user.fullName, wgRole: user.role, wgToken: token, countries, method: 'password' });
+  return { username: user.username, mustChangePassword: !!user.mustChangePassword };
+}
+
+/** Starts a session and sets its cookie. Password, Face ID and QR sign-ins all end here. */
+export async function openSession(c: Context<AppBindings>, s: Pick<Session, 'username' | 'fullName' | 'wgRole' | 'wgToken' | 'countries' | 'method'>) {
   const sessionId = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, '');
   const t = Date.now();
-  const session: Session = { username: user.username, fullName: user.fullName, wgRole: user.role, wgToken: token, countries, createdAt: t, lastSeen: t, validatedAt: t };
-  await env.KV.put(key(sessionId), JSON.stringify(session), { expirationTtl: SESSION_TTL_S });
+  const session: Session = { ...s, createdAt: t, lastSeen: t, validatedAt: t };
+  await c.env.KV.put(key(sessionId), JSON.stringify(session), { expirationTtl: SESSION_TTL_S });
   setCookie(c, COOKIE, sessionId, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: SESSION_TTL_S });
-  return { username: user.username, mustChangePassword: !!user.mustChangePassword };
+  return sessionId;
 }
 
 export async function logout(c: Context<AppBindings>) {
@@ -46,6 +53,11 @@ export async function logout(c: Context<AppBindings>) {
 }
 
 async function revalidate(env: Env, s: Session): Promise<'ok' | 'revoked' | 'outage'> {
+  // a Face ID / QR session carries no WIREGUARD token: ask WIREGUARD's user list (sync account) instead
+  if (!s.wgToken) {
+    const a = await wgUserActive(env, s.username);
+    return a === 'yes' ? 'ok' : a === 'no' ? 'revoked' : 'outage';
+  }
   try {
     await wgGet(env, s.wgToken, '/auth/me');
     return 'ok';
@@ -74,7 +86,7 @@ export async function resolveSession(c: Context<AppBindings>): Promise<Resolved>
     const v = await revalidate(env, s);
     if (v === 'revoked') {
       await env.KV.delete(key(id));
-      return { error: 'Your WIREGUARD session ended. Sign in again.', status: 401 };
+      return { error: s.wgToken ? 'Your WIREGUARD session ended. Sign in again.' : 'Your WIREGUARD account is no longer active. Ask an administrator.', status: 401 };
     }
     if (v === 'outage' && t - s.validatedAt > OUTAGE_GRACE_MS) {
       return { error: 'WIREGUARD is unreachable, so sign-in cannot be confirmed. Try again shortly.', status: 503 };
