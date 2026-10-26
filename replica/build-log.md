@@ -1091,3 +1091,29 @@ Every label, message and empty state was written here. No code, assets or copy f
     - the Foreman saw only his crew and his own row, saved a crew cell, and was refused on a shop row;
     - the SDM saw the field sheet, could approve but not fill, and was refused approving a shop row;
     - the Admin saw all nine rows.
+
+## 6s — Attendance from Users & Roles; the Headcount Roster is gone
+
+- **People come from Users & Roles:**
+  - every active SLK Ops user (from the WIREGUARD import or added by hand) is on attendance, mirrored into `employees` by `syncPeople` and linked by WIREGUARD username;
+  - the mirror runs on import, on the users list, on the attendance sheet and on the crew picker;
+  - attendance and job crews still read `employees`, so nothing downstream changed;
+  - people switched off in SLK Ops or inactive in WIREGUARD drop off.
+- **Users & Roles → Attendance categories** (migration 0011, `attendance_role_sheets`):
+  - each role is assigned to Operators & Helpers, Support Staff (Shop), Management or Not on attendance;
+  - defaults: crew roles and Foreman → field; Maintenance Supervisor, storekeeping, explosive and sales roles → shop; managers, SDMs, Director, SQM and Admin → management; Viewer → not on attendance (keeps the sync account off).
+- **Users & Roles → a person's Edit → "Attendance and crew":** sheet (from the role, or moved by hand), foreman (Foremen in the same country), job title, account, crew role, mobile, SELF and SLK contact. These replace the Headcount Roster's fields.
+- **Headcount Roster:** page and menu removed; `/attendance/roster` goes to Users & Roles.
+- **Faster entry on the sheet:**
+  - sheet chips (All, Operators & Helpers, Shop, Management);
+  - Status (still to fill, waiting approval, approved);
+  - "Only rows I fill" (remembered on the device);
+  - Role and Foreman filters next to account, updated by, filled by and title;
+  - "Fill empty days with <code>" for the rows on screen that you fill, optionally skipping weekends and holidays and stopping at today; it stays pending until Save;
+  - a people count.
+- **Data package:** includes `attendance_role_sheets`.
+- **Verified:**
+  - tests 225;
+  - in the browser: the categories tab lists all 20 roles, a person's attendance details save, and the sheet shows the 4 active non-viewer users;
+  - the Management chip narrows it to 2, and "Fill empty days with P" set 72 days ready to save;
+  - a column-name clash in the users list (users joined to employees) was caught in the browser and fixed before commit.

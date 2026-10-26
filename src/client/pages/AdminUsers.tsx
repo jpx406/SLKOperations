@@ -4,6 +4,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { MENU_LABELS, menuClusters } from '../../shared/menus';
 import { ROLE_LABEL } from '../../shared/roles';
+import { SHEETS, SHEET_KEYS, type SheetKey } from '../../shared/attendanceSheets';
 import type { Role, WgStatus } from '../../shared/types';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
@@ -16,6 +17,9 @@ interface UserRow {
   grants: Change[]; is_contact: boolean; effective: { menu_key: string; edit: boolean }[];
   email: string | null; employee_eid: string | null; wg_active: number | null; wg_country: string | null; wg_field: string | null; wg_synced_at: string | null;
   passkey_allowed: number; passkeys: number;
+  employee_id: string | null; job_title: string | null; account: string | null; crew_role: string | null; sheet_override: SheetKey | null;
+  reports_to_id: string | null; self_updated: number | null; is_slk_contact: number | null; contact_mobile: string | null; attendance_country: string | null;
+  role_sheet: SheetKey | 'none' | null;
 }
 interface Matrix { roles: Role[]; menus: string[]; rows: { role: Role; menu_key: string; can_view: number; can_edit: number; can_delete: number }[] }
 interface AuditRow { occurred_at: string; username: string; action: string; entity_type: string; entity_id: string; summary: string }
@@ -31,7 +35,7 @@ function useConfig() {
 export function AdminUsers() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'people';
-  const tabs = [['people', 'People'], ['matrix', 'Role permissions'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
+  const tabs = [['people', 'People'], ['matrix', 'Role permissions'], ['attendance', 'Attendance categories'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
   return (
     <section aria-labelledby="admin-title">
       <PageTitle><span id="admin-title">Users &amp; roles</span></PageTitle>
@@ -50,6 +54,7 @@ export function AdminUsers() {
       <div role="tabpanel">
         {tab === 'people' && <People />}
         {tab === 'matrix' && <RoleMatrix />}
+        {tab === 'attendance' && <AttendanceCategories />}
         {tab === 'sync' && <SyncPanel />}
         {tab === 'history' && <History />}
       </div>
@@ -123,7 +128,7 @@ function People() {
             <caption className="sr-only">People with access to SLK Operations</caption>
             <thead className="bg-surface-2">
               <tr className="label-caps text-left text-text-muted">
-                {['Person', 'SLK Ops role', 'Countries', 'Tabs', 'Face ID', 'Last sign-in', 'Access', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
+                {['Person', 'SLK Ops role', 'Countries', 'Attendance', 'Tabs', 'Face ID', 'Last sign-in', 'Access', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -148,6 +153,9 @@ function People() {
                       </select>
                     </td>
                     <td className="px-3 py-2 text-text-muted">{u.role === 'admin' ? 'All' : u.countries.join(', ') || <span className="text-danger">none</span>}</td>
+                    <td className="px-3 py-2 text-xs text-text-muted">
+                      {sheetOfUser(u) === 'none' ? <span className="text-text-subtle">Not on attendance</span> : <>{SHEETS[sheetOfUser(u) as SheetKey].label}{u.sheet_override && <span className="ml-1 text-warning">(moved)</span>}</>}
+                    </td>
                     <td className="px-3 py-2 text-text-muted">
                       {u.effective.length} tab{u.effective.length === 1 ? '' : 's'}
                       {(grants > 0 || denies > 0) && <span className="ml-1 text-xs">({grants > 0 ? `+${grants}` : ''}{grants > 0 && denies > 0 ? ' ' : ''}{denies > 0 ? `−${denies}` : ''})</span>}
@@ -284,6 +292,7 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
         <p className="mb-4 text-sm text-text-muted">Role: {ROLE_LABEL[user.role]}. Changes apply on the person’s next click.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <WgDetails user={user} />
+        <PersonAttendance user={user} />
         <PersonPasskeys user={user} self={self} />
 
         {user.role === 'admin'
@@ -521,6 +530,122 @@ function PersonPasskeys({ user, self }: { user: UserRow; self: boolean }) {
           ))}
         </ul>
       ) : <p className="text-sm text-text-subtle">No device set up. {self ? 'You' : 'They'} can set one up from the account menu after signing in with the password.</p>}
+    </div>
+  );
+}
+
+const sheetOfUser = (u: UserRow): SheetKey | 'none' => u.sheet_override ?? u.role_sheet ?? 'none';
+const SHEET_CHOICES: [SheetKey | 'none', string][] = [...SHEET_KEYS.map((k) => [k, SHEETS[k].label] as [SheetKey, string]), ['none', 'Not on attendance']];
+const CREW_ROLE: Record<string, string> = {
+  slickline_supervisor: 'Slickline supervisor', slickline_operator: 'Slickline operator', assistant_operator: 'Assistant operator', helper: 'Helper', trainee: 'Trainee', other: 'Other',
+};
+
+/** Attendance categories: which sheet each SLK Ops role is on. Everyone with the role follows it, unless moved by hand. */
+function AttendanceCategories() {
+  const qc = useQueryClient();
+  const { data: me } = useMe();
+  const q = useQuery({ queryKey: ['attendance-categories-roles'], queryFn: () => api<{ role: Role; sheet: SheetKey | 'none' }[]>('/admin/attendance-categories') });
+  const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api<UserRow[]>('/admin/users') });
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: (v: { role: Role; sheet: string }) => api('/admin/attendance-categories', { method: 'PUT', json: v }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['attendance-categories-roles'] }); qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['attendance'] }); },
+    onError: (e: ApiError) => setError(e.message),
+  });
+  const count = (r: Role) => (users.data ?? []).filter((u) => u.role === r && u.active).length;
+  const canEdit = !!me?.menus.users?.edit;
+  return (
+    <div className="max-w-4xl">
+      <p className="mb-3 text-sm text-text-muted">
+        Everyone in Users &amp; Roles is on the attendance sheet their role is assigned to here. Move one person to another sheet from their Edit page.
+      </p>
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {SHEET_KEYS.map((k) => (
+          <div key={k} className="rounded-md border border-border p-3 text-sm">
+            <p className="font-display font-bold text-accent-text">{SHEETS[k].label}</p>
+            <p className="text-text-muted">Filled by {SHEETS[k].filledBy} · approved by {SHEETS[k].approvedBy}</p>
+          </div>
+        ))}
+      </div>
+      {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+      {q.isPending ? <Skeleton className="h-64" /> : q.isError ? <Banner tone="danger">{q.error.message}</Banner> : (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-sm">
+            <caption className="sr-only">Attendance sheet for each role</caption>
+            <thead className="bg-surface-2"><tr className="label-caps text-left text-text-muted">
+              <th scope="col" className="px-3 py-2">Role</th><th scope="col" className="px-3 py-2">People</th><th scope="col" className="px-3 py-2">Attendance sheet</th>
+            </tr></thead>
+            <tbody>
+              {q.data.map((r) => (
+                <tr key={r.role} className="border-t border-border">
+                  <th scope="row" className="px-3 py-2 text-left font-semibold">{ROLE_LABEL[r.role] ?? r.role}</th>
+                  <td className="px-3 py-2 font-mono text-xs text-text-muted">{count(r.role)}</td>
+                  <td className="px-3 py-2">
+                    <label className="sr-only" htmlFor={`sheet-${r.role}`}>Attendance sheet for {ROLE_LABEL[r.role]}</label>
+                    <select id={`sheet-${r.role}`} className={cx(inputClass, 'w-64')} value={r.sheet} disabled={!canEdit || save.isPending}
+                      onChange={(e) => { setError(null); save.mutate({ role: r.role, sheet: e.target.value }); }}>
+                      {SHEET_CHOICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One person's attendance and crew details (these used to be the Headcount Roster). */
+function PersonAttendance({ user }: { user: UserRow }) {
+  const qc = useQueryClient();
+  const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api<UserRow[]>('/admin/users') });
+  const [f, setF] = useState({
+    title: user.job_title ?? '', account: user.account ?? 'SLK', crew_role: user.crew_role ?? '', attendance_sheet: user.sheet_override ?? '',
+    reports_to_id: user.reports_to_id ?? '', self_updated: !!user.self_updated, is_slk_contact: !!user.is_slk_contact, contact_mobile: user.contact_mobile ?? '',
+  });
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const save = useMutation({
+    mutationFn: () => api(`/admin/users/${encodeURIComponent(user.username)}/attendance`, { method: 'PUT', json: f }),
+    onSuccess: () => { setMsg({ tone: 'success', text: 'Attendance details saved' }); qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['attendance'] }); qc.invalidateQueries({ queryKey: ['employees'] }); },
+    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
+  });
+  if (!user.employee_id) return <p className="mb-5 text-xs text-text-subtle">Not on attendance yet: give {user.full_name} a country first.</p>;
+  const sheet = (f.attendance_sheet || user.role_sheet || 'none') as SheetKey | 'none';
+  // foremen in the same country, for the Operators & Helpers sheet
+  const foremen = (users.data ?? []).filter((u) => u.role === 'foreman' && u.active && u.employee_id && u.employee_id !== user.employee_id && u.attendance_country === user.attendance_country);
+  const set = (k: keyof typeof f, v: string | boolean) => { setMsg(null); setF((c) => ({ ...c, [k]: v })); };
+  const id = (k: string) => `att-${k}-${user.username}`;
+  return (
+    <div className="mb-5 rounded-md border border-border p-3">
+      <p className="label-caps mb-2 text-text-muted">Attendance and crew · {user.attendance_country}</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field id={id('sheet')} label="Attendance sheet" hint={sheet === 'none' ? 'Not on attendance' : `Filled by ${SHEETS[sheet].filledBy}, approved by ${SHEETS[sheet].approvedBy}`}>
+          <select id={id('sheet')} className={inputClass} value={f.attendance_sheet} onChange={(e) => set('attendance_sheet', e.target.value)}>
+            <option value="">From the role ({user.role_sheet && user.role_sheet !== 'none' ? SHEETS[user.role_sheet].label : 'not on attendance'})</option>
+            {SHEET_KEYS.map((k) => <option key={k} value={k}>{SHEETS[k].label}</option>)}
+          </select>
+        </Field>
+        <Field id={id('foreman')} label="Foreman" hint={sheet === 'field' ? 'The foreman fills this person’s attendance' : 'Only used on Operators & Helpers'}>
+          <select id={id('foreman')} className={inputClass} value={f.reports_to_id} onChange={(e) => set('reports_to_id', e.target.value)}>
+            <option value="">{foremen.length ? 'Nobody' : 'No foreman in this country yet'}</option>
+            {foremen.map((m) => <option key={m.employee_id!} value={m.employee_id!}>{m.full_name}</option>)}
+          </select>
+        </Field>
+        <Field id={id('title')} label="Job title"><input id={id('title')} className={inputClass} value={f.title} onChange={(e) => set('title', e.target.value)} /></Field>
+        <Field id={id('account')} label="Account"><input id={id('account')} className={inputClass} value={f.account} onChange={(e) => set('account', e.target.value)} /></Field>
+        <Field id={id('crew')} label="Crew role" hint="Puts the person first in that job crew picker">
+          <select id={id('crew')} className={inputClass} value={f.crew_role} onChange={(e) => set('crew_role', e.target.value)}>
+            <option value="">Not on crews</option>{Object.entries(CREW_ROLE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </Field>
+        <Field id={id('mobile')} label="Mobile"><input id={id('mobile')} className={inputClass} value={f.contact_mobile} onChange={(e) => set('contact_mobile', e.target.value)} placeholder="+966 …" /></Field>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={f.self_updated} onChange={(e) => set('self_updated', e.target.checked)} />Fills own attendance (SELF)</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={f.is_slk_contact} onChange={(e) => set('is_slk_contact', e.target.checked)} />SLK contact (Pre-Job Notes)</label>
+      </div>
+      {msg && <div className="mt-2"><Banner tone={msg.tone}>{msg.text}</Banner></div>}
+      <Button className="mt-3" size="sm" variant="primary" loading={save.isPending} onClick={() => save.mutate()}>Save attendance details</Button>
     </div>
   );
 }

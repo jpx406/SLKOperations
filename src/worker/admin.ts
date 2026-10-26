@@ -4,6 +4,9 @@ import type { Role } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { exportPackage, importApply, importDryRun } from './dataPackage';
 import { MENU_KEYS, effectiveMenus } from './permissions';
+import { syncPeople } from './people';
+import { cleanEmployee } from './roster';
+import { isSheet } from '../shared/attendanceSheets';
 
 // Users & Roles (S34). Accounts live in WIREGUARD; here an admin sets each person's SLK Ops role,
 // sets their countries, switches access off, adds or removes tabs per person and edits the role × menu matrix.
@@ -46,12 +49,18 @@ async function checkCountries(env: Env, countries: unknown, role: Role): Promise
 admin.get('/countries', async (c) => c.json(await knownCountries(c.env)));
 
 admin.get('/users', async (c) => {
+  await syncPeople(c.env);
   const [users, grants, perms, contacts] = await c.env.DB.batch([
     c.env.DB.prepare(
-      `SELECT username, full_name, role, wg_role, countries, active, last_login_at, updated_by, updated_at,
-              email, employee_eid, wg_active, wg_country, wg_field, wg_synced_at, passkey_allowed,
-              (SELECT count(*) FROM passkeys p WHERE p.username = user_roles.username) AS passkeys
-       FROM user_roles ORDER BY active DESC, full_name COLLATE NOCASE`,
+      `SELECT user_roles.username, user_roles.full_name, user_roles.role, user_roles.wg_role, user_roles.countries, user_roles.active,
+              user_roles.last_login_at, user_roles.updated_by, user_roles.updated_at, user_roles.email, user_roles.employee_eid,
+              user_roles.wg_active, user_roles.wg_country, user_roles.wg_field, user_roles.wg_synced_at, user_roles.passkey_allowed,
+              (SELECT count(*) FROM passkeys p WHERE p.username = user_roles.username) AS passkeys,
+              e.id AS employee_id, e.title AS job_title, e.account, e.crew_role, e.attendance_sheet AS sheet_override, e.reports_to_id,
+              e.self_updated, e.is_slk_contact, e.contact_mobile, e.country AS attendance_country,
+              (SELECT sheet FROM attendance_role_sheets rs WHERE rs.role = user_roles.role) AS role_sheet
+       FROM user_roles LEFT JOIN employees e ON lower(e.wg_username) = lower(user_roles.username)
+       ORDER BY user_roles.active DESC, user_roles.full_name COLLATE NOCASE`,
     ),
     c.env.DB.prepare('SELECT username, menu_key, effect, can_edit FROM tab_grants ORDER BY menu_key'),
     c.env.DB.prepare('SELECT role, menu_key, can_view, can_edit, can_delete FROM role_permissions'),
@@ -207,6 +216,50 @@ admin.get('/audit', async (c) => {
 });
 
 // ---- whole-board export and import (Administrator Manual 7), admin role only ----
+// ---- attendance: which sheet each role is on, and each person's attendance and crew details ----------------------
+
+admin.get('/attendance-categories', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT role, sheet, updated_by, updated_at FROM attendance_role_sheets').all<{ role: string; sheet: string }>();
+  const byRole = new Map(results.map((r) => [r.role, r]));
+  return c.json(ROLES.map((role) => ({ role, sheet: byRole.get(role)?.sheet ?? 'none', updated_by: (byRole.get(role) as { updated_by?: string } | undefined)?.updated_by ?? null })));
+});
+
+admin.put('/attendance-categories', async (c) => {
+  const me = c.get('user');
+  const b = await c.req.json<{ role?: Role; sheet?: string }>().catch(() => ({} as { role?: Role; sheet?: string }));
+  if (!b.role || !ROLES.includes(b.role)) return c.json({ error: 'Unknown role' }, 400);
+  if (b.sheet !== 'none' && !isSheet(b.sheet)) return c.json({ error: 'Unknown attendance sheet' }, 400);
+  await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO attendance_role_sheets (role, sheet, updated_by, updated_at) VALUES (?1, ?2, ?3, ?4)
+      ON CONFLICT (role) DO UPDATE SET sheet = ?2, updated_by = ?3, updated_at = ?4`).bind(b.role, b.sheet, me.username, new Date().toISOString()),
+    audit(c.env, me, 'edit', 'attendance_role_sheets', b.role, `${ROLE_LABEL[b.role]} → ${b.sheet}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+/** The person's attendance and crew details: job title, account, crew role, sheet override, foreman, SELF, SLK contact, mobile. */
+admin.put('/users/:username/attendance', async (c) => {
+  const me = c.get('user');
+  const username = c.req.param('username');
+  await syncPeople(c.env);
+  const e = await c.env.DB.prepare('SELECT id, full_name FROM employees WHERE lower(wg_username) = lower(?)').bind(username).first<{ id: string; full_name: string }>();
+  if (!e) return c.json({ error: 'This person has no country yet, so they can’t be on attendance. Give them a country first.' }, 400);
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const clearSheet = 'attendance_sheet' in b && !b.attendance_sheet;
+  const r = cleanEmployee(Object.fromEntries(Object.entries(b).filter(([k]) => ['title', 'account', 'crew_role', 'attendance_sheet', 'reports_to_id', 'self_updated', 'is_slk_contact', 'contact_mobile'].includes(k))), false);
+  if ('error' in r) return c.json({ error: r.error }, 400);
+  const v: Record<string, unknown> = { ...r.values, ...(clearSheet ? { attendance_sheet: null } : {}) };
+  if (v.reports_to_id === e.id) return c.json({ error: 'Someone can’t be their own foreman' }, 400);
+  const cols = Object.keys(v);
+  if (!cols.length) return c.json({ ok: true });
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE employees SET ${cols.map((k, i) => `${k} = ?${i + 1}`).join(', ')}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?${cols.length + 1}`)
+      .bind(...cols.map((k) => v[k]), e.id),
+    audit(c.env, me, 'edit', 'employee', e.id, `${e.full_name}: ${cols.map((k) => `${k} = ${v[k]}`).join(', ')}`),
+  ]);
+  return c.json({ ok: true });
+});
+
 admin.get('/export', exportPackage);
 admin.post('/import/dry-run', importDryRun);
 admin.post('/import/apply', importApply);

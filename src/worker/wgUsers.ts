@@ -1,5 +1,6 @@
 import { defaultRoleFor } from '../shared/roles';
 import type { Env } from './env';
+import { syncPeople } from './people';
 import { fetchAsSync } from './sync';
 
 // WIREGUARD's user list, read with the read-only sync account (GET /users). It feeds two things:
@@ -63,6 +64,7 @@ export async function importWgUsers(env: Env, by: string) {
   ).bind(u.username, (u.full_name ?? u.username).trim() || u.username, defaultRoleFor(u.role), JSON.stringify(countriesOf(u)), u.role ?? null,
     u.employee_id ?? null, u.email ?? null, isActive(u) ? 1 : 0, u.country ?? null, u.field ?? null, t, by));
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+  await syncPeople(env); // everyone imported is on attendance (on the sheet their role is assigned to)
   const added = list.filter((u) => !existing.has(u.username.toLowerCase())).length;
   const inactive = list.filter((u) => !isActive(u)).length;
   await env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')

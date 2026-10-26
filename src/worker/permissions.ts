@@ -69,6 +69,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PUT', re: /^\/api\/admin\/role-permissions$/, menu: 'users', action: 'edit' },
   { method: 'POST', re: /^\/api\/admin\/import\/(dry-run|apply)$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/ai$/, menu: 'users', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/admin\/attendance-categories$/, menu: 'users', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/attendance$/, menu: 'users', action: 'edit' },
   // Users & Roles: someone's Face ID devices, their Face ID switch, and the WIREGUARD user import
   { method: 'DELETE', re: /^\/api\/admin\/access\/passkeys\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/access\/passkey-allowed$/, menu: 'users', action: 'edit' },

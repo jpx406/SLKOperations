@@ -15,7 +15,6 @@ import { FailureRoster } from './pages/FailureRoster';
 import { NptAnalysis, Statistics } from './pages/Statistics';
 import { Competency, Utilization } from './pages/People';
 import { Attendance } from './pages/Attendance';
-import { Roster } from './pages/Roster';
 import { Inventory } from './pages/Inventory';
 import { PreJobNoteEditor, PreJobNotesList, PreJobNotesPrint } from './pages/PreJobNotes';
 import { JraPage } from './pages/Jra';
@@ -75,7 +74,8 @@ const router = createBrowserRouter([
       { path: 'sales', element: <SalesDashboard /> },
       { path: 'wires/:serial', element: <WireDetail /> },
       { path: 'attendance', element: <Attendance /> },
-      { path: 'attendance/roster', element: <Roster /> },
+      // the Headcount Roster is now Users & Roles (people) and its Attendance categories tab
+      { path: 'attendance/roster', element: <Navigate to="/admin/users" replace /> },
       { path: 'inventory/explosive', element: <Inventory key="explosive" inv="explosive" /> },
       { path: 'inventory/hardware', element: <Inventory key="hardware" inv="hardware" /> },
       { path: 'inventory/mcr', element: <Inventory key="mcr" inv="mcr" /> },

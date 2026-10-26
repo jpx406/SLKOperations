@@ -41,7 +41,6 @@ export const NAV: Group[] = [
     label: 'Attendance',
     pages: [
       { key: 'attendance', label: 'Attendance', path: '/attendance', screen: 'S17', milestone: '2j' },
-      { key: 'headcount_roster', label: 'Headcount Roster', path: '/attendance/roster', screen: 'S44', milestone: '2j' },
     ],
   },
   {

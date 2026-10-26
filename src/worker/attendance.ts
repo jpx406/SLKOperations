@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { EMAIL_RE, MONTH_RE, approvalEmail, isCode, monthDays, rowSummary, type Code } from '../shared/attendance';
 import { SHEETS, canApprove, canFill, canSee, isSheet, type SheetKey, type SheetRow } from '../shared/attendanceSheets';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { syncPeople } from './people';
 import { revokeStatement, signStatement } from './signatures';
 
 // Attendance (S17), by sheet and role (see shared/attendanceSheets.ts): operators and helpers are filled by their
@@ -14,15 +15,24 @@ const audit = (env: Env, user: AuthedUser, action: string, entity: string, id: s
   env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(crypto.randomUUID(), user.username, action, entity, id, summary.slice(0, 1000));
 
-type Person = SheetRow & { id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null; reports_to_id: string | null; reports_to_name: string | null };
+type Person = SheetRow & { id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null; reports_to_id: string | null; reports_to_name: string | null; user_role: string };
 
-/** The roster rows of the caller's countries, with what the sheet rules need. */
+/**
+ * The people on attendance in the caller's countries: everyone active in Users & Roles (mirrored into employees by
+ * syncPeople), on the sheet their role is assigned to, unless moved by hand. Roles assigned to "none" are left off.
+ */
 async function roster(env: Env, countries: string[], ids?: string[]) {
+  await syncPeople(env);
   const { results } = await env.DB.prepare(
-    `SELECT e.id, e.country, e.eid, e.full_name, e.title, e.account, e.crew_role, e.reports_to_id, e.attendance_sheet, e.wg_username, e.self_updated,
+    `SELECT e.id, e.country, e.eid, e.full_name, e.title, e.account, e.crew_role, e.reports_to_id, e.wg_username, e.self_updated,
+            coalesce(e.attendance_sheet, rs.sheet) AS attendance_sheet, u.role AS user_role,
             m.full_name AS reports_to_name, m.wg_username AS reports_to_username
-     FROM employees e LEFT JOIN employees m ON m.id = e.reports_to_id
-     WHERE e.active = 1 AND e.country IN (SELECT value FROM json_each(?1)) ${ids ? 'AND e.id IN (SELECT value FROM json_each(?2))' : ''}
+     FROM employees e
+     JOIN user_roles u ON lower(u.username) = lower(e.wg_username) AND u.active = 1
+     LEFT JOIN attendance_role_sheets rs ON rs.role = u.role
+     LEFT JOIN employees m ON m.id = e.reports_to_id
+     WHERE e.active = 1 AND coalesce(e.attendance_sheet, rs.sheet, 'none') <> 'none'
+       AND e.country IN (SELECT value FROM json_each(?1)) ${ids ? 'AND e.id IN (SELECT value FROM json_each(?2))' : ''}
      ORDER BY e.full_name`,
   ).bind(...(ids ? [JSON.stringify(countries), JSON.stringify(ids)] : [JSON.stringify(countries)])).all<Person>();
   return results;

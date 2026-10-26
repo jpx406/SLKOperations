@@ -5,6 +5,7 @@ import type { AppBindings, Env } from './env';
 import { admin } from './admin';
 import { passkeyAdmin, passkeyAuth, passkeys } from './passkeys';
 import { importWgUsers } from './wgUsers';
+import { syncPeople } from './people';
 import { aiAdminGet, aiAdminPut, aiChat, aiStatus, assistantChat } from './ai';
 import { database } from './database';
 import { emf } from './emf';
@@ -137,6 +138,7 @@ app.get('/lookups', async (c) => {
 });
 
 app.get('/employees', async (c) => {
+  await syncPeople(c.env);
   const country = c.req.query('country');
   const countries = c.get('user').countries.filter((x) => !country || x === country);
   const { results } = await c.env.DB.prepare(

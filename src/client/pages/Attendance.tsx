@@ -4,6 +4,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { CODES, CODE_LIST, LEAVE, assignmentsOn, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
 import { SHEETS, SHEET_KEYS, type SheetKey } from '../../shared/attendanceSheets';
+import { ROLE_LABEL } from '../../shared/roles';
+import type { Role } from '../../shared/types';
 import { workbook } from '../../shared/xlsx';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
@@ -22,7 +24,7 @@ import { Banner, Button, Card, EmptyState, Field, Skeleton, cx, inputClass, inpu
 interface Person {
   id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null;
   reports_to_id: string | null; reports_to_name: string | null; wg_username: string | null; self_updated: number;
-  sheet: SheetKey; can_fill: boolean; can_approve: boolean; updated_by: string | null;
+  sheet: SheetKey; can_fill: boolean; can_approve: boolean; updated_by: string | null; user_role: Role;
 }
 interface Sheet {
   month: string; days: string[]; full: boolean; people: Person[]; entries: { employee_id: string; day: string; code: Code }[];
@@ -37,11 +39,14 @@ const cellKey = (p: string, d: string) => `${p}|${d}`;
 const weekday = (d: string) => 'SMTWTFS'[new Date(`${d}T00:00:00Z`).getUTCDay()];
 const filledBy = (p: Person) => (p.self_updated || p.sheet === 'management' ? 'Self' : SHEETS[p.sheet].filledBy);
 
-type FilterKey = 'account' | 'updated' | 'filler' | 'reports' | 'eid' | 'name' | 'title';
+type FilterKey = 'role' | 'reports' | 'account' | 'updated' | 'filler' | 'title';
 const FILTERS: [FilterKey, string, (p: Person) => string][] = [
-  ['account', 'Account assignment', (p) => p.account], ['updated', 'Updated by', (p) => p.updated_by ?? '—'], ['filler', 'Filled by', filledBy],
-  ['reports', 'Reports to', (p) => p.reports_to_name ?? '—'], ['eid', 'EID', (p) => p.eid], ['name', 'Name', (p) => p.full_name], ['title', 'Title', (p) => p.title],
+  ['role', 'Role', (p) => ROLE_LABEL[p.user_role] ?? p.user_role], ['reports', 'Foreman / reports to', (p) => p.reports_to_name ?? '—'],
+  ['account', 'Account assignment', (p) => p.account], ['updated', 'Updated by', (p) => p.updated_by ?? '—'], ['filler', 'Filled by', filledBy], ['title', 'Title', (p) => p.title],
 ];
+type Status = '' | 'tofill' | 'waiting' | 'approved';
+const STATUS: [Status, string][] = [['', 'All'], ['tofill', 'Still to fill'], ['waiting', 'Waiting approval'], ['approved', 'Approved']];
+const MINE_KEY = 'slk-att-mine';
 
 export function Attendance() {
   const [params, setParams] = useSearchParams();
@@ -61,6 +66,13 @@ export function Attendance() {
   const [rowOn, setRowOn] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Partial<Record<FilterKey, string>>>({});
+  // quick filters for fast entry: one sheet, a status, and "only rows I fill" (remembered on this device)
+  const [sheetPick, setSheetPick] = useState<SheetKey | ''>('');
+  const [status, setStatus] = useState<Status>('');
+  const [mine, setMine] = useState(() => { try { return localStorage.getItem(MINE_KEY) === '1'; } catch { return false; } });
+  const toggleMine = () => { const v = !mine; setMine(v); try { localStorage.setItem(MINE_KEY, v ? '1' : '0'); } catch { /* not remembered */ } };
+  const [fillCode, setFillCode] = useState<Code | ''>('');
+  const [fillOpts, setFillOpts] = useState({ skipOff: true, toToday: true });
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
   const [holidaysOpen, setHolidaysOpen] = useState(false);
@@ -82,9 +94,14 @@ export function Attendance() {
   const code = (p: string, d: string): Code | undefined => { const k = cellKey(p, d); return k in pending ? pending[k] ?? undefined : saved.get(k); };
 
   const all = sheet?.people ?? [];
+  const days = sheet?.days ?? [];
+  const blanks = (p: Person) => days.filter((d) => !code(p.id, d)).length;
   const people = all.filter((p) =>
     (!q || `${p.eid} ${p.full_name} ${p.title}`.toLowerCase().includes(q.toLowerCase()))
-    && FILTERS.every(([k, , get]) => !filter[k] || get(p) === filter[k]));
+    && FILTERS.every(([k, , get]) => !filter[k] || get(p) === filter[k])
+    && (!sheetPick || p.sheet === sheetPick)
+    && (!mine || p.can_fill)
+    && (!status || (status === 'approved' ? approved.has(p.id) : status === 'waiting' ? !approved.has(p.id) && blanks(p) === 0 : !approved.has(p.id) && blanks(p) > 0)));
   // one card per sheet; Operators & Helpers split by foreman crew inside the card
   const groups = useMemo(() => SHEET_KEYS.map((k) => ({
     key: k,
@@ -94,7 +111,6 @@ export function Attendance() {
       : [{ boss: null as string | null, list: people.filter((p) => p.sheet === k) }],
   })).filter((g) => g.crews.some((c) => c.list.length)), [people]);
   const flat = groups.flatMap((g) => g.crews.flatMap((c) => c.list));
-  const days = sheet?.days ?? [];
   const nPending = Object.keys(pending).length;
   const byId = useMemo(() => new Map(all.map((p) => [p.id, p])), [all]);
   const editable = (p: Person) => p.can_fill && !approved.has(p.id);
@@ -123,6 +139,18 @@ export function Attendance() {
       return n;
     });
     if (!shift) setAnchor({ p: pi, d: di });
+  };
+
+  /** Puts one code in every empty day of the rows on screen that you fill (pending until Save). */
+  const fillEmpty = () => {
+    if (!fillCode) return;
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+    const keys = flat.filter((p) => editable(p)).flatMap((p) => days
+      .filter((d) => !code(p.id, d) && !(fillOpts.toToday && d > today) && !(fillOpts.skipOff && (isWeekend(d) || holidays.has(`${p.country}|${d}`))))
+      .map((d) => cellKey(p.id, d)));
+    if (!keys.length) { setNotice({ tone: 'success', text: 'No empty days to fill in the rows shown.' }); return; }
+    setCodes(keys, fillCode);
+    setNotice({ tone: 'success', text: `${keys.length} empty day${keys.length === 1 ? '' : 's'} set to ${fillCode} (${CODES[fillCode]}). Check them, then Save.` });
   };
 
   const save = async () => {
@@ -210,6 +238,40 @@ export function Attendance() {
           {manager && cats.data?.canManage && <Button onClick={() => setCategoriesOpen(true)}><Tags aria-hidden className="size-4" />Approver emails</Button>}
         </span>
       </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-card-edge bg-surface p-3">
+        <div role="radiogroup" aria-label="Sheet" onKeyDown={rovingKeys} className="flex flex-wrap gap-1.5">
+          {([['', 'All sheets'], ...SHEET_KEYS.map((k) => [k, SHEETS[k].label])] as [SheetKey | '', string][]).map(([k, l]) => (
+            <button key={k || 'all'} type="button" role="radio" aria-checked={sheetPick === k} tabIndex={sheetPick === k ? 0 : -1} onClick={() => setSheetPick(k)}
+              className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', sheetPick === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+          ))}
+        </div>
+        <label className="ml-2 inline-flex items-center gap-2 text-sm"><span className="text-text-muted">Status</span>
+          <select className={inputSized('w-44')} value={status} onChange={(e) => setStatus(e.target.value as Status)}>{STATUS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+        </label>
+        {anyFill && (
+          <button type="button" role="switch" aria-checked={mine} onClick={toggleMine}
+            className={cx('inline-flex h-(--layout-control-sm) items-center gap-2 rounded-pill border px-3 text-sm font-semibold', mine ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+            Only rows I fill
+          </button>
+        )}
+        {(sheetPick || status || mine || q || Object.values(filter).some(Boolean)) && (
+          <Button size="sm" variant="ghost" onClick={() => { setSheetPick(''); setStatus(''); setQ(''); setFilter({}); if (mine) toggleMine(); }}><X aria-hidden className="size-3.5" />Clear filters</Button>
+        )}
+        <span className="ml-auto font-mono text-xs text-text-muted">{flat.length} of {all.length} people</span>
+        {anyFill && (
+          <div className="flex w-full flex-wrap items-center gap-2 border-t border-border pt-2">
+            <span className="text-sm font-semibold">Fill empty days with</span>
+            <select aria-label="Code for the empty days" className={inputSized('w-56')} value={fillCode} onChange={(e) => setFillCode(e.target.value as Code | '')}>
+              <option value="">Pick a code…</option>{CODE_LIST.map((c) => <option key={c} value={c}>{c} · {CODES[c]}</option>)}
+            </select>
+            <label className="inline-flex items-center gap-1.5 text-sm text-text-muted"><input type="checkbox" checked={fillOpts.skipOff} onChange={(e) => setFillOpts({ ...fillOpts, skipOff: e.target.checked })} />skip weekends and holidays</label>
+            <label className="inline-flex items-center gap-1.5 text-sm text-text-muted"><input type="checkbox" checked={fillOpts.toToday} onChange={(e) => setFillOpts({ ...fillOpts, toToday: e.target.checked })} />only up to today</label>
+            <Button size="sm" disabled={!fillCode} onClick={fillEmpty}>Fill the rows shown</Button>
+            <span className="text-xs text-text-subtle">Only rows you fill and haven't been approved. Nothing is stored until Save.</span>
+          </div>
+        )}
+      </div>
+
       {multi && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span className="text-text-muted">{picked.size} cell{picked.size === 1 ? '' : 's'} picked · Shift-click for a range</span>
@@ -238,7 +300,7 @@ export function Attendance() {
 
       {sheetQ.isPending && <Skeleton className="h-96" />}
       {sheetQ.isError && <Banner tone="danger">{sheetQ.error.message}</Banner>}
-      {sheet && !all.length && <EmptyState title={manager ? 'Nobody on the roster yet' : 'Your attendance isn’t linked yet'}>{manager ? 'Add people in the Headcount Roster.' : 'Ask the attendance administrator to put your WIREGUARD username on your roster entry.'}</EmptyState>}
+      {sheet && !all.length && <EmptyState title={manager ? 'Nobody on attendance yet' : 'You’re not on attendance'}>{manager ? 'People come from Users & Roles, on the sheet their role is assigned to (Users & Roles → Attendance categories).' : 'Your role isn’t on an attendance sheet. Ask an administrator.'}</EmptyState>}
       {sheet && all.length > 0 && !flat.length && <EmptyState title="Nobody matches" action={<Button onClick={() => { setQ(''); setFilter({}); }}>Clear filters</Button>}>Try another name, EID or filter.</EmptyState>}
 
       <div className="flex flex-col gap-4">
@@ -283,7 +345,7 @@ export function Attendance() {
                       <Fragment key={crew.boss ?? 'all'}>
                         {g.key === 'field' && g.crews.length > 1 && (
                           <tr><th colSpan={days.length + 6} scope="colgroup" className="sticky left-0 bg-bg px-2 py-1.5 text-left text-xs font-semibold text-text-muted">
-                            {crew.boss ? `Crew of ${crew.boss}` : 'No foreman set in the Headcount Roster'} · {crew.list.length}
+                            {crew.boss ? `Crew of ${crew.boss}` : 'No foreman set in Users & Roles'} · {crew.list.length}
                           </th></tr>
                         )}
                         {crew.list.map((p) => {
