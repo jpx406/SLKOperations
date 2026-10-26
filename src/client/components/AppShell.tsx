@@ -11,6 +11,7 @@ import { useDisplay, type DensityChoice } from '../display';
 import { AssistantLauncher, HelpButton } from './Help';
 import { Button, cx, rovingKeys } from './ui';
 import { Contacts, NesrLogo, Wordmark } from './Brand';
+import { NewVersionBar, useNewVersion } from './NewVersionBar';
 
 /** Narrows every screen to one country for people who cover several. The server checks it against their countries. */
 function CountrySwitch({ countries }: { countries: string[] }) {
@@ -84,8 +85,10 @@ export function AppShell() {
     navigate('/signin', { replace: true });
   };
 
+  const newVersion = useNewVersion();
   return (
     <div className="flex min-h-full flex-col">
+      <NewVersionBar show={newVersion} />
       <header className="border-b border-border bg-bg px-4 md:px-5 print:hidden">
         {/* one row from tablet width up; on phones the tools wrap under the name instead of being cut off */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">

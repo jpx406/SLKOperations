@@ -68,6 +68,8 @@
   --color-status-event-subtle: var(--color-status-event-subtle);
   --color-today: var(--color-today);
   --color-accent-edge: var(--color-accent-edge);
+  --color-notice-bg: var(--color-notice-bg);
+  --color-notice-fg: var(--color-notice-fg);
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);

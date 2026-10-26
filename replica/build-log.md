@@ -1023,3 +1023,13 @@ Every label, message and empty state was written here. No code, assets or copy f
 - Section tabs that are a prefix of another (Wires and Wires / Reconciliation) match exactly, so only one is highlighted.
 - The menu key (`reconciliation`) and its rights are unchanged.
 - Verified: tests 207; in the browser the old link redirects, Wires shows both tabs with the right one active, and Operation no longer lists Reconciliation.
+
+## 6p — "A new version is available" bar
+
+- Each build stamps an id (UTC timestamp) into index.html (`<meta name="app-build">`) and into the code (`__APP_BUILD__`, a Vite define).
+- The running page reads the id the server now serves every 5 minutes, when the tab comes back into view, and when the connection returns.
+- When the ids differ, a yellow bar across the top says: "A new version of SLK Operations is available. Finish what you are typing and save it, then click Refresh now", with a CAUTION line that refreshing clears anything not yet saved.
+- Nothing reloads by itself. Refresh now fetches a fresh copy of the page first, so the reload can't come back from the browser cache.
+- Local development ("dev") never shows the bar.
+- Tokens: notice-bg #facc15 and notice-fg #0b121a, the same in both themes (12.3:1).
+- Verified with a simulated deploy (preview build A → page open → build B served): the bar appeared, and Refresh now loaded B with the bar gone.
