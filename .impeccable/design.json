@@ -1,0 +1,673 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T06:02:58.235Z",
+  "title": "Design System: SLK Operations",
+  "extensions": {
+    "colorMeta": {
+      "ink-night": {
+        "role": "neutral",
+        "displayName": "Ink Night",
+        "canonical": "#0b121a",
+        "tonalRamp": [
+          "#080c12",
+          "#090e14",
+          "#0a1017",
+          "#0b121a",
+          "#858789",
+          "#b6b8b9",
+          "#dadbdd",
+          "#eceef0"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "#111820",
+        "tonalRamp": [
+          "#090e13",
+          "#0c1118",
+          "#0e151c",
+          "#111820",
+          "#868789",
+          "#b6b8ba",
+          "#dadcde",
+          "#eceef0"
+        ]
+      },
+      "panel-raised": {
+        "role": "neutral",
+        "displayName": "Panel Raised",
+        "canonical": "#161d27",
+        "tonalRamp": [
+          "#0a0f15",
+          "#0e141b",
+          "#121922",
+          "#161d27",
+          "#86888b",
+          "#b6b8ba",
+          "#dadcde",
+          "#eceef0"
+        ]
+      },
+      "panel-pressed": {
+        "role": "neutral",
+        "displayName": "Panel Pressed",
+        "canonical": "#1e2630",
+        "tonalRamp": [
+          "#0c1117",
+          "#131921",
+          "#192029",
+          "#1e2630",
+          "#87898c",
+          "#b7b9bb",
+          "#dadcde",
+          "#eceef0"
+        ]
+      },
+      "well": {
+        "role": "neutral",
+        "displayName": "Well",
+        "canonical": "#0e131a",
+        "tonalRamp": [
+          "#080c12",
+          "#0a0f14",
+          "#0c1117",
+          "#0e131a",
+          "#858789",
+          "#b6b8b9",
+          "#dadcdd",
+          "#eceef0"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#232c37",
+        "tonalRamp": [
+          "#0e131a",
+          "#161d25",
+          "#1d252f",
+          "#232c37",
+          "#888a8e",
+          "#b7b9bc",
+          "#dadcde",
+          "#eceef0"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Rule Strong",
+        "canonical": "#323d4a",
+        "tonalRamp": [
+          "#131920",
+          "#1f2731",
+          "#2a333f",
+          "#323d4a",
+          "#8b8e93",
+          "#b8bbbe",
+          "#dbdddf",
+          "#eceef0"
+        ]
+      },
+      "rule-input": {
+        "role": "neutral",
+        "displayName": "Rule Input",
+        "canonical": "#5f6c7c",
+        "tonalRamp": [
+          "#262c34",
+          "#3d4652",
+          "#505c69",
+          "#5f6c7c",
+          "#99a0a8",
+          "#bfc3c9",
+          "#dde0e4",
+          "#edf0f2"
+        ]
+      },
+      "chalk": {
+        "role": "neutral",
+        "displayName": "Chalk",
+        "canonical": "#e8ecf1",
+        "tonalRamp": [
+          "#626467",
+          "#9a9da1",
+          "#c6cace",
+          "#e8ecf1",
+          "#eceff4",
+          "#f0f3f6",
+          "#f3f6f9",
+          "#f6f8fa"
+        ]
+      },
+      "chalk-muted": {
+        "role": "neutral",
+        "displayName": "Chalk Muted",
+        "canonical": "#9aa4b1",
+        "tonalRamp": [
+          "#3f444b",
+          "#656c75",
+          "#838c97",
+          "#9aa4b1",
+          "#b7bec7",
+          "#cfd4da",
+          "#e4e8eb",
+          "#f0f2f5"
+        ]
+      },
+      "chalk-subtle": {
+        "role": "neutral",
+        "displayName": "Chalk Subtle",
+        "canonical": "#8591a0",
+        "tonalRamp": [
+          "#363c44",
+          "#575f6a",
+          "#717b88",
+          "#8591a0",
+          "#abb3bc",
+          "#c9ced4",
+          "#e1e5e9",
+          "#eff1f4"
+        ]
+      },
+      "accent-chalk": {
+        "role": "primary",
+        "displayName": "Chalk Accent",
+        "canonical": "#e6e9ee",
+        "tonalRamp": [
+          "#616366",
+          "#999b9f",
+          "#c4c7cb",
+          "#e6e9ee",
+          "#eaedf1",
+          "#eff1f5",
+          "#f3f5f8",
+          "#f5f7fa"
+        ]
+      },
+      "accent-chalk-hover": {
+        "role": "primary",
+        "displayName": "Chalk Accent Hover",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#6d6d6d",
+          "#aaaaaa",
+          "#dadada",
+          "#ffffff",
+          "#fdfefe",
+          "#fbfcfd",
+          "#f9fbfc",
+          "#f8fafb"
+        ]
+      },
+      "on-accent": {
+        "role": "neutral",
+        "displayName": "On Accent",
+        "canonical": "#0b121a",
+        "tonalRamp": [
+          "#080c12",
+          "#090e14",
+          "#0a1017",
+          "#0b121a",
+          "#858789",
+          "#b6b8b9",
+          "#dadbdd",
+          "#eceef0"
+        ]
+      },
+      "focus-blue": {
+        "role": "tertiary",
+        "displayName": "Focus Blue",
+        "canonical": "#8ab4f8",
+        "tonalRamp": [
+          "#384b6a",
+          "#5a77a5",
+          "#7599d4",
+          "#8ab4f8",
+          "#aec8f9",
+          "#cadafa",
+          "#e2eafa",
+          "#eff3fb"
+        ]
+      },
+      "status-planned": {
+        "role": "secondary",
+        "displayName": "Planned Blue",
+        "canonical": "#6aa8ff",
+        "tonalRamp": [
+          "#2a466d",
+          "#456faa",
+          "#5a8fda",
+          "#6aa8ff",
+          "#9ec1fe",
+          "#c2d6fd",
+          "#dee8fc",
+          "#eef2fb"
+        ]
+      },
+      "status-ongoing": {
+        "role": "secondary",
+        "displayName": "Running Amber",
+        "canonical": "#f5c542",
+        "tonalRamp": [
+          "#68531d",
+          "#a3832c",
+          "#d1a838",
+          "#f5c542",
+          "#f6d491",
+          "#f6e1bd",
+          "#f7eddf",
+          "#f7f4f0"
+        ]
+      },
+      "status-done": {
+        "role": "secondary",
+        "displayName": "Done Green",
+        "canonical": "#3ecf8e",
+        "tonalRamp": [
+          "#18573c",
+          "#27895e",
+          "#34b179",
+          "#3ecf8e",
+          "#8edbb2",
+          "#bae5ce",
+          "#dbefe6",
+          "#ecf5f3"
+        ]
+      },
+      "status-danger": {
+        "role": "secondary",
+        "displayName": "Alert Red",
+        "canonical": "#ff7b7b",
+        "tonalRamp": [
+          "#6d3334",
+          "#aa5051",
+          "#da6869",
+          "#ff7b7b",
+          "#fda7a8",
+          "#fbc7c9",
+          "#f9e2e4",
+          "#f8f0f2"
+        ]
+      },
+      "status-danger-solid": {
+        "role": "secondary",
+        "displayName": "Alert Red Solid",
+        "canonical": "#e5484d",
+        "tonalRamp": [
+          "#611d21",
+          "#982f33",
+          "#c43d41",
+          "#e5484d",
+          "#ea9294",
+          "#eebdbf",
+          "#f3dde0",
+          "#f5eef1"
+        ]
+      },
+      "status-blocked": {
+        "role": "secondary",
+        "displayName": "Blocked Clay",
+        "canonical": "#c08a55",
+        "tonalRamp": [
+          "#503924",
+          "#7f5b38",
+          "#a47548",
+          "#c08a55",
+          "#d0af97",
+          "#deccc0",
+          "#ebe4e0",
+          "#f2f1f1"
+        ]
+      },
+      "sev-negligible": {
+        "role": "secondary",
+        "displayName": "Severity Negligible",
+        "canonical": "#3ecf8e",
+        "tonalRamp": [
+          "#18573c",
+          "#27895e",
+          "#34b179",
+          "#3ecf8e",
+          "#8edbb2",
+          "#bae5ce",
+          "#dbefe6",
+          "#ecf5f3"
+        ]
+      },
+      "sev-light": {
+        "role": "secondary",
+        "displayName": "Severity Light",
+        "canonical": "#5fd0de",
+        "tonalRamp": [
+          "#26585f",
+          "#3d8a94",
+          "#50b2be",
+          "#5fd0de",
+          "#99dbe6",
+          "#bfe6ed",
+          "#ddf0f4",
+          "#edf5f8"
+        ]
+      },
+      "sev-serious": {
+        "role": "secondary",
+        "displayName": "Severity Serious",
+        "canonical": "#f5c542",
+        "tonalRamp": [
+          "#68531d",
+          "#a3832c",
+          "#d1a838",
+          "#f5c542",
+          "#f6d491",
+          "#f6e1bd",
+          "#f7eddf",
+          "#f7f4f0"
+        ]
+      },
+      "sev-major": {
+        "role": "secondary",
+        "displayName": "Severity Major",
+        "canonical": "#ff9f43",
+        "tonalRamp": [
+          "#6d421e",
+          "#aa692c",
+          "#da8739",
+          "#ff9f43",
+          "#fdbb91",
+          "#fbd2bd",
+          "#f9e7df",
+          "#f8f2f0"
+        ]
+      },
+      "sev-catastrophic": {
+        "role": "secondary",
+        "displayName": "Severity Catastrophic",
+        "canonical": "#ff6b6b",
+        "tonalRamp": [
+          "#6d2c2d",
+          "#aa4646",
+          "#da5b5b",
+          "#ff6b6b",
+          "#fd9fa0",
+          "#fbc3c5",
+          "#f9e0e2",
+          "#f8f0f1"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper (light theme page)",
+        "canonical": "#f5f7fa",
+        "tonalRamp": [
+          "#68696b",
+          "#a3a5a7",
+          "#d1d3d6",
+          "#f5f7fa",
+          "#f6f8fa",
+          "#f6f8fb",
+          "#f7f9fb",
+          "#f7f9fb"
+        ]
+      },
+      "paper-panel": {
+        "role": "neutral",
+        "displayName": "Paper Panel (light theme card)",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#6d6d6d",
+          "#aaaaaa",
+          "#dadada",
+          "#ffffff",
+          "#fdfefe",
+          "#fbfcfd",
+          "#f9fbfc",
+          "#f8fafb"
+        ]
+      },
+      "paper-ink": {
+        "role": "primary",
+        "displayName": "Paper Ink (light theme accent and text)",
+        "canonical": "#111821",
+        "tonalRamp": [
+          "#090e13",
+          "#0c1118",
+          "#0e151d",
+          "#111821",
+          "#86878a",
+          "#b6b8ba",
+          "#dadcde",
+          "#eceef0"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Rare full-page moments (sign-in, empty pages). Uppercase."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page titles. Uppercase Manrope 800."
+      },
+      "kpi": {
+        "displayName": "KPI",
+        "purpose": "The single number in a stat tile or the JRA risk index."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Stage names, card and dialog titles."
+      },
+      "body-lead": {
+        "displayName": "Body lead",
+        "purpose": "Emphasised lines and dialog intros."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default text, table cells and inputs."
+      },
+      "body-small": {
+        "displayName": "Body small",
+        "purpose": "Hints and small-button text."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Metadata lines under rows and files."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Mono capitals for field labels, section rules, pills, units, IDs and fingerprints."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card-lift",
+        "value": "0 1px 0 rgba(255,255,255,.05) inset, 0 2px 6px rgba(0,0,0,.40), 0 10px 24px rgba(0,0,0,.32)",
+        "purpose": "Every card on the dark theme; cards carry no outline."
+      },
+      {
+        "name": "card-lift-light",
+        "value": "0 1px 2px rgba(16,24,40,.06), 0 6px 16px rgba(16,24,40,.08), 0 16px 32px rgba(16,24,40,.06)",
+        "purpose": "Every card on the light theme."
+      },
+      {
+        "name": "pop",
+        "value": "0 16px 40px rgba(0,0,0,.45)",
+        "purpose": "Dialogs, dropdowns, popovers, the assistant drawer (dark)."
+      },
+      {
+        "name": "pop-light",
+        "value": "0 12px 32px rgba(16,24,40,.16)",
+        "purpose": "The same on the light theme."
+      }
+    ],
+    "motion": [
+      {
+        "name": "motion-fast",
+        "value": "120ms",
+        "purpose": "Hover and press."
+      },
+      {
+        "name": "motion-base",
+        "value": "200ms",
+        "purpose": "Open and close."
+      },
+      {
+        "name": "motion-slow",
+        "value": "320ms",
+        "purpose": "Larger panel transitions."
+      },
+      {
+        "name": "motion-ease",
+        "value": "cubic-bezier(.2,.8,.2,1)",
+        "purpose": "Default easing; all durations drop to 0 under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      },
+      {
+        "name": "2xl",
+        "value": "1536px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action on a card or page.",
+      "html": "<button class=\"ds-btn-primary\">Send for approval</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 0; border-radius: var(--radius-md, 8px); background: var(--color-accent, #e6e9ee); color: var(--color-on-accent, #0b121a); font: 600 13px/18px Inter, system-ui, sans-serif; cursor: pointer; transition: background-color 120ms cubic-bezier(.2,.8,.2,1); } .ds-btn-primary:hover { background: var(--color-accent-hover, #ffffff); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-focus, #8ab4f8); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: .5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Everyday actions next to a primary one.",
+      "html": "<button class=\"ds-btn-secondary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"17 8 12 3 7 8\"/><line x1=\"12\" y1=\"3\" x2=\"12\" y2=\"15\"/></svg>Upload Excel JRA</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid var(--color-border-strong, #323d4a); border-radius: var(--radius-md, 8px); background: var(--color-surface-2, #161d27); color: var(--color-text, #e8ecf1); font: 600 13px/18px Inter, system-ui, sans-serif; cursor: pointer; transition: background-color 120ms cubic-bezier(.2,.8,.2,1); } .ds-btn-secondary:hover { background: var(--color-surface-3, #1e2630); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-focus, #8ab4f8); outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Toolbar and icon actions.",
+      "html": "<button class=\"ds-btn-ghost\">Sign out</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 0; border-radius: var(--radius-md, 8px); background: transparent; color: var(--color-text-muted, #9aa4b1); font: 600 12px/16px Inter, system-ui, sans-serif; cursor: pointer; transition: background-color 120ms, color 120ms; } .ds-btn-ghost:hover { background: var(--color-surface-2, #161d27); color: var(--color-text, #e8ecf1); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--color-focus, #8ab4f8); outline-offset: 2px; }"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Mono capital label, role badge, recessed input with an inline unit.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">SIWHP <span class=\"ds-badge\">PREP</span></span><span class=\"ds-field-box\"><input class=\"ds-input\" placeholder=\"0\" /><span class=\"ds-unit\">psi</span></span></label>",
+      "css": ".ds-field { display: block; width: 260px; } .ds-field-label { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font: 600 11px/14px \"JetBrains Mono\", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-muted, #9aa4b1); } .ds-badge { padding: 0 6px; border-radius: 4px; background: var(--color-info-subtle, #13233b); color: var(--color-info, #6aa8ff); } .ds-field-box { position: relative; display: block; } .ds-input { width: 100%; height: 36px; padding: 0 40px 0 12px; border: 1px solid var(--color-border-input, #5f6c7c); border-radius: var(--radius-sm, 6px); background: var(--color-input, #0e131a); color: var(--color-text, #e8ecf1); font: 400 14px/20px Inter, system-ui, sans-serif; } .ds-input::placeholder { color: var(--color-text-subtle, #8591a0); } .ds-input:hover { border-color: var(--color-border-strong, #323d4a); } .ds-input:focus { border-color: var(--color-focus, #8ab4f8); outline: 2px solid var(--color-focus, #8ab4f8); outline-offset: 2px; } .ds-unit { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 500 12px/16px \"JetBrains Mono\", ui-monospace, monospace; color: var(--color-text-subtle, #8591a0); pointer-events: none; }"
+    },
+    {
+      "name": "Section Navigation",
+      "kind": "nav",
+      "refersTo": "subnav-pill",
+      "description": "Second header row: the pages of the current group.",
+      "html": "<nav class=\"ds-subnav\" aria-label=\"Section\"><a class=\"ds-pill\" href=\"#\">Schedule</a><a class=\"ds-pill ds-pill-active\" aria-current=\"page\" href=\"#\">Jobs</a><a class=\"ds-pill\" href=\"#\">Job Log</a><a class=\"ds-pill\" href=\"#\">Reconciliation</a></nav>",
+      "css": ".ds-subnav { display: flex; gap: 8px; } .ds-pill { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border: 1px solid var(--color-border, #232c37); border-radius: 999px; color: var(--color-text-muted, #9aa4b1); font: 600 13px/18px Inter, system-ui, sans-serif; text-decoration: none; transition: color 120ms; } .ds-pill:hover { color: var(--color-text, #e8ecf1); } .ds-pill:focus-visible { outline: 2px solid var(--color-focus, #8ab4f8); outline-offset: 2px; } .ds-pill-active { border-color: transparent; background: var(--color-accent, #e6e9ee); color: var(--color-on-accent, #0b121a); }"
+    },
+    {
+      "name": "Status Pills",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Job status in mono capitals; colour always paired with the word.",
+      "html": "<span class=\"ds-status ds-planned\">planned</span> <span class=\"ds-status ds-ongoing\">ongoing</span> <span class=\"ds-status ds-done\">completed</span> <span class=\"ds-status ds-canceled\">canceled</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: 1px solid; border-radius: 999px; font: 600 11px/14px \"JetBrains Mono\", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; } .ds-planned { color: #6aa8ff; background: #13233b; border-color: rgba(106,168,255,.4); } .ds-ongoing { color: #f5c542; background: #352a0c; border-color: rgba(245,197,66,.4); } .ds-done { color: #3ecf8e; background: #0f2e22; border-color: rgba(62,207,142,.4); } .ds-canceled { color: #9aa4b1; background: #1e2630; border-color: rgba(154,164,177,.4); text-decoration: line-through; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "One concern per card, lifted by shadow, no outline; insides divided by mono label rules.",
+      "html": "<section class=\"ds-card\"><h3 class=\"ds-rule\">Sign-off</h3><p class=\"ds-card-text\">Job log signed · Field ticket signed · Wellsite audit</p></section>",
+      "css": ".ds-card { width: 360px; padding: 16px; border-radius: var(--radius-lg, 12px); background: var(--color-surface, #111820); color: var(--color-text, #e8ecf1); box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 2px 6px rgba(0,0,0,.40), 0 10px 24px rgba(0,0,0,.32); } .ds-rule { margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--color-border, #232c37); font: 600 11px/14px \"JetBrains Mono\", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-muted, #9aa4b1); } .ds-card-text { margin: 0; font: 400 14px/20px Inter, system-ui, sans-serif; }"
+    },
+    {
+      "name": "Signature Badge",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "The Signed Record lens: who signed, the live verdict, and the fingerprint.",
+      "html": "<div class=\"ds-sig\"><p class=\"ds-sig-head\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/><path d=\"m9 12 2 2 4-4\"/></svg>Digitally signed by Ali Abdulhakim (SDM) · 25 Oct 2026, 12:17</p><p class=\"ds-sig-sub\">Signature valid: the record is exactly as approved · fingerprint <span class=\"ds-mono\">8a76809e3f1c</span></p></div>",
+      "css": ".ds-sig { max-width: 520px; font: 400 12px/16px Inter, system-ui, sans-serif; } .ds-sig-head { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; color: var(--color-success, #3ecf8e); } .ds-sig-sub { margin: 2px 0 0; color: var(--color-text-muted, #9aa4b1); } .ds-mono { font-family: \"JetBrains Mono\", ui-monospace, monospace; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "One Job Record, Three Lenses",
+    "overview": "SLK Operations is a single record per slickline job, and the interface changes lens with the person reading it:\n- **The Control Room** is the office's view (schedule, dashboards, reconciliation, attendance sheets). It is dense, calm and dark, built so a full fleet reads at a glance and colour appears only when something needs attention.\n- **The Field Logbook** is the wellsite's view (job stages, JRA, job log, attachments). It is plain, sturdy and legible, with large targets and short labels, filled in outdoors on a phone or tablet over weak signal.\n- **The Signed Record** is the view of approvals, reports and PDFs. It is precise and evidential: values, signatures and fingerprints are set in monospace, and nothing decorative competes with the facts.\n\nThe three lenses share one world: a near-black night palette (paper-light on demand), chalk-white type, a monochrome accent, and a strict status palette. Density is high but never cramped: 14px body text, 36px controls on desk and 44px in field pages, and section labels in small monospace capitals that work like the ruled headings of a logbook. The accent stays neutral on purpose. NESR's brand colour is not in the repository yet; when it arrives it joins as a brand accent, and the monochrome action colour stays (owner decision, 2026-10-26).\n\nRejected: the original WL Operations Hub's look, emoji icons and colours (none are reused), and any decoration that would make a field user hunt for the next field.",
+    "keyCharacteristics": [
+      "Dark by default with a full light theme; both are tokens, never hard-coded hex in components.",
+      "A monochrome accent (chalk on night, ink on paper) for actions; colour is reserved for status, severity and risk.",
+      "Monospace capitals for section labels, units, IDs, timestamps and fingerprints; Manrope for page and stage titles; Inter for everything people read and type.",
+      "Cards are lifted by shadow alone, with no outline; inner divisions use 1px rules.",
+      "Every state has a word next to its colour; colour is never the only signal."
+    ],
+    "rules": [
+      {
+        "name": "The Colour Means Something Rule",
+        "body": "Hue appears only to carry status, severity, risk or focus. Everything else is night, panel and chalk. A screen with no problems is almost monochrome.",
+        "section": "colors"
+      },
+      {
+        "name": "The Words Beside Colour Rule",
+        "body": "Every coloured state also says its name (\"PLANNED\", \"Exemption Required\", \"+5\"). Field users read in glare and some are colour-blind.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Is Evidence Rule",
+        "body": "Monospace is for things that are measured, identified or proven: labels, units (ft, psi, ppm), tickets, timestamps, fingerprints, form codes (QAF14021 Rev 3). Never for decoration or prose.",
+        "section": "typography"
+      },
+      {
+        "name": "The Uppercase Is Structure Rule",
+        "body": "Uppercase belongs to the page headline, stage titles and mono labels. Sentences, buttons and messages stay in sentence case.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Card Per Concern Rule",
+        "body": "A stage, a panel or a dialog is one card. Inside it, structure comes from label rules and 1px dividers, never from a card within a card.",
+        "section": "layout"
+      },
+      {
+        "name": "The Declare Depth Once Rule",
+        "body": "A surface is either lifted by shadow (cards, overlays) or divided by a 1px rule (everything inside them). Never both on the same element.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** reference tokens (`bg-surface`, `text-text-muted`, `rounded-lg`, `shadow-card`), never raw hex, so the light theme and NESR's future brand colour can swap in one place.",
+      "**Do** put a word next to every coloured state (status pills, risk points \"+5\", \"Exemption Required\").",
+      "**Do** use mono capitals for labels, units, IDs, timestamps and fingerprints, and Inter for anything people read or type.",
+      "**Do** give field pages (job stages, JRA, job log, attachments) 44px touch targets and the strongest input outline (Rule Input).",
+      "**Do** lift cards with the card shadow and divide their insides with 1px rules.",
+      "**Do** show \"why\" on every locked or disabled control (lock hint, tooltip, or hint text under the field)."
+    ],
+    "donts": [
+      "**Don't** add a 1px outline to a card that already has the card shadow, and don't nest cards.",
+      "**Don't** introduce new hues for decoration; colour is for status, severity, risk and focus only.",
+      "**Don't** reuse anything from the original WL Operations Hub: colours, emoji icons, copy or assets.",
+      "**Don't** add coloured side stripes thicker than 1px to cards, list items or callouts (the banner edge is a known exception to remove).",
+      "**Don't** use monospace for prose or as a \"technical\" costume.",
+      "**Don't** invent NESR brand values. Use NESR's logo, colours and type only when NESR supplies them."
+    ]
+  }
+}

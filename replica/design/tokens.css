@@ -84,7 +84,7 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-pill: 999px;
-  --shadow-card: 0 1px 0 rgba(255,255,255,.03) inset, 0 1px 2px rgba(0,0,0,.35);
+  --shadow-card: 0 1px 0 rgba(255,255,255,.05) inset, 0 2px 6px rgba(0,0,0,.40), 0 10px 24px rgba(0,0,0,.32);
   --shadow-pop: 0 16px 40px rgba(0,0,0,.45);
   --motion-fast: 120ms;
   --motion-base: 200ms;
@@ -156,7 +156,7 @@
   --color-chart-4: #c22f37;
   --color-chart-5: #6b46c1;
   --color-chart-6: #13808e;
-  --shadow-card: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
+  --shadow-card: 0 1px 2px rgba(16,24,40,.06), 0 6px 16px rgba(16,24,40,.08), 0 16px 32px rgba(16,24,40,.06);
   --shadow-pop: 0 12px 32px rgba(16,24,40,.16);
 }
 

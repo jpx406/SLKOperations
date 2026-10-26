@@ -83,7 +83,7 @@ export function Banner({ tone = 'info', children, action }: { tone?: keyof typeo
 }
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx('rounded-lg border border-border bg-surface p-4 shadow-card', className)}>{children}</div>;
+  return <div className={cx('rounded-lg bg-surface p-4 shadow-card', className)}>{children}</div>;
 }
 
 export function Skeleton({ className }: { className?: string }) {
