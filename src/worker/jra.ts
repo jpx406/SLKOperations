@@ -9,6 +9,8 @@ import type { AppBindings, AuthedUser, Env } from './env';
 import { getJob } from './jobs';
 import { storeAttachment } from './attachments';
 import { signStatement } from './signatures';
+import { allowed, jraLevelKey } from '../shared/approvalRules';
+import { loadRules, usersFor } from './rules';
 
 // JRA (S28) for one job: answer, score live, send to an SDM, approve or reject. Approved answers are locked.
 
@@ -171,6 +173,16 @@ jra.post('/:jobId/upload', async (c) => {
   return c.json({ ok: true, ...summary, file_kept: !('error' in kept) });
 });
 
+/** Who this JRA can be sent to: people holding a role for its approval level, in the job's country. */
+jra.get('/:jobId/approvers', async (c) => {
+  const job = await getJob(c.env, c.get('user'), c.req.param('jobId'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const row = await c.env.DB.prepare('SELECT approval_level FROM jras WHERE job_id = ?').bind(job.id).first<{ approval_level: string | null }>();
+  const level = row?.approval_level ?? 'SDM';
+  const people = await usersFor(c.env, await loadRules(c.env), jraLevelKey(level), job.country);
+  return c.json({ level, people: people.map(({ username, full_name, role }) => ({ username, full_name, role })) });
+});
+
 jra.post('/:jobId/send', async (c) => {
   const user = c.get('user');
   const job = await getJob(c.env, user, c.req.param('jobId'));
@@ -183,8 +195,9 @@ jra.post('/:jobId/send', async (c) => {
   if (p.missing.length) return c.json({ error: `Answer every required question first (${p.missing.join(', ')})` }, 400);
   const { to } = await c.req.json<{ to?: string }>().catch(() => ({} as { to?: string }));
   const approver = String(to ?? job.sdm_username ?? '');
-  const ok = await c.env.DB.prepare(`SELECT 1 FROM user_roles WHERE username = ? AND active = 1 AND role IN ('sdm','deputy_sdm','operations_manager','admin')`).bind(approver).first();
-  if (!ok) return c.json({ error: 'Pick an SDM or manager to approve it' }, 400);
+  const level = row.approval_level ?? 'SDM';
+  const eligible = await usersFor(c.env, await loadRules(c.env), jraLevelKey(level), job.country);
+  if (!eligible.some((u) => u.username.toLowerCase() === approver.toLowerCase())) return c.json({ error: `Pick someone who approves “${level}” JRAs (Users & Roles → Approvals)` }, 400);
   const at = new Date().toISOString();
   await c.env.DB.batch([
     c.env.DB.prepare(`UPDATE jras SET status = 'sent', sent_to = ?, sent_at = ?, updated_at = ? WHERE id = ?`).bind(approver, at, at, row.id),
@@ -200,8 +213,8 @@ jra.post('/:jobId/decide', async (c) => {
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const row = await c.env.DB.prepare('SELECT * FROM jras WHERE job_id = ?').bind(job.id).first<JraRow>();
   if (!row || row.status !== 'sent') return c.json({ error: 'There is no JRA waiting for approval' }, 409);
-  const may = row.sent_to?.toLowerCase() === user.username.toLowerCase() || user.role === 'admin' || user.role === 'operations_manager';
-  if (!may) return c.json({ error: `Only ${row.sent_to} (or an admin or operations manager) can decide` }, 403);
+  const may = row.sent_to?.toLowerCase() === user.username.toLowerCase() || allowed(await loadRules(c.env), 'jra.decide', user.role);
+  if (!may) return c.json({ error: `Only ${row.sent_to} (or a role allowed to approve any JRA) can decide` }, 403);
   const { decision, note } = await c.req.json<{ decision?: string; note?: string }>().catch(() => ({} as { decision?: string; note?: string }));
   if (decision !== 'approved' && decision !== 'rejected') return c.json({ error: 'Approve or reject' }, 400);
   const at = new Date().toISOString();

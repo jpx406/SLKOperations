@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery } from '@tanstack/react-query';
 import { FileSpreadsheet, Printer } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -147,11 +148,11 @@ export function Competency() {
       {comp && data && (
         <>
           <div className="mb-4 flex flex-wrap gap-2 print:hidden">
-            <select aria-label="Service" className={inputSized('h-(--layout-control-sm) w-56')} value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{comp.services.map((s) => <option key={s}>{s}</option>)}</select>
-            <select aria-label="Person" className={inputSized('h-(--layout-control-sm) w-52')} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">All people</option>{data.people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</select>
-            <select aria-label="Role" className={inputSized('h-(--layout-control-sm) w-48')} value={role} onChange={(e) => setRole(e.target.value)}>
+            <Select aria-label="Service" className={inputSized('h-(--layout-control-sm) w-56')} value={service} onChange={(e) => setService(e.target.value)}><option value="">All services</option>{comp.services.map((s) => <option key={s}>{s}</option>)}</Select>
+            <Select aria-label="Person" className={inputSized('h-(--layout-control-sm) w-52')} value={person} onChange={(e) => setPerson(e.target.value)}><option value="">All people</option>{data.people.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select>
+            <Select aria-label="Role" className={inputSized('h-(--layout-control-sm) w-48')} value={role} onChange={(e) => setRole(e.target.value)}>
               <option value="">All roles</option><option value="slickline_supervisor">Supervisors</option><option value="slickline_operator">Operators</option><option value="assistant_operator">Assistant operators</option><option value="helper">Helpers</option>
-            </select>
+            </Select>
           </div>
           <dl className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">{comp.overview.map((o) => <KpiTile key={o.level} label={o.level} value={o.count} note="person-service pairs" />)}</dl>
           <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">

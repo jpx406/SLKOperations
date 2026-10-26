@@ -1117,3 +1117,30 @@ Every label, message and empty state was written here. No code, assets or copy f
   - in the browser: the categories tab lists all 20 roles, a person's attendance details save, and the sheet shows the 4 active non-viewer users;
   - the Management chip narrows it to 2, and "Fill empty days with P" set 72 days ready to save;
   - a column-name clash in the users list (users joined to employees) was caught in the browser and fixed before commit.
+
+## 6t — Roles and approvals in Users & Roles; searchable dropdowns everywhere
+
+- **Roles as data** (migration 0012, `roles`):
+  - Users & Roles → Roles lists every role with its source and how many people hold it;
+  - roles can be renamed, and new ones added, optionally starting from another role's tabs;
+  - roles WIREGUARD's mapping uses (Admin, Viewer, Maintenance Mgr, SLK Supervisor) can't be deleted, nor can a role someone still holds;
+  - deleting a role removes its tabs, attendance category and approvals;
+  - `user_roles` loses its fixed role CHECK (rebuilt, tab grants kept);
+  - role names come from the table everywhere (`roleLabel`).
+- **Approvals as data** (`approval_rules`, `shared/approvalRules.ts`): Users & Roles → Approvals sets the roles for every approval and checklist. Admin is always allowed, each rule shows its default, and Reset puts it back.
+  - **Job:** who can be the job's SDM, who fills Design (request / SDM part), Preparation and Execution, who overrides operating hours.
+  - **JRA:** one rule per approval level and MOC / exemption approver named on the uploaded JRA forms, plus "approve any JRA". The JRA can only be sent to someone holding a role for its level (the send list comes from `/api/jra/:job/approvers`).
+  - **Closure checklist:** sign-off items, failure follow-up, service order, revenue.
+  - **Bonus:** distribute and approve; reopen.
+  - **Attendance:** fill and approve per sheet.
+  - The server enforces every rule, and the screens follow them.
+- **Searchable dropdowns:**
+  - every `<select>` goes through `<Select>`: lists of five or more (rigs, units, people, wires, items, lookups) become a searchable dropdown with the search box at the top of the list, as in the WL Hub; short fixed choices stay native;
+  - data-backed job fields, the JRA send list, the foreman picker and the attendance filters are always searchable;
+  - multi-select filters always show their search box.
+- **Verified:**
+  - tests 233 (new rule tests);
+  - in the browser: a role added (copying SLK Operator's tabs), renamed and deleted, with Admin's delete disabled;
+  - Approvals shows the five groups and 7 JRA levels, and changing "Ticket value" to SDM only took effect on the server, then Reset;
+  - typing "SL-4" in a job's unit and "spare" in the maintenance dialog filtered the lists;
+  - a sweep of 23 pages showed no page errors.

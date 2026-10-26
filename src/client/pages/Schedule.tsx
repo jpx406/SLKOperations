@@ -1,8 +1,10 @@
+import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CalendarClock, Check, ChevronLeft, ChevronRight, Filter, Play, Plus, Tag, Wrench, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { canEditField } from '../../shared/fieldPolicy';
+import { useRules } from '../rules';
 import { activeFilterCount, filtersToQuery } from '../../shared/filters';
 import { EVENT_LABEL, MAINTENANCE_TYPES, STATUS_KINDS, isOpenEnd } from '../../shared/unitEvents';
 import { FilterBar, useFilters } from '../components/FilterBar';
@@ -99,7 +101,8 @@ export function Schedule() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const canCreate = !!me?.menus.jobs?.edit;
-  const canMove = !!me?.menus.schedule?.edit && !!me && canEditField(me.role, 'unit_number') && canEditField(me.role, 'start_date');
+  const rules = useRules().data?.rules;
+  const canMove = !!me?.menus.schedule?.edit && !!me && canEditField(me.role, 'unit_number', rules) && canEditField(me.role, 'start_date', rules);
   const canBlock = !!me?.menus.schedule?.edit;
   const key = ['schedule', month, showCanceled, fq];
   const q = useQuery({
@@ -420,23 +423,23 @@ function EventDialog({ init, units, onClose }: { init: { event?: SEvent; unit?: 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Field id="ev-unit" label="Unit">
-              <select id="ev-unit" className={inputClass} value={unit} disabled={!!ev} onChange={(e) => setUnit(e.target.value)} autoFocus={!ev}>
+              <Select id="ev-unit" className={inputClass} value={unit} disabled={!!ev} onChange={(e) => setUnit(e.target.value)} autoFocus={!ev}>
                 {units.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <div className="sm:col-span-2">
             {maint ? (
               <Field id="ev-type" label="Maintenance type">
-                <select id="ev-type" className={inputClass} value={detail} onChange={(e) => setDetail(e.target.value)}>
+                <Select id="ev-type" className={inputClass} value={detail} onChange={(e) => setDetail(e.target.value)}>
                   {MAINTENANCE_TYPES.map((t) => <option key={t}>{t}</option>)}
-                </select>
+                </Select>
               </Field>
             ) : (
               <Field id="ev-status" label="Status">
-                <select id="ev-status" className={inputClass} value={kind} onChange={(e) => setKind(e.target.value)}>
+                <Select id="ev-status" className={inputClass} value={kind} onChange={(e) => setKind(e.target.value)}>
                   {STATUS_KINDS.map((k) => <option key={k} value={k}>{BLOCK_LABEL[k]}</option>)}
-                </select>
+                </Select>
               </Field>
             )}
           </div>

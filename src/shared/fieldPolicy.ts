@@ -1,29 +1,25 @@
+import { allowed, type Rules } from './approvalRules';
 import type { Role } from './types';
 
 // Who may edit each job field, on top of the jobs:edit menu right. Admin may edit everything.
+// Each field belongs to a rule (shared/approvalRules.ts) whose roles the admin sets in Users & Roles → Approvals.
 // One map for both sides: the editor greys out fields, the API drops fields the caller may not set.
-
-const MANAGERS: Role[] = ['sdm', 'deputy_sdm', 'operations_manager'];
-const PLANNERS: Role[] = ['sales', ...MANAGERS, 'sqm'];
-const FIELD_CREW: Role[] = ['slickline_supervisor', 'slickline_operator', ...MANAGERS, 'sqm'];
-const PREP: Role[] = [...new Set([...PLANNERS, ...FIELD_CREW])];   // Preparation: anyone who edits jobs
-const QUALITY: Role[] = ['sqm', ...MANAGERS];
 
 /** Execution fields: on a job that needs a JRA they stay closed until the JRA is approved. */
 export const EXECUTION_FIELDS = ['arrived_at', 'rig_up_at', 'rig_down_at', 'runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'max_overpull_lb',
   'jarring_minutes', 'wire_cut_ft', 'npt_hours', 'failure', 'plug_type', 'op_time_details', 'survey_details', 'fishing_details', 'perforation_details'];
 const PLAIN_EXECUTION = EXECUTION_FIELDS.filter((f) => !f.endsWith('_details') || f === 'op_time_details');
 
-type Policy = { roles: Role[]; badge: string; kind?: 'json' | 'money' };
+type Policy = { rule: string; badge: string; kind?: 'json' | 'money' };
 
-const fields = (names: string[], roles: Role[], badge: string, kind?: Policy['kind']) =>
-  Object.fromEntries(names.map((n) => [n, { roles, badge, kind } as Policy]));
+const fields = (names: string[], rule: string, badge: string, kind?: Policy['kind']) =>
+  Object.fromEntries(names.map((n) => [n, { rule, badge, kind } as Policy]));
 
 export const FIELD_POLICY: Record<string, Policy> = {
   // 01 Design
-  ...fields(['ticket_no', 'drss_no', 'dmr_no', 'run_details', 'start_date', 'location', 'field', 'rig', 'well', 'conveyance', 'third_party_required'], PLANNERS, 'SALES'),
-  status: { roles: PLANNERS, badge: 'SALES / SDM' },
-  ...fields(['sdm_username', 'unit_number', 'end_date', 'program_in_place'], MANAGERS, 'SDM'),
+  ...fields(['ticket_no', 'drss_no', 'dmr_no', 'run_details', 'start_date', 'location', 'field', 'rig', 'well', 'conveyance', 'third_party_required'], 'job.design', 'SALES'),
+  status: { rule: 'job.design', badge: 'SALES / SDM' },
+  ...fields(['sdm_username', 'unit_number', 'end_date', 'program_in_place'], 'job.design_sdm', 'SDM'),
   // 02 Preparation
   ...fields([
     'account_assignment', 'well_type', 'h2s_ppm', 'co2_pct', 'bht_f', 'bhp_psi', 'siwhp_psi', 'fluid_type', 'fluid_weight_pcf', 'solids_pct',
@@ -31,37 +27,37 @@ export const FIELD_POLICY: Record<string, Policy> = {
     'target_casing_type', 'target_casing_od', 'target_casing_weight_lbft', 'target_casing_grade', 'wellhead_connection',
     'wire_serial_number', 'drum_no', 'pce_id', 'pressure_rating_psi', 'lubricator_length_ft', 'stuffing_box_type', 'grease_panel_id',
     'jar_type', 'special_setup', 'special_setup_notes',
-  ], PREP, 'PREP'),
-  toolstring: { roles: PREP, badge: 'PREP', kind: 'json' },
+  ], 'job.prep', 'PREP'),
+  toolstring: { rule: 'job.prep', badge: 'PREP', kind: 'json' },
   // 03 Execution
-  ...fields(PLAIN_EXECUTION, FIELD_CREW, 'CREW'),
-  ...fields(['survey_details', 'fishing_details', 'perforation_details'], FIELD_CREW, 'CREW', 'json'),
-  op_hours_override: { roles: ['sdm', 'operations_manager'], badge: 'SDM / OPS' },
+  ...fields(PLAIN_EXECUTION, 'job.exec', 'CREW'),
+  ...fields(['survey_details', 'fishing_details', 'perforation_details'], 'job.exec', 'CREW', 'json'),
+  op_hours_override: { rule: 'job.op_hours', badge: 'SDM / OPS' },
   // 04 Closure
-  ...fields(['job_log_signed', 'ticket_signed', 'job_package_url', 'wellsite_audit', 'wg_runs_logged'], FIELD_CREW, 'CREW'),
-  ...fields(['eight_min_facts_done', 'prelim_report', 'final_report', 'report_closure_status', 'report_closure_date', 'gears_no', 'failure_description'], QUALITY, 'SQM / SDM'),
-  ...fields(['service_order', 'bonus_remarks'], ['sdm', 'operations_manager'], 'SDM'),
-  revenue_cents: { roles: ['sdm', 'sales'], badge: 'SDM / SALES', kind: 'money' },
+  ...fields(['job_log_signed', 'ticket_signed', 'job_package_url', 'wellsite_audit', 'wg_runs_logged'], 'closure.signoff', 'CREW'),
+  ...fields(['eight_min_facts_done', 'prelim_report', 'final_report', 'report_closure_status', 'report_closure_date', 'gears_no', 'failure_description'], 'closure.failure', 'SQM / SDM'),
+  ...fields(['service_order', 'bonus_remarks'], 'closure.service', 'SDM'),
+  revenue_cents: { rule: 'closure.revenue', badge: 'SDM / SALES', kind: 'money' },
 };
 
 export const EDITABLE_FIELDS = Object.keys(FIELD_POLICY);
 export const JSON_FIELDS = EDITABLE_FIELDS.filter((f) => FIELD_POLICY[f].kind === 'json');
 
-export const canEditField = (role: Role, field: string) =>
-  role === 'admin' || !!FIELD_POLICY[field]?.roles.includes(role);
+export const canEditField = (role: Role, field: string, rules?: Rules | null) =>
+  role === 'admin' || (!!FIELD_POLICY[field] && allowed(rules, FIELD_POLICY[field].rule, role));
 
 /** Splits a patch into what this role may write and what it may not. */
-export function filterPatch(role: Role, patch: Record<string, unknown>) {
-  const allowed: Record<string, unknown> = {};
+export function filterPatch(role: Role, patch: Record<string, unknown>, rules?: Rules | null) {
+  const allowedPatch: Record<string, unknown> = {};
   const dropped: string[] = [];
   for (const [k, v] of Object.entries(patch)) {
-    if (EDITABLE_FIELDS.includes(k) && canEditField(role, k)) allowed[k] = v;
+    if (EDITABLE_FIELDS.includes(k) && canEditField(role, k, rules)) allowedPatch[k] = v;
     else dropped.push(k);
   }
-  return { allowed, dropped };
+  return { allowed: allowedPatch, dropped };
 }
 
-/** Fields that only open when one of the job's services needs them (service_profiles flags). */
+/** Service sections: a detail field opens only when the job has that service. */
 export const SERVICE_GATED: Record<string, 'is_plug' | 'is_fishing' | 'is_memory' | 'is_perforation'> = {
   plug_type: 'is_plug',
   fishing_details: 'is_fishing',

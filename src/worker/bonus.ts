@@ -4,15 +4,16 @@ import { filterSql, parseFilters } from '../shared/filters';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { getJob } from './jobs';
 import { revokeStatement, signStatement } from './signatures';
+import { allowed } from '../shared/approvalRules';
+import { loadRules } from './rules';
 
 // Bonus (Administrator Manual 1 and 3). Every route here sits behind the bonus tab's rights (see permissions.ts).
-// The distribution on Closure is for Admin and SDM roles only, on completed jobs; approval locks it.
+// The distribution on Closure is for the roles under Users & Roles → Approvals → Bonus, on completed jobs; approval locks it.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
   env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(crypto.randomUUID(), user.username, action, 'bonus', id, summary.slice(0, 1000));
 
-const DISTRIBUTORS = ['admin', 'sdm', 'deputy_sdm'];
 const ROLES: CrewRole[] = ['slickline_supervisor', 'slickline_operator', 'assistant_operator', 'helper'];
 
 async function rulesFor(env: Env, country: string) {
@@ -102,14 +103,14 @@ async function jobBonus(env: Env, user: AuthedUser, id: string) {
 
 bonus.get('/jobs/:id', async (c) => {
   const user = c.get('user');
-  if (!DISTRIBUTORS.includes(user.role)) return c.json({ error: 'Only Admin and SDM accounts see the bonus distribution' }, 403);
+  if (!allowed(await loadRules(c.env), 'bonus.approve', user.role)) return c.json({ error: 'Your role doesn’t distribute bonus (Users & Roles → Approvals)' }, 403);
   const r = await jobBonus(c.env, user, c.req.param('id'));
   return r ? c.json(r) : c.json({ error: 'Job not found' }, 404);
 });
 
 bonus.put('/jobs/:id', async (c) => {
   const user = c.get('user');
-  if (!DISTRIBUTORS.includes(user.role)) return c.json({ error: 'Only Admin and SDM accounts distribute bonus' }, 403);
+  if (!allowed(await loadRules(c.env), 'bonus.approve', user.role)) return c.json({ error: 'Your role doesn’t distribute bonus (Users & Roles → Approvals)' }, 403);
   const cur = await jobBonus(c.env, user, c.req.param('id'));
   if (!cur) return c.json({ error: 'Job not found' }, 404);
   if (cur.job.status !== 'completed') return c.json({ error: 'Bonus is distributed once the job is completed' }, 409);
@@ -129,7 +130,7 @@ bonus.put('/jobs/:id', async (c) => {
 
 bonus.post('/jobs/:id/approve', async (c) => {
   const user = c.get('user');
-  if (!DISTRIBUTORS.includes(user.role)) return c.json({ error: 'Only Admin and SDM accounts approve bonus' }, 403);
+  if (!allowed(await loadRules(c.env), 'bonus.approve', user.role)) return c.json({ error: 'Your role doesn’t approve bonus (Users & Roles → Approvals)' }, 403);
   const cur = await jobBonus(c.env, user, c.req.param('id'));
   if (!cur) return c.json({ error: 'Job not found' }, 404);
   if (cur.status !== 'draft') return c.json({ error: cur.status === 'approved' ? 'Already approved' : 'Save the distribution first' }, 409);
@@ -145,7 +146,7 @@ bonus.post('/jobs/:id/approve', async (c) => {
 /** Admin only. Statements already emailed stay recorded; the manual warns corrections can affect them. */
 bonus.post('/jobs/:id/reopen', async (c) => {
   const user = c.get('user');
-  if (user.role !== 'admin') return c.json({ error: 'Only an admin reopens an approved distribution' }, 403);
+  if (!allowed(await loadRules(c.env), 'bonus.reopen', user.role)) return c.json({ error: 'Your role can’t reopen an approved distribution (Users & Roles → Approvals)' }, 403);
   const cur = await jobBonus(c.env, user, c.req.param('id'));
   if (!cur) return c.json({ error: 'Job not found' }, 404);
   const { reason } = await c.req.json<{ reason?: string }>().catch(() => ({} as { reason?: string }));

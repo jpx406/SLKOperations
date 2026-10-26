@@ -1,10 +1,13 @@
 import type { ToolPart, WireTest } from './toolstring';
 
-export type Role =
+/** The roles that ship with SLK Ops. More can be added in Users & Roles → Roles, so a role is any string. */
+export type BuiltinRole =
   | 'admin' | 'operations_manager' | 'maintenance_manager' | 'sdm' | 'deputy_sdm' | 'sales' | 'director' | 'sqm'
   | 'slickline_supervisor' | 'slickline_operator' | 'assistant_operator' | 'crew' | 'viewer'
   | 'explosive_manager' | 'explosive_admin' | 'storekeeper' | 'attendance_admin' | 'slk_contact'
   | 'foreman' | 'maintenance_supervisor';
+// eslint-disable-next-line @typescript-eslint/ban-types
+export type Role = BuiltinRole | (string & {});
 
 export type JobStatus = 'planned' | 'ongoing' | 'completed' | 'canceled';
 export type YesNo = 'yes' | 'no' | 'na' | 'other';

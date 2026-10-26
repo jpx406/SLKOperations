@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ArrowLeft, Download, History, PackagePlus, Pencil, Plus, Printer, Scale, Search, Trash2, Truck, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -79,7 +80,7 @@ export function Inventory({ inv }: { inv: Inv }) {
       <PageTitle aside={
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           {(me?.countries.length ?? 0) > 1 && (
-            <select aria-label="Country" className={inputSized('h-(--layout-control-sm) w-40')} value={country} onChange={(e) => setP('country', e.target.value)}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</select>
+            <Select aria-label="Country" className={inputSized('h-(--layout-control-sm) w-40')} value={country} onChange={(e) => setP('country', e.target.value)}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</Select>
           )}
           <Button size="sm" onClick={exportCsv} disabled={!items.length}><Download aria-hidden className="size-4" />CSV</Button>
           <Button size="sm" onClick={() => window.print()} disabled={!items.length}><Printer aria-hidden className="size-4" />PDF</Button>
@@ -92,9 +93,9 @@ export function Inventory({ inv }: { inv: Inv }) {
         <div className="mb-4 flex flex-wrap gap-2 print:hidden">
           <Button variant="primary" onClick={() => setDialog({ kind: 'move', move: 'mobilize' })}><Truck aria-hidden className="size-4" />Mobilize to well</Button>
           <Button onClick={() => setDialog({ kind: 'consume' })}><PackagePlus aria-hidden className="size-4" />Consumption &amp; return</Button>
-          <select aria-label="Record another movement" className={inputSized('h-(--layout-control-md) w-52')} value="" onChange={(e) => e.target.value && setDialog({ kind: 'move', move: e.target.value as Kind })}>
+          <Select aria-label="Record another movement" className={inputSized('h-(--layout-control-md) w-52')} value="" onChange={(e) => e.target.value && setDialog({ kind: 'move', move: e.target.value as Kind })}>
             <option value="">Other movement…</option>{KINDS.filter((k) => !['mobilize', 'consume', 'return'].includes(k)).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
-          </select>
+          </Select>
           <Button onClick={() => setDialog({ kind: 'item', item: null })}><Plus aria-hidden className="size-4" />Add item</Button>
         </div>
       )}
@@ -195,7 +196,7 @@ function ItemDialog({ inv, country, item, cats, onClose }: { inv: Inv; country: 
         <Field id="it-desc" label="Description" required><input id="it-desc" className={inputClass} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
         <Field id="it-pn" label="Part number"><input id="it-pn" className={inputClass} value={f.part_no} onChange={(e) => setF({ ...f, part_no: e.target.value })} /></Field>
         <Field id="it-sap" label="SAP number"><input id="it-sap" className={inputClass} value={f.sap_no} onChange={(e) => setF({ ...f, sap_no: e.target.value })} /></Field>
-        <Field id="it-uom" label="Unit"><select id="it-uom" className={inputClass} value={f.uom} disabled={!!item} onChange={(e) => setF({ ...f, uom: e.target.value })}>{['ea', 'm', 'ft', 'kg'].map((u) => <option key={u}>{u}</option>)}</select></Field>
+        <Field id="it-uom" label="Unit"><Select id="it-uom" className={inputClass} value={f.uom} disabled={!!item} onChange={(e) => setF({ ...f, uom: e.target.value })}>{['ea', 'm', 'ft', 'kg'].map((u) => <option key={u}>{u}</option>)}</Select></Field>
         <Field id="it-size" label="Size"><input id="it-size" className={inputClass} value={f.size} onChange={(e) => setF({ ...f, size: e.target.value })} /></Field>
         {inv === 'mcr' && <Field id="it-par" label="Par level" hint="A reorder warning shows when on-hand stock drops below this"><input id="it-par" type="number" min={0} className={inputClass} value={f.par_level} onChange={(e) => setF({ ...f, par_level: e.target.value })} /></Field>}
         <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -269,19 +270,19 @@ function MoveDialog({ inv, data, bal, initial, job, onClose }: { inv: Inv; data:
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       <div className="grid grid-cols-1 gap-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field id="mv-kind" label="Movement"><select id="mv-kind" className={inputClass} value={kind} onChange={(e) => switchKind(e.target.value as Kind)}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></Field>
+          <Field id="mv-kind" label="Movement"><Select id="mv-kind" className={inputClass} value={kind} onChange={(e) => switchKind(e.target.value as Kind)}>{KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</Select></Field>
           {kind === 'adjust' ? (
             <>
-              <Field id="mv-dir" label="Correction"><select id="mv-dir" className={inputClass} value={adjustDir} onChange={(e) => setAdjustDir(e.target.value as 'add' | 'remove')}><option value="add">Found more (add)</option><option value="remove">Missing (take off)</option></select></Field>
-              <Field id="mv-loc" label="Location"><select id="mv-loc" className={inputClass} value={adjustDir === 'add' ? to : from} onChange={(e) => (adjustDir === 'add' ? setTo(e.target.value) : setFrom(e.target.value))}>
-                {data.locations.filter((l) => l.counts_as === 'on_hand').map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</select></Field>
+              <Field id="mv-dir" label="Correction"><Select id="mv-dir" className={inputClass} value={adjustDir} onChange={(e) => setAdjustDir(e.target.value as 'add' | 'remove')}><option value="add">Found more (add)</option><option value="remove">Missing (take off)</option></Select></Field>
+              <Field id="mv-loc" label="Location"><Select id="mv-loc" className={inputClass} value={adjustDir === 'add' ? to : from} onChange={(e) => (adjustDir === 'add' ? setTo(e.target.value) : setFrom(e.target.value))}>
+                {data.locations.filter((l) => l.counts_as === 'on_hand').map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</Select></Field>
             </>
           ) : (
             <>
-              <Field id="mv-from" label="From"><select id="mv-from" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)}>
+              <Field id="mv-from" label="From"><Select id="mv-from" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)}>
                 {rule.from.includes(null) && <option value="">{kind === 'receive' ? 'Delivery (new stock)' : 'Outside (new)'}</option>}
-                {fromOpts.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</select></Field>
-              <Field id="mv-to" label="To"><select id="mv-to" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)}>{toOpts.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</select></Field>
+                {fromOpts.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</Select></Field>
+              <Field id="mv-to" label="To"><Select id="mv-to" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)}>{toOpts.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</Select></Field>
             </>
           )}
         </div>
@@ -294,9 +295,9 @@ function MoveDialog({ inv, data, bal, initial, job, onClose }: { inv: Inv; data:
               const item = data.items.find((i) => i.id === l.item_id);
               return (
                 <li key={n} className="grid grid-cols-[1fr_7rem_auto] items-center gap-2">
-                  <select aria-label={`Item ${n + 1}`} className={inputClass} value={l.item_id} onChange={(e) => setLines(lines.map((x, j) => (j === n ? { ...x, item_id: e.target.value } : x)))}>
+                  <Select aria-label={`Item ${n + 1}`} className={inputClass} value={l.item_id} onChange={(e) => setLines(lines.map((x, j) => (j === n ? { ...x, item_id: e.target.value } : x)))}>
                     <option value="">Choose…</option>{items.map((i) => <option key={i.id} value={i.id} disabled={lines.some((x, j) => j !== n && x.item_id === i.id)}>{i.description}{i.part_no ? ` · ${i.part_no}` : ''}</option>)}
-                  </select>
+                  </Select>
                   <input aria-label={`Quantity ${n + 1}`} type="number" min={0} step="any" inputMode="decimal" className={inputClass} placeholder={item?.uom ?? 'qty'} value={l.qty} onChange={(e) => setLines(lines.map((x, j) => (j === n ? { ...x, qty: e.target.value } : x)))} />
                   <Button size="sm" variant="ghost" aria-label={`Remove item ${n + 1}`} disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, j) => j !== n))}><Trash2 aria-hidden className="size-3.5" /></Button>
                   {l.item_id && avail !== null && <p className={cx('col-span-3 -mt-1 text-xs', Number(l.qty) > avail ? 'text-danger' : 'text-text-subtle')}>{fmt(avail)} {item?.uom} available at {data.locations.find((x) => x.id === src)?.label}</p>}
@@ -346,8 +347,8 @@ function ConsumeDialog({ inv, data, onClose }: { inv: Inv; data: Data; onClose: 
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       {recon.isPending ? <Skeleton className="h-32" /> : !groups.length ? <p className="text-sm text-text-muted">Nothing is out at a well right now. Mobilize first.</p> : (
         <div className="space-y-4">
-          <Field id="cr-job" label="Job / well"><select id="cr-job" className={inputClass} value={key} onChange={(e) => { setKey(e.target.value); setVals({}); }}>
-            <option value="">Choose…</option>{groups.map((g) => <option key={`${g.job_id}|${g.well}`} value={`${g.job_id ?? ''}|${(g.well ?? '').toLowerCase()}`}>{label(g)}</option>)}</select></Field>
+          <Field id="cr-job" label="Job / well"><Select id="cr-job" className={inputClass} value={key} onChange={(e) => { setKey(e.target.value); setVals({}); }}>
+            <option value="">Choose…</option>{groups.map((g) => <option key={`${g.job_id}|${g.well}`} value={`${g.job_id ?? ''}|${(g.well ?? '').toLowerCase()}`}>{label(g)}</option>)}</Select></Field>
           {rows.length > 0 && (
             <>
               <table className="w-full text-sm">
@@ -365,7 +366,7 @@ function ConsumeDialog({ inv, data, onClose }: { inv: Inv; data: Data; onClose: 
                   })}
                 </tbody>
               </table>
-              <Field id="cr-back" label="Return to"><select id="cr-back" className={inputClass} value={backTo} onChange={(e) => setBackTo(e.target.value)}>{data.locations.filter((l) => l.counts_as === 'on_hand').map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</select></Field>
+              <Field id="cr-back" label="Return to"><Select id="cr-back" className={inputClass} value={backTo} onChange={(e) => setBackTo(e.target.value)}>{data.locations.filter((l) => l.counts_as === 'on_hand').map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</Select></Field>
               <div className="flex gap-2"><Button variant="primary" loading={busy} onClick={submit}>Record</Button><Button onClick={() => onClose()}>Cancel</Button></div>
             </>
           )}

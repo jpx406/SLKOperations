@@ -1,8 +1,10 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Check, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { EXECUTION_FIELDS, FIELD_POLICY, canEditField } from '../../shared/fieldPolicy';
+import { useRules } from '../rules';
 import { jobEfficiency, opHours, runEfficiency } from '../../shared/metrics';
 import { STAGES, hasFailure, stagePercent, type Stage } from '../../shared/stages';
 import type { ToolPart } from '../../shared/toolstring';
@@ -141,7 +143,8 @@ export function JobEditor() {
   const canEditJobs = !!me?.menus.jobs?.edit;
   const jraLocked = useJraLock(job?.id);
   // Execution waits for an approved JRA on jobs that need one (the API refuses it too)
-  const editable = (f: string) => canEditJobs && !!me && canEditField(me.role, f) && !(jraLocked && EXECUTION_FIELDS.includes(f));
+  const rules = useRules().data?.rules;
+  const editable = (f: string) => canEditJobs && !!me && canEditField(me.role, f, rules) && !(jraLocked && EXECUTION_FIELDS.includes(f));
   const preview = useMemo(() => ({ ...(job ?? {}), ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, fromInput(k, v)])), services: job?.services ?? [] }) as Partial<Job>, [job, values]);
 
   if (!isNew && jobQ.isPending) return <div aria-busy="true"><Skeleton className="mb-4 h-24" /><Skeleton className="h-96" /></div>;
@@ -162,13 +165,14 @@ export function JobEditor() {
 
   const select = (field: string, label: string, options: { value: string; label: string }[], hint?: ReactNode, onPick?: (v: string) => void, locked?: boolean) => (
     <Field id={field} label={label} badge={FIELD_POLICY[field]?.badge} hint={hint} error={fieldError?.field === field ? fieldError.message : null}>
-      <select id={field} className={inputClass} value={values[field] ?? ''} disabled={locked || !editable(field)}
+      <Select id={field} className={inputClass} value={values[field] ?? ''} disabled={locked || !editable(field)}
+        search={options !== YES_NO && field !== 'status' && field !== 'program_in_place'} searchPlaceholder={`Search ${label.toLowerCase()}…`}
         onChange={(e) => (onPick ?? ((v: string) => change(field, v)))(e.target.value)}>
         <option value="">Choose…</option>
         {/* keep a saved value visible even after it leaves the list */}
         {values[field] && !options.some((o) => o.value === values[field]) && <option value={values[field]}>{values[field]}</option>}
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+      </Select>
     </Field>
   );
 

@@ -70,6 +70,12 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/admin\/import\/(dry-run|apply)$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/ai$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/attendance-categories$/, menu: 'users', action: 'edit' },
+  // Users & Roles → Roles and → Approvals
+  { method: 'POST', re: /^\/api\/admin\/roles$/, menu: 'users', action: 'edit' },
+  { method: 'PATCH', re: /^\/api\/admin\/roles\/[^/]+$/, menu: 'users', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/admin\/roles\/[^/]+$/, menu: 'users', action: 'delete' },
+  { method: 'PUT', re: /^\/api\/admin\/rules$/, menu: 'users', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/admin\/rules\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/attendance$/, menu: 'users', action: 'edit' },
   // Users & Roles: someone's Face ID devices, their Face ID switch, and the WIREGUARD user import
   { method: 'DELETE', re: /^\/api\/admin\/access\/passkeys\/[^/]+$/, menu: 'users', action: 'edit' },
@@ -129,7 +135,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
 // Every read route and the tabs that open it (any one is enough). A read with no rule is refused,
 // so removing a tab from someone really closes its data, not just its menu entry.
 export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
-  { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status|passkeys)$/, menus: 'any' },
+  { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status|passkeys|roles|rules)$/, menus: 'any' },
   { re: /^\/api\/schedule$/, menus: ['schedule'] },
   { re: /^\/api\/jobs(\/[^/]+)?$/, menus: ['jobs', 'schedule'] },
   { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options|events)$/, menus: ['jobs'] },

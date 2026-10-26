@@ -2,6 +2,7 @@ import { filterSql, parseFilters } from '../shared/filters';
 import { Hono, type Context } from 'hono';
 import { EXECUTION_FIELDS, FAILURE_GATED, SERVICE_GATED, canEditField, filterPatch } from '../shared/fieldPolicy';
 import { jraReasons } from '../shared/jra';
+import { loadRules } from './rules';
 import { FAILURE_FOLLOW_UP, STAGE_FIELDS } from '../shared/stages';
 import { parseToolstring, toolTotals } from '../shared/toolstring';
 import type { Job } from '../shared/types';
@@ -123,7 +124,8 @@ async function clean(env: Env, patch: Record<string, unknown>, country: string):
     if (unit.country !== country) return `Unit ${patch.unit_number} belongs to ${unit.country}, this job to ${country}`;
   }
   if (typeof patch.sdm_username === 'string') {
-    const sdm = await env.DB.prepare(`SELECT 1 FROM user_roles WHERE username = ? AND role IN ('sdm','deputy_sdm','operations_manager','admin')`).bind(patch.sdm_username).first();
+    const sdmRoles = JSON.stringify(['admin', ...((await loadRules(env))['job.sdm'] ?? [])]);
+    const sdm = await env.DB.prepare(`SELECT 1 FROM user_roles WHERE username = ? AND role IN (SELECT value FROM json_each(?))`).bind(patch.sdm_username, sdmRoles).first();
     if (!sdm) return 'Pick an SDM from the list';
   }
   return null;
@@ -197,7 +199,7 @@ jobs.get('/:id', async (c) => {
 jobs.post('/', async (c) => {
   const user = c.get('user');
   const body = await c.req.json<{ patch?: Record<string, unknown>; country?: string }>().catch(() => ({} as { patch?: Record<string, unknown>; country?: string }));
-  const { allowed, dropped } = filterPatch(user.role, body.patch ?? {});
+  const { allowed, dropped } = filterPatch(user.role, body.patch ?? {}, await loadRules(c.env));
   if (!Object.keys(allowed).length) return c.json({ error: 'Nothing to save yet', ignored: dropped }, 400);
 
   let country = body.country ?? null;
@@ -270,7 +272,7 @@ async function applyPatch(c: Context<AppBindings>, id: string, raw: Record<strin
   if (expectedUpdatedAt && expectedUpdatedAt !== current.updated_at) {
     return c.json({ error: `Changed by ${current.updated_by ?? 'someone else'} since you opened it`, job: current }, 409);
   }
-  const { allowed, dropped } = filterPatch(user.role, raw);
+  const { allowed, dropped } = filterPatch(user.role, raw, await loadRules(c.env));
   // a schedule move is all-or-nothing: moving the dates but not the unit would put the job somewhere nobody chose
   if (strict && dropped.length) return c.json({ error: `Your role cannot change ${dropped.join(', ')}`, job: current }, 403);
   if (!Object.keys(allowed).length) return c.json({ job: current, ignored: dropped });
@@ -316,7 +318,7 @@ jobs.post('/:id/move', async (c) => {
 jobs.put('/:id/services', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  if (!canEditField(user.role, 'run_details')) return c.json({ error: 'Your role cannot change services' }, 403);
+  if (!canEditField(user.role, 'run_details', await loadRules(c.env))) return c.json({ error: 'Your role cannot change services' }, 403);
   const job = await getJob(c.env, user, id);
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const { services } = await c.req.json<{ services: string[] }>().catch(() => ({ services: [] as string[] }));
@@ -357,7 +359,7 @@ jobs.get('/:id/crew', async (c) => {
 
 jobs.put('/:id/headcount', async (c) => {
   const user = c.get('user');
-  if (!canEditField(user.role, 'well_type')) return c.json({ error: 'Your role cannot plan the crew' }, 403);
+  if (!canEditField(user.role, 'well_type', await loadRules(c.env))) return c.json({ error: 'Your role cannot plan the crew' }, 403);
   const job = await getJob(c.env, user, c.req.param('id'));
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const b = await c.req.json<Record<keyof typeof HEAD_CAP, number>>().catch(() => ({} as Record<keyof typeof HEAD_CAP, number>));
@@ -381,7 +383,7 @@ jobs.put('/:id/headcount', async (c) => {
 
 jobs.put('/:id/crew', async (c) => {
   const user = c.get('user');
-  if (!canEditField(user.role, 'well_type')) return c.json({ error: 'Your role cannot assign the crew' }, 403);
+  if (!canEditField(user.role, 'well_type', await loadRules(c.env))) return c.json({ error: 'Your role cannot assign the crew' }, 403);
   const job = await getJob(c.env, user, c.req.param('id'));
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const { crew } = await c.req.json<{ crew: { employee_id: string; crew_role: (typeof CREW_ROLES)[number] }[] }>().catch(() => ({ crew: [] as { employee_id: string; crew_role: (typeof CREW_ROLES)[number] }[] }));

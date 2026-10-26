@@ -1,10 +1,11 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Check, Download, FileSpreadsheet, Mail, MousePointerClick, Save, Search, Tags, Trash2, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { CODES, CODE_LIST, LEAVE, assignmentsOn, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
 import { SHEETS, SHEET_KEYS, type SheetKey } from '../../shared/attendanceSheets';
-import { ROLE_LABEL } from '../../shared/roles';
+import { roleLabel } from '../../shared/roles';
 import type { Role } from '../../shared/types';
 import { workbook } from '../../shared/xlsx';
 import { ApiError, api } from '../api';
@@ -41,7 +42,7 @@ const filledBy = (p: Person) => (p.self_updated || p.sheet === 'management' ? 'S
 
 type FilterKey = 'role' | 'reports' | 'account' | 'updated' | 'filler' | 'title';
 const FILTERS: [FilterKey, string, (p: Person) => string][] = [
-  ['role', 'Role', (p) => ROLE_LABEL[p.user_role] ?? p.user_role], ['reports', 'Foreman / reports to', (p) => p.reports_to_name ?? '—'],
+  ['role', 'Role', (p) => roleLabel(p.user_role) ?? p.user_role], ['reports', 'Foreman / reports to', (p) => p.reports_to_name ?? '—'],
   ['account', 'Account assignment', (p) => p.account], ['updated', 'Updated by', (p) => p.updated_by ?? '—'], ['filler', 'Filled by', filledBy], ['title', 'Title', (p) => p.title],
 ];
 type Status = '' | 'tofill' | 'waiting' | 'approved';
@@ -209,9 +210,9 @@ export function Attendance() {
         </label>
         {sheet?.full && FILTERS.map(([k, label, get]) => (
           <label key={k} className="block"><span className="label-caps mb-1 block text-text-muted">{label}</span>
-            <select className={inputSized('w-36')} value={filter[k] ?? ''} onChange={(e) => setFilter({ ...filter, [k]: e.target.value || undefined })}>
+            <Select search aria-label={label} className={inputSized('w-40')} value={filter[k] ?? ''} onChange={(e) => setFilter({ ...filter, [k]: e.target.value || undefined })}>
               <option value="">All</option>{options(get).map((o) => <option key={o}>{o}</option>)}
-            </select>
+            </Select>
           </label>
         ))}
       </div>
@@ -246,7 +247,7 @@ export function Attendance() {
           ))}
         </div>
         <label className="ml-2 inline-flex items-center gap-2 text-sm"><span className="text-text-muted">Status</span>
-          <select className={inputSized('w-44')} value={status} onChange={(e) => setStatus(e.target.value as Status)}>{STATUS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          <Select className={inputSized('w-44')} value={status} onChange={(e) => setStatus(e.target.value as Status)}>{STATUS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
         </label>
         {anyFill && (
           <button type="button" role="switch" aria-checked={mine} onClick={toggleMine}
@@ -261,9 +262,9 @@ export function Attendance() {
         {anyFill && (
           <div className="flex w-full flex-wrap items-center gap-2 border-t border-border pt-2">
             <span className="text-sm font-semibold">Fill empty days with</span>
-            <select aria-label="Code for the empty days" className={inputSized('w-56')} value={fillCode} onChange={(e) => setFillCode(e.target.value as Code | '')}>
+            <Select aria-label="Code for the empty days" className={inputSized('w-56')} value={fillCode} onChange={(e) => setFillCode(e.target.value as Code | '')}>
               <option value="">Pick a code…</option>{CODE_LIST.map((c) => <option key={c} value={c}>{c} · {CODES[c]}</option>)}
-            </select>
+            </Select>
             <label className="inline-flex items-center gap-1.5 text-sm text-text-muted"><input type="checkbox" checked={fillOpts.skipOff} onChange={(e) => setFillOpts({ ...fillOpts, skipOff: e.target.checked })} />skip weekends and holidays</label>
             <label className="inline-flex items-center gap-1.5 text-sm text-text-muted"><input type="checkbox" checked={fillOpts.toToday} onChange={(e) => setFillOpts({ ...fillOpts, toToday: e.target.checked })} />only up to today</label>
             <Button size="sm" disabled={!fillCode} onClick={fillEmpty}>Fill the rows shown</Button>
@@ -275,10 +276,10 @@ export function Attendance() {
       {multi && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span className="text-text-muted">{picked.size} cell{picked.size === 1 ? '' : 's'} picked · Shift-click for a range</span>
-          <select aria-label="Apply code to the selected cells" className={inputSized('w-56')} value="" disabled={!picked.size}
+          <Select aria-label="Apply code to the selected cells" className={inputSized('w-56')} value="" disabled={!picked.size}
             onChange={(e) => { if (!e.target.value) return; setCodes([...picked], e.target.value === 'clear' ? null : (e.target.value as Code)); setPicked(new Set()); }}>
             <option value="">Apply code…</option>{CODE_LIST.map((c) => <option key={c} value={c}>{c} · {CODES[c]}</option>)}<option value="clear">Clear cells</option>
-          </select>
+          </Select>
         </div>
       )}
 
@@ -447,7 +448,7 @@ function Holidays({ sheet, onClose }: { sheet: Sheet; onClose: () => void }) {
           {!sheet.holidays.length && <li className="py-1.5 text-text-subtle">None this month.</li>}
         </ul>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {(me?.countries.length ?? 0) > 1 && <Field id="hol-country" label="Country"><select id="hol-country" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</select></Field>}
+          {(me?.countries.length ?? 0) > 1 && <Field id="hol-country" label="Country"><Select id="hol-country" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</Select></Field>}
           <Field id="hol-day" label="Date"><input id="hol-day" type="date" className={inputClass} value={f.day} onChange={(e) => setF({ ...f, day: e.target.value })} /></Field>
           <Field id="hol-name" label="Name"><input id="hol-name" className={inputClass} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. National Day" /></Field>
         </div>

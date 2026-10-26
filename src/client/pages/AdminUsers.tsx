@@ -1,9 +1,14 @@
+import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CloudDownload, ExternalLink, Fingerprint, Plus, Search, Smartphone, Trash2, X } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { MENU_LABELS, menuClusters } from '../../shared/menus';
-import { ROLE_LABEL } from '../../shared/roles';
+import { roleLabel } from '../../shared/roles';
+import { useRoles, useRules, type RoleRow } from '../rules';
+import { SearchSelect, type Option } from '../components/SearchSelect';
+import { MultiSelect } from '../components/FilterBar';
+import type { RuleGroup } from '../../shared/approvalRules';
 import { SHEETS, SHEET_KEYS, type SheetKey } from '../../shared/attendanceSheets';
 import type { Role, WgStatus } from '../../shared/types';
 import { ApiError, api } from '../api';
@@ -24,7 +29,6 @@ interface UserRow {
 interface Matrix { roles: Role[]; menus: string[]; rows: { role: Role; menu_key: string; can_view: number; can_edit: number; can_delete: number }[] }
 interface AuditRow { occurred_at: string; username: string; action: string; entity_type: string; entity_id: string; summary: string }
 
-const ROLES = Object.keys(ROLE_LABEL) as Role[];
 const menuLabel = (k: string) => MENU_LABELS[k] ?? k;
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
 
@@ -35,7 +39,7 @@ function useConfig() {
 export function AdminUsers() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'people';
-  const tabs = [['people', 'People'], ['matrix', 'Role permissions'], ['attendance', 'Attendance categories'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
+  const tabs = [['people', 'People'], ['roles', 'Roles'], ['matrix', 'Role permissions'], ['approvals', 'Approvals'], ['attendance', 'Attendance categories'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
   return (
     <section aria-labelledby="admin-title">
       <PageTitle><span id="admin-title">Users &amp; roles</span></PageTitle>
@@ -53,7 +57,9 @@ export function AdminUsers() {
       </div>
       <div role="tabpanel">
         {tab === 'people' && <People />}
+        {tab === 'roles' && <RolesPanel />}
         {tab === 'matrix' && <RoleMatrix />}
+        {tab === 'approvals' && <ApprovalsPanel />}
         {tab === 'attendance' && <AttendanceCategories />}
         {tab === 'sync' && <SyncPanel />}
         {tab === 'history' && <History />}
@@ -62,8 +68,15 @@ export function AdminUsers() {
   );
 }
 
+/** The roles as dropdown options. */
+function useRoleOptions(): Option[] {
+  const roles = useRoles();
+  return (roles.data ?? []).map((r) => ({ value: r.key, label: r.label, hint: r.from_wireguard ? 'WIREGUARD' : undefined }));
+}
+
 function People() {
   const qc = useQueryClient();
+  const roleOptions = useRoleOptions();
   const { data: me } = useMe();
   const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api<UserRow[]>('/admin/users') });
   const [q, setQ] = useState('');
@@ -89,7 +102,7 @@ function People() {
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
     return (users.data ?? []).filter((u) =>
-      (!s || `${u.username} ${u.full_name} ${ROLE_LABEL[u.role]} ${u.email ?? ''} ${u.employee_eid ?? ''}`.toLowerCase().includes(s))
+      (!s || `${u.username} ${u.full_name} ${roleLabel(u.role)} ${u.email ?? ''} ${u.employee_eid ?? ''}`.toLowerCase().includes(s))
       && (!roleFilter || u.role === roleFilter)
       && (!statusFilter || (statusFilter === 'on' ? !!u.active : !u.active)));
   }, [users.data, q, roleFilter, statusFilter]);
@@ -103,15 +116,11 @@ function People() {
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-text-subtle" />
           <input className={`${inputClass} pl-8`} placeholder="Name, NESR number, email or role" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
-        <label><span className="sr-only">Filter by role</span>
-          <select className={`${inputClass} w-44`} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-            <option value="">All roles</option>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-          </select>
-        </label>
+        <SearchSelect className="w-52" ariaLabel="Filter by role" value={roleFilter} onChange={setRoleFilter} options={roleOptions} placeholder="All roles" emptyLabel="All roles" searchPlaceholder="Search roles…" />
         <label><span className="sr-only">Filter by access</span>
-          <select className={`${inputClass} w-36`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <Select className={`${inputClass} w-36`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">Access on and off</option><option value="on">Access on</option><option value="off">Access off</option>
-          </select>
+          </Select>
         </label>
         <Button variant="primary" onClick={() => setAdding(true)}><Plus aria-hidden className="size-4" />Add person</Button>
         {me?.menus.users?.edit && <Button loading={importWg.isPending} onClick={() => importWg.mutate()}><CloudDownload aria-hidden className="size-4" />Import from WIREGUARD</Button>}
@@ -145,12 +154,9 @@ function People() {
                       {u.wg_active === 0 && <div className="text-xs font-semibold text-danger">Inactive in WIREGUARD</div>}
                     </th>
                     <td className="px-3 py-2">
-                      <label className="sr-only" htmlFor={`role-${u.username}`}>Role for {u.full_name}</label>
-                      <select id={`role-${u.username}`} className={`${inputClass} h-(--layout-control-sm) w-44`} value={u.role} disabled={self || update.isPending}
-                        title={self ? 'You cannot change your own role' : undefined}
-                        onChange={(e) => update.mutate({ username: u.username, patch: { role: e.target.value as Role } })}>
-                        {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                      </select>
+                      <SearchSelect className="w-48" ariaLabel={`Role for ${u.full_name}${self ? ' (you cannot change your own role)' : ''}`} value={u.role} allowEmpty={false}
+                        disabled={self || update.isPending} options={roleOptions} searchPlaceholder="Search roles…"
+                        onChange={(v) => update.mutate({ username: u.username, patch: { role: v as Role } })} />
                     </td>
                     <td className="px-3 py-2 text-text-muted">{u.role === 'admin' ? 'All' : u.countries.join(', ') || <span className="text-danger">none</span>}</td>
                     <td className="px-3 py-2 text-xs text-text-muted">
@@ -208,6 +214,7 @@ function CountryPicker({ value, onChange, idPrefix }: { value: string[]; onChang
 }
 
 function AddPerson({ onDone }: { onDone: (msg?: string) => void }) {
+  const roleOptionsAdd = useRoleOptions();
   const qc = useQueryClient();
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
@@ -229,9 +236,7 @@ function AddPerson({ onDone }: { onDone: (msg?: string) => void }) {
           </Field>
           <Field id="new-name" label="Name"><input id="new-name" className={inputClass} value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field id="new-role" label="Role">
-            <select id="new-role" className={inputClass} value={role} onChange={(e) => setRole(e.target.value as Role)}>
-              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-            </select>
+            <SearchSelect id="new-role" value={role} allowEmpty={false} onChange={(v) => setRole(v as Role)} options={roleOptionsAdd} searchPlaceholder="Search roles…" />
           </Field>
         </div>
         <CountryPicker value={countries} onChange={setCountries} idPrefix="new-c" />
@@ -289,7 +294,7 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
           <h2 id="person-title" className="flex-1 font-display text-lg font-bold">{user.full_name} <span className="font-mono text-sm font-normal text-text-muted">{user.username}</span></h2>
           <Button size="sm" variant="ghost" onClick={() => onClose()} aria-label="Close"><X aria-hidden className="size-4" /></Button>
         </div>
-        <p className="mb-4 text-sm text-text-muted">Role: {ROLE_LABEL[user.role]}. Changes apply on the person’s next click.</p>
+        <p className="mb-4 text-sm text-text-muted">Role: {roleLabel(user.role)}. Changes apply on the person’s next click.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <WgDetails user={user} />
         <PersonAttendance user={user} />
@@ -368,15 +373,14 @@ function RoleMatrix() {
     <Card>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <Field id="matrix-role" label="Role">
-          <select id="matrix-role" className={`${inputClass} w-56`} value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {m.data.roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-          </select>
+          <SearchSelect id="matrix-role" className="w-64" value={role} allowEmpty={false} onChange={(v) => setRole(v as Role)} searchPlaceholder="Search roles…"
+            options={m.data.roles.map((r) => ({ value: r, label: roleLabel(r) }))} />
         </Field>
         <p className="pb-2 text-sm text-text-muted">Changes apply to everyone with this role at their next click. Admins always have every right.</p>
       </div>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       <table className="w-full text-sm">
-        <caption className="sr-only">Rights of the {ROLE_LABEL[role]} role per tab</caption>
+        <caption className="sr-only">Rights of the {roleLabel(role)} role per tab</caption>
         <thead><tr className="label-caps text-left text-text-muted"><th scope="col" className="py-1">Tab</th><th scope="col">View</th><th scope="col">Edit</th><th scope="col">Delete</th></tr></thead>
         <tbody>
           {m.data.menus.filter((k) => k !== 'users').map((k) => {
@@ -578,14 +582,14 @@ function AttendanceCategories() {
             <tbody>
               {q.data.map((r) => (
                 <tr key={r.role} className="border-t border-border">
-                  <th scope="row" className="px-3 py-2 text-left font-semibold">{ROLE_LABEL[r.role] ?? r.role}</th>
+                  <th scope="row" className="px-3 py-2 text-left font-semibold">{roleLabel(r.role)}</th>
                   <td className="px-3 py-2 font-mono text-xs text-text-muted">{count(r.role)}</td>
                   <td className="px-3 py-2">
-                    <label className="sr-only" htmlFor={`sheet-${r.role}`}>Attendance sheet for {ROLE_LABEL[r.role]}</label>
-                    <select id={`sheet-${r.role}`} className={cx(inputClass, 'w-64')} value={r.sheet} disabled={!canEdit || save.isPending}
+                    <label className="sr-only" htmlFor={`sheet-${r.role}`}>Attendance sheet for {roleLabel(r.role)}</label>
+                    <Select id={`sheet-${r.role}`} className={cx(inputClass, 'w-64')} value={r.sheet} disabled={!canEdit || save.isPending}
                       onChange={(e) => { setError(null); save.mutate({ role: r.role, sheet: e.target.value }); }}>
                       {SHEET_CHOICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                    </select>
+                    </Select>
                   </td>
                 </tr>
               ))}
@@ -622,23 +626,23 @@ function PersonAttendance({ user }: { user: UserRow }) {
       <p className="label-caps mb-2 text-text-muted">Attendance and crew · {user.attendance_country}</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field id={id('sheet')} label="Attendance sheet" hint={sheet === 'none' ? 'Not on attendance' : `Filled by ${SHEETS[sheet].filledBy}, approved by ${SHEETS[sheet].approvedBy}`}>
-          <select id={id('sheet')} className={inputClass} value={f.attendance_sheet} onChange={(e) => set('attendance_sheet', e.target.value)}>
+          <Select id={id('sheet')} className={inputClass} value={f.attendance_sheet} onChange={(e) => set('attendance_sheet', e.target.value)}>
             <option value="">From the role ({user.role_sheet && user.role_sheet !== 'none' ? SHEETS[user.role_sheet].label : 'not on attendance'})</option>
             {SHEET_KEYS.map((k) => <option key={k} value={k}>{SHEETS[k].label}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field id={id('foreman')} label="Foreman" hint={sheet === 'field' ? 'The foreman fills this person’s attendance' : 'Only used on Operators & Helpers'}>
-          <select id={id('foreman')} className={inputClass} value={f.reports_to_id} onChange={(e) => set('reports_to_id', e.target.value)}>
+          <Select id={id('foreman')} search className={inputClass} value={f.reports_to_id} onChange={(e) => set('reports_to_id', e.target.value)}>
             <option value="">{foremen.length ? 'Nobody' : 'No foreman in this country yet'}</option>
             {foremen.map((m) => <option key={m.employee_id!} value={m.employee_id!}>{m.full_name}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field id={id('title')} label="Job title"><input id={id('title')} className={inputClass} value={f.title} onChange={(e) => set('title', e.target.value)} /></Field>
         <Field id={id('account')} label="Account"><input id={id('account')} className={inputClass} value={f.account} onChange={(e) => set('account', e.target.value)} /></Field>
         <Field id={id('crew')} label="Crew role" hint="Puts the person first in that job crew picker">
-          <select id={id('crew')} className={inputClass} value={f.crew_role} onChange={(e) => set('crew_role', e.target.value)}>
+          <Select id={id('crew')} className={inputClass} value={f.crew_role} onChange={(e) => set('crew_role', e.target.value)}>
             <option value="">Not on crews</option>{Object.entries(CREW_ROLE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field id={id('mobile')} label="Mobile"><input id={id('mobile')} className={inputClass} value={f.contact_mobile} onChange={(e) => set('contact_mobile', e.target.value)} placeholder="+966 …" /></Field>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={f.self_updated} onChange={(e) => set('self_updated', e.target.checked)} />Fills own attendance (SELF)</label>
@@ -646,6 +650,183 @@ function PersonAttendance({ user }: { user: UserRow }) {
       </div>
       {msg && <div className="mt-2"><Banner tone={msg.tone}>{msg.text}</Banner></div>}
       <Button className="mt-3" size="sm" variant="primary" loading={save.isPending} onClick={() => save.mutate()}>Save attendance details</Button>
+    </div>
+  );
+}
+
+/** Roles: the list, renaming, adding (optionally copying another role's tabs) and deleting. WIREGUARD roles stay. */
+function RolesPanel() {
+  const qc = useQueryClient();
+  const { data: me } = useMe();
+  const roles = useRoles();
+  const options = useRoleOptions();
+  const [f, setF] = useState({ label: '', description: '', copy_from: '' });
+  const [edit, setEdit] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const done = (text: string) => { setMsg({ tone: 'success', text }); qc.invalidateQueries({ queryKey: ['roles'] }); qc.invalidateQueries({ queryKey: ['role-matrix'] }); qc.invalidateQueries({ queryKey: ['rules'] }); qc.invalidateQueries({ queryKey: ['attendance-categories-roles'] }); };
+  const fail = (e: ApiError) => setMsg({ tone: 'danger', text: e.message });
+  const add = useMutation({ mutationFn: () => api<{ key: string }>('/admin/roles', { method: 'POST', json: f }), onSuccess: () => { done(`Added ${f.label}. Set its tabs in Role permissions and its approvals in Approvals.`); setF({ label: '', description: '', copy_from: '' }); }, onError: fail });
+  const rename = useMutation({ mutationFn: (r: RoleRow) => api(`/admin/roles/${r.key}`, { method: 'PATCH', json: { label: edit[r.key] } }), onSuccess: (_d, r) => { done(`Renamed to ${edit[r.key]}`); setEdit((c) => { const n = { ...c }; delete n[r.key]; return n; }); }, onError: fail });
+  const remove = useMutation({ mutationFn: (r: RoleRow) => api(`/admin/roles/${r.key}`, { method: 'DELETE' }), onSuccess: (_d, r) => done(`Deleted ${r.label}`), onError: fail });
+  const canEdit = !!me?.menus.users?.edit;
+  const canDelete = !!me?.menus.users?.delete;
+  return (
+    <div className="max-w-5xl">
+      <p className="mb-3 text-sm text-text-muted">
+        The roles people can hold in SLK Operations. Roles marked WIREGUARD are what people get from their WIREGUARD role when they first sign in, so they can be renamed but not deleted.
+        A role still held by someone can't be deleted either: give those people another role first.
+      </p>
+      {msg && <div className="mb-3"><Banner tone={msg.tone} action={<Button size="sm" variant="ghost" aria-label="Dismiss" onClick={() => setMsg(null)}><X aria-hidden className="size-4" /></Button>}>{msg.text}</Banner></div>}
+      {canEdit && (
+        <Card className="mb-4">
+          <h2 className="label-caps mb-2 text-text-muted">Add a role</h2>
+          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_1.4fr_1fr_auto]">
+            <Field id="new-role-label" label="Name"><input id="new-role-label" className={inputClass} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. Field Engineer" /></Field>
+            <Field id="new-role-desc" label="Description"><input id="new-role-desc" className={inputClass} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+            <Field id="new-role-copy" label="Start with the tabs of">
+              <SearchSelect id="new-role-copy" value={f.copy_from} onChange={(v) => setF({ ...f, copy_from: v })} options={options} placeholder="No tabs" emptyLabel="No tabs" searchPlaceholder="Search roles…" />
+            </Field>
+            <Button variant="primary" loading={add.isPending} onClick={() => { setMsg(null); if (!f.label.trim()) { setMsg({ tone: 'danger', text: 'Name the role' }); return; } add.mutate(); }}><Plus aria-hidden className="size-4" />Add role</Button>
+          </div>
+        </Card>
+      )}
+      {roles.isPending ? <Skeleton className="h-64" /> : roles.isError ? <Banner tone="danger">{roles.error.message}</Banner> : (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-sm">
+            <caption className="sr-only">SLK Operations roles</caption>
+            <thead className="bg-surface-2"><tr className="label-caps text-left text-text-muted">
+              {['Role', 'Source', 'People', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {roles.data.map((r) => {
+                const editing = r.key in edit;
+                const why = r.from_wireguard ? 'Comes from WIREGUARD' : r.users ? `${r.users} ${r.users === 1 ? 'person has' : 'people have'} it` : null;
+                return (
+                  <tr key={r.key} className="border-t border-border">
+                    <th scope="row" className="px-3 py-2 text-left font-normal">
+                      {editing ? (
+                        <span className="flex items-center gap-2">
+                          <input aria-label={`New name for ${r.label}`} className={cx(inputClass, 'w-56')} value={edit[r.key]} autoFocus onChange={(e) => setEdit({ ...edit, [r.key]: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') rename.mutate(r); if (e.key === 'Escape') setEdit((c) => { const n = { ...c }; delete n[r.key]; return n; }); }} />
+                          <Button size="sm" variant="primary" loading={rename.isPending} onClick={() => rename.mutate(r)}>Save</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEdit((c) => { const n = { ...c }; delete n[r.key]; return n; })}>Cancel</Button>
+                        </span>
+                      ) : (
+                        <><span className="font-semibold">{r.label}</span><span className="ml-2 font-mono text-xs text-text-subtle">{r.key}</span>{r.description && <span className="block text-xs text-text-muted">{r.description}</span>}</>
+                      )}
+                    </th>
+                    <td className="px-3 py-2 text-xs">
+                      {r.from_wireguard ? <span className="label-caps rounded-xs border border-info px-1.5 text-info">WIREGUARD</span> : r.builtin ? <span className="text-text-muted">SLK Ops</span> : <span className="text-text-muted">Added here</span>}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-text-muted">{r.active_users}{r.users > r.active_users ? ` (+${r.users - r.active_users} off)` : ''}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      {canEdit && !editing && <Button size="sm" onClick={() => setEdit({ ...edit, [r.key]: r.label })}>Rename</Button>}
+                      {canDelete && (
+                        <Button size="sm" variant="ghost" className="ml-1" disabled={!!why || remove.isPending} aria-label={`Delete ${r.label}`} title={why ?? undefined}
+                          onClick={() => { if (window.confirm(`Delete the ${r.label} role? Its tabs, attendance category and approvals go with it.`)) remove.mutate(r); }}>
+                          <Trash2 aria-hidden className="size-4" />
+                        </Button>
+                      )}
+                      {why && canDelete && <span className="ml-1 text-xs text-text-subtle">{why}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const GROUPS: { key: RuleGroup; title: string; note: string }[] = [
+  { key: 'Job', title: 'Job', note: 'Who fills each stage of a job, and who can be its SDM.' },
+  { key: 'JRA', title: 'JRA approvals', note: 'Each approval level and MOC / exemption approver named on your JRA forms. The JRA is sent to someone holding one of these roles.' },
+  { key: 'Closure checklist', title: 'Closure checklist', note: 'Who signs each item on the job’s Closure.' },
+  { key: 'Bonus', title: 'Bonus', note: 'Crew bonus distribution on Closure.' },
+  { key: 'Attendance', title: 'Attendance', note: 'Who fills and who approves each attendance sheet.' },
+];
+
+/** Approvals: the roles allowed for every approval and checklist item. Admin is always allowed. */
+function ApprovalsPanel() {
+  const qc = useQueryClient();
+  const { data: me } = useMe();
+  const rules = useRules();
+  const roles = useRoles();
+  const [q, setQ] = useState('');
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const canEdit = !!me?.menus.users?.edit;
+  type RulesData = NonNullable<ReturnType<typeof useRules>['data']>;
+  const set = useMutation({
+    mutationFn: (v: { key: string; roles: string[] }) => api('/admin/rules', { method: 'PUT', json: v }),
+    // the tick changes at once; a refused change is put back
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: ['rules'] });
+      const before = qc.getQueryData<RulesData>(['rules']);
+      if (before) qc.setQueryData<RulesData>(['rules'], { ...before, rules: { ...before.rules, [v.key]: v.roles } });
+      return { before };
+    },
+    onSuccess: () => { setMsg(null); qc.invalidateQueries({ queryKey: ['rules'] }); qc.invalidateQueries({ queryKey: ['attendance'] }); },
+    onError: (e: ApiError, _v, ctx) => { if (ctx?.before) qc.setQueryData(['rules'], ctx.before); setMsg({ tone: 'danger', text: e.message }); },
+  });
+  const reset = useMutation({
+    mutationFn: (key: string) => api(`/admin/rules/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rules'] }),
+    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
+  });
+  const options = (roles.data ?? []).filter((r) => r.key !== 'admin').map((r) => ({ value: r.key, label: r.label }));
+  if (rules.isPending || roles.isPending) return <Skeleton className="h-96" />;
+  if (rules.isError) return <Banner tone="danger">{rules.error.message}</Banner>;
+  const s = q.trim().toLowerCase();
+  const defs = rules.data.defs.filter((d) => !s || `${d.label} ${d.help ?? ''} ${(rules.data.rules[d.key] ?? []).map(roleLabel).join(' ')}`.toLowerCase().includes(s));
+  return (
+    <div className="max-w-5xl">
+      <p className="mb-3 text-sm text-text-muted">
+        Pick the roles for each approval and checklist item. Changes apply at once, on the server as well as on screen. Admin is always allowed.
+        “Default” is what SLK Operations did before; Reset puts it back.
+      </p>
+      <label className="relative mb-4 block w-80 max-w-full"><span className="sr-only">Search approvals</span>
+        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-text-subtle" />
+        <input className={cx(inputClass, 'pl-9')} placeholder="Search an approval or a role…" value={q} onChange={(e) => setQ(e.target.value)} />
+      </label>
+      {msg && <div className="mb-3"><Banner tone={msg.tone}>{msg.text}</Banner></div>}
+      <div className="flex flex-col gap-4">
+        {GROUPS.map((g) => {
+          const list = defs.filter((d) => d.group === g.key);
+          if (!list.length) return null;
+          return (
+            <Card key={g.key} className="p-0!">
+              <div className="border-b border-border px-4 py-3">
+                <h2 className="font-display text-lg font-bold text-accent-text">{g.title}</h2>
+                <p className="text-xs text-text-muted">{g.note}</p>
+              </div>
+              <ul className="divide-y divide-border">
+                {list.map((d) => {
+                  const value = rules.data.rules[d.key] ?? d.defaults;
+                  return (
+                    <li key={d.key} className="grid grid-cols-1 items-center gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_22rem]">
+                      <div className="min-w-0">
+                        <p className="font-semibold">{d.label}</p>
+                        {d.help && <p className="text-xs text-text-muted">{d.help}</p>}
+                        <p className="mt-0.5 text-xs text-text-subtle">
+                          {d.changed ? <>Changed{d.updated_by ? ` by ${d.updated_by}` : ''} · default: {d.defaults.map(roleLabel).join(', ') || 'Admin only'}</> : 'Default'}
+                          {d.changed && canEdit && <button type="button" className="ml-2 underline hover:text-text" onClick={() => reset.mutate(d.key)}>Reset</button>}
+                        </p>
+                      </div>
+                      <div>
+                        {canEdit
+                          ? <MultiSelect label="Roles" stacked emptyText="Admin only" options={options} value={value} onChange={(v) => set.mutate({ key: d.key, roles: v })} />
+                          : <p className="text-sm">{value.map(roleLabel).join(', ') || 'Admin only'}</p>}
+                        <p className="mt-1 text-xs text-text-muted">{value.length ? `Admin, ${value.map(roleLabel).join(', ')}` : 'Admin only'}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }

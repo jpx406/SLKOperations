@@ -4,6 +4,7 @@ import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
 import { admin } from './admin';
 import { passkeyAdmin, passkeyAuth, passkeys } from './passkeys';
+import { loadRules, rulesApi, usersFor } from './rules';
 import { importWgUsers } from './wgUsers';
 import { syncPeople } from './people';
 import { aiAdminGet, aiAdminPut, aiChat, aiStatus, assistantChat } from './ai';
@@ -148,11 +149,11 @@ app.get('/employees', async (c) => {
   return c.json(results);
 });
 
+// people who may be a job's SDM (Users & Roles → Approvals → "Can be the job's SDM")
 app.get('/sdms', async (c) => {
-  const { results } = await c.env.DB.prepare(
-    `SELECT username, full_name FROM user_roles WHERE active = 1 AND role IN ('sdm','deputy_sdm','operations_manager') ORDER BY full_name`,
-  ).all();
-  return c.json(results);
+  const rules = await loadRules(c.env);
+  const people = await usersFor(c.env, rules, 'job.sdm');
+  return c.json(people.filter((p) => p.role !== 'admin' || (rules['job.sdm'] ?? []).includes('admin')).map(({ username, full_name }) => ({ username, full_name })));
 });
 
 app.get('/schedule', async (c) => {
@@ -210,6 +211,7 @@ app.put('/admin/ai', aiAdminPut);
 app.route('/admin', admin);
 app.route('/admin/access', passkeyAdmin);
 app.route('/passkeys', passkeys);
+app.route('/', rulesApi);
 app.route('/database', database);
 app.route('/job-log', jobLog);
 app.get('/filter-options', filterOptions);

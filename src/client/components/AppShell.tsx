@@ -1,9 +1,10 @@
+import { Select } from './Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Clock, Database, Fingerprint, KeyRound, LogOut, RefreshCw, Sun, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav } from '../../shared/menus';
-import { ROLE_LABEL } from '../../shared/roles';
+import { roleLabel } from '../../shared/roles';
 import type { WgStatus } from '../../shared/types';
 import { api, countryScope, setCountryScope } from '../api';
 import { useMe } from '../auth';
@@ -13,6 +14,7 @@ import { Button, cx, rovingKeys } from './ui';
 import { Contacts, NesrLogo, Wordmark } from './Brand';
 import { NewVersionBar, useNewVersion } from './NewVersionBar';
 import { MyPasskeys } from './Passkeys';
+import { useRoles } from '../rules';
 import { APP_VERSION, VERSION_TEXT } from '../version';
 
 /** Narrows every screen to one country for people who cover several. The server checks it against their countries. */
@@ -24,11 +26,11 @@ function CountrySwitch({ countries }: { countries: string[] }) {
   return (
     <label className="flex items-center gap-1.5 text-xs text-text-muted">
       <span className="sr-only">Country shown</span>
-      <select className="h-(--layout-control-sm) rounded-sm border border-border-input bg-input px-2 text-sm text-text" value={value}
+      <Select className="h-(--layout-control-sm) rounded-sm border border-border-input bg-input px-2 text-sm text-text" value={value}
         onChange={(e) => { setCountryScope(e.target.value); setValue(e.target.value); qc.invalidateQueries(); }}>
         <option value="">All my countries</option>
         {countries.map((c) => <option key={c}>{c}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -88,6 +90,7 @@ export function AppShell() {
   };
 
   const newVersion = useNewVersion();
+  useRoles(); // names of added or renamed roles, for roleLabel() everywhere
   return (
     <div className="flex min-h-full flex-col">
       <NewVersionBar show={newVersion} />
@@ -108,7 +111,7 @@ export function AppShell() {
             <RiyadhClock />
             <HelpButton />
             <AssistantLauncher />
-            {me && <AccountMenu name={me.fullName} role={ROLE_LABEL[me.role]} admin={me.role === 'admin'} countries={me.allCountries ?? me.countries} passwordUrl={config.data?.wireguardUrl} display={display} onSignOut={signOut} />}
+            {me && <AccountMenu name={me.fullName} role={roleLabel(me.role)} admin={me.role === 'admin'} countries={me.allCountries ?? me.countries} passwordUrl={config.data?.wireguardUrl} display={display} onSignOut={signOut} />}
           </div>
         </div>
         <nav aria-label="Main" className="-mb-px flex gap-1.5 overflow-x-auto pb-3">

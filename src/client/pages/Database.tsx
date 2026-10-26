@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, ExternalLink, Pencil, Plus, X } from 'lucide-react';
 import { useState } from 'react';
@@ -36,10 +37,10 @@ export function Database() {
     <section aria-labelledby="db-title">
       <PageTitle aside={countries.length > 1 && (
         <label className="flex items-center gap-2 text-sm text-text-muted">Country
-          <select className={inputSized('h-(--layout-control-sm) w-48')} value={country} onChange={(e) => setCountry(e.target.value)}>
+          <Select className={inputSized('h-(--layout-control-sm) w-48')} value={country} onChange={(e) => setCountry(e.target.value)}>
             <option value="">All my countries</option>
             {countries.map((c) => <option key={c}>{c}</option>)}
-          </select>
+          </Select>
         </label>
       )}><span id="db-title">Equipment database</span></PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">
@@ -177,10 +178,10 @@ function CountrySelect({ value, onChange }: { value: string; onChange: (v: strin
   const { data: me } = useMe();
   return (
     <Field id="db-country" label="Country">
-      <select id="db-country" className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
+      <Select id="db-country" className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">Choose…</option>
         {(me?.countries ?? []).map((c) => <option key={c}>{c}</option>)}
-      </select>
+      </Select>
     </Field>
   );
 }
@@ -224,16 +225,16 @@ function PceDialog({ row, country, canRemove, onClose }: { row: PceRow | null; c
         {!row && <CountrySelect value={f.country} onChange={(v) => set('country', v)} />}
         <Field id="pce-label" label="Label" required><input id="pce-label" className={inputClass} value={f.label} onChange={(e) => set('label', e.target.value)} placeholder="e.g. PCE-10K-04" /></Field>
         <Field id="pce-kind" label="Type">
-          <select id="pce-kind" className={inputClass} value={f.kind} onChange={(e) => set('kind', e.target.value)}>
+          <Select id="pce-kind" className={inputClass} value={f.kind} onChange={(e) => set('kind', e.target.value)}>
             {Object.entries(PCE_KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field id="pce-bore" label="Bore" unit="in" required><input id="pce-bore" className={cx(inputClass, 'pr-10')} type="number" min={0} step="any" inputMode="decimal" value={f.bore_in} onChange={(e) => set('bore_in', e.target.value)} /></Field>
         <Field id="pce-rating" label="Pressure rating">
-          <select id="pce-rating" className={inputClass} value={f.rating_psi} onChange={(e) => set('rating_psi', e.target.value)}>
+          <Select id="pce-rating" className={inputClass} value={f.rating_psi} onChange={(e) => set('rating_psi', e.target.value)}>
             <option value="">Not set</option>
             {PCE_RATINGS.map((r) => <option key={r} value={r}>{r.toLocaleString()} psi</option>)}
-          </select>
+          </Select>
         </Field>
         <Field id="pce-length" label="Length" unit="ft" hint="Usable lubricator length"><input id="pce-length" className={cx(inputClass, 'pr-10')} type="number" min={0} step="any" inputMode="decimal" value={f.length_ft} onChange={(e) => set('length_ft', e.target.value)} /></Field>
         <Field id="pce-test" label="Last pressure test"><input id="pce-test" className={inputClass} type="date" value={f.last_pressure_test_on} onChange={(e) => set('last_pressure_test_on', e.target.value)} /></Field>
@@ -295,10 +296,10 @@ function PanelDialog({ row, country, types, canRemove, onClose }: { row: PanelRo
         {!row && <CountrySelect value={f.country} onChange={(v) => setF({ ...f, country: v })} />}
         <Field id="gp-label" label="Label" required><input id="gp-label" className={inputClass} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} /></Field>
         <Field id="gp-type" label="Type">
-          <select id="gp-type" className={inputClass} value={f.panel_type} onChange={(e) => setF({ ...f, panel_type: e.target.value })}>
+          <Select id="gp-type" className={inputClass} value={f.panel_type} onChange={(e) => setF({ ...f, panel_type: e.target.value })}>
             <option value="">Not set</option>
             {[...new Set([...types, ...(f.panel_type ? [f.panel_type] : [])])].map((t) => <option key={t}>{t}</option>)}
-          </select>
+          </Select>
         </Field>
         {row && <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Active (crews can pick it on new jobs)</label>}
         {ask && <div className="sm:col-span-2"><Banner tone="warning" action={<Button size="sm" onClick={() => save.mutate(body(true))} loading={save.isPending}>Switch off anyway</Button>}>{ask}</Banner></div>}
@@ -411,11 +412,11 @@ function Profiles({ rows, domains, canEdit }: { rows: ProfileRow[]; domains: str
             <tr key={p.job_type_name} className="border-t border-border">
               <th scope="row" className="px-3 py-2 text-left font-semibold">{p.job_type_name}{!p.updated_at && <span className="ml-2 text-xs font-normal text-warning">no profile</span>}</th>
               <td className="px-3 py-2">
-                <select aria-label={`Service domain for ${p.job_type_name}`} className={cx(inputClass, 'h-(--layout-control-sm)')} disabled={!canEdit || put.isPending} value={p.domain ?? ''}
+                <Select aria-label={`Service domain for ${p.job_type_name}`} className={cx(inputClass, 'h-(--layout-control-sm)')} disabled={!canEdit || put.isPending} value={p.domain ?? ''}
                   onChange={(e) => put.mutate({ ...p, domain: e.target.value || null })}>
                   <option value="">Not set</option>
                   {domains.map((d) => <option key={d}>{d}</option>)}
-                </select>
+                </Select>
               </td>
               {SERVICE_FLAGS.map((f) => (
                 <td key={f} className="px-3 py-2 text-center">

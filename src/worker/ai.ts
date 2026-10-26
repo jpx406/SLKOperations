@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { Context } from 'hono';
 import { AI_MODELS, STARTER_PROMPTS, checkSettings, costMicroUsd, limitCheck, parseSettings, shapeResult, systemPrompt, toolPaths, toolsFor, trim, type AiSettings } from '../shared/ai';
 import { assistantPrompt, helpFor } from '../shared/help';
-import { ROLE_LABEL } from '../shared/roles';
+import { roleLabel } from '../shared/roles';
 import type { AppBindings, Env } from './env';
 
 // AI Agent (S35). Answers questions from the asker's own data: every tool is a GET through the app itself,
@@ -109,7 +109,7 @@ export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
   const allowed = toolsFor(user.menus);
   const tools: Anthropic.Beta.BetaTool[] = allowed.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
   const system = systemPrompt({
-    fullName: user.fullName, role: ROLE_LABEL[user.role], countries: user.countries, tools: allowed.map((t) => t.name),
+    fullName: user.fullName, role: roleLabel(user.role), countries: user.countries, tools: allowed.map((t) => t.name),
     today: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }),
   });
   const api = client(c.env);

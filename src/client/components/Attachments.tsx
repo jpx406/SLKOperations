@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Eye, Paperclip, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -55,9 +56,9 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
         <div onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); void upload(e.dataTransfer.files); }}
           className={cx('mb-3 flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3 text-sm', over ? 'border-accent-edge bg-surface-2' : 'border-border-strong')}>
           <label className="sr-only" htmlFor={`att-cat-${id}`}>What the files are</label>
-          <select id={`att-cat-${id}`} className={inputSized('h-(--layout-control-sm) w-44')} value={category} onChange={(e) => setCategory(e.target.value as Category)}>
+          <Select id={`att-cat-${id}`} className={inputSized('h-(--layout-control-sm) w-44')} value={category} onChange={(e) => setCategory(e.target.value as Category)}>
             {Object.entries(CATEGORIES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </Select>
           <input ref={input} type="file" multiple accept={ACCEPT} className="hidden" aria-label="Files to attach" onChange={(e) => upload(e.target.files)} />
           <Button size="sm" loading={!!busy} onClick={() => input.current?.click()}><Upload aria-hidden className="size-4" />Add files</Button>
           <span className="text-text-muted">{busy ? `Uploading ${busy}…` : 'or drop them here · photos, PDF, Office, text, email, zip · up to 25 MB each'}</span>

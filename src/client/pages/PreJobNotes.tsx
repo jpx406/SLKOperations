@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, Download, FileSpreadsheet, History, Mail, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -270,7 +271,7 @@ export function PreJobNoteEditor() {
             <Field id="pj-sme-m" label="SME mobile"><input id="pj-sme-m" className={inputClass} disabled={ro} value={c.sme.mobile} onChange={(e) => edit({ sme: { ...c.sme, mobile: e.target.value } })} /></Field>
             <Field id="pj-sme-e" label="SME email"><input id="pj-sme-e" type="email" className={inputClass} disabled={ro} value={c.sme.email} onChange={(e) => edit({ sme: { ...c.sme, email: e.target.value } })} /></Field>
             <Field id="pj-main" label="SLK main contact" required hint="From the SLK Contacts list">
-              <select id="pj-main" className={inputClass} disabled={ro} value={c.main_contact_id} onChange={(e) => edit({ main_contact_id: e.target.value })}><option value="">Choose…</option>{contacts.map((x) => <option key={x.id} value={x.id}>{contactName(x)}</option>)}</select>
+              <Select id="pj-main" className={inputClass} disabled={ro} value={c.main_contact_id} onChange={(e) => edit({ main_contact_id: e.target.value })}><option value="">Choose…</option>{contacts.map((x) => <option key={x.id} value={x.id}>{contactName(x)}</option>)}</Select>
             </Field>
             <fieldset className="md:col-span-2">
               <legend className="label-caps mb-1.5 text-text-muted">Other contacts (copied on the email)</legend>

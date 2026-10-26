@@ -3,6 +3,7 @@ import { EMAIL_RE, MONTH_RE, approvalEmail, isCode, monthDays, rowSummary, type 
 import { SHEETS, canApprove, canFill, canSee, isSheet, type SheetKey, type SheetRow } from '../shared/attendanceSheets';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { syncPeople } from './people';
+import { loadRules } from './rules';
 import { revokeStatement, signStatement } from './signatures';
 
 // Attendance (S17), by sheet and role (see shared/attendanceSheets.ts): operators and helpers are filled by their
@@ -46,8 +47,8 @@ attendance.get('/', async (c) => {
   if (!MONTH_RE.test(month)) return c.json({ error: 'month must be YYYY-MM' }, 400);
   const days = monthDays(month);
   const [first, last] = [days[0], days[days.length - 1]];
-  const everyone = await roster(c.env, user.countries);
-  const people = everyone.filter((p) => canSee(user, p));
+  const [everyone, rules] = await Promise.all([roster(c.env, user.countries), loadRules(c.env)]);
+  const people = everyone.filter((p) => canSee(user, p, rules));
   const ids = JSON.stringify(people.map((p) => p.id));
   const [entries, approvals, holidays, assigned, updaters] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT employee_id, day, code FROM attendance_entries WHERE day BETWEEN ?2 AND ?3 AND employee_id IN (SELECT value FROM json_each(?1))`).bind(ids, first, last),
@@ -68,7 +69,7 @@ attendance.get('/', async (c) => {
   const lastBy = new Map((updaters.results as { employee_id: string; updated_by: string }[]).map((r) => [r.employee_id, r.updated_by]));
   return c.json({
     month, days, full: people.length > people.filter((p) => p.wg_username?.toLowerCase() === user.username.toLowerCase()).length,
-    people: people.map((p) => ({ ...p, sheet: (p.attendance_sheet ?? 'shop') as SheetKey, can_fill: canFill(user, p), can_approve: canApprove(user, p), updated_by: lastBy.get(p.id) ?? null })),
+    people: people.map((p) => ({ ...p, sheet: (p.attendance_sheet ?? 'shop') as SheetKey, can_fill: canFill(user, p, rules), can_approve: canApprove(user, p, rules), updated_by: lastBy.get(p.id) ?? null })),
     entries: entries.results, approvals: approvals.results, holidays: holidays.results, assignments: assigned.results,
   });
 });
@@ -91,7 +92,8 @@ attendance.put('/', async (c) => {
   const ids = [...new Set(changes.map((ch) => ch.employee_id))];
   const people = await roster(c.env, user.countries, ids);
   if (people.length !== ids.length) return c.json({ error: 'Some people are not in your countries' }, 403);
-  const refused = people.filter((p) => !canFill(user, p));
+  const rules = await loadRules(c.env);
+  const refused = people.filter((p) => !canFill(user, p, rules));
   if (refused.length) {
     const p = refused[0];
     const sheet = SHEETS[p.attendance_sheet ?? 'shop'];
@@ -120,7 +122,7 @@ attendance.post('/approve', async (c) => {
   if (!MONTH_RE.test(String(b.month ?? ''))) return c.json({ error: 'month must be YYYY-MM' }, 400);
   const [e] = await roster(c.env, user.countries, [String(b.employee_id ?? '')]);
   if (!e) return c.json({ error: 'Person not found' }, 404);
-  if (!canApprove(user, e)) {
+  if (!canApprove(user, e, await loadRules(c.env))) {
     const sheet = SHEETS[e.attendance_sheet ?? 'shop'];
     return c.json({ error: `${e.full_name} is on the ${sheet.label} sheet, approved by the ${sheet.approvedBy}.` }, 403);
   }
@@ -206,13 +208,14 @@ attendance.post('/notify', async (c) => {
   if (!c.env.EMAIL) return c.json({ error: 'Email sending isn’t set up on the server yet' }, 503);
   const [approvers, override] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT DISTINCT lower(email) AS email FROM user_roles WHERE active = 1 AND email IS NOT NULL AND role IN (SELECT value FROM json_each(?1))
-      AND (role = 'admin' OR EXISTS (SELECT 1 FROM json_each(user_roles.countries) WHERE value = ?2))`).bind(JSON.stringify(sheet.approveRoles), b.country),
+      AND (role = 'admin' OR EXISTS (SELECT 1 FROM json_each(user_roles.countries) WHERE value = ?2))`).bind(JSON.stringify((await loadRules(c.env))[`attendance.${b.sheet}.approve`] ?? sheet.approveRoles), b.country),
     c.env.DB.prepare('SELECT approver_email FROM attendance_categories WHERE country = ? AND name = ?').bind(b.country, sheet.label),
   ]);
   const to = [...new Set([...(approvers.results as { email: string }[]).map((r) => r.email), ...((override.results[0] as { approver_email: string | null } | undefined)?.approver_email ? [(override.results[0] as { approver_email: string }).approver_email] : [])])];
   if (!to.length) return c.json({ error: `Nobody with the ${sheet.approvedBy} role in ${b.country} has an email yet. Import users from WIREGUARD, or set an approver email under Manage categories.` }, 400);
   const days = monthDays(month);
-  const people = (await roster(c.env, [b.country])).filter((p) => (p.attendance_sheet ?? 'shop') === b.sheet && canFill(user, p));
+  const rulesN = await loadRules(c.env);
+  const people = (await roster(c.env, [b.country])).filter((p) => (p.attendance_sheet ?? 'shop') === b.sheet && canFill(user, p, rulesN));
   if (!people.length) return c.json({ error: 'You have nobody on that sheet this month' }, 400);
   const ids = JSON.stringify(people.map((p) => p.id));
   const [entries, approvals] = await c.env.DB.batch([

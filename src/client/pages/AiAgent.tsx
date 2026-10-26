@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Send, Settings, Wrench } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -126,9 +127,9 @@ function AiAdmin() {
       <div className="space-y-3">
         <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />AI Agent on</label>
         <Field id="ai-model" label="Model">
-          <select id="ai-model" className={inputClass} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value as AiSettings['model'] })}>
+          <Select id="ai-model" className={inputClass} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value as AiSettings['model'] })}>
             {q.data.models.map((m) => <option key={m.id} value={m.id}>{m.label} (${m.inUsd} / ${m.outUsd} per M tokens)</option>)}
-          </select>
+          </Select>
         </Field>
         <Field id="ai-budget" label="Monthly budget (USD)" hint="Shared with the help assistant. Resets on the 1st (UTC).">
           <span className="flex items-center gap-2">

@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -91,9 +92,9 @@ export function ToolstringBuilder({ value, canEdit, onChange, ctx }: {
                 <tr key={i} className="border-t border-border">
                   <td className="py-1.5 font-mono text-xs text-text-subtle">{i + 1}</td>
                   <td className="py-1.5 pr-2">
-                    <select aria-label={`Part ${i + 1} component`} className={inputClass} disabled={!canEdit} value={r.component} onChange={(e) => edit(i, 'component', e.target.value)}>
+                    <Select aria-label={`Part ${i + 1} component`} className={inputClass} disabled={!canEdit} value={r.component} onChange={(e) => edit(i, 'component', e.target.value)}>
                       {[...new Set([...TOOLSTRING_COMPONENTS, r.component])].map((c) => <option key={c}>{c}</option>)}
-                    </select>
+                    </Select>
                   </td>
                   {(['od_in', 'length_ft', 'weight_lb'] as const).map((k) => (
                     <td key={k} className="py-1.5 pr-2">
@@ -182,12 +183,12 @@ export function CrewPanel({ job, canEdit }: { job: Job; canEdit: boolean }) {
                 ))}
               </ul>
               {members.length < caps[head] && (
-                <select aria-label={`Add to ${label.toLowerCase()}`} className={cx(inputClass, 'mt-2 h-(--layout-control-sm)')} disabled={!canEdit || busy} value=""
+                <Select aria-label={`Add to ${label.toLowerCase()}`} className={cx(inputClass, 'mt-2 h-(--layout-control-sm)')} disabled={!canEdit || busy} value=""
                   onChange={(e) => e.target.value && run('crew', { crew: [...crew.map(({ employee_id, crew_role }) => ({ employee_id, crew_role })), { employee_id: e.target.value, crew_role: role }] })}>
                   <option value="">Add person…</option>
                   {people.filter((p) => !taken.has(p.id)).sort((a, b) => Number(b.crew_role === role) - Number(a.crew_role === role))
                     .map((p) => <option key={p.id} value={p.id}>{p.full_name} · {p.title}</option>)}
-                </select>
+                </Select>
               )}
               {short && <p className="mt-1.5 text-xs text-warning">{headcount[head] - members.length} still to name</p>}
             </fieldset>

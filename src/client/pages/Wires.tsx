@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -76,8 +77,8 @@ export function WiresRegister() {
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-text-subtle" />
           <input className={inputSized('h-(--layout-control-sm) w-56 pl-8')} placeholder="Serial, grade, drum" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} />
         </label>
-        <select aria-label="Unit" className={inputSized('h-(--layout-control-sm) w-36')} value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })}><option value="">All units</option>{units.map((u) => <option key={u}>{u}</option>)}</select>
-        <select aria-label="Status" className={inputSized('h-(--layout-control-sm) w-40')} value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="live">In service</option><option value="retired">Retired</option><option value="all">All wires</option></select>
+        <Select aria-label="Unit" className={inputSized('h-(--layout-control-sm) w-36')} value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })}><option value="">All units</option>{units.map((u) => <option key={u}>{u}</option>)}</Select>
+        <Select aria-label="Status" className={inputSized('h-(--layout-control-sm) w-40')} value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="live">In service</option><option value="retired">Retired</option><option value="all">All wires</option></Select>
         <span className="ml-auto text-xs text-text-muted">{shown.length} wire{shown.length === 1 ? '' : 's'} · lowest remaining length first</span>
       </div>
       {q.isPending && <Skeleton className="h-96" />}
@@ -245,11 +246,11 @@ export function WireKpis() {
         <div className="mb-3"><Banner tone="warning">WIREGUARD updated (build {q.data.build}) — KPI parity not yet re-checked against this build. Last verified: {q.data.verifiedBuild}.</Banner></div>
       )}
       <div className="mb-4 flex flex-wrap gap-2">
-        <select aria-label="Year" className={inputSized('h-(--layout-control-sm) w-28')} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value })}><option value="">All years</option>{opts.years.map((y) => <option key={y}>{y}</option>)}</select>
-        <select aria-label="Month" className={inputSized('h-(--layout-control-sm) w-28')} value={f.month} onChange={(e) => setF({ ...f, month: e.target.value })}><option value="">All months</option>{Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((m) => <option key={m} value={m}>{monthLabel(`2000-${m}`).slice(0, 3)}</option>)}</select>
-        <select aria-label="Unit" className={inputSized('h-(--layout-control-sm) w-32')} value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })}><option value="">All units</option>{opts.units.map((u) => <option key={u}>{u}</option>)}</select>
-        <select aria-label="Field" className={inputSized('h-(--layout-control-sm) w-40')} value={f.field} onChange={(e) => setF({ ...f, field: e.target.value })}><option value="">All fields</option>{opts.fields.map((u) => <option key={u}>{u}</option>)}</select>
-        <select aria-label="Wire" className={inputSized('h-(--layout-control-sm) w-36')} value={f.wire} onChange={(e) => setF({ ...f, wire: e.target.value })}><option value="">All wires</option>{opts.wires.map((u) => <option key={u}>{u}</option>)}</select>
+        <Select aria-label="Year" className={inputSized('h-(--layout-control-sm) w-28')} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value })}><option value="">All years</option>{opts.years.map((y) => <option key={y}>{y}</option>)}</Select>
+        <Select aria-label="Month" className={inputSized('h-(--layout-control-sm) w-28')} value={f.month} onChange={(e) => setF({ ...f, month: e.target.value })}><option value="">All months</option>{Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((m) => <option key={m} value={m}>{monthLabel(`2000-${m}`).slice(0, 3)}</option>)}</Select>
+        <Select aria-label="Unit" className={inputSized('h-(--layout-control-sm) w-32')} value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })}><option value="">All units</option>{opts.units.map((u) => <option key={u}>{u}</option>)}</Select>
+        <Select aria-label="Field" className={inputSized('h-(--layout-control-sm) w-40')} value={f.field} onChange={(e) => setF({ ...f, field: e.target.value })}><option value="">All fields</option>{opts.fields.map((u) => <option key={u}>{u}</option>)}</Select>
+        <Select aria-label="Wire" className={inputSized('h-(--layout-control-sm) w-36')} value={f.wire} onChange={(e) => setF({ ...f, wire: e.target.value })}><option value="">All wires</option>{opts.wires.map((u) => <option key={u}>{u}</option>)}</Select>
       </div>
       {q.isPending && <Skeleton className="h-96" />}
       {q.isError && <Banner tone="danger">{q.error.message}</Banner>}
@@ -297,7 +298,7 @@ export function WireKpis() {
               {on('W14') && (
                 <Card>
                   <div className="mb-3 flex items-center gap-2"><h3 className="flex-1 text-sm font-semibold">Wires needing attention first{tag('W14')}</h3>
-                    <select aria-label="W14 measure" className={inputSized('h-(--layout-control-sm) w-48')} value={w14} onChange={(e) => setW14(e.target.value as K.W14Metric)}><option value="remaining">Remaining length</option><option value="od">OD reduction</option><option value="runs">Cumulative runs</option></select></div>
+                    <Select aria-label="W14 measure" className={inputSized('h-(--layout-control-sm) w-48')} value={w14} onChange={(e) => setW14(e.target.value as K.W14Metric)}><option value="remaining">Remaining length</option><option value="od">OD reduction</option><option value="runs">Cumulative runs</option></Select></div>
                   <ul className="space-y-1 text-sm">{w14r.items.map((i) => <li key={i.label} className="flex gap-2"><Link className="flex-1 font-mono underline" to={`/wires/${encodeURIComponent(i.label)}`}>{i.label}</Link>
                     <span className={cx('font-mono', w14 === 'remaining' && i.value < w14r.lowLength && 'text-warning')}>{Math.round(i.value * 10) / 10}{w14r.unit && ` ${w14r.unit}`}</span></li>)}</ul>
                   {w14 === 'remaining' && <p className="mt-2 text-xs text-text-subtle">Lowest first. Low-length warning at {w14r.lowLength.toLocaleString()} ft.</p>}

@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, FileText, History, Mail, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -289,10 +290,10 @@ export function EightMinFactsEditor() {
                     <input id={`${inc.key}-npt`} type="number" min={0} step="any" inputMode="decimal" className={cx(inputClass, 'pr-8')} disabled={readOnly} value={inc.npt_hours} onChange={(e) => edit(inc.key, { npt_hours: e.target.value })} />
                   </Field>
                   <Field id={`${inc.key}-cat`} label="Category">
-                    <select id={`${inc.key}-cat`} className={inputClass} disabled={readOnly} value={inc.category} onChange={(e) => edit(inc.key, { category: e.target.value })}>
+                    <Select id={`${inc.key}-cat`} className={inputClass} disabled={readOnly} value={inc.category} onChange={(e) => edit(inc.key, { category: e.target.value })}>
                       <option value="">Choose…</option>
                       {[...new Set([...categories, ...(inc.category ? [inc.category] : [])])].map((c) => <option key={c}>{c}</option>)}
-                    </select>
+                    </Select>
                   </Field>
                   <div className="md:col-span-2"><FailedItems items={inc.failed_items} readOnly={readOnly} idPrefix={inc.key} onChange={(failed_items) => edit(inc.key, { failed_items })} /></div>
                   <div className="md:col-span-3 grid grid-cols-1 gap-4 md:grid-cols-2">

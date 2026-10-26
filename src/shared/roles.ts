@@ -1,4 +1,4 @@
-import type { Role } from './types';
+import type { BuiltinRole, Role } from './types';
 
 // First sign-in default: the SLK Ops role a WIREGUARD role maps to. An SLK Ops admin adjusts it afterwards.
 export const DEFAULT_ROLE_FROM_WG: Record<string, Role> = {
@@ -11,7 +11,7 @@ export const DEFAULT_ROLE_FROM_WG: Record<string, Role> = {
 
 export const defaultRoleFor = (wgRole: string | null | undefined): Role => DEFAULT_ROLE_FROM_WG[wgRole ?? ''] ?? 'viewer';
 
-export const ROLE_LABEL: Record<Role, string> = {
+export const ROLE_LABEL: Record<BuiltinRole, string> = {
   admin: 'Admin',
   operations_manager: 'Ops Manager',
   maintenance_manager: 'Maintenance Mgr',
@@ -33,3 +33,13 @@ export const ROLE_LABEL: Record<Role, string> = {
   foreman: 'Foreman',
   maintenance_supervisor: 'Maint. Supervisor',
 };
+
+// Labels of roles added in Users & Roles, filled from /api/roles on the client (and per request on the server).
+const extraLabels = new Map<string, string>();
+export function setRoleLabels(list: { key: string; label: string }[]) {
+  extraLabels.clear();
+  for (const r of list) extraLabels.set(r.key, r.label);
+}
+/** A role's name for people: an edited or added label first, then the built-in one, then the key. */
+export const roleLabel = (role: Role | null | undefined): string =>
+  !role ? '' : extraLabels.get(role) ?? (ROLE_LABEL as Record<string, string>)[role] ?? role.replace(/_/g, ' ');

@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileSpreadsheet, Mail, Printer, RotateCcw, ShieldCheck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -149,7 +150,7 @@ export function BonusRules() {
   const sum = Object.values(splits).reduce((a, v) => a + (Number(v) || 0), 0);
   return (
     <section aria-labelledby="rules-title">
-      <PageTitle aside={(me?.countries.length ?? 0) > 1 && <select aria-label="Country" className={inputSized('h-(--layout-control-sm) w-44')} value={c} onChange={(e) => setCountry(e.target.value)}>{me?.countries.map((x) => <option key={x}>{x}</option>)}</select>}>
+      <PageTitle aside={(me?.countries.length ?? 0) > 1 && <Select aria-label="Country" className={inputSized('h-(--layout-control-sm) w-44')} value={c} onChange={(e) => setCountry(e.target.value)}>{me?.countries.map((x) => <option key={x}>{x}</option>)}</Select>}>
         <span id="rules-title">Bonus rules</span>
       </PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">A job’s pool comes from the rule of its main service (the first one picked with a rule): a fixed amount per job, an amount per successful run, or a share of the job’s revenue. The pool is then split by role, and the SDM can adjust it on Closure before approving.</p>
@@ -187,7 +188,7 @@ function RuleRow({ country, name, rule, onSave }: { country: string; name: strin
   return (
     <tr className="border-t border-border">
       <th scope="row" className="px-3 py-2 text-left font-normal">{name}{!rule && <span className="ml-2 text-xs text-text-subtle">no rule</span>}</th>
-      <td className="px-3 py-2"><select aria-label={`Basis for ${name}`} className={inputSized('h-(--layout-control-sm) w-52')} value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>{(Object.keys(BASIS_LABEL) as Basis[]).map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}</select></td>
+      <td className="px-3 py-2"><Select aria-label={`Basis for ${name}`} className={inputSized('h-(--layout-control-sm) w-52')} value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>{(Object.keys(BASIS_LABEL) as Basis[]).map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}</Select></td>
       <td className="px-3 py-2"><span className="relative inline-block"><input aria-label={`Amount for ${name}`} type="number" min={0} step="any" className={inputSized('h-(--layout-control-sm) w-32 pr-12')} value={value} onChange={(e) => setValue(e.target.value)} />
         <span aria-hidden className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 font-mono text-xs text-text-subtle">{basis === 'pct_revenue' ? '%' : 'USD'}</span></span></td>
       <td className="px-3 py-2"><input type="checkbox" aria-label={`${name} active`} checked={active} onChange={(e) => setActive(e.target.checked)} /></td>

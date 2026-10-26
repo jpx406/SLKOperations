@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Info, Send, ShieldCheck, Upload, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -6,7 +7,7 @@ import { SignatureBadge } from '../components/Signature';
 import { ANSWER_LABEL, approvalLevel, exemptions, flags, optionsOf, pointsFor, progress, riskScore, type Answer, type Template } from '../../shared/jra';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
-import { ROLE_LABEL } from '../../shared/roles';
+import { roleLabel } from '../../shared/roles';
 import { Banner, Button, Card, Field, ProgressBar, Skeleton, cx, inputClass, radioTab, rovingKeys } from '../components/ui';
 
 // JRA (S28): answers save as you go while it is a draft; Send for approval needs every required answer;
@@ -27,7 +28,8 @@ export function JraPage() {
   const qc = useQueryClient();
   const { data: me } = useMe();
   const q = useQuery({ queryKey: ['jra', id], queryFn: () => api<JraData>(`/jra/${id}`) });
-  const sdms = useQuery({ queryKey: ['sdms'], queryFn: () => api<{ username: string; full_name: string }[]>('/sdms'), staleTime: 300_000 });
+  // who this JRA can go to: people holding a role for its approval level (Users & Roles → Approvals)
+  const approvers = useQuery({ queryKey: ['jra-approvers', id], queryFn: () => api<{ level: string; people: { username: string; full_name: string; role: string }[] }>(`/jra/${id}/approvers`), staleTime: 30_000 });
   const [error, setError] = useState<string | null>(null);
   const [to, setTo] = useState('');
   const [rejectNote, setRejectNote] = useState('');
@@ -144,7 +146,7 @@ export function JraPage() {
             {status === 'draft' && me?.menus.jobs?.edit && (
               <div className="mt-4 space-y-2 border-t border-border pt-3">
                 <Field id="jra-to" label="Send to" hint={prog.missing.length ? `Still to answer: ${prog.missing.join(', ')}` : 'Every required question is answered'}>
-                  <select id="jra-to" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)}><option value="">Choose…</option>{(sdms.data ?? []).map((s) => <option key={s.username} value={s.username}>{s.full_name}</option>)}</select>
+                  <Select id="jra-to" search className={inputClass} value={to} onChange={(e) => setTo(e.target.value)}><option value="">Choose…</option>{(approvers.data?.people ?? []).map((s) => <option key={s.username} value={s.username}>{s.full_name} · {roleLabel(s.role)}</option>)}</Select>
                 </Field>
                 <Button variant="primary" className="w-full" disabled={!!prog.missing.length || !to || save.state === 'saving'} onClick={() => act('send', { to })}><Send aria-hidden className="size-4" />Send for approval</Button>
               </div>
@@ -162,7 +164,7 @@ export function JraPage() {
               </div>
             )}
             {signing && me && (
-              <SignDialog score={score} level={level} flags={flags(d.template, answers)} signer={`${me.fullName} (${ROLE_LABEL[me.role]})`} form={`${d.template.code} rev ${d.template.revision}`} ticket={d.job.ticket_no}
+              <SignDialog score={score} level={level} flags={flags(d.template, answers)} signer={`${me.fullName} (${roleLabel(me.role)})`} form={`${d.template.code} rev ${d.template.revision}`} ticket={d.job.ticket_no}
                 onCancel={() => setSigning(false)} onSign={async () => { await act('decide', { decision: 'approved' }); setSigning(false); }} />
             )}
             {status === 'approved' && <p className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-success"><Check aria-hidden className="size-4" />Approved · Execution is open</p>}

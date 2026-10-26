@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Briefcase, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -98,8 +99,8 @@ function CardEditor({ card, units, onClose }: { card: QpCard | null; units: stri
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2"><Field id="qp-t" label="Title"><input id="qp-t" className={inputClass} value={f.title} placeholder="Client, well or job" onChange={(e) => setF({ ...f, title: e.target.value })} /></Field></div>
           <Field id="qp-d" label="Target date"><input id="qp-d" type="date" className={inputClass} value={f.target_date} onChange={(e) => setF({ ...f, target_date: e.target.value })} /></Field>
-          <Field id="qp-u" label="Unit"><select id="qp-u" className={inputClass} value={f.unit_number} onChange={(e) => setF({ ...f, unit_number: e.target.value })}><option value="">Not decided</option>{units.map((u) => <option key={u}>{u}</option>)}</select></Field>
-          {!card && (me?.countries.length ?? 0) > 1 && <Field id="qp-c" label="Country"><select id="qp-c" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</select></Field>}
+          <Field id="qp-u" label="Unit"><Select id="qp-u" className={inputClass} value={f.unit_number} onChange={(e) => setF({ ...f, unit_number: e.target.value })}><option value="">Not decided</option>{units.map((u) => <option key={u}>{u}</option>)}</Select></Field>
+          {!card && (me?.countries.length ?? 0) > 1 && <Field id="qp-c" label="Country"><Select id="qp-c" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</Select></Field>}
           <div className="sm:col-span-2"><Field id="qp-n" label="Notes"><textarea id="qp-n" rows={3} className={cx(inputClass, 'h-auto py-2')} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field></div>
         </div>
         <Button className="mt-4" variant="primary" disabled={!f.title.trim()} onClick={save}>{card ? 'Save' : 'Add card'}</Button>

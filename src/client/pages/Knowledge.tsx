@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, Pencil, Play, Plus, Search, Star, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -60,10 +61,10 @@ export function KnowledgeHub() {
               <Search aria-hidden className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-text-subtle" />
               <input className={inputSized('w-72 pl-8')} placeholder="Search titles, summaries, actions" value={f.q} onChange={(e) => set('q', e.target.value)} />
             </label>
-            <select aria-label="Failure type" className={inputSized('w-56')} value={f.failure} onChange={(e) => set('failure', e.target.value)}>
+            <Select aria-label="Failure type" className={inputSized('w-56')} value={f.failure} onChange={(e) => set('failure', e.target.value)}>
               <option value="">All failure types</option>{lib.failures.map((x) => <option key={x.value} value={x.value}>{x.value} ({x.n})</option>)}
-            </select>
-            <select aria-label="Sort" className={inputSized('w-36')} value={f.sort} onChange={(e) => set('sort', e.target.value === 'az' ? 'az' : '')}><option value="newest">Newest</option><option value="az">A → Z</option></select>
+            </Select>
+            <Select aria-label="Sort" className={inputSized('w-36')} value={f.sort} onChange={(e) => set('sort', e.target.value === 'az' ? 'az' : '')}><option value="newest">Newest</option><option value="az">A → Z</option></Select>
             <label className="flex h-(--layout-control-md) items-center gap-2 text-sm"><input type="checkbox" checked={f.duplicates} onChange={(e) => set('dups', e.target.checked ? '1' : '')} />Show duplicates</label>
             {lib.docs.length > 0 && <Button className="ml-auto" onClick={() => setPresent(lib.docs)}><Play aria-hidden className="size-4" />Present these {lib.docs.length} as a toolbox talk</Button>}
           </div>
@@ -193,8 +194,8 @@ function Editor({ doc, all, onClose }: { doc: KnowledgeDoc | null; all: Knowledg
     <Dialog title={doc ? 'Edit document' : 'Add document'} onClose={() => onClose(false)} wide>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field id="kd-type" label="Type"><select id="kd-type" className={inputClass} value={f.doc_type} onChange={(e) => setF({ ...f, doc_type: e.target.value as DocType })}>{Object.entries(DOC_TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
-        {!doc && (me?.countries.length ?? 0) > 1 && <Field id="kd-country" label="Country"><select id="kd-country" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</select></Field>}
+        <Field id="kd-type" label="Type"><Select id="kd-type" className={inputClass} value={f.doc_type} onChange={(e) => setF({ ...f, doc_type: e.target.value as DocType })}>{Object.entries(DOC_TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
+        {!doc && (me?.countries.length ?? 0) > 1 && <Field id="kd-country" label="Country"><Select id="kd-country" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>{me?.countries.map((c) => <option key={c}>{c}</option>)}</Select></Field>}
         {input('category', 'Category', { list: 'kd-cats', placeholder: 'e.g. Wireline, Pressure control' })}
         <datalist id="kd-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist>
         <div className="sm:col-span-2">{input('title', 'Title')}</div>
@@ -205,9 +206,9 @@ function Editor({ doc, all, onClose }: { doc: KnowledgeDoc | null; all: Knowledg
         {input('rilr_ref', 'RILR / reference')}
         {input('source_ref', 'Link to the source', { type: 'url', placeholder: 'https://…sharepoint.com/…' })}
         <Field id="kd-dup" label="Duplicate of" hint="Hidden from the library unless Show duplicates is on">
-          <select id="kd-dup" className={inputClass} value={f.duplicate_of} onChange={(e) => setF({ ...f, duplicate_of: e.target.value })}>
+          <Select id="kd-dup" className={inputClass} value={f.duplicate_of} onChange={(e) => setF({ ...f, duplicate_of: e.target.value })}>
             <option value="">Not a duplicate</option>{all.filter((d) => d.id !== doc?.id && !d.duplicate_of).map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
-          </select>
+          </Select>
         </Field>
       </div>
       <Button className="mt-4" variant="primary" loading={busy} disabled={!f.title.trim() || !f.category.trim()} onClick={save}>{doc ? 'Save changes' : 'Add document'}</Button>

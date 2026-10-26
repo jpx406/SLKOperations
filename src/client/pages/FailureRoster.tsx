@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Download, FileSpreadsheet, Plus, Printer, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
@@ -106,14 +107,14 @@ export function FailureRoster() {
       <FilterBar optionsPath="/filter-options" withStatus={false} />
       <div className="mb-4 flex flex-wrap gap-2 print:hidden">
         <label className="flex items-center gap-2 text-xs text-text-muted">Severity
-          <select className={inputSized('h-(--layout-control-sm) w-40')} value={severity} onChange={(e) => setP('severity', e.target.value)}>
+          <Select className={inputSized('h-(--layout-control-sm) w-40')} value={severity} onChange={(e) => setP('severity', e.target.value)}>
             <option value="">All</option>{SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}<option value="none">No 8MF (added by hand)</option>
-          </select>
+          </Select>
         </label>
         <label className="flex items-center gap-2 text-xs text-text-muted">Action
-          <select className={inputSized('h-(--layout-control-sm) w-36')} value={action} onChange={(e) => setP('action', e.target.value)}>
+          <Select className={inputSized('h-(--layout-control-sm) w-36')} value={action} onChange={(e) => setP('action', e.target.value)}>
             <option value="">All</option>{Object.entries(ACTION_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </Select>
         </label>
       </div>
 
@@ -171,10 +172,10 @@ export function FailureRoster() {
                   <td className="px-3 py-2 font-mono text-xs">{r.job_id ? <Link className="underline" to={`/operation/jobs/${r.job_id}/execution`}>{r.ticket_no ?? 'no ticket'}</Link> : '—'}</td>
                   <td className="px-3 py-2">{r.category ?? '—'}</td>
                   <td className="px-3 py-2">
-                    <select aria-label={`Action status for ${r.well ?? 'failure'} on ${r.occurred_on}`} className={cx(inputClass, 'h-(--layout-control-sm) w-36', r.action_status === 'open' && 'text-warning', r.action_status === 'closed' && 'text-success')}
+                    <Select aria-label={`Action status for ${r.well ?? 'failure'} on ${r.occurred_on}`} className={cx(inputClass, 'h-(--layout-control-sm) w-36', r.action_status === 'open' && 'text-warning', r.action_status === 'closed' && 'text-success')}
                       disabled={!canEdit || patch.isPending} value={r.action_status} onChange={(e) => patch.mutate({ id: r.id, body: { action_status: e.target.value } })}>
                       {Object.entries(ACTION_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                    </select>
+                    </Select>
                   </td>
                   <td className="px-3 py-2 text-right">
                     {!r.incident_id && canDelete && <Button size="sm" variant="ghost" aria-label="Remove this hand-added row" onClick={() => { if (window.confirm('Remove this failure from the roster?')) remove.mutate(r.id); }}><Trash2 aria-hidden className="size-3.5" /></Button>}
@@ -207,12 +208,12 @@ function AddFailure({ onClose }: { onClose: (ok?: boolean) => void }) {
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {(me?.countries.length ?? 0) > 1 && (
-            <Field id="af-country" label="Country"><select id="af-country" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}><option value="">Choose…</option>{me?.countries.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field id="af-country" label="Country"><Select id="af-country" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}><option value="">Choose…</option>{me?.countries.map((c) => <option key={c}>{c}</option>)}</Select></Field>
           )}
           <Field id="af-on" label="Date" required><input id="af-on" type="date" className={inputClass} value={f.occurred_on} onChange={(e) => setF({ ...f, occurred_on: e.target.value })} /></Field>
           <Field id="af-well" label="Well"><input id="af-well" className={inputClass} value={f.well} onChange={(e) => setF({ ...f, well: e.target.value })} /></Field>
-          <Field id="af-cat" label="Category"><select id="af-cat" className={inputClass} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}><option value="">Choose…</option>{(lookups.data?.lists.failure_category ?? []).map((c) => <option key={c}>{c}</option>)}</select></Field>
-          <Field id="af-sev" label="Severity"><select id="af-sev" className={inputClass} value={f.severity} onChange={(e) => setF({ ...f, severity: e.target.value })}><option value="">Not set</option>{SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}</select></Field>
+          <Field id="af-cat" label="Category"><Select id="af-cat" className={inputClass} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}><option value="">Choose…</option>{(lookups.data?.lists.failure_category ?? []).map((c) => <option key={c}>{c}</option>)}</Select></Field>
+          <Field id="af-sev" label="Severity"><Select id="af-sev" className={inputClass} value={f.severity} onChange={(e) => setF({ ...f, severity: e.target.value })}><option value="">Not set</option>{SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}</Select></Field>
           <Field id="af-rilr" label="RILR numbers" hint="Separate with commas"><input id="af-rilr" className={inputClass} value={f.rilr} onChange={(e) => setF({ ...f, rilr: e.target.value })} /></Field>
           <div className="sm:col-span-2"><Field id="af-notes" label="Notes"><textarea id="af-notes" rows={3} className={cx(inputClass, 'h-auto py-2')} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field></div>
         </div>

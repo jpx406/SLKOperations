@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ROLE_LABEL } from '../shared/roles';
+import { roleLabel } from '../shared/roles';
 import { STATE_TEXT, checkSignature, fingerprint, isSignedEntity, seal, type SignatureFacts, type SignedEntity } from '../shared/signature';
 import type { AppBindings, AuthedUser, Env } from './env';
 
@@ -33,7 +33,7 @@ export async function signedContent(env: Env, type: SignedEntity, id: string): P
 export async function signStatement(env: Env, user: AuthedUser, type: SignedEntity, id: string) {
   const loaded = await signedContent(env, type, id);
   const facts: SignatureFacts = {
-    entity_type: type, entity_id: id, username: user.username, full_name: user.fullName, role: ROLE_LABEL[user.role],
+    entity_type: type, entity_id: id, username: user.username, full_name: user.fullName, role: roleLabel(user.role),
     signed_at: new Date().toISOString(), fingerprint: await fingerprint(loaded?.content ?? null),
   };
   const s = env.SIGNING_KEY ? await seal(env.SIGNING_KEY, facts) : null;

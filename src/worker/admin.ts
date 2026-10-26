@@ -1,17 +1,17 @@
 import { Hono } from 'hono';
-import { ROLE_LABEL } from '../shared/roles';
+import { roleLabel } from '../shared/roles';
 import type { Role } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { exportPackage, importApply, importDryRun } from './dataPackage';
 import { MENU_KEYS, effectiveMenus } from './permissions';
 import { syncPeople } from './people';
+import { roleKeys } from './rules';
 import { cleanEmployee } from './roster';
 import { isSheet } from '../shared/attendanceSheets';
 
 // Users & Roles (S34). Accounts live in WIREGUARD; here an admin sets each person's SLK Ops role,
 // sets their countries, switches access off, adds or removes tabs per person and edits the role × menu matrix.
 
-const ROLES = Object.keys(ROLE_LABEL) as Role[];
 const USERNAME = /^NESR-\d+$/i;
 
 const audit = (env: Env, user: AuthedUser, action: string, entity: string, id: string, summary: string) =>
@@ -95,7 +95,7 @@ admin.post('/users', async (c) => {
   const name = (body.full_name ?? '').trim();
   if (!USERNAME.test(username)) return c.json({ error: 'Usernames are NESR- followed by digits, as in WIREGUARD' }, 400);
   if (!name) return c.json({ error: 'Enter the person’s name' }, 400);
-  if (!body.role || !ROLES.includes(body.role)) return c.json({ error: 'Pick a role' }, 400);
+  if (!body.role || !(await roleKeys(c.env)).includes(body.role)) return c.json({ error: 'Pick a role' }, 400);
   const cErr = await checkCountries(c.env, body.countries ?? [], body.role);
   if (cErr) return c.json({ error: cErr }, 400);
   const exists = await c.env.DB.prepare('SELECT 1 FROM user_roles WHERE username = ?').bind(username).first();
@@ -115,7 +115,7 @@ admin.patch('/users/:username', async (c) => {
   const cur = await c.env.DB.prepare('SELECT username, role, active, countries FROM user_roles WHERE username = ?').bind(username)
     .first<{ username: string; role: Role; active: number; countries: string }>();
   if (!cur) return c.json({ error: 'No such user' }, 404);
-  if (body.role !== undefined && !ROLES.includes(body.role)) return c.json({ error: 'Unknown role' }, 400);
+  if (body.role !== undefined && !(await roleKeys(c.env)).includes(body.role)) return c.json({ error: 'Unknown role' }, 400);
 
   const isSelf = cur.username.toLowerCase() === me.username.toLowerCase();
   if (isSelf && ((body.role && body.role !== cur.role) || body.active === false)) {
@@ -186,13 +186,13 @@ admin.put('/users/:username/grants', async (c) => {
 
 admin.get('/role-permissions', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT role, menu_key, can_view, can_edit, can_delete FROM role_permissions').all();
-  return c.json({ roles: ROLES.filter((r) => r !== 'admin'), menus: MENU_KEYS, rows: results });
+  return c.json({ roles: (await roleKeys(c.env)).filter((r) => r !== 'admin'), menus: MENU_KEYS, rows: results });
 });
 
 admin.put('/role-permissions', async (c) => {
   const me = c.get('user');
   const b = await c.req.json<{ role: Role; menu_key: string; can_view: boolean; can_edit: boolean; can_delete: boolean }>().catch(() => null);
-  if (!b || !ROLES.includes(b.role) || b.role === 'admin') return c.json({ error: 'Pick a role (admin always has every right)' }, 400);
+  if (!b || !(await roleKeys(c.env)).includes(b.role) || b.role === 'admin') return c.json({ error: 'Pick a role (admin always has every right)' }, 400);
   if (!(MENU_KEYS as readonly string[]).includes(b.menu_key)) return c.json({ error: 'Unknown menu' }, 400);
   if (b.menu_key === 'users') return c.json({ error: 'Users & Roles stays with admins' }, 400);
   // edit or delete without view makes no sense: view follows the others
@@ -221,18 +221,18 @@ admin.get('/audit', async (c) => {
 admin.get('/attendance-categories', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT role, sheet, updated_by, updated_at FROM attendance_role_sheets').all<{ role: string; sheet: string }>();
   const byRole = new Map(results.map((r) => [r.role, r]));
-  return c.json(ROLES.map((role) => ({ role, sheet: byRole.get(role)?.sheet ?? 'none', updated_by: (byRole.get(role) as { updated_by?: string } | undefined)?.updated_by ?? null })));
+  return c.json((await roleKeys(c.env)).map((role) => ({ role, sheet: byRole.get(role)?.sheet ?? 'none', updated_by: (byRole.get(role) as { updated_by?: string } | undefined)?.updated_by ?? null })));
 });
 
 admin.put('/attendance-categories', async (c) => {
   const me = c.get('user');
   const b = await c.req.json<{ role?: Role; sheet?: string }>().catch(() => ({} as { role?: Role; sheet?: string }));
-  if (!b.role || !ROLES.includes(b.role)) return c.json({ error: 'Unknown role' }, 400);
+  if (!b.role || !(await roleKeys(c.env)).includes(b.role)) return c.json({ error: 'Unknown role' }, 400);
   if (b.sheet !== 'none' && !isSheet(b.sheet)) return c.json({ error: 'Unknown attendance sheet' }, 400);
   await c.env.DB.batch([
     c.env.DB.prepare(`INSERT INTO attendance_role_sheets (role, sheet, updated_by, updated_at) VALUES (?1, ?2, ?3, ?4)
       ON CONFLICT (role) DO UPDATE SET sheet = ?2, updated_by = ?3, updated_at = ?4`).bind(b.role, b.sheet, me.username, new Date().toISOString()),
-    audit(c.env, me, 'edit', 'attendance_role_sheets', b.role, `${ROLE_LABEL[b.role]} → ${b.sheet}`),
+    audit(c.env, me, 'edit', 'attendance_role_sheets', b.role, `${roleLabel(b.role)} → ${b.sheet}`),
   ]);
   return c.json({ ok: true });
 });

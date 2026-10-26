@@ -1,3 +1,4 @@
+import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, CircleDashed, ExternalLink, Link2, Play, RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -148,21 +149,21 @@ export function Reconciliation() {
                 </button>
               ))}
             </div>
-            <select aria-label="Status" className={inputSized('h-(--layout-control-sm) w-36')} value={status} onChange={(e) => set('status', e.target.value === 'open' ? '' : e.target.value)}>
+            <Select aria-label="Status" className={inputSized('h-(--layout-control-sm) w-36')} value={status} onChange={(e) => set('status', e.target.value === 'open' ? '' : e.target.value)}>
               <option value="open">Open</option><option value="explained">Explained</option><option value="resolved">Resolved</option><option value="all">All statuses</option>
-            </select>
-            <select aria-label="Check" className={inputSized('h-(--layout-control-sm) w-64')} value={check} onChange={(e) => set('check', e.target.value)}>
+            </Select>
+            <Select aria-label="Check" className={inputSized('h-(--layout-control-sm) w-64')} value={check} onChange={(e) => set('check', e.target.value)}>
               <option value="">All checks</option>
               {(Object.keys(CHECKS) as CheckCode[]).map((k) => <option key={k} value={k}>{CHECKS[k].label}</option>)}
-            </select>
-            <select aria-label="Unit" className={inputSized('h-(--layout-control-sm) w-32')} value={unit} onChange={(e) => set('unit', e.target.value)}>
+            </Select>
+            <Select aria-label="Unit" className={inputSized('h-(--layout-control-sm) w-32')} value={unit} onChange={(e) => set('unit', e.target.value)}>
               <option value="">All units</option>
               {(s?.units ?? []).map((u) => <option key={u.unit_number} value={u.unit_number}>{u.unit_number}</option>)}
-            </select>
-            <select aria-label="SDM" className={inputSized('h-(--layout-control-sm) w-44')} value={sdm} onChange={(e) => set('sdm', e.target.value)}>
+            </Select>
+            <Select aria-label="SDM" className={inputSized('h-(--layout-control-sm) w-44')} value={sdm} onChange={(e) => set('sdm', e.target.value)}>
               <option value="">All SDMs</option>
               {(s?.sdms ?? []).map((x) => <option key={x.sdm} value={x.sdm}>{x.name}</option>)}
-            </select>
+            </Select>
             {filtered && <Button size="sm" variant="ghost" onClick={() => setParams({ month })}>Clear filters</Button>}
           </div>
 
@@ -378,10 +379,10 @@ function FindingDrawer({ id, canEdit, wireguardUrl, onClose }: { id: string; can
                 {!!pick.length && (
                   <div className="flex flex-wrap items-end gap-2">
                     <Field id="link-job" label="Job">
-                      <select id="link-job" className={`${inputClass} w-96 max-w-full`} value={linkTo} onChange={(e) => setLinkTo(e.target.value)}>
+                      <Select id="link-job" className={`${inputClass} w-96 max-w-full`} value={linkTo} onChange={(e) => setLinkTo(e.target.value)}>
                         <option value="">Choose…</option>
                         {pick.map((j) => <option key={j.id} value={j.id}>{jobLabel(j)}</option>)}
-                      </select>
+                      </Select>
                     </Field>
                     <Button variant="primary" disabled={!linkTo} loading={link.isPending} onClick={() => link.mutate()}><Link2 aria-hidden className="size-4" />Link</Button>
                   </div>

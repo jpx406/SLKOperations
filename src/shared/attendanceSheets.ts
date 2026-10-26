@@ -1,3 +1,4 @@
+import { allowed, type Rules } from './approvalRules';
 import type { Role } from './types';
 
 // Who fills and who approves each attendance sheet (owner request, 2026-10-26). The server enforces these on
@@ -37,24 +38,25 @@ export interface SheetRow {
 const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const sheetOf = (r: SheetRow): SheetKey => r.attendance_sheet ?? 'shop';
 
-export function canFill(v: Viewer, r: SheetRow): boolean {
+// Fillers and approvers per sheet are rules (Users & Roles → Approvals → Attendance); SHEETS holds the defaults.
+export function canFill(v: Viewer, r: SheetRow, rules?: Rules | null): boolean {
   if (v.role === 'admin' || v.role === 'attendance_admin') return true;
   const own = same(v.username, r.wg_username);
   const sheet = sheetOf(r);
   if (own && (sheet === 'management' || r.self_updated)) return true;
-  if (sheet === 'field') return v.role === 'foreman' && (same(v.username, r.reports_to_username) || own);
-  if (sheet === 'shop') return v.role === 'maintenance_supervisor';
+  if (sheet === 'field') return allowed(rules, 'attendance.field.fill', v.role) && (same(v.username, r.reports_to_username) || own);
+  if (sheet === 'shop') return allowed(rules, 'attendance.shop.fill', v.role);
   return false;
 }
 
-export function canApprove(v: Viewer, r: SheetRow): boolean {
+export function canApprove(v: Viewer, r: SheetRow, rules?: Rules | null): boolean {
   if (v.role === 'admin') return true;
-  return SHEETS[sheetOf(r)].approveRoles.includes(v.role);
+  return allowed(rules, `attendance.${sheetOf(r)}.approve`, v.role);
 }
 
 /** Rows a person sees: everything for managers of the sheet, otherwise the rows they fill or approve, and their own. */
-export function canSee(v: Viewer, r: SheetRow): boolean {
-  return SEE_ALL.includes(v.role) || canFill(v, r) || canApprove(v, r) || same(v.username, r.wg_username);
+export function canSee(v: Viewer, r: SheetRow, rules?: Rules | null): boolean {
+  return SEE_ALL.includes(v.role) || canFill(v, r, rules) || canApprove(v, r, rules) || same(v.username, r.wg_username);
 }
 
 /** A new roster entry's sheet, from the crew role: crews are field, everyone else starts in the shop. */
