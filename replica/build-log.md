@@ -1014,3 +1014,12 @@ Every label, message and empty state was written here. No code, assets or copy f
   - tests 207;
   - in the browser (desk, dark and Sunlight): sign-in, schedule, job log and job board, with no page errors;
   - a Mechanic maintenance event and an open Loan were created from the new dialogs and drawn on the schedule.
+
+## 6o — Reconciliation moved under Wires
+
+- Reconciliation is now the second tab of Wires (`/wires/reconciliation`) instead of an Operation tab (owner request).
+- The old `/operation/reconciliation` address redirects there with its query (`?severity=high`), so bookmarks and digest emails sent before the move still land.
+- The digest link, the schedule and job board banner link, and the help text point to the new place.
+- Section tabs that are a prefix of another (Wires and Wires / Reconciliation) match exactly, so only one is highlighted.
+- The menu key (`reconciliation`) and its rights are unchanged.
+- Verified: tests 207; in the browser the old link redirects, Wires shows both tabs with the right one active, and Operation no longer lists Reconciliation.

@@ -11,7 +11,6 @@ export const NAV: Group[] = [
       { key: 'schedule', label: 'Schedule', path: '/operation/schedule', screen: 'S02' },
       { key: 'jobs', label: 'Jobs', path: '/operation/jobs', screen: 'S03' },
       { key: 'job_log', label: 'Job Log', path: '/operation/job-log', screen: 'S08', milestone: '2g' },
-      { key: 'reconciliation', label: 'Reconciliation', path: '/operation/reconciliation', screen: 'S46', milestone: '2e' },
       { key: 'pre_job_notes', label: 'Pre-Job Notes', path: '/operation/pre-job-notes', screen: 'S09', milestone: '3' },
       { key: 'failure_roster', label: 'Failure Roster', path: '/operation/failure-roster', screen: 'S10', milestone: '2h' },
       { key: 'eight_min_facts', label: '8 Min. Facts', path: '/operation/8-min-facts', screen: 'S11', milestone: '2h' },
@@ -53,7 +52,14 @@ export const NAV: Group[] = [
       { key: 'inventory_mcr', label: 'MCR', path: '/inventory/mcr', screen: 'S29', milestone: '3' },
     ],
   },
-  { label: 'Wires', pages: [{ key: 'wires', label: 'Wires', path: '/wires', screen: 'S30', milestone: '3' }] },
+  {
+    label: 'Wires',
+    pages: [
+      { key: 'wires', label: 'Wires', path: '/wires', screen: 'S30', milestone: '3' },
+      // checks SLK Ops jobs against WIREGUARD's runs (moved here from Operation, owner request 2026-10-26)
+      { key: 'reconciliation', label: 'Reconciliation', path: '/wires/reconciliation', screen: 'S46', milestone: '2e' },
+    ],
+  },
   { label: 'Knowledge Hub', pages: [{ key: 'knowledge_hub', label: 'Knowledge Hub', path: '/knowledge', screen: 'S21', milestone: '3' }] },
   {
     label: 'Administration',

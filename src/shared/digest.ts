@@ -28,7 +28,7 @@ export function buildDigest(r: Recipient, findings: DigestFinding[], appUrl: str
   const subject = `SLK Ops reconciliation: ${sorted.length} open finding${sorted.length === 1 ? '' : 's'}${fresh ? ` (${fresh} new)` : ''}`;
   const top = sorted.slice(0, 25);
   const line = (f: DigestFinding) => `${f.first_seen_at >= since ? '[new] ' : ''}${f.severity.toUpperCase()} · ${CHECKS[f.check_code]?.label ?? f.check_code}${f.ticket_no ? ` · ticket ${f.ticket_no}` : ''}${f.unit_number ? ` · ${f.unit_number}` : ''}: ${f.summary}`;
-  const link = `${appUrl.replace(/\/$/, '')}/operation/reconciliation`;
+  const link = `${appUrl.replace(/\/$/, '')}/wires/reconciliation`;
   const text = [`Good morning ${r.full_name},`, '', `Open: ${counts.map(([s, n]) => `${n} ${s}`).join(', ')}.`, '', ...top.map(line),
     ...(sorted.length > top.length ? ['', `…and ${sorted.length - top.length} more.`] : []), '', `Review them: ${link}`,
     '', 'Findings close by themselves when the job or WIREGUARD is corrected; mark the rest as explained with a reason.'].join('\n');

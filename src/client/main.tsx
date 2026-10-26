@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Navigate, RouterProvider, createBrowserRouter } from 'react-router';
+import { Navigate, RouterProvider, createBrowserRouter, useLocation } from 'react-router';
 import { NAV } from '../shared/menus';
 import { RequireAuth } from './auth';
 import { AppShell } from './components/AppShell';
@@ -33,7 +33,13 @@ import { SignIn } from './pages/SignIn';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/operation/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/ai-agent', '/knowledge', '/operation/quick-plan']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/ai-agent', '/knowledge', '/operation/quick-plan']);
+
+/** Sends an old address to the page's new one, keeping its filters (?severity=high ...). */
+function MovedTo({ path }: { path: string }) {
+  const loc = useLocation();
+  return <Navigate to={`${path}${loc.search}${loc.hash}`} replace />;
+}
 
 const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
@@ -70,7 +76,9 @@ const router = createBrowserRouter([
       { path: 'inventory/explosive', element: <Inventory key="explosive" inv="explosive" /> },
       { path: 'inventory/hardware', element: <Inventory key="hardware" inv="hardware" /> },
       { path: 'inventory/mcr', element: <Inventory key="mcr" inv="mcr" /> },
-      { path: 'operation/reconciliation', element: <Reconciliation /> },
+      { path: 'wires/reconciliation', element: <Reconciliation /> },
+      // the old address, kept for bookmarks and digest emails sent before the move
+      { path: 'operation/reconciliation', element: <MovedTo path="/wires/reconciliation" /> },
       { path: 'operation/database', element: <Database /> },
       { path: 'admin/users', element: <AdminUsers /> },
       { path: 'admin/data', element: <AdminData /> },

@@ -16,7 +16,7 @@ export function ReconBanner() {
   if (!high) return null;
   return (
     <div className="mb-3 print:hidden">
-      <Banner tone="warning" action={<Link className="text-sm font-semibold underline" to="/operation/reconciliation?severity=high">Review</Link>}>
+      <Banner tone="warning" action={<Link className="text-sm font-semibold underline" to="/wires/reconciliation?severity=high">Review</Link>}>
         {high} high-severity reconciliation finding{high === 1 ? ' is' : 's are'} open: jobs and WIREGUARD runs disagree.
       </Banner>
     </div>

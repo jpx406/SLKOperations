@@ -16,7 +16,7 @@ describe('reconciliation digest', () => {
     expect(d.fresh).toBe(2);
     expect(d.subject).toBe('SLK Ops reconciliation: 3 open findings (2 new)');
     expect(d.text.split('\n').find((l) => l.includes('HIGH'))).toContain('[new] HIGH · No WIREGUARD runs for a completed job');
-    expect(d.text).toContain('Review them: https://slkops.nesrapp.com/operation/reconciliation');
+    expect(d.text).toContain('Review them: https://slkops.nesrapp.com/wires/reconciliation');
   });
   it('gives managers high and medium findings only, and nothing outside their countries', () => {
     const d = buildDigest(mgr, [f({ severity: 'medium' }), f({ severity: 'low' }), f({ severity: 'high', country: 'Bahrain' })], 'https://x', SINCE)!;

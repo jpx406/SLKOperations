@@ -120,7 +120,7 @@ export function AppShell() {
       {group && group.pages.length > 1 && (
         <nav aria-label="Section" className="sticky top-0 z-(--z-sticky) flex gap-2 overflow-x-auto border-b border-border bg-bg px-4 py-2.5 md:px-5 print:hidden">
           {group.pages.map((p) => (
-            <NavLink key={p.path} to={p.path}
+            <NavLink key={p.path} to={p.path} end={group.pages.some((o) => o !== p && o.path.startsWith(`${p.path}/`))}
               className={({ isActive }) => cx('inline-flex h-(--layout-control-sm) shrink-0 items-center rounded-pill border px-3.5 text-sm font-semibold',
                 isActive ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
               {p.label}

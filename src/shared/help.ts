@@ -46,7 +46,7 @@ The Failure Roster lists failures by month with category, severity and action st
   },
   {
     id: 'recon', title: 'Reconciliation with WIREGUARD', menus: ['reconciliation'],
-    body: `Each night (and on demand) SLK Operations compares your jobs with WIREGUARD's runs: runs with no job, jobs with no runs, different dates, units, drums, wires, wells or services. Each finding has a severity. Fix the job here or the run in WIREGUARD, or explain the difference; explained findings stop showing. The morning digest emails each person the findings on their jobs.`,
+    body: `Each night (and on demand) SLK Operations compares your jobs with WIREGUARD's runs: runs with no job, jobs with no runs, different dates, units, drums, wires, wells or services. Each finding has a severity. Fix the job here or the run in WIREGUARD, or explain the difference; explained findings stop showing. The morning digest emails each person the findings on their jobs. Find it under Wires → Reconciliation.`,
   },
   {
     id: 'database', title: 'Equipment database', menus: ['database'],
