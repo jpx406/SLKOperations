@@ -63,6 +63,7 @@ export class PdfDoc {
   readonly height = H;
   readonly margin = 42;
   private pages: string[][] = [];
+  private images: { width: number; height: number; data: Uint8Array }[] = [];
   y = 0;
 
   constructor() { this.addPage(); }
@@ -77,6 +78,12 @@ export class PdfDoc {
   }
   rect(x: number, y: number, w: number, h: number, fill: [number, number, number]) {
     this.page.push(`${fill.join(' ')} rg ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`);
+  }
+  /** Draws a baseline JPEG (RGB) into the box; the same image drawn twice is stored once per call site. */
+  jpeg(img: { width: number; height: number; data: Uint8Array }, x: number, y: number, w: number, h: number) {
+    let i = this.images.indexOf(img);
+    if (i < 0) i = this.images.push(img) - 1;
+    this.page.push(`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im${i + 1} Do Q`);
   }
   line(x1: number, y1: number, x2: number, y2: number, gray = 0.75) {
     this.page.push(`${gray} G 0.6 w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
@@ -105,15 +112,20 @@ export class PdfDoc {
     const catalog = add(''), pagesId = add('');
     const f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
     const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    const ims = this.images.map((im) => add(`<< /Type /XObject /Subtype /Image /Width ${im.width} /Height ${im.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.data.length} >>
+stream
+${String.fromCharCode(...im.data)}
+endstream`));
+    const xobj = ims.length ? ` /XObject << ${ims.map((id, i) => `/Im${i + 1} ${id} 0 R`).join(' ')} >>` : '';
     const kids: number[] = [];
     for (const p of this.pages) {
       const content = p.join('\n');
       const c = add(`<< /Length ${new TextEncoder().encode(content).length} >>\nstream\n${content}\nendstream`);
-      kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >> >> /Contents ${c} 0 R >>`));
+      kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >>${xobj} >> /Contents ${c} 0 R >>`));
     }
     objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
     objs[pagesId - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`;
-    // every content string is ASCII (non-ASCII is escaped as octal), so string length = byte length
+    // every content string is ASCII (non-ASCII is escaped as octal) and image bytes are one char each, so string length = byte length
     let out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
     const offsets: number[] = [];
     objs.forEach((body, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${body}\nendobj\n`; });

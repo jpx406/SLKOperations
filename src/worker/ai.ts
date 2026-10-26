@@ -6,7 +6,7 @@ import { ROLE_LABEL } from '../shared/roles';
 import type { AppBindings, Env } from './env';
 
 // AI Agent (S35). Answers questions from the asker's own data: every tool is a GET through the app itself,
-// with the asker's cookie and country switch, so permissions, countries and step-up apply exactly as in the browser.
+// with the asker's cookie and country switch, so permissions and countries apply exactly as in the browser.
 // One ai_usage row per question; the monthly budget is shared with the help assistant.
 
 const MAX_TURNS = 8;
@@ -177,9 +177,8 @@ export async function runTool(name: string, input: Record<string, unknown>, allo
   const bodies: unknown[] = [];
   for (const path of p.paths) {
     const res = await self(path);
-    const body = await res.json().catch(() => null) as { error?: string; stepUp?: boolean } | null;
+    const body = await res.json().catch(() => null) as { error?: string } | null;
     if (!res.ok) {
-      if (body?.stepUp) return { error: 'Revenue and bonus figures are locked. The person must unlock them with their password (open Sales or Bonus), then ask again.' };
       return { error: body?.error ?? `The page refused the request (${res.status})` };
     }
     bodies.push(body);

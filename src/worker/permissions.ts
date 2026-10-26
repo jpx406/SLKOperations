@@ -170,8 +170,6 @@ export function readAllowed(path: string, menus: Record<string, MenuRight>): boo
 export const OPEN_WRITES: { method: string; re: RegExp }[] = [
   { method: 'POST', re: /^\/api\/auth\/login$/ },
   { method: 'POST', re: /^\/api\/auth\/logout$/ },
-  // re-entering one's own password; what it unlocks is still limited by the tabs
-  { method: 'POST', re: /^\/api\/step-up$/ },
 ];
 
 export function ruleFor(method: string, path: string) {

@@ -135,7 +135,8 @@ export function Statistics() {
           )}
 
           <Card className="mb-4">
-            <h2 className="label-caps mb-3 text-text-muted">Fleet efficiency by account</h2>
+            <h2 className="label-caps mb-1 text-text-muted">Fleet efficiency by account</h2>
+            <p className="mb-3 text-xs text-text-subtle">Good at 90 % or more, watch from 75 %, low below that. (1 − NPT ÷ op hours) across the account’s jobs; click a gauge for the jobs.</p>
             {!byAccount.length ? <p className="text-sm text-text-subtle">No jobs in this selection.</p> : (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                 {byAccount.map((b) => (

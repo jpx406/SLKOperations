@@ -269,7 +269,7 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
 
         {user.role === 'admin'
-          ? <p className="mb-4 text-sm text-text-muted">Admins see every country and every tab; tab changes do not apply to them.</p>
+          ? <p id="admin-tabs-note" className="mb-4 text-sm text-text-muted">Admins see every country and every tab; tab changes do not apply to them.</p>
           : <div className="mb-5"><CountryPicker value={countries} onChange={setCountries} idPrefix={`c-${user.username}`} /></div>}
 
         <p className="label-caps mb-2 text-text-muted">Tabs: role default, extra access, or removed</p>
@@ -301,7 +301,7 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
         ))}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()} disabled={user.role === 'admin' && !Object.keys(choice).length}>Save</Button>
+          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()} disabled={user.role === 'admin' && !Object.keys(choice).length} aria-describedby={user.role === 'admin' ? 'admin-tabs-note' : undefined}>Save</Button>
           <Button variant="ghost" onClick={() => onClose()}>Cancel</Button>
           {config.data && (
             <a href={config.data.wireguardUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-text-muted underline hover:text-text">

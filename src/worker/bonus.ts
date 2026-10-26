@@ -5,7 +5,7 @@ import type { AppBindings, AuthedUser, Env } from './env';
 import { getJob } from './jobs';
 import { revokeStatement, signStatement } from './signatures';
 
-// Bonus (Administrator Manual 1 and 3). Every route here sits behind step-up re-authentication (see index.ts).
+// Bonus (Administrator Manual 1 and 3). Every route here sits behind the bonus tab's rights (see permissions.ts).
 // The distribution on Closure is for Admin and SDM roles only, on completed jobs; approval locks it.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>

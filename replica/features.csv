@@ -95,7 +95,7 @@ Knowledge Hub document content,data,skip,yes,skip,147 docs owned by NESR QHSE; s
 Aramco RILR GEARS OpsMiner integrations,integrations,skip,yes,skip,client systems; keep as free-text refs
 SAP integration for part numbers,integrations,skip,yes,skip,keep SAP# as a field only
 SharePoint job package and cable directory links,integrations,skip,yes,skip,store links as URLs
-Data-aware AI Agent (admin),assistant,could,yes,yes,milestone 5: read-only tools through the asker's own session (same permissions, countries and step-up)
+Data-aware AI Agent (admin),assistant,could,yes,yes,milestone 5: read-only tools through the asker's own session (same permissions and countries)
 QAF12069 question text and weights copied from screens,jra,skip,yes,skip,load from the controlled QHSE form instead
 Resources Allocation board,other,skip,yes,skip,dormant in original
 Headcount Roster screen,other,should,yes,yes,"Attendance Administrator only; fold into an Employees admin page; decided: build it for attendance_admin (Admin Manual 6); one people list for attendance and crews; 2j: add/edit/switch off/remove (only if never crewed), reporting line, rotation, WIREGUARD link"
@@ -129,7 +129,7 @@ Bonus rules per job type configured by admin,bonus,should,no,yes,"decided: per j
 Crew Assignment and Bonus Distribution on Closure (Admin/SDM),bonus,should,yes,yes,"Admin Manual 3; % or fixed amount; approval feeds the Bonus Report; 4a: Admin/SDM only, completed jobs; proposed from the split, edit share or amount, save, approve; admin reopen with reason"
 Bonus statements emailed to each person,bonus,could,yes,yes,Admin Manual 1.1; built in 4a (Email statements on the Bonus report)
 Revenue entered on each job (Closure),sales,should,no,yes,"decided 2026-10-24; 2d: Closure, SDM or Sales, stored in cents"
-Step-up re-authentication for Bonus and Sales pages,bonus,should,yes,yes,"replaces the original's access code; WIREGUARD password, 30 min; 4b: WIREGUARD password re-entered, 30 minutes on the session, audited; bonus and sales APIs refuse without it"
+Step-up re-authentication for Bonus and Sales pages,bonus,should,no,no,"removed 2026-10-26 at the owner's request (tab rights only); was: replaces the original's access code; WIREGUARD password, 30 min; 4b: WIREGUARD password re-entered, 30 minutes on the session, audited; bonus and sales APIs refuse without it"
 Admin data export (all tables) and import with dry-run and backup,admin,should,yes,yes,"Admin Manual 7; 4c: package JSON plus per-table XLSX in a zip; import needs a backup export by the same admin within 15 min, a dry run (new/changed/unchanged/refused per table) and typed IMPORT; never deletes; history insert-only"
 Pre-Job Note delete by admin with two confirmations,pre-job notes,should,yes,yes,"Admin Manual 8.1; 3b: warning then typed log number; versions go with the note"
 Job delete blocked while a Pre-Job Note exists,pre-job notes,should,yes,yes,Admin Manual 8.1; 409 with the note number

@@ -15,7 +15,7 @@ import { Banner, Button, Card, Field, ProgressBar, Skeleton, cx, inputClass, rad
 interface JraData {
   job: { id: string; ticket_no: string | null; well: string | null; sdm: { username: string; full_name: string } | null };
   template: Template;
-  jra: { status: 'draft' | 'sent' | 'approved' | 'rejected'; answers: Record<string, Answer>; risk_score: number; approval_level: string | null; sent_to: string | null; sent_at: string | null; decided_by: string | null; decided_at: string | null; updated_at: string; form_details: FormDetails | null } | null;
+  jra: { status: 'draft' | 'sent' | 'approved' | 'rejected'; answers: Record<string, Answer>; risk_score: number; approval_level: string | null; sent_to: string | null; sent_at: string | null; decided_by: string | null; decided_by_name?: string | null; sent_to_name?: string | null; decided_at: string | null; updated_at: string; form_details: FormDetails | null } | null;
   reasons: string[];
 }
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
@@ -72,9 +72,9 @@ export function JraPage() {
       {restored && <div className="mb-3"><Banner tone="info">Answers that hadn’t reached the server were kept on this device and have been restored. They are saving now.</Banner></div>}
       {d.reasons.length > 0 ? <div className="mb-3"><Banner tone="warning">This job needs an approved JRA before Execution: it has {d.reasons.join(', ')}.</Banner></div>
         : status === 'draft' && !d.jra?.decided_by && <div className="mb-3"><Banner tone="info">This job doesn’t need a JRA, but you can still complete one.</Banner></div>}
-      {status === 'approved' && <div className="mb-3"><Banner tone="success" action={me?.menus.jobs?.edit && <Button size="sm" onClick={() => act('pdf', {})}>File approved PDF again</Button>}>Approved by {d.jra?.decided_by} on {when(d.jra?.decided_at ?? null)}. Answers are locked. The approved JRA is filed as a PDF in the job’s attachments.</Banner><SignatureBadge className="mt-2" type="jra" id={id} /></div>}
+      {status === 'approved' && <div className="mb-3"><Banner tone="success" action={me?.menus.jobs?.edit && <Button size="sm" onClick={() => act('pdf', {})}>File approved PDF again</Button>}>Approved by {d.jra?.decided_by_name ?? d.jra?.decided_by} on {when(d.jra?.decided_at ?? null)}. Answers are locked. The approved JRA is filed as a PDF in the job’s attachments.</Banner><SignatureBadge className="mt-2" type="jra" id={id} /></div>}
       {status === 'sent' && <div className="mb-3"><Banner tone="info">Sent to {d.jra?.sent_to} on {when(d.jra?.sent_at ?? null)} for approval.</Banner></div>}
-      {status === 'draft' && d.jra?.decided_by && <div className="mb-3"><Banner tone="warning">Rejected by {d.jra.decided_by} on {when(d.jra.decided_at)}. Update the answers and send it again.</Banner></div>}
+      {status === 'draft' && d.jra?.decided_by && <div className="mb-3"><Banner tone="warning">Rejected by {d.jra.decided_by_name ?? d.jra.decided_by} on {when(d.jra.decided_at)}. Update the answers and send it again.</Banner></div>}
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_20rem]">
@@ -199,7 +199,7 @@ export function JraBanner({ jobId }: { jobId: string }) {
         </span>
       </div>
       <p className="mt-1 text-xs text-text-muted">
-        {st === 'approved' ? `Approved by ${jra?.decided_by}.` : st === 'sent' ? `Waiting for ${jra?.sent_to}.` : reasons.length ? `This job needs an approved JRA before Execution (${reasons.join(', ')}).` : 'Answer it on screen, or upload the filled Excel form (QHSE’s template). Upload again to update it while it is a draft.'}
+        {st === 'approved' ? `Approved by ${jra?.decided_by_name ?? jra?.decided_by}.` : st === 'sent' ? `Waiting for ${jra?.sent_to_name ?? jra?.sent_to}.` : reasons.length ? `This job needs an approved JRA before Execution (${reasons.join(', ')}).` : 'Answer it on screen, or upload the filled Excel form (QHSE’s template). Upload again to update it while it is a draft.'}
         {jra?.form_details?.file && ` Last upload: ${jra.form_details.file}, ${when(jra.form_details.uploaded_at ?? null)}.`}
       </p>
     </div>

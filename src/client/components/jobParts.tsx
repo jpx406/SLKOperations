@@ -237,3 +237,45 @@ export function DetailsSection({ value, fields, canEdit, onChange, idPrefix }: {
     </div>
   );
 }
+
+/**
+ * Safety flags at the top of Preparation, gathered from the sections below it (which still show each one in place):
+ * the selected wire's pre-job tests, the toolstring against the well and the pressure control, sour gas, and the
+ * pressure rating against the shut-in pressure.
+ */
+export function PrepChecks({ job, values, toolstring, ctx }: {
+  job: Job; values: Record<string, string | undefined>; toolstring: ToolPart[];
+  ctx: { minRestrictionIn: number | null; pceBoreIn: number | null; lubricatorFt: number | null };
+}) {
+  const q = useQuery({ queryKey: ['wire-options', job.id, job.unit_number], queryFn: () => api<WireOptions>(`/jobs/${job.id}/wire-options`), enabled: !!job.unit_number });
+  const n = (f: string) => (values[f] ? Number(values[f]) : null);
+  const flags: { level: 'danger' | 'warning'; text: string }[] = [];
+  const wire = values.wire_serial_number;
+  if (!wire) flags.push({ level: 'warning', text: 'No drum and wire picked yet' });
+  else if (q.data) {
+    const s = preJobWireStatus(q.data.tests.filter((t) => t.wire_serial_number === wire), job.start_date ?? new Date().toISOString().slice(0, 10), q.data.tensionDays);
+    for (const r of s.reasons) flags.push({ level: 'danger', text: `Wire ${wire}: ${r}` });
+  }
+  flags.push(...toolChecks(toolTotals(toolstring), ctx));
+  const h2s = n('h2s_ppm'), co2 = n('co2_pct'), siwhp = n('siwhp_psi'), rating = n('pressure_rating_psi');
+  if (h2s != null && h2s > 0) flags.push({ level: 'warning', text: `Sour well: H₂S ${h2s} ppm. H₂S-rated wire, PCE and gas detection` });
+  if (co2 != null && co2 > 0) flags.push({ level: 'warning', text: `CO₂ ${co2}%` });
+  if (siwhp != null && rating != null && siwhp >= rating) flags.push({ level: 'danger', text: `SIWHP ${siwhp.toLocaleString()} psi is at or above the ${rating.toLocaleString()} psi pressure rating` });
+  const danger = flags.some((f) => f.level === 'danger');
+  return (
+    <section aria-labelledby="prep-checks" className="mb-5">
+      <h2 id="prep-checks" className={cx('label-caps mb-2', danger ? 'text-danger' : flags.length ? 'text-warning' : 'text-success')}>
+        Safety checks · {flags.length ? `${flags.length} to look at` : 'nothing flagged'}
+      </h2>
+      {flags.length > 0 ? (
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {flags.map((f) => (
+            <li key={f.text} className={cx('flex items-start gap-2 font-semibold', f.level === 'danger' ? 'text-danger' : 'text-warning')}>
+              <span className="label-caps mt-0.5 shrink-0">{f.level === 'danger' ? 'Stop' : 'Check'}</span>{f.text}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-sm text-text-muted">Wire tests, toolstring fit, sour gas and pressure rating are all clear for what's entered so far.</p>}
+    </section>
+  );
+}

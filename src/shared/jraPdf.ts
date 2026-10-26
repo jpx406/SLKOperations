@@ -2,7 +2,10 @@
 // with its answer, points and what it triggered, the score and approval level, and the digital signature.
 
 import { ANSWER_LABEL, approvalLevel, exemptions, flags, pointsFor, riskScore, type Answer, type Template } from './jra';
+import { NESR_LOGO_JPEG } from './brandLogo';
 import { PdfDoc } from './pdf';
+
+const LOGO = { width: NESR_LOGO_JPEG.width, height: NESR_LOGO_JPEG.height, data: Uint8Array.from(atob(NESR_LOGO_JPEG.base64), (c) => c.charCodeAt(0)) };
 
 export interface JraPdfInput {
   template: Template;
@@ -26,9 +29,11 @@ export function jraPdf(p: JraPdfInput): Uint8Array {
   const score = riskScore(t, answers), level = approvalLevel(t, score), fl = flags(t, answers), ex = exemptions(t, answers);
 
   // title band
-  doc.rect(m, doc.y - 46, full, 46, [0.07, 0.09, 0.12]);
-  doc.text(m + 12, doc.y - 20, t.title ?? 'Job Risk Assessment', { size: 13, bold: true, color: [1, 1, 1] });
-  doc.text(m + 12, doc.y - 36, `${t.code} Rev ${t.revision} · Ticket ${p.job.ticket_no ?? '-'} · ${p.job.country}`, { size: 9, color: [0.8, 0.8, 0.8] });
+  doc.rect(m, doc.y - 46, full, 46, [18 / 255, 23 / 255, 31 / 255]);
+  const lh = 34, lw = lh * (LOGO.width / LOGO.height);
+  doc.jpeg(LOGO, m + 10, doc.y - 40, lw, lh);
+  doc.text(m + 20 + lw, doc.y - 20, t.title ?? 'Job Risk Assessment', { size: 13, bold: true, color: [1, 1, 1] });
+  doc.text(m + 20 + lw, doc.y - 36, `${t.code} Rev ${t.revision} · Ticket ${p.job.ticket_no ?? '-'} · ${p.job.country}`, { size: 9, color: [0.8, 0.8, 0.8] });
   doc.text(right - 92, doc.y - 28, 'APPROVED', { size: 14, bold: true, color: ACCENT });
   doc.y -= 60;
 

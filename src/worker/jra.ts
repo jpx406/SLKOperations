@@ -90,7 +90,15 @@ jra.get('/:jobId', async (c) => {
   const t = row ? { id: row.template_id, t: await templateById(c.env, row.template_id) } : await template(c.env, job.country);
   const reasons = jraReasons(job, await explosiveService(c.env, job.id));
   const sdm = job.sdm_username ? await c.env.DB.prepare('SELECT username, full_name FROM user_roles WHERE username = ?').bind(job.sdm_username).first() : null;
-  return c.json({ job: { id: job.id, ticket_no: job.ticket_no, well: job.well, sdm }, template: t.t, jra: row ? { ...row, answers: JSON.parse(row.answers), form_details: row.form_details ? JSON.parse(row.form_details) : null } : null, reasons });
+  // people by name where SLK Ops knows them; the username otherwise
+  const names = new Map<string, string>();
+  const who = [row?.decided_by, row?.sent_to].filter((u): u is string => !!u);
+  if (who.length) {
+    const r = await c.env.DB.prepare(`SELECT username, full_name FROM user_roles WHERE username IN (${who.map(() => '?').join(',')})`).bind(...who).all<{ username: string; full_name: string }>();
+    for (const u of r.results) if (u.full_name) names.set(u.username, u.full_name);
+  }
+  const name = (u: string | null | undefined) => (u ? names.get(u) ?? u : null);
+  return c.json({ job: { id: job.id, ticket_no: job.ticket_no, well: job.well, sdm }, template: t.t, jra: row ? { ...row, decided_by_name: name(row.decided_by), sent_to_name: name(row.sent_to), answers: JSON.parse(row.answers), form_details: row.form_details ? JSON.parse(row.form_details) : null } : null, reasons });
 });
 
 jra.put('/:jobId', async (c) => {

@@ -51,11 +51,11 @@ describe('editing lines', () => {
 });
 
 describe('rights', () => {
-  it('keeps bonus and sales behind their tabs; step-up needs only a session', () => {
+  it('keeps bonus and sales behind their tabs, with no second password', () => {
     expect(readAllowed('/api/bonus/lines', { bonus: { view: true, edit: false, delete: false } })).toBe(true);
     expect(readAllowed('/api/sales/jobs', { bonus: { view: true, edit: true, delete: true } })).toBe(false);
     expect(ruleFor('PUT', '/api/bonus/rules')?.menu).toBe('bonus');
     expect(ruleFor('POST', '/api/bonus/jobs/j/approve')?.menu).toBe('jobs');
-    expect(isOpenWrite('POST', '/api/step-up')).toBe(true);
+    expect(isOpenWrite('POST', '/api/step-up')).toBe(false);
   });
 });

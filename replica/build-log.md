@@ -954,3 +954,28 @@ Every label, message and empty state was written here. No code, assets or copy f
   - in the browser with reduced motion, the spinner uses `slk-breathe`; a JRA answer group has tab stops `[0, -1]`, and ArrowRight selects and focuses "No" with an inset ring;
   - 12 Schedule bars and the legend show glyphs;
   - an empty Sign in announces "Enter your username." and focuses the field.
+
+## 6m — No second password, NESR logos, the last critique items
+
+- **Step-up removed (owner's request):**
+  - Bonus and Sales open to whoever holds those tabs, with no password re-entry;
+  - removed `/api/step-up`, the 30-minute session flag, the bonus/sales API gate, the client prompt and "Unlocked" badge, and the AI tool's locked message;
+  - the feature matrix records the removal.
+- **Logos:**
+  - the NESR mark sits beside the product name in the header (white on dark, dark on Sunlight, picked by theme with no reload) and on the sign-in page;
+  - printed pages carry a header with the mark;
+  - favicon and touch icon are the wings on the dark surface;
+  - the approved-JRA PDF has the mark in its title band: `PdfDoc.jpeg()` embeds a baseline JPEG with `/DCTDecode`, so no image decoder is needed;
+  - the assets are in `public/brand/` and `src/shared/brandLogo.ts`.
+- **Critique leftovers:**
+  - **Preparation:** opens with "Safety checks" (the picked wire's pre-job tests, toolstring OD and length against restriction, PCE bore and lubricator, sour gas, SIWHP against the pressure rating), each marked Stop or Check;
+  - **Execution:** opens with operating hours and efficiencies, then the job log, then the form; closed service sections fold into one line instead of three boxes;
+  - **8 Min. Facts:** lists the jobs with NPT or a failure still waiting for a report, each with "Start report", which opens a new report with the job already picked (`?job=`);
+  - **JRA:** shows the approver and recipient by name;
+  - **Statistics:** states the gauge thresholds (good 90%, watch 75%);
+  - **Job log export:** "Job eff %" is now "Job efficiency %";
+  - **Admin users:** the admin Save points to the note explaining why it's off.
+- **Verified:**
+  - tests 204 (the PDF test checks the embedded image);
+  - the sample PDF parses under pypdf strict mode with its 200×156 JPEG;
+  - in the browser, the header shows the white mark on dark and the dark mark on Sunlight, `/brand/icon-64.png` is served, and Sales and Bonus load without a prompt.

@@ -10,6 +10,7 @@ import { useMe } from '../auth';
 import { useDisplay, type DensityChoice } from '../display';
 import { AssistantLauncher, HelpButton } from './Help';
 import { Button, cx, rovingKeys } from './ui';
+import { NesrLogo } from './Brand';
 
 /** Narrows every screen to one country for people who cover several. The server checks it against their countries. */
 function CountrySwitch({ countries }: { countries: string[] }) {
@@ -88,8 +89,9 @@ export function AppShell() {
       <header className="border-b border-border bg-bg px-4 md:px-5 print:hidden">
         {/* one row from tablet width up; on phones the tools wrap under the name instead of being cut off */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
-          <a href="/" className="shrink-0 font-display text-lg font-extrabold uppercase tracking-wide">
-            SLK <span className="text-text-muted">Operations</span>
+          <a href="/" className="flex shrink-0 items-center gap-2.5 font-display text-lg font-extrabold uppercase tracking-wide">
+            <NesrLogo className="h-8" />
+            <span>SLK <span className="text-text-muted">Operations</span></span>
           </a>
           <span className="hidden font-mono text-xs text-text-subtle md:inline">v0.1</span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -124,6 +126,11 @@ export function AppShell() {
         </nav>
       )}
       <main id="main" className="flex-1 px-4 py-5 md:px-5">
+        {/* printed pages carry the mark and the product name */}
+        <div aria-hidden className="mb-4 hidden items-center gap-3 border-b border-border pb-3 print:flex">
+          <NesrLogo className="h-10" print />
+          <span className="font-display text-lg font-extrabold uppercase">SLK Operations</span>
+        </div>
         <Outlet />
       </main>
     </div>

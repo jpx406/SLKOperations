@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { ApiError, api } from '../api';
 import { Banner, Button, Field, inputClass } from '../components/ui';
+import { NesrLogo } from '../components/Brand';
 
 export function SignIn() {
   const [username, setUsername] = useState('');
@@ -42,7 +43,8 @@ export function SignIn() {
   return (
     <main className="grid min-h-full place-items-center px-4 py-10">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-pop">
-        <p className="font-display text-xl font-extrabold uppercase">SLK <span className="text-text-muted">Operations</span></p>
+        <NesrLogo className="mb-4 h-14" />
+        <h1 className="font-display text-xl font-extrabold uppercase">SLK <span className="text-text-muted">Operations</span></h1>
         <p className="mt-1 mb-5 text-sm text-text-muted">
           Use your WIREGUARD username and password. Accounts and passwords are managed in WIREGUARD.
         </p>

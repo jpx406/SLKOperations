@@ -14,7 +14,7 @@ import { Attachments } from '../components/Attachments';
 import { JobLogEvents } from '../components/JobLogEvents';
 import { BonusDistribution } from './Bonus';
 import { PreJobNotePanel } from './PreJobNotes';
-import { CrewPanel, DetailsSection, SectionTitle, ToolstringBuilder, WirePanel, serviceFlags } from '../components/jobParts';
+import { CrewPanel, DetailsSection, PrepChecks, SectionTitle, ToolstringBuilder, WirePanel, serviceFlags } from '../components/jobParts';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
 
 type SaveState = { kind: 'idle' | 'dirty' | 'saving' | 'saved' } | { kind: 'error'; message: string } | { kind: 'conflict'; message: string };
@@ -275,6 +275,18 @@ export function JobEditor() {
         {stage === 'execution' && (
           <Card>
             {job && <JraBanner jobId={job.id} />}
+            <dl className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3" aria-live="polite">
+              <Metric label="Operating hours" value={op != null ? `${op} h` : '—'} note={op == null ? 'needs rig-up and rig-down' : preview.op_hours_override ? 'override' : 'rig-up → rig-down'} />
+              <Metric label="Job efficiency" value={eff != null ? `${eff}%` : '—'} note="(1 − NPT ÷ op hours) × 100" />
+              <Metric label="Run efficiency" value={runEff != null ? `${runEff}%` : '—'} note="successful ÷ total runs" />
+            </dl>
+            {job && (
+              <>
+                <SectionTitle aside="Kept on the device when there is no signal">Job log · sequence of events</SectionTitle>
+                <JobLogEvents jobId={job.id} canEdit={canEditJobs && !jraLocked} />
+                <SectionTitle>Times, runs and depths</SectionTitle>
+              </>
+            )}
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
               {text('arrived_at', 'Arrived on site', { type: 'datetime-local', hint: 'Riyadh time' })}
               {text('rig_up_at', 'Rig-up', { type: 'datetime-local', hint: 'Riyadh time' })}
@@ -312,23 +324,18 @@ export function JobEditor() {
                   { key: 'bottom_ft', label: 'Bottom shot', type: 'number', unit: 'ft' }, { key: 'shots', label: 'Shots fired', type: 'number' },
                   { key: 'misfires', label: 'Misfires', type: 'number' }, { key: 'explosive_ticket', label: 'Explosive ticket' }]} />
             </ServiceSection>
-            <dl className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3" aria-live="polite">
-              <Metric label="Operating hours" value={op != null ? `${op} h` : '—'} note={op == null ? 'needs rig-up and rig-down' : preview.op_hours_override ? 'override' : 'rig-up → rig-down'} />
-              <Metric label="Job efficiency" value={eff != null ? `${eff}%` : '—'} note="(1 − NPT ÷ op hours) × 100" />
-              <Metric label="Run efficiency" value={runEff != null ? `${runEff}%` : '—'} note="successful ÷ total runs" />
-            </dl>
-            {job && (
-              <>
-                <SectionTitle aside="Kept on the device when there is no signal">Job log · sequence of events</SectionTitle>
-                <JobLogEvents jobId={job.id} canEdit={canEditJobs && !jraLocked} />
-              </>
-            )}
+            {(() => {
+              const closed = ([[flags.is_fishing, 'Fishing'], [flags.is_memory, 'Memory survey'], [flags.is_perforation, 'Perforation']] as const).filter(([on]) => !on).map(([, t]) => t);
+              return closed.length > 0 && <div className="mt-5"><LockHint>{closed.join(', ')} details open when the job has that service (Design → Services).</LockHint></div>;
+            })()}
           </Card>
         )}
 
         {stage === 'preparation' && (needsJob ?? (job && (
           <Card>
             <JraBanner jobId={job.id} />
+            <PrepChecks job={job} values={values} toolstring={json<ToolPart[]>('toolstring', [])}
+              ctx={{ minRestrictionIn: num('min_restriction_in'), pceBoreIn: pce?.bore_in ?? null, lubricatorFt: num('lubricator_length_ft') }} />
             <SectionTitle>Well</SectionTitle>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
               {text('account_assignment', 'Account assignment')}
@@ -445,11 +452,11 @@ function DeleteJob({ job, onDeleted }: { job: Job; onDeleted: () => void }) {
   );
 }
 
-function ServiceSection({ on, title, need, children }: { on: boolean; title: string; need: string; children: ReactNode }) {
+/** A service's detail section; closed ones are listed together in one line instead of a box each. */
+function ServiceSection({ on, title, children }: { on: boolean; title: string; need?: string; children: ReactNode }) {
   return (
     <>
-      <SectionTitle>{title}</SectionTitle>
-      {on ? children : <LockHint>Opens when the job has {need} (Design → Services).</LockHint>}
+      {on && <><SectionTitle>{title}</SectionTitle>{children}</>}
     </>
   );
 }

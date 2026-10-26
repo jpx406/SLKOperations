@@ -9,12 +9,11 @@ import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { BarChart, KpiTile, saveFile } from '../components/charts';
 import { FilterBar, useFilters } from '../components/FilterBar';
-import { StepUpGate, UnlockedBadge, needsStepUp } from '../components/StepUp';
 import { SignatureBadge } from '../components/Signature';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputSized } from '../components/ui';
 
 // Bonus (Administrator Manual 1 and 3): Report (per person), Analysis (trends and % of revenue), Rules (admin),
-// and the distribution on a job's Closure stage. All behind step-up re-authentication.
+// and the distribution on a job's Closure stage. Visible to whoever holds the Bonus tab.
 
 interface BLine { employee_id: string; full_name: string; eid: string; crew_role: CrewRole | null; amount_cents: number; currency: string; status: string; statement_sent_at: string | null; job_id: string; ticket_no: string | null; start_date: string | null; well: string | null; field: string | null; location: string | null; revenue_cents: number | null; services: string[] }
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -23,7 +22,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 function useLines(approved: boolean) {
   const [filters] = useFilters();
   const qs = [filtersToQuery(filters), approved ? '' : 'approved=0'].filter(Boolean).join('&');
-  return { q: useQuery({ queryKey: ['bonus-lines', qs], queryFn: () => api<BLine[]>(`/bonus/lines?${qs}`), retry: (n, e) => !needsStepUp(e) && n < 2 }), filters };
+  return { q: useQuery({ queryKey: ['bonus-lines', qs], queryFn: () => api<BLine[]>(`/bonus/lines?${qs}`) }), filters };
 }
 
 export function BonusReport() {
@@ -52,14 +51,13 @@ export function BonusReport() {
   };
   return (
     <section aria-labelledby="br-title">
-      <PageTitle aside={!needsStepUp(q.error) && (
+      <PageTitle aside={(
         <div className="flex flex-wrap gap-2 print:hidden">
           <Button size="sm" onClick={() => window.print()} disabled={!people.length}><Printer aria-hidden className="size-4" />Download report</Button>
           <Button size="sm" onClick={exportXlsx} disabled={!people.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
           {me?.menus.bonus?.edit && <Button size="sm" onClick={statements} disabled={!people.length || !approved}><Mail aria-hidden className="size-4" />Email statements</Button>}
         </div>
-      )}><span id="br-title">Bonus report</span><UnlockedBadge /></PageTitle>
-      <StepUpGate locked={needsStepUp(q.error)}>
+      )}><span id="br-title">Bonus report</span></PageTitle>
         <FilterBar optionsPath="/filter-options" withStatus={false} />
         <div className="mb-4 flex flex-wrap items-center gap-3 print:hidden">
           <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />Approved bonuses only</label>
@@ -68,7 +66,7 @@ export function BonusReport() {
         </div>
         {notice && <div className="mb-3"><Banner tone={notice.tone}>{notice.text}</Banner></div>}
         {q.isPending && <Skeleton className="h-64" />}
-        {q.isError && !needsStepUp(q.error) && <Banner tone="danger">{q.error.message}</Banner>}
+        {q.isError && <Banner tone="danger">{q.error.message}</Banner>}
         {q.data && !people.length && <EmptyState title="No bonus in this selection">Bonus appears once a job’s distribution is approved on its Closure stage.</EmptyState>}
         {people.length > 0 && (
           <Card className="overflow-x-auto p-0">
@@ -87,14 +85,13 @@ export function BonusReport() {
             </table>
           </Card>
         )}
-      </StepUpGate>
     </section>
   );
 }
 
 export function BonusAnalysis() {
   const { q, filters } = useLines(true);
-  const rev = useQuery({ queryKey: ['bonus-revenue', filtersToQuery(filters)], queryFn: () => api<{ revenue: number; jobs: number; missing: number }>(`/bonus/revenue?${filtersToQuery(filters)}`), retry: (n, e) => !needsStepUp(e) && n < 2 });
+  const rev = useQuery({ queryKey: ['bonus-revenue', filtersToQuery(filters)], queryFn: () => api<{ revenue: number; jobs: number; missing: number }>(`/bonus/revenue?${filtersToQuery(filters)}`) });
   const lines = q.data ?? [];
   const total = lines.reduce((a, l) => a + l.amount_cents, 0);
   const jobs = new Set(lines.map((l) => l.job_id));
@@ -109,8 +106,7 @@ export function BonusAnalysis() {
   const byMonth = group((l) => [l.start_date?.slice(0, 7) ?? 'no date']).sort((a, b) => a.key.localeCompare(b.key)).map((b) => ({ ...b, label: b.key === 'no date' ? b.key : `${MONTHS[Number(b.key.slice(5, 7)) - 1]} ${b.key.slice(2, 4)}` }));
   return (
     <section aria-labelledby="ba-title">
-      <PageTitle><span id="ba-title">Bonus analysis</span><UnlockedBadge /></PageTitle>
-      <StepUpGate locked={needsStepUp(q.error) || needsStepUp(rev.error)}>
+      <PageTitle><span id="ba-title">Bonus analysis</span></PageTitle>
         <FilterBar optionsPath="/filter-options" withStatus={false} />
         {q.isPending && <Skeleton className="h-64" />}
         {q.data && (
@@ -130,7 +126,6 @@ export function BonusAnalysis() {
             </div>
           </>
         )}
-      </StepUpGate>
     </section>
   );
 }
@@ -140,7 +135,7 @@ interface RulesData { rules: { country: string; job_type_name: string; basis: Ba
 export function BonusRules() {
   const qc = useQueryClient();
   const { data: me } = useMe();
-  const q = useQuery({ queryKey: ['bonus-rules'], queryFn: () => api<RulesData>('/bonus/rules'), retry: (n, e) => !needsStepUp(e) && n < 2 });
+  const q = useQuery({ queryKey: ['bonus-rules'], queryFn: () => api<RulesData>('/bonus/rules') });
   const [country, setCountry] = useState('');
   const c = country || me?.countries[0] || '';
   const [error, setError] = useState<string | null>(null);
@@ -155,10 +150,9 @@ export function BonusRules() {
   return (
     <section aria-labelledby="rules-title">
       <PageTitle aside={(me?.countries.length ?? 0) > 1 && <select aria-label="Country" className={inputSized('h-(--layout-control-sm) w-44')} value={c} onChange={(e) => setCountry(e.target.value)}>{me?.countries.map((x) => <option key={x}>{x}</option>)}</select>}>
-        <span id="rules-title">Bonus rules</span><UnlockedBadge />
+        <span id="rules-title">Bonus rules</span>
       </PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">A job’s pool comes from the rule of its main service (the first one picked with a rule): a fixed amount per job, an amount per successful run, or a share of the job’s revenue. The pool is then split by role, and the SDM can adjust it on Closure before approving.</p>
-      <StepUpGate locked={needsStepUp(q.error)}>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         {q.isPending && <Skeleton className="h-64" />}
         {q.data && (
@@ -181,7 +175,6 @@ export function BonusRules() {
             </Card>
           </>
         )}
-      </StepUpGate>
     </section>
   );
 }
@@ -216,13 +209,12 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
   const { data: me } = useMe();
   const qc = useQueryClient();
   const allowed = !!me && ['admin', 'sdm', 'deputy_sdm'].includes(me.role);
-  const q = useQuery({ queryKey: ['job-bonus', jobId], queryFn: () => api<JobBonus>(`/bonus/jobs/${jobId}`), enabled: allowed, retry: (n, e) => !needsStepUp(e) && n < 2 });
+  const q = useQuery({ queryKey: ['job-bonus', jobId], queryFn: () => api<JobBonus>(`/bonus/jobs/${jobId}`), enabled: allowed });
   const [lines, setLines] = useState<{ employee_id: string; crew_role: CrewRole | null; share_pct: string; amount: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (q.data) setLines(q.data.lines.map((l) => ({ employee_id: l.employee_id, crew_role: l.crew_role, share_pct: l.share_pct == null ? '' : String(l.share_pct), amount: String(l.amount_cents / 100) }))); }, [q.data]);
   if (!allowed) return null;
-  if (needsStepUp(q.error)) return <div className="mt-2"><Banner tone="info" action={<Link className="text-sm font-semibold underline" to="/bonus/report">Unlock</Link>}>The bonus distribution needs your password again (restricted figures).</Banner></div>;
   if (q.isPending) return <Skeleton className="h-24" />;
   if (q.isError) return <Banner tone="danger">{q.error.message}</Banner>;
   const d = q.data;

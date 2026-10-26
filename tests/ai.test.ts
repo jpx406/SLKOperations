@@ -73,14 +73,12 @@ describe('AI Agent tools', () => {
     expect(out.totals.failures).toBe(1);
     expect(out.breakdown[0]).toEqual({ unit: 'SL-40', npt_hours: 5, jobs: 2 });
   });
-  it('runs a tool through the app, passing refusals and the step-up lock back as errors', async () => {
+  it('runs a tool through the app, passing refusals back as errors', async () => {
     const seen: string[] = [];
     const ok = (body: unknown) => async (p: string) => { seen.push(p); return new Response(JSON.stringify(body), { status: 200 }); };
     expect(await runTool('find_jobs', { q: 'W' }, ['find_jobs'], ok([{ id: 'j1', ticket_no: 'T1', secret: 'x' }]))).toEqual({ result: { found: 1, jobs: [{ id: 'j1', ticket_no: 'T1' }] } });
     expect(seen).toEqual(['/jobs?q=W']);
     expect(await runTool('sales_revenue', {}, ['find_jobs'], ok([]))).toEqual({ error: 'This person’s access does not include that data' });
-    const locked = async () => new Response(JSON.stringify({ error: 'Re-enter your password', stepUp: true }), { status: 403 });
-    expect((await runTool('sales_revenue', {}, ['sales_revenue'], locked)).error).toMatch(/locked/);
     const refused = async () => new Response(JSON.stringify({ error: 'Your access does not include this page' }), { status: 403 });
     expect(await runTool('get_job', { id: 'j1' }, ['get_job'], refused)).toEqual({ error: 'Your access does not include this page' });
   });

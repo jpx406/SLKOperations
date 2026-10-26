@@ -8,7 +8,6 @@ import { workbook } from '../../shared/xlsx';
 import { api, formatDate } from '../api';
 import { BarChart, KpiTile, saveFile } from '../components/charts';
 import { FilterBar, useFilters } from '../components/FilterBar';
-import { StepUpGate, UnlockedBadge, needsStepUp } from '../components/StepUp';
 import { Banner, Card, EmptyState, PageTitle, Skeleton, Button, cx, inputSized } from '../components/ui';
 
 // Sales Dashboard (Administrator Manual 2): revenue entered on each job, by account, with Analysis,
@@ -23,7 +22,7 @@ export function SalesDashboard() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'all';
   const setTab = (t: string) => { const n = new URLSearchParams(params); if (t === 'all') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }); };
-  const q = useQuery({ queryKey: ['sales', filtersToQuery(filters)], queryFn: () => api<SJob[]>(`/sales/jobs?${filtersToQuery(filters)}`), retry: (n, e) => !needsStepUp(e) && n < 2 });
+  const q = useQuery({ queryKey: ['sales', filtersToQuery(filters)], queryFn: () => api<SJob[]>(`/sales/jobs?${filtersToQuery(filters)}`) });
   const [find, setFind] = useState('');
   const all = q.data ?? [];
   const accounts = useMemo(() => [...new Set(all.map((j) => j.location ?? 'No account'))].sort(), [all]);
@@ -46,20 +45,19 @@ export function SalesDashboard() {
 
   return (
     <section aria-labelledby="sales-title">
-      <PageTitle aside={!needsStepUp(q.error) && (
+      <PageTitle aside={(
         <div className="flex flex-wrap gap-2 print:hidden">
           <Button size="sm" onClick={() => window.print()} disabled={!rows.length}><Printer aria-hidden className="size-4" />Print charts (PDF)</Button>
           <Button size="sm" onClick={exportXlsx} disabled={!rows.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
         </div>
-      )}><span id="sales-title">Sales dashboard</span><UnlockedBadge /></PageTitle>
-      <StepUpGate locked={needsStepUp(q.error)}>
+      )}><span id="sales-title">Sales dashboard</span></PageTitle>
         <p className="-mt-3 mb-3 text-sm text-text-muted">Revenue is entered on each job’s Closure stage (SDM or Sales). Correcting it there updates this page and Bonus % of Revenue.</p>
         <FilterBar optionsPath="/filter-options" withStatus={false} />
         <div role="tablist" aria-label="Sales views" className="mb-4 flex flex-wrap gap-1.5 print:hidden">
           {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text', k === 'incomplete' && incomplete.length > 0 && tab !== k && 'text-warning')}>{l}</button>)}
         </div>
         {q.isPending && <Skeleton className="h-64" />}
-        {q.isError && !needsStepUp(q.error) && <Banner tone="danger">{q.error.message}</Banner>}
+        {q.isError && <Banner tone="danger">{q.error.message}</Banner>}
         {q.data && tab === 'find' && (
           <Card>
             <label className="relative mb-3 block max-w-md"><span className="sr-only">Find a job by ticket, well or unit</span>
@@ -102,7 +100,6 @@ export function SalesDashboard() {
             </div>
           </>
         )}
-      </StepUpGate>
     </section>
   );
 }

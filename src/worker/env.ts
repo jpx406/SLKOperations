@@ -36,8 +36,6 @@ export interface Session {
   createdAt: number;
   lastSeen: number;
   validatedAt: number;
-  /** Until when bonus and revenue pages are open after re-entering the password (step-up). */
-  stepUpUntil?: number;
 }
 
 export interface AuthedUser extends Me {

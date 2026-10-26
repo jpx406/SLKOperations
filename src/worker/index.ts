@@ -25,7 +25,7 @@ import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
 import { isOpenWrite, readAllowed, ruleFor } from './permissions';
-import { login, logout, requireSession, resolveSession, stepUp } from './session';
+import { login, logout, requireSession, resolveSession } from './session';
 import { syncAll, syncStatus } from './sync';
 import { WgError } from './wg';
 
@@ -201,20 +201,6 @@ app.route('/quick-plan', quickPlan);
 app.route('/signatures', signatures);
 app.route('/attachments', attachments);
 
-// Step-up: compensation and revenue need the password again, valid 30 minutes (replaces the original's access code)
-app.post('/step-up', async (c) => {
-  const { password } = await c.req.json<{ password?: string }>().catch(() => ({} as { password?: string }));
-  if (!password) return c.json({ error: 'Enter your WIREGUARD password' }, 400);
-  try {
-    const r = await stepUp(c, password);
-    return r.ok ? c.json(r) : c.json({ error: 'Your session ended. Sign in again.' }, 401);
-  } catch (e) {
-    if (e instanceof WgError && (e.status === 401 || e.status === 403)) return c.json({ error: 'Wrong password' }, 403);
-    throw e;
-  }
-});
-app.use('/bonus/*', async (c, next) => ((c.get('user').stepUpUntil ?? 0) > Date.now() ? next() : c.json({ error: 'Re-enter your password to open bonus and revenue figures', stepUp: true }, 403)));
-app.use('/sales/*', async (c, next) => ((c.get('user').stepUpUntil ?? 0) > Date.now() ? next() : c.json({ error: 'Re-enter your password to open bonus and revenue figures', stepUp: true }, 403)));
 app.route('/bonus', bonus);
 app.route('/sales', sales);
 app.route('/recon', recon);

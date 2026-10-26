@@ -76,7 +76,7 @@ Rows are grouped by reporting line; each group is a category. The Ops Manager se
   },
   {
     id: 'bonus', title: 'Bonus and Sales', menus: ['bonus', 'sales_dashboard'],
-    body: `Bonus and revenue figures need your password again: open the page and re-enter your WIREGUARD password; they stay open for 30 minutes. Bonus rules (per country, by service and role) work out each job's bonus; the distribution on the job's Closure splits it across the crew and is approved there. The Bonus report and analysis total it by person and period. The Sales dashboard totals the revenue entered on jobs by account and month and lists completed jobs missing revenue.`,
+    body: `Bonus and revenue figures open for anyone whose access includes the Bonus or Sales tab. Bonus rules (per country, by service and role) work out each job's bonus; the distribution on the job's Closure splits it across the crew and is approved there. The Bonus report and analysis total it by person and period. The Sales dashboard totals the revenue entered on jobs by account and month and lists completed jobs missing revenue.`,
   },
   {
     id: 'ai', title: 'AI Agent and the help assistant', menus: ['ai_agent', 'ai_assistant'],

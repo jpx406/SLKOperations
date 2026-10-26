@@ -42,6 +42,9 @@ export function EightMinFactsList() {
   const set = (k: string, v: string) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); setParams(n, { replace: true }); };
   const list = useQuery({ queryKey: ['emf', status, q], queryFn: () => api<ListRow[]>(`/emf?${new URLSearchParams({ ...(status && { status }), ...(q && { q }) })}`) });
   const navigate = useNavigate();
+  // the backlog: jobs with NPT or a failure whose 8 Min. Facts isn't done yet
+  const jobs = useQuery({ queryKey: ['jobs', '', 'all'], queryFn: () => api<Job[]>('/jobs?q=&status=all'), enabled: !!me?.menus.eight_min_facts?.edit });
+  const backlog = (jobs.data ?? []).filter((j) => (j.npt_hours > 0 || j.failure === 'yes') && j.eight_min_facts_done !== 'yes' && j.status !== 'canceled');
   return (
     <section aria-labelledby="emf-title">
       <PageTitle aside={me?.menus.eight_min_facts?.edit && <Link to="/operation/8-min-facts/new" className="inline-flex h-(--layout-control-md) items-center gap-2 rounded-md bg-accent px-3.5 text-sm font-semibold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />New 8 Min. Facts</Link>}>
@@ -61,6 +64,22 @@ export function EightMinFactsList() {
           <input className={inputSized('h-(--layout-control-sm) w-64 pl-8')} placeholder="Log #, title, well, ticket" defaultValue={q} onChange={(e) => set('q', e.target.value.trim())} />
         </label>
       </div>
+      {backlog.length > 0 && !q && !status && (
+        <Card className="mb-4">
+          <h2 className="label-caps mb-2 text-warning">Waiting for an 8 Min. Facts · {backlog.length}</h2>
+          <ul className="divide-y divide-border">
+            {backlog.slice(0, 8).map((j) => (
+              <li key={j.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                <span className="font-display font-bold">{j.ticket_no ?? 'No ticket'}</span>
+                <span className="text-text-muted">{j.well ?? 'well —'} · {j.unit_number ?? 'no unit'} · {j.start_date ? formatDate(j.start_date) : 'no date'}</span>
+                <span className="font-mono text-xs text-warning">{j.npt_hours > 0 ? `${j.npt_hours} h NPT` : ''}{j.npt_hours > 0 && j.failure === 'yes' ? ' · ' : ''}{j.failure === 'yes' ? 'failure' : ''}</span>
+                <Link to={`/operation/8-min-facts/new?job=${encodeURIComponent(j.id)}`} className="ml-auto text-sm font-semibold underline">Start report</Link>
+              </li>
+            ))}
+          </ul>
+          {backlog.length > 8 && <p className="mt-2 text-xs text-text-subtle">{backlog.length - 8} more. The Failure Roster lists them all.</p>}
+        </Card>
+      )}
       {list.isPending && <Skeleton className="h-64" />}
       {list.isError && <Banner tone="danger">{list.error.message}</Banner>}
       {list.data && !list.data.length && <EmptyState title={q || status ? 'No reports match' : 'No 8 Min. Facts yet'}>{q || status ? 'Clear the search or the status filter.' : 'Start one from a field ticket when a failure or NPT happens.'}</EmptyState>}
@@ -122,6 +141,14 @@ export function EightMinFactsEditor() {
   const [panel, setPanel] = useState<'history' | 'email' | null>(null);
 
   const report = reportQ.data;
+  // started from the backlog: the job is already chosen
+  const [params] = useSearchParams();
+  const fromJob = isNew ? params.get('job') : null;
+  useEffect(() => {
+    if (!fromJob) return;
+    api<Job>(`/jobs/${encodeURIComponent(fromJob)}`).then((j) => pickJob(j)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromJob]);
   useEffect(() => {
     if (!report) return;
     setJob({ id: report.job_id, ticket_no: report.ticket_no, well: report.well, rig: report.rig, unit_number: report.unit_number, start_date: report.start_date });

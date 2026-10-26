@@ -68,6 +68,10 @@ describe('approved JRA PDF', () => {
     // 5 (A1 No) + 6 (B1 N/A) + 1 exemption × 5
     expect(text).toMatch(/Risk index score\n16\n/);
     expect(text).toContain('Technical Manager');
+    // the NESR mark in the title band, as a JPEG image
+    expect(s).toContain('/Subtype /Image');
+    expect(s).toContain('/Filter /DCTDecode');
+    expect(s).toMatch(/\/Im1 Do/);
   });
   it('lets job editors file it again', () => {
     expect(ruleFor('POST', '/api/jra/j1/pdf')).toMatchObject({ menu: 'jobs', action: 'edit' });
