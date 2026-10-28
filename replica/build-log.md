@@ -1311,3 +1311,12 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified:**
   - tests 282;
   - October rendered: the full detail is 3 jobs per A3 page, and the A4 table header is clean.
+
+## 6z.3 — PDF tables span the page
+
+- The PDF tables (Daily report, Activity sheet table) now always share the full page width between their columns, in proportion to what each holds; before, a table narrower than the page stopped part-way across.
+- Each column is sized from its longest filled value (empty cells no longer make a column narrow), with a minimum width for free text (remarks, comments).
+- A table up to a third wider than an A4 page shrinks to fit the page instead of continuing on further pages; wider tables still continue.
+- **Verified:**
+  - tests 282;
+  - the 28 Oct daily report renders across the full page with every status and unit name whole.

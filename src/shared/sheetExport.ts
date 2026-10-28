@@ -151,16 +151,16 @@ const mix = (c: [number, number, number], pct: number): [number, number, number]
 export function tablePdf(t: PdfTable): Uint8Array {
   const doc = new PdfDoc({ landscape: true, paper: t.paper });
   const m = doc.margin, full = doc.width - 2 * m;
-  const fit = t.paper === 'A3';
   let size = 6.5;
   type PCol = { label: string; w: number; highlight: boolean; get: (l: SheetLine) => string; group: string };
   const lines = t.sections.flatMap((s) => s.lines);
-  // each column as wide as its longest header word and most of its values, within limits
-  const natural = (label: string, get: (l: SheetLine) => string, max: number) => {
+  // each column as wide as its longest header word and its longest value, within limits
+  const natural = (label: string, get: (l: SheetLine) => string, max: number, min = 24) => {
     const word = Math.max(...label.split(/\s+/).map((w) => textWidth(w, size, true)));
-    const vals = lines.map((l) => textWidth(get(l), size)).sort((a, b) => a - b);
-    const p90 = vals.length ? vals[Math.floor(vals.length * 0.9)] : 0;
-    return Math.min(max, Math.max(24, word + 4, p90 + 4));
+    // only the filled cells count: a column empty on most lines still needs room for the lines that have a value
+    const vals = lines.map(get).filter((v) => v && v !== 'n/a').map((v) => textWidth(v, size)).sort((a, b) => a - b);
+    const longest = vals.length ? vals[vals.length - 1] : 0;
+    return Math.min(max, Math.max(min, word + 4, longest + 4));
   };
   const fixed: PCol[] = [
     ...t.lead.map((c) => ({ label: c.label, w: natural(c.label, c.value, 80), highlight: false, get: c.value, group: '' })),
@@ -168,11 +168,14 @@ export function tablePdf(t: PdfTable): Uint8Array {
   ];
   const rest: PCol[] = t.cols.map((c) => {
     const get = (l: SheetLine) => cellText(c, l, t.fields);
-    return { label: c.label, w: natural(c.label, get, c.summary || c.field?.type === 'longtext' ? 170 : 110), highlight: c.highlight, get, group: c.group };
+    return { label: c.label, w: natural(c.label, get, c.summary || c.field?.type === 'longtext' ? 170 : 110, c.field?.type === 'longtext' ? 80 : 24), highlight: c.highlight, get, group: c.group };
   });
-  // on A3 every column goes on the page: when they are wider than it, columns and type shrink together
+  // on A3 every column goes on the page, and on A4 too when they are no more than a third wider than it:
+  // columns and type shrink together. Wider tables on A4 continue on the next pages instead.
+  const natTotal = [...fixed, ...rest].reduce((a, c) => a + c.w, 0);
+  const fit = t.paper === 'A3' || natTotal <= full * 1.35;
   if (fit) {
-    const k = Math.min(1, full / [...fixed, ...rest].reduce((a, c) => a + c.w, 0));
+    const k = Math.min(1, full / natTotal);
     size *= k;
     for (const c of [...fixed, ...rest]) c.w *= k;
   }
@@ -192,7 +195,8 @@ export function tablePdf(t: PdfTable): Uint8Array {
     if (bi > 0) doc.addPage();
     const cols = [...fixed, ...band];
     const scale = full / cols.reduce((a, c) => a + c.w, 0);
-    const widths = cols.map((c) => c.w * (bi === bands.length - 1 && scale > 1.6 ? 1 : scale));
+    // the columns always share the whole page width, in proportion to what they hold
+    const widths = cols.map((c) => c.w * scale);
     // header band
     doc.rect(m, doc.y - 40, full, 40, INK);
     const lh = 28, lw = lh * (LOGO.width / LOGO.height);
