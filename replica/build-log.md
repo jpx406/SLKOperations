@@ -1320,3 +1320,16 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified:**
   - tests 282;
   - the 28 Oct daily report renders across the full page with every status and unit name whole.
+
+## 6z.4 — SLK Activity Dashboard; Activity sheet as foldable job lines
+
+- **Renamed** Sales Dashboard → **SLK Activity Dashboard** (menu, page title, Users & Roles label, help and hints). The menu key `sales_dashboard` and the `/sales` address stay, so rights and links keep working.
+- **Activity sheet on screen** now reads like its full-detail PDF:
+  - one line per job with the basics (job, revenue month, account, company, field/rig, well, job type, job status, unit), grouped by account;
+  - click a job (or its arrow) to unfold every field in labelled group blocks (Job, Crew, Dates, Hours & distance, Ticket & documents, Ticket follow-up, Revenue, Account details) and the comments; typed fields are edited in place, job fields link to the job stage; click again to fold;
+  - Unfold all / Fold all jobs, and fold accounts as before;
+  - the lock sits at the end of each line: an open lock checks and locks the line, a closed lock (green) shows it is checked and, for an Admin, unlocks it with a reason; a locked line also shows a small lock at its start, and its unfolded detail is read-only with who checked it.
+- The A4 PDF table now prints the Job, Ticket & documents and Revenue columns with the other groups as summaries.
+- **Verified:**
+  - tests 282;
+  - in the browser: unfold, edit stand-by, lock from the line end (inputs close, lock at start), Admin unlock, fold, unfold all 12.

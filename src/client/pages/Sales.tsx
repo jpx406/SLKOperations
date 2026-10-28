@@ -53,7 +53,7 @@ function SalesRevenue({ views }: { views: ReactNode }) {
           <Button size="sm" onClick={() => window.print()} disabled={!rows.length}><Printer aria-hidden className="size-4" />Print charts (PDF)</Button>
           <Button size="sm" onClick={exportXlsx} disabled={!rows.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
         </div>
-      )}><span id="sales-title">Sales dashboard</span></PageTitle>
+      )}><span id="sales-title">SLK Activity Dashboard</span></PageTitle>
         {views}
         <p className="-mt-3 mb-3 text-sm text-text-muted">Revenue is entered on each job’s Closure stage (SDM or Sales). Correcting it there updates this page and Bonus % of Revenue.</p>
         <FilterBar optionsPath="/filter-options" withStatus={false} />
@@ -115,7 +115,7 @@ export function SalesDashboard() {
   const view = VIEWS.some(([k]) => k === params.get('view')) ? params.get('view')! : 'revenue';
   const setView = (v: string) => { const n = new URLSearchParams(params); n.delete('tab'); n.delete('show'); if (v === 'revenue') n.delete('view'); else n.set('view', v); setParams(n, { replace: true }); };
   const views = (
-    <div role="tablist" aria-label="Sales dashboard sections" className="mb-4 flex flex-wrap gap-1 border-b border-border print:hidden">
+    <div role="tablist" aria-label="SLK Activity Dashboard sections" className="mb-4 flex flex-wrap gap-1 border-b border-border print:hidden">
       {VIEWS.map(([k, label, hint]) => (
         <button key={k} type="button" role="tab" aria-selected={view === k} title={hint} onClick={() => setView(k)}
           className={cx('-mb-px border-b-2 px-4 py-2 text-sm font-semibold', view === k ? 'border-accent text-text' : 'border-transparent text-text-muted hover:text-text')}>{label}</button>
@@ -125,7 +125,7 @@ export function SalesDashboard() {
   if (view === 'revenue') return <SalesRevenue views={views} />;
   return (
     <section aria-labelledby="sales-title">
-      <PageTitle><span id="sales-title">Sales dashboard</span></PageTitle>
+      <PageTitle><span id="sales-title">SLK Activity Dashboard</span></PageTitle>
       {views}
       {view === 'activity' ? <SalesActivity /> : <SalesDaily />}
     </section>

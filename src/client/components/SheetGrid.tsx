@@ -16,7 +16,7 @@ export type GridLine = SheetLine & { carried?: { from: string; keys: string[] } 
 
 export interface GridSection { key: string; title: string; color?: string; lines: GridLine[]; aside?: ReactNode }
 
-const STAGE_PATH: Record<string, string> = { design: 'design', preparation: 'preparation', execution: 'execution', closure: 'closure', crew: 'preparation' };
+export const STAGE_PATH: Record<string, string> = { design: 'design', preparation: 'preparation', execution: 'execution', closure: 'closure', crew: 'preparation' };
 
 export function useOpenGroups(storageKey: string, initial: string[]) {
   const [open, setOpen] = useState<Set<string>>(() => {
@@ -51,7 +51,7 @@ export function GroupSwitches({ groups, open, setOpen, available }: { groups: re
   );
 }
 
-function Editor({ f, line, value, choices, onSave }: { f: SheetField; line: GridLine; value: Value; choices?: readonly string[]; onSave: (v: string) => void }) {
+export function Editor({ f, line, value, choices, onSave }: { f: SheetField; line: GridLine; value: Value; choices?: readonly string[]; onSave: (v: string) => void }) {
   const label = `${f.label} for ${line.app.ticket ?? line.app.unit ?? line.id}`;
   const base = 'h-7 w-full min-w-0 rounded border border-transparent bg-transparent px-1 text-sm hover:border-border focus:border-accent focus:bg-surface focus:outline-none';
   const cur = value === null || value === undefined ? '' : String(value);

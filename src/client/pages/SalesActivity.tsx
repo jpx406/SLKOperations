@@ -1,17 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Link2, Lock, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { NO_ACCOUNT, byAccount } from '../../shared/accounts';
 import { ACTIVITY_FIELDS, ACTIVITY_GROUPS, FORMATS, FORMAT_KEYS, changedSinceLock, monthLabel, shownValue, ticketStatusesFor, type FormatKey, type SheetLine } from '../../shared/salesSheets';
-import { recordPdf, sheetSpec, tablePdf, usedFields, visibleColumns } from '../../shared/sheetExport';
+import { recordPdf, sheetSpec, tablePdf, visibleColumns } from '../../shared/sheetExport';
 import { workbookSheets } from '../../shared/xlsx';
 import { api } from '../api';
 import { useMe } from '../auth';
 import { AccountLegend, useAccountColors } from '../components/Accounts';
 import { KpiTile, saveFile } from '../components/charts';
 import { useFilters } from '../components/FilterBar';
-import { GroupSwitches, SheetGrid, SheetLegend, useOpenGroups, type GridLine, type GridSection } from '../components/SheetGrid';
+import { ActivityRecords } from '../components/ActivityRecords';
+import type { GridLine, GridSection } from '../components/SheetGrid';
 import { Banner, Button, EmptyState, Skeleton, cx, inputSized } from '../components/ui';
 
 // Sales dashboard → Activity sheet: the billing line of every job in a revenue month, grouped by account, to fill
@@ -24,6 +25,7 @@ const shiftMonth = (m: string, n: number) => { const d = new Date(Date.UTC(Numbe
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const SHOW = [['all', 'All lines'], ['open', 'To check'], ['checked', 'Checked'], ['changed', 'Changed since checked']] as const;
 const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const TABLE_GROUPS = new Set(['job', 'docs', 'revenue']);
 const sumOf = (lines: SheetLine[], key: string) => lines.reduce((a, l) => a + (Number(shownValue(ACTIVITY_FIELDS.find((f) => f.key === key)!, l, ACTIVITY_FIELDS)) || 0), 0);
 
 export function SalesActivity() {
@@ -39,7 +41,7 @@ export function SalesActivity() {
   const q = useQuery({ queryKey: key, queryFn: () => api<ActivityData>(`/sales/activity?month=${month}`) });
   const picked = filters.account ?? [];
   const colorOf = useAccountColors();
-  const [open, setOpen] = useOpenGroups('slk-sales-activity-groups', ['job', 'docs', 'revenue']);
+  const [openJobs, setOpenJobs] = useState<Set<string>>(new Set());
   const [folded, setFolded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [find, setFind] = useState('');
@@ -107,14 +109,14 @@ export function SalesActivity() {
     ];
     saveFile(`activity-sheet-${month}.xlsx`, workbookSheets(specs), XLSX_TYPE);
   };
-  // Table: the columns open on screen, A4. Full detail: every field of each line in labelled group blocks, A3.
+  // Table: job, ticket and revenue columns with the other groups summed up, A4. Full detail: every field of each line in labelled group blocks, A3.
   const exportPdf = (kind: 'table' | 'detail') => {
     const subtitle = `${lines.length} lines · ${lines.filter((l) => l.locked).length} checked · net revenue ${money(sumOf(lines, 'net'))} · ${me?.countries.join(', ') ?? ''}`;
     const footer = `SLK Operations · Activity sheet ${monthLabel(month)} · printed ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' })} Riyadh by ${me?.fullName ?? ''}`;
     const secs = sections.map((s) => ({ title: s.title, lines: s.lines, color: s.color, total: `Net ${money(sumOf(s.lines, 'net'))}` }));
     const bytes = kind === 'table'
       ? tablePdf({ title: `Activity sheet · ${monthLabel(month)}`, subtitle, footer, sections: secs, fields: ACTIVITY_FIELDS,
-        lead: [{ label: 'Line', value: (l) => String(l.app.ticket ?? l.id) }], cols: visibleColumns(ACTIVITY_FIELDS, ACTIVITY_GROUPS, lines, open) })
+        lead: [{ label: 'Line', value: (l) => String(l.app.ticket ?? l.id) }], cols: visibleColumns(ACTIVITY_FIELDS, ACTIVITY_GROUPS, lines, TABLE_GROUPS) })
       : recordPdf({ title: `Activity sheet · ${monthLabel(month)} · full detail`, subtitle, footer, sections: secs, fields: ACTIVITY_FIELDS, groups: ACTIVITY_GROUPS, paper: 'A3',
         heading: (l) => {
           const net = shownValue(ACTIVITY_FIELDS.find((f) => f.key === 'net')!, l, ACTIVITY_FIELDS);
@@ -127,7 +129,6 @@ export function SalesActivity() {
   const gross = sumOf(lines, 'gross'), net = sumOf(lines, 'net');
   const checked = lines.filter((l) => l.locked).length;
   const noRevenue = lines.filter((l) => l.app.job_status === 'Completed' && shownValue(ACTIVITY_FIELDS.find((f) => f.key === 'gross')!, l, ACTIVITY_FIELDS) === null).length;
-  const available = new Set(usedFields(ACTIVITY_FIELDS, lines).map((f) => f.group));
 
   return (
     <div>
@@ -151,7 +152,7 @@ export function SalesActivity() {
         <div className="ml-auto flex flex-wrap gap-2">
           {canEdit && <Button size="sm" variant="primary" disabled={!selected.size} loading={busy} onClick={() => onLock([...selected])}><Lock aria-hidden className="size-4" />Check & lock{selected.size ? ` (${selected.size})` : ''}</Button>}
           <Button size="sm" onClick={exportXlsx} disabled={!lines.length}><FileSpreadsheet aria-hidden className="size-4" />Excel</Button>
-          <Button size="sm" onClick={() => exportPdf('table')} disabled={!lines.length} title="A4 landscape table of the columns open on screen; more columns continue on further pages"><FileText aria-hidden className="size-4" />PDF table (A4)</Button>
+          <Button size="sm" onClick={() => exportPdf('table')} disabled={!lines.length} title="A4 landscape table: job, ticket and revenue columns, the other groups as one summary column each"><FileText aria-hidden className="size-4" />PDF table (A4)</Button>
           <Button size="sm" onClick={() => exportPdf('detail')} disabled={!lines.length} title="A3 landscape: every field of each job, grouped (Job, Crew, Dates, Hours, Ticket, Revenue …)"><FileText aria-hidden className="size-4" />PDF full detail (A3)</Button>
         </div>
       </div>
@@ -172,24 +173,23 @@ export function SalesActivity() {
             <EmptyState title={`No jobs in ${monthLabel(month)}`}>A job counts in the month it ends (or starts, when it has no end date), unless its line says another revenue month.</EmptyState>
           ) : !lines.length ? <EmptyState title="No line matches" /> : (
             <>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <GroupSwitches groups={ACTIVITY_GROUPS} open={open} setOpen={setOpen} available={available} />
-                <span className="flex gap-1 print:hidden">
-                  <Button size="sm" variant="ghost" onClick={() => setFolded(new Set())}>Show all accounts</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setFolded(new Set(sections.map((s) => s.key)))}>Fold all accounts</Button>
-                </span>
-              </div>
-              <SheetGrid caption={`Activity sheet for ${monthLabel(month)}, one line per job, grouped by account`} fields={ACTIVITY_FIELDS} groups={ACTIVITY_GROUPS} open={open} sections={sections}
-                lead={{ label: 'Job', width: 'min-w-52', render: (l) => (
+              <ActivityRecords caption={`Activity sheet for ${monthLabel(month)}, one line per job, grouped by account. Unfold a job to see and edit every field.`}
+                fields={ACTIVITY_FIELDS} groups={ACTIVITY_GROUPS} sections={sections} canEdit={canEdit} canUnlock={!!q.data.canUnlock}
+                choicesFor={(f, l) => (f.key === 'ticket_status' ? ticketStatusesFor(l.format) : undefined)}
+                onSave={onSave} onLock={onLock} onUnlock={onUnlock} selected={selected} setSelected={setSelected}
+                open={openJobs} setOpen={setOpenJobs} foldedSections={folded} setFoldedSections={setFolded}
+                lead={(l) => (
                   <span className="block leading-tight">
                     <Link to={`/operation/jobs/${l.job_id}/design`} className="font-mono text-sm font-semibold text-accent-text underline-offset-2 hover:underline">{String(l.app.ticket ?? 'no ticket')}</Link>
                     <span className="block truncate text-xs text-text-muted">{[l.app.well, l.app.unit].filter(Boolean).join(' · ') || '—'}</span>
                   </span>
-                ) }}
-                canEdit={canEdit} canUnlock={!!q.data.canUnlock}
-                choicesFor={(f, l) => (f.key === 'ticket_status' ? ticketStatusesFor(l.format) : undefined)}
-                onSave={onSave} onLock={onLock} onUnlock={onUnlock} selected={selected} setSelected={setSelected} foldedSections={folded} setFoldedSections={setFolded} />
-              <SheetLegend />
+                )} />
+              <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted print:hidden">
+                <span>Click a job to unfold every field; click again to fold it.</span>
+                <span className="inline-flex items-center gap-1"><Link2 aria-hidden className="size-3" />From the job: fix it in the job</span>
+                <span className="inline-flex items-center gap-1"><i aria-hidden className="inline-block h-3 w-5 rounded bg-warning-subtle" />Only some accounts keep this field</span>
+                <span className="inline-flex items-center gap-1"><Lock aria-hidden className="size-3 text-success" />Checked and locked</span>
+              </p>
             </>
           )}
         </>

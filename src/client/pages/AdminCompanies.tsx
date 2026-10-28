@@ -6,7 +6,7 @@ import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, PageTitle, Skeleton, cx, inputSized } from '../components/ui';
 
 // Administration → Companies (owner request 2026-10-28): the companies a job is run by, picked on Design and carried
-// to the Sales dashboard's Activity sheet and Daily report. Add, rename, reorder, switch off or remove one; a
+// to the SLK Activity Dashboard's Activity sheet and Daily report. Add, rename, reorder, switch off or remove one; a
 // company already on jobs can only be switched off.
 
 interface Company { id: string; name: string; active: number; sort: number; updated_at: string; updated_by: string | null; jobs: number }
@@ -39,7 +39,7 @@ export function AdminCompanies() {
   return (
     <section aria-labelledby="co-title">
       <PageTitle><span id="co-title">Companies</span></PageTitle>
-      <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">The company that runs each job, picked on the job’s Design stage. It shows on the Sales dashboard (Activity sheet and Daily report). Renaming a company renames it on its jobs too; a company already on jobs can be switched off but not removed.</p>
+      <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">The company that runs each job, picked on the job’s Design stage. It shows on the SLK Activity Dashboard (Activity sheet and Daily report). Renaming a company renames it on its jobs too; a company already on jobs can be switched off but not removed.</p>
       {err && <div className="mb-3"><Banner tone="danger">{err}</Banner></div>}
       {canEdit && (
         <form className="mb-4 flex max-w-xl gap-2" onSubmit={(e) => { e.preventDefault(); if (name.trim()) run(async () => { await api('/companies', { method: 'POST', json: { name } }); setName(''); }); }}>

@@ -449,7 +449,7 @@ export function JobEditor() {
 
             <SectionTitle aside="SDM or Sales">Revenue and bonus</SectionTitle>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
-              {text('revenue_cents', 'Ticket value', { type: 'number', unit: job?.revenue_currency ?? 'USD', hint: 'Feeds the Sales Dashboard' })}
+              {text('revenue_cents', 'Ticket value', { type: 'number', unit: job?.revenue_currency ?? 'USD', hint: 'Feeds the SLK Activity Dashboard' })}
               <div className="md:col-span-2">{area('bonus_remarks', 'Bonus remarks', 'Anything the bonus review should know')}</div>
             </div>
 
