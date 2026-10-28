@@ -1302,3 +1302,12 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified:**
   - tests 280, including the A3 PDF holding 40 lines on one page;
   - in the browser: the October sheet's 50-odd columns printed on a single A3 page.
+
+## 6z.2 — Activity sheet full-detail PDF
+
+- The A3 "all columns" table was too cramped to read, so A3 now prints a **full-detail** layout: each job is a block with a title strip (ticket, well, unit, rig, status, company, who checked it, net amount) and every field below in labelled group blocks (Job, Crew, Dates, Hours & distance, Ticket & documents, Ticket follow-up, Revenue, Account details), spread across five columns of even height (`balance`), comments in full under them. Account-only fields keep their shading; fields an account doesn't keep are left out of its section.
+- Buttons: **PDF table (A4)** (the columns open on screen) and **PDF full detail (A3)**.
+- The table PDF's cell padding now scales with the type, so header words no longer split ("Revenu / e month").
+- **Verified:**
+  - tests 282;
+  - October rendered: the full detail is 3 jobs per A3 page, and the A4 table header is clean.

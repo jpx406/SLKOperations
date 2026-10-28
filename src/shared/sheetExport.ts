@@ -176,7 +176,8 @@ export function tablePdf(t: PdfTable): Uint8Array {
     size *= k;
     for (const c of [...fixed, ...rest]) c.w *= k;
   }
-  const rowH = size * 1.75, headH = size * 2.9;
+  // padding grows and shrinks with the type, so a word that fits its column still fits once A3 scales it down
+  const pad = size * 0.3, rowH = size * 1.75, headH = size * 2.9;
   // columns that don't fit the page width continue on the next pages, with the line's name repeated
   const room = fit ? Infinity : full - fixed.reduce((a, c) => a + c.w, 0);
   const bands: PCol[][] = [];
@@ -212,8 +213,8 @@ export function tablePdf(t: PdfTable): Uint8Array {
       x = m;
       cols.forEach((c, i) => {
         if (c.highlight) doc.rect(x, doc.y - headH, widths[i], headH, SHADE);
-        wrap(c.label, widths[i] - 3, size, true).slice(0, 2).forEach((ln, k, all) =>
-          doc.text(x + 1.5, doc.y - size - 1 - k * size * 1.2, clip(k === 1 && all.length > 2 ? `${ln}…` : ln, widths[i] - 3, size, true), { size, bold: true }));
+        wrap(c.label, widths[i] - 2 * pad, size, true).slice(0, 2).forEach((ln, k, all) =>
+          doc.text(x + pad, doc.y - size - 1 - k * size * 1.2, clip(k === 1 && all.length > 2 ? `${ln}…` : ln, widths[i] - 2 * pad, size, true), { size, bold: true }));
         x += widths[i];
       });
       doc.y -= headH;
@@ -233,7 +234,7 @@ export function tablePdf(t: PdfTable): Uint8Array {
         let x = m;
         cols.forEach((c, i) => {
           const v = c.get(l);
-          doc.text(x + 1.5, doc.y - size - 1, clip(v, widths[i] - 3, size), { size, color: v === 'n/a' ? GREY : [0, 0, 0] });
+          doc.text(x + pad, doc.y - size - 1, clip(v, widths[i] - 2 * pad, size), { size, color: v === 'n/a' ? GREY : [0, 0, 0] });
           x += widths[i];
         });
         doc.y -= rowH;
@@ -247,6 +248,140 @@ export function tablePdf(t: PdfTable): Uint8Array {
     doc.y -= 6;
     doc.para(n.title, { size: 8.5, bold: true, gap: 2 });
     for (const line of n.lines) doc.para(line, { size: 7.5 });
+  }
+  return doc.bytes(t.footer);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// PDF, full detail: one block per line instead of one row. A title strip names the line (ticket, well, unit …)
+// and says who checked it; under it every field the line's account keeps, in labelled group blocks (Job, Crew,
+// Dates …) laid side by side, so nothing is squeezed into a narrow column.
+
+export interface RecordPdf {
+  title: string;
+  subtitle: string;
+  footer: string;
+  paper?: 'A4' | 'A3';
+  fields: SheetField[];
+  groups: readonly Group[];
+  sections: (Section & { total?: string; color?: string })[];
+  /** The line's name and the few facts shown beside it in its title strip. */
+  heading: (l: SheetLine) => { name: string; facts: string[]; amount?: string };
+}
+
+/** Splits items, in order, into at most n columns so the tallest column is as short as it can be. */
+export function balance<T>(items: T[], n: number, height: (t: T) => number): T[][] {
+  const h = items.map(height);
+  const sum = (i: number, j: number) => h.slice(i, j).reduce((a, b) => a + b, 0);
+  // best[k][i]: the shortest tallest column putting items i.. into k columns
+  const memo = new Map<string, { cost: number; cut: number }>();
+  const best = (k: number, i: number): { cost: number; cut: number } => {
+    if (i >= items.length) return { cost: 0, cut: items.length };
+    if (k === 1) return { cost: sum(i, items.length), cut: items.length };
+    const key = `${k}|${i}`;
+    const hit = memo.get(key);
+    if (hit) return hit;
+    let out = { cost: Infinity, cut: items.length };
+    for (let j = i + 1; j <= items.length; j++) {
+      const cost = Math.max(sum(i, j), best(k - 1, j).cost);
+      if (cost < out.cost) out = { cost, cut: j };
+    }
+    memo.set(key, out);
+    return out;
+  };
+  const cols: T[][] = [];
+  for (let i = 0, k = Math.min(n, items.length); i < items.length; k--) { const { cut } = best(k, i); cols.push(items.slice(i, cut)); i = cut; }
+  return cols;
+}
+
+function pageBand(doc: PdfDoc, title: string, subtitle: string) {
+  const m = doc.margin, full = doc.width - 2 * m;
+  doc.rect(m, doc.y - 40, full, 40, INK);
+  const lh = 28, lw = lh * (LOGO.width / LOGO.height);
+  doc.jpeg(LOGO, m + 8, doc.y - 34, lw, lh);
+  doc.text(m + 16 + lw, doc.y - 18, title, { size: 12, bold: true, color: [1, 1, 1] });
+  doc.text(m + 16 + lw, doc.y - 31, subtitle, { size: 8, color: [0.8, 0.8, 0.8] });
+  doc.y -= 50;
+}
+
+export function recordPdf(t: RecordPdf): Uint8Array {
+  const doc = new PdfDoc({ landscape: true, paper: t.paper });
+  const m = doc.margin, full = doc.width - 2 * m;
+  const a3 = t.paper === 'A3';
+  const size = a3 ? 6.8 : 6.2, rowH = size * 1.6, titleH = size * 2.4, gap = 8;
+  const ncol = a3 ? 5 : 4;
+  const colW = (full - gap * (ncol - 1)) / ncol;
+  pageBand(doc, t.title, t.subtitle);
+  const bottom = () => doc.margin + 24;
+
+  for (const s of t.sections) {
+    const tone = hex(s.color);
+    // the same block arrangement for every line of a section (an account), so the eye finds a field in one place
+    const used = usedFields(t.fields, s.lines).filter((f) => f.key !== 'comments');
+    const blocks = t.groups.map((g) => ({ g, fs: used.filter((f) => f.group === g.key) })).filter((b) => b.fs.length);
+    const columns = balance(blocks, ncol, (b) => b.fs.length + 1.4);
+    const colRows = columns.map((c) => c.reduce((a, b) => a + b.fs.length * rowH + titleH, 0));
+    const bodyH = Math.max(...colRows);
+    const hasComments = t.fields.some((f) => f.key === 'comments');
+    const sectionBand = (cont: boolean) => {
+      doc.rect(m, doc.y - 15, full, 15, tone ? mix(tone, 0.5) : BAND);
+      doc.text(m + 6, doc.y - 10.5, `${s.title}${cont ? ' (continued)' : ''}  ·  ${s.lines.length} line${s.lines.length === 1 ? '' : 's'}  ·  ${s.lines.filter((l) => l.locked).length} checked`, { size: 8.5, bold: true });
+      if (s.total) doc.text(m + full - 6 - textWidth(s.total, 8.5, true), doc.y - 10.5, s.total, { size: 8.5, bold: true });
+      doc.y -= 21;
+    };
+    if (doc.y - 15 - 20 - bodyH < bottom()) { doc.addPage(); pageBand(doc, t.title, t.subtitle); }
+    sectionBand(false);
+
+    for (const l of s.lines) {
+      const comment = hasComments ? display(t.fields.find((f) => f.key === 'comments'), shownValue(t.fields.find((f) => f.key === 'comments')!, l, t.fields)) : '';
+      const recH = 16 + bodyH + (comment ? rowH + 2 : 0) + 10;
+      if (doc.y - recH < bottom()) { doc.addPage(); pageBand(doc, t.title, t.subtitle); sectionBand(true); }
+      // title strip: the line's name, its facts, who checked it and its amount
+      const head = t.heading(l);
+      doc.rect(m, doc.y - 15, full, 15, tone ? mix(tone, 0.22) : [0.96, 0.96, 0.97]);
+      doc.rect(m, doc.y - 15, 3, 15, tone ?? GREY);
+      doc.text(m + 8, doc.y - 10.5, head.name, { size: 9, bold: true });
+      let x = m + 14 + textWidth(head.name, 9, true);
+      const right = l.locked ? `Checked by ${l.locked.name ?? l.locked.by} · ${display({ key: '', label: '', group: '', source: 'app', type: 'date' }, l.locked.at.slice(0, 10))}` : 'Not checked yet';
+      const rightW = textWidth(right, 7.5, !!l.locked) + (head.amount ? textWidth(head.amount, 9, true) + 18 : 0);
+      doc.text(x, doc.y - 10.2, clip(head.facts.filter(Boolean).join('   ·   '), m + full - rightW - 20 - x, 7.5), { size: 7.5, color: [0.25, 0.25, 0.28] });
+      let rx = m + full - 8;
+      if (head.amount) { rx -= textWidth(head.amount, 9, true); doc.text(rx, doc.y - 10.5, head.amount, { size: 9, bold: true }); rx -= 18; }
+      doc.text(rx - textWidth(right, 7.5, !!l.locked), doc.y - 10.2, right, { size: 7.5, bold: !!l.locked, color: l.locked ? [0.05, 0.45, 0.2] : GREY });
+      doc.y -= 19;
+      // the group blocks, side by side
+      const top = doc.y;
+      columns.forEach((col, ci) => {
+        let y = top;
+        const cx = m + ci * (colW + gap);
+        for (const b of col) {
+          doc.text(cx, y - size - 1, b.g.label.toUpperCase(), { size: size * 0.85, bold: true, color: GREY });
+          doc.line(cx, y - titleH + 2, cx + colW, y - titleH + 2, 0.82);
+          y -= titleH;
+          const labW = colW * 0.46;
+          for (const f of b.fs) {
+            const on = usesField(f, l.format);
+            const v = on ? display(f, shownValue(f, l, t.fields)) : '';
+            if (f.formats) doc.rect(cx, y - rowH + 1, colW, rowH - 0.5, [1, 0.97, 0.86]);
+            doc.text(cx + 2, y - size - 0.5, clip(f.label, labW - 4, size), { size, color: GREY });
+            doc.text(cx + labW, y - size - 0.5, clip(on ? v || '—' : 'n/a', colW - labW - 2, size, f.source === 'calc'),
+              { size, bold: f.source === 'calc', color: !on || !v ? [0.7, 0.7, 0.72] : [0.08, 0.08, 0.1] });
+            y -= rowH;
+          }
+          y -= 3;
+        }
+      });
+      doc.y = top - bodyH;
+      if (comment) {
+        doc.text(m + 2, doc.y - size - 1, 'Comments', { size, color: GREY });
+        doc.text(m + 2 + colW * 0.46, doc.y - size - 1, clip(comment, full - colW * 0.46 - 4, size), { size });
+        doc.y -= rowH + 2;
+      }
+      doc.y -= 4;
+      doc.line(m, doc.y, m + full, doc.y, 0.7);
+      doc.y -= 6;
+    }
+    doc.y -= 6;
   }
   return doc.bytes(t.footer);
 }

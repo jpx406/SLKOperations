@@ -3,7 +3,7 @@ import {
   ACTIVITY_FIELDS, ACTIVITY_GROUPS, DAILY_FIELDS, changedSinceLock, cleanValue, clientFor, dailyStatus, formatOf, liveValue, shownValue, snapshotOf,
   usesField, type SheetLine,
 } from '../src/shared/salesSheets';
-import { cellText, groupSummary, sheetSpec, tablePdf, visibleColumns } from '../src/shared/sheetExport';
+import { balance, cellText, groupSummary, recordPdf, sheetSpec, tablePdf, visibleColumns } from '../src/shared/sheetExport';
 import { workbookSheets } from '../src/shared/xlsx';
 import { unzip } from '../src/shared/xlsxRead';
 
@@ -142,5 +142,22 @@ describe('man-hours and travel on Closure', () => {
     expect(travelKm(125, null)).toBe(250);
     expect(travelKm(125, 300)).toBe(300);
     expect(travelKm(null, null)).toBeNull();
+  });
+});
+
+describe('full-detail PDF', () => {
+  it('splits the groups into columns of even height, in order', () => {
+    const cols = balance([10, 4, 9, 8, 11, 5, 6], 5, (x) => x);
+    expect(cols.flat()).toEqual([10, 4, 9, 8, 11, 5, 6]);
+    expect(Math.max(...cols.map((c) => c.reduce((a, b) => a + b, 0)))).toBe(13);
+    expect(balance([3], 5, (x) => x)).toEqual([[3]]);
+  });
+  it('prints one block per line on A3', () => {
+    const lines = Array.from({ length: 7 }, (_, i) => line({ id: `j${i}` }));
+    const pdf = new TextDecoder('latin1').decode(recordPdf({ title: 'Activity', subtitle: 's', footer: 'f', paper: 'A3', fields: ACTIVITY_FIELDS, groups: ACTIVITY_GROUPS,
+      sections: [{ title: 'SAWCOD', lines }], heading: (l) => ({ name: String(l.app.ticket), facts: [String(l.app.well)] }) }));
+    expect(pdf).toContain('/MediaBox [0 0 1190.55 841.89]');
+    expect(pdf).toContain('(TICKET FOLLOW-UP)');
+    expect(pdf).toContain('(Not checked yet)');
   });
 });

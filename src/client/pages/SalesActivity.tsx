@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { NO_ACCOUNT, byAccount } from '../../shared/accounts';
 import { ACTIVITY_FIELDS, ACTIVITY_GROUPS, FORMATS, FORMAT_KEYS, changedSinceLock, monthLabel, shownValue, ticketStatusesFor, type FormatKey, type SheetLine } from '../../shared/salesSheets';
-import { sheetSpec, tablePdf, usedFields, visibleColumns } from '../../shared/sheetExport';
+import { recordPdf, sheetSpec, tablePdf, usedFields, visibleColumns } from '../../shared/sheetExport';
 import { workbookSheets } from '../../shared/xlsx';
 import { api } from '../api';
 import { useMe } from '../auth';
@@ -107,18 +107,21 @@ export function SalesActivity() {
     ];
     saveFile(`activity-sheet-${month}.xlsx`, workbookSheets(specs), XLSX_TYPE);
   };
-  // A4: the columns open on screen; A3: every column, fitted to one page width
-  const exportPdf = (paper: 'A4' | 'A3') => {
-    const cols = visibleColumns(ACTIVITY_FIELDS, ACTIVITY_GROUPS, lines, paper === 'A3' ? new Set(ACTIVITY_GROUPS.map((g) => g.key)) : open);
-    const bytes = tablePdf({
-      title: `Activity sheet · ${monthLabel(month)}`,
-      subtitle: `${lines.length} lines · ${lines.filter((l) => l.locked).length} checked · net revenue ${money(sumOf(lines, 'net'))} · ${me?.countries.join(', ') ?? ''}`,
-      lead: [{ label: 'Line', value: (l) => String(l.app.ticket ?? l.id) }],
-      cols, fields: ACTIVITY_FIELDS, paper,
-      sections: sections.map((s) => ({ title: s.title, lines: s.lines, color: s.color, total: `Net ${money(sumOf(s.lines, 'net'))}` })),
-      footer: `SLK Operations · Activity sheet ${monthLabel(month)} · printed ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' })} Riyadh by ${me?.fullName ?? ''}`,
-    });
-    saveFile(`activity-sheet-${month}${paper === 'A3' ? '-A3' : ''}.pdf`, bytes as BlobPart, 'application/pdf');
+  // Table: the columns open on screen, A4. Full detail: every field of each line in labelled group blocks, A3.
+  const exportPdf = (kind: 'table' | 'detail') => {
+    const subtitle = `${lines.length} lines · ${lines.filter((l) => l.locked).length} checked · net revenue ${money(sumOf(lines, 'net'))} · ${me?.countries.join(', ') ?? ''}`;
+    const footer = `SLK Operations · Activity sheet ${monthLabel(month)} · printed ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' })} Riyadh by ${me?.fullName ?? ''}`;
+    const secs = sections.map((s) => ({ title: s.title, lines: s.lines, color: s.color, total: `Net ${money(sumOf(s.lines, 'net'))}` }));
+    const bytes = kind === 'table'
+      ? tablePdf({ title: `Activity sheet · ${monthLabel(month)}`, subtitle, footer, sections: secs, fields: ACTIVITY_FIELDS,
+        lead: [{ label: 'Line', value: (l) => String(l.app.ticket ?? l.id) }], cols: visibleColumns(ACTIVITY_FIELDS, ACTIVITY_GROUPS, lines, open) })
+      : recordPdf({ title: `Activity sheet · ${monthLabel(month)} · full detail`, subtitle, footer, sections: secs, fields: ACTIVITY_FIELDS, groups: ACTIVITY_GROUPS, paper: 'A3',
+        heading: (l) => {
+          const net = shownValue(ACTIVITY_FIELDS.find((f) => f.key === 'net')!, l, ACTIVITY_FIELDS);
+          return { name: String(l.app.ticket ?? 'No ticket'), facts: [l.app.well, l.app.unit, l.app.field_rig, l.app.job_status, l.app.entity].map((v) => (v == null ? '' : String(v))),
+            amount: net == null ? undefined : `${Number(net).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${l.app.currency ?? ''}`.trim() };
+        } });
+    saveFile(`activity-sheet-${month}${kind === 'detail' ? '-full-detail' : ''}.pdf`, bytes as BlobPart, 'application/pdf');
   };
 
   const gross = sumOf(lines, 'gross'), net = sumOf(lines, 'net');
@@ -148,8 +151,8 @@ export function SalesActivity() {
         <div className="ml-auto flex flex-wrap gap-2">
           {canEdit && <Button size="sm" variant="primary" disabled={!selected.size} loading={busy} onClick={() => onLock([...selected])}><Lock aria-hidden className="size-4" />Check & lock{selected.size ? ` (${selected.size})` : ''}</Button>}
           <Button size="sm" onClick={exportXlsx} disabled={!lines.length}><FileSpreadsheet aria-hidden className="size-4" />Excel</Button>
-          <Button size="sm" onClick={() => exportPdf('A4')} disabled={!lines.length} title="A4 landscape: the columns open on screen; more columns continue on further pages"><FileText aria-hidden className="size-4" />PDF A4</Button>
-          <Button size="sm" onClick={() => exportPdf('A3')} disabled={!lines.length} title="A3 landscape: every column on one page width"><FileText aria-hidden className="size-4" />PDF A3 · all columns</Button>
+          <Button size="sm" onClick={() => exportPdf('table')} disabled={!lines.length} title="A4 landscape table of the columns open on screen; more columns continue on further pages"><FileText aria-hidden className="size-4" />PDF table (A4)</Button>
+          <Button size="sm" onClick={() => exportPdf('detail')} disabled={!lines.length} title="A3 landscape: every field of each job, grouped (Job, Crew, Dates, Hours, Ticket, Revenue …)"><FileText aria-hidden className="size-4" />PDF full detail (A3)</Button>
         </div>
       </div>
       <AccountLegend counts={counts} noun="lines" />
