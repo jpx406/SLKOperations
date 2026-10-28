@@ -6,11 +6,11 @@ export const PACKAGE_VERSION = 1;
 
 /** Import order: a row's parents come first. WIREGUARD mirrors are not part of a package (the sync owns them). */
 export const IMPORT_ORDER = [
-  'service_domains', 'service_profiles', 'lookup_values', 'pce', 'grease_panels', 'user_roles', 'role_permissions', 'tab_grants', 'employees',
-  'holidays', 'attendance_categories', 'attendance_role_sheets', 'attendance_sheets', 'jobs', 'job_services', 'job_crew', 'job_headcount', 'job_third_parties', 'job_log_events', 'unit_events',
+  'service_domains', 'service_profiles', 'lookup_values', 'companies', 'pce', 'grease_panels', 'user_roles', 'role_permissions', 'tab_grants', 'employees',
+  'holidays', 'attendance_categories', 'attendance_role_sheets', 'attendance_sheets', 'jobs', 'job_extras', 'job_services', 'job_crew', 'job_headcount', 'job_third_parties', 'job_log_events', 'unit_events',
   'jra_templates', 'jras', 'job_forms', 'account_colors', 'pre_job_notes', 'pre_job_note_versions', 'eight_min_facts', 'incidents', 'eight_min_facts_versions', 'failure_roster_entries',
   'attendance_entries', 'attendance_reviews', 'attendance_approvals', 'inventory_locations', 'inventory_items', 'inventory_movements', 'bonus_rules', 'bonus_role_splits',
-  'job_bonus_lines', 'recon_findings', 'recon_links', 'doc_counters', 'knowledge_docs', 'quick_plan_cards', 'ai_settings', 'ai_usage', 'kpi_parity_runs',
+  'job_bonus_lines', 'sales_activity', 'sales_daily', 'sales_daily_days', 'sales_account_formats', 'recon_findings', 'recon_links', 'doc_counters', 'knowledge_docs', 'quick_plan_cards', 'ai_settings', 'ai_usage', 'kpi_parity_runs',
 ];
 /** Exported for the record, never imported. */
 export const EXPORT_ONLY = ['audit_log', 'signatures', 'attachments'];

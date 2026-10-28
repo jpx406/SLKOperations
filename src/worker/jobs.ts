@@ -30,19 +30,22 @@ function toJob(row: Record<string, unknown>): Job {
 }
 
 export async function getJob(env: Env, user: AuthedUser, id: string): Promise<Job | null> {
-  const [row, extra] = await env.DB.batch([
+  // job_extras is read on its own: one result set can't hold more than 100 columns
+  const [row, extra, more] = await env.DB.batch([
     env.DB.prepare(`SELECT j.* FROM jobs j WHERE j.id = ? AND j.deleted_at IS NULL AND ${inCountries()}`).bind(id, JSON.stringify(user.countries)),
     env.DB.prepare(`SELECT ${METRICS} FROM job_metrics m WHERE m.job_id = ?`).bind(id),
+    env.DB.prepare(`SELECT ${EXTRA_COLUMNS.join(', ')} FROM job_extras WHERE job_id = ?`).bind(id),
   ]);
   const r = row.results[0] as Record<string, unknown> | undefined;
-  return r ? toJob({ ...r, ...(extra.results[0] as Record<string, unknown>) }) : null;
+  const blank = Object.fromEntries(EXTRA_COLUMNS.map((k) => [k, null]));
+  return r ? toJob({ ...r, ...(extra.results[0] as Record<string, unknown>), ...blank, ...(more.results[0] as Record<string, unknown> | undefined) }) : null;
 }
 
 const NUMERIC = new Set([
   'runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'max_overpull_lb', 'jarring_minutes', 'wire_cut_ft', 'npt_hours',
   'op_hours_override', 'h2s_ppm', 'co2_pct', 'bht_f', 'bhp_psi', 'siwhp_psi', 'fluid_weight_pcf', 'solids_pct', 'target_depth_ft',
   'top_interval_ft', 'sssv_depth_ft', 'min_restriction_in', 'max_inclination_deg', 'target_casing_weight_lbft', 'pressure_rating_psi',
-  'lubricator_length_ft',
+  'lubricator_length_ft', 'km_to_location', 'man_hours_override', 'travel_km_override',
 ]);
 const INTEGER = new Set(['runs_ok', 'runs_failed', 'pressure_rating_psi', 'revenue_cents']);
 const DATE = new Set(['start_date', 'end_date', 'report_closure_date']);
@@ -104,6 +107,11 @@ async function clean(env: Env, patch: Record<string, unknown>, country: string):
       patch[k] = v.trim().slice(0, k === 'completion_details' || k === 'run_details' || k === 'failure_description' ? 4000 : 500);
     }
   }
+  if (typeof patch.company === 'string') {
+    const co = await env.DB.prepare('SELECT name FROM companies WHERE name = ? COLLATE NOCASE AND active = 1').bind(patch.company).first<{ name: string }>();
+    if (!co) return 'Pick a company from the list (Administration → Companies)';
+    patch.company = co.name;
+  }
   if (typeof patch.wire_serial_number === 'string') {
     const w = await env.DB.prepare('SELECT country, status FROM wg_wires WHERE wire_serial_number = ? AND wg_active = 1').bind(patch.wire_serial_number).first<{ country: string | null; status: string | null }>();
     if (!w) return 'That wire is not in WIREGUARD';
@@ -146,12 +154,19 @@ export async function blockConflict(env: Env, unit: string | null, start: string
   return hit ? `Unit ${unit} is ${BLOCK_WORD[hit.kind]} from ${hit.starts_on}${hit.ends_on === '9999-12-31' ? ' until further notice' : ` to ${hit.ends_on}`}` : null;
 }
 
-function updateStatement(env: Env, id: string, patch: Record<string, unknown>, username: string, at: string) {
-  const cols = Object.keys(patch);
-  const set = cols.map((c, i) => `${c} = ?${i + 1}`).join(', ');
-  const n = cols.length;
-  return env.DB.prepare(`UPDATE jobs SET ${set}, updated_by = ?${n + 1}, updated_at = ?${n + 2} WHERE id = ?${n + 3}`)
-    .bind(...cols.map((c) => patch[c]), username, at, id);
+/** Job fields kept in job_extras: the jobs table is at D1's 100-column limit. */
+export const EXTRA_COLUMNS = ['company', 'km_to_location', 'man_hours_override', 'travel_km_override'];
+
+function updateStatements(env: Env, id: string, patch: Record<string, unknown>, username: string, at: string): D1PreparedStatement[] {
+  const cols = Object.keys(patch).filter((k) => !EXTRA_COLUMNS.includes(k));
+  const extra = Object.keys(patch).filter((k) => EXTRA_COLUMNS.includes(k));
+  const set = [...cols.map((c, i) => `${c} = ?${i + 1}`), `updated_by = ?${cols.length + 1}`, `updated_at = ?${cols.length + 2}`].join(', ');
+  const out = [env.DB.prepare(`UPDATE jobs SET ${set} WHERE id = ?${cols.length + 3}`).bind(...cols.map((c) => patch[c]), username, at, id)];
+  if (extra.length) out.push(env.DB.prepare(
+    `INSERT INTO job_extras (job_id, ${extra.join(', ')}) VALUES (?1, ${extra.map((_, i) => `?${i + 2}`).join(', ')})
+     ON CONFLICT (job_id) DO UPDATE SET ${extra.map((k) => `${k} = excluded.${k}`).join(', ')}`,
+  ).bind(id, ...extra.map((k) => patch[k])));
+  return out;
 }
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
@@ -226,7 +241,7 @@ jobs.post('/', async (c) => {
     await c.env.DB.batch([
       c.env.DB.prepare('INSERT INTO jobs (id, country, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(id, country, user.username, user.username, at, at),
-      updateStatement(c.env, id, allowed, user.username, at),
+      ...updateStatements(c.env, id, allowed, user.username, at),
       audit(c.env, user, 'create', id, `Created job: ${JSON.stringify(allowed)}`),
     ]);
     await ensureAccountColor(c.env, allowed.location);
@@ -299,7 +314,7 @@ async function applyPatch(c: Context<AppBindings>, id: string, raw: Record<strin
   const changes = Object.keys(allowed).filter((k) => (current as unknown as Record<string, unknown>)[k] !== allowed[k]);
   try {
     await c.env.DB.batch([
-      updateStatement(c.env, id, allowed, user.username, at),
+      ...updateStatements(c.env, id, allowed, user.username, at),
       audit(c.env, user, strict ? 'move' : 'edit', id, changes.map((k) => `${k}: ${String((current as unknown as Record<string, unknown>)[k])} → ${String(allowed[k])}`).join('; ')),
     ]);
     if ('location' in allowed) await ensureAccountColor(c.env, allowed.location);

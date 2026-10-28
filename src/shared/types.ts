@@ -80,6 +80,7 @@ export interface Job {
   job_package_url: string | null; report_closure_status: 'open' | 'pending_review' | 'closed' | 'na' | null; report_closure_date: string | null;
   gears_no: string | null; wellsite_audit: YesNo | null; wg_runs_logged: YesNo | null; service_order: string | null; service_order_no: string | null;
   failure_description: string | null; bonus_remarks: string | null; revenue_cents: number | null; revenue_currency: string;
+  company: string | null; km_to_location: number | null; man_hours_override: number | null; travel_km_override: number | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -99,6 +100,8 @@ export interface Lookups {
   lists: Record<string, string[]>;
   pce: { id: string; country: string; label: string; kind: string; bore_in: number; rating_psi: number | null; length_ft: number | null; active: number }[];
   greasePanels: { id: string; country: string; label: string; panel_type: string | null; active: number }[];
+  /** Administration → Companies, active ones in order. */
+  companies: string[];
   serviceProfiles: { job_type_name: string; domain: string | null; is_plug: number; is_fishing: number; is_memory: number; is_perforation: number; is_explosive: number }[];
 }
 

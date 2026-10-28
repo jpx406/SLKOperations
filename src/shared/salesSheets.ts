@@ -68,7 +68,7 @@ export const ACTIVITY_GROUPS = [
   { key: 'job', label: 'Job', hint: 'Account, rig, well, service and unit' },
   { key: 'crew', label: 'Crew', hint: 'Supervisors and operators on the job' },
   { key: 'dates', label: 'Dates', hint: 'Call-out to demobilisation' },
-  { key: 'hours', label: 'Hours', hint: 'Operating, NPT and stand-by time' },
+  { key: 'hours', label: 'Hours & distance', hint: 'Operating, NPT and stand-by time, man-hours and kilometres' },
   { key: 'docs', label: 'Ticket & documents', hint: 'FST, DRSS, DMR, service order and ticket status' },
   { key: 'follow', label: 'Ticket follow-up', hint: 'When the ticket went to the client and to Finance' },
   { key: 'revenue', label: 'Revenue', hint: 'Gross, partially billed and net' },
@@ -79,7 +79,7 @@ export const ACTIVITY_GROUPS = [
 export const ACTIVITY_FIELDS: SheetField[] = [
   { key: 'revenue_month', label: 'Revenue month', group: 'job', source: 'both', type: 'month', hint: 'From the job’s end date; change it when the ticket is billed in another month' },
   { key: 'account', label: 'Account', group: 'job', source: 'app', type: 'text', stage: 'design' },
-  { key: 'entity', label: 'Entity', group: 'job', source: 'sheet', type: 'choice', choices: ['NESR', 'SAPESCO'] },
+  { key: 'entity', label: 'Company', group: 'job', source: 'app', type: 'text', stage: 'design', hint: 'NESR, SAPESCO … from the job’s Design' },
   { key: 'field_rig', label: 'Field / rig', group: 'job', source: 'app', type: 'text', stage: 'design' },
   { key: 'well', label: 'Well', group: 'job', source: 'app', type: 'text', stage: 'design' },
   { key: 'job_type', label: 'Job type', group: 'job', source: 'app', type: 'text', stage: 'design' },
@@ -104,7 +104,9 @@ export const ACTIVITY_FIELDS: SheetField[] = [
   { key: 'npt_hours', label: 'NPT (h)', group: 'hours', source: 'app', type: 'number', stage: 'execution' },
   { key: 'standby_hours', label: 'Stand-by (h)', group: 'hours', source: 'sheet', type: 'number' },
   { key: 'total_hours', label: 'Total time (h)', group: 'hours', source: 'calc', type: 'number', hint: 'Oper. time + stand-by' },
-  { key: 'man_hours', label: 'Man-hours', group: 'hours', source: 'calc', type: 'number', hint: 'Hours from arrival to job finished × crew on the job' },
+  { key: 'man_hours', label: 'Man-hours', group: 'hours', source: 'app', type: 'number', stage: 'closure', hint: 'Operating hours × people assigned, or the SDM’s figure on Closure' },
+  { key: 'km', label: 'KM to location', group: 'hours', source: 'app', type: 'number', stage: 'execution' },
+  { key: 'travel_km', label: 'Travel km', group: 'hours', source: 'app', type: 'number', stage: 'closure', hint: 'KM to location × 2, or the SDM’s figure on Closure' },
 
   { key: 'fst_no', label: 'FST #', group: 'docs', source: 'app', type: 'text', stage: 'design', hint: 'The job’s field ticket' },
   { key: 'drss_no', label: 'DRSS / DLTS', group: 'docs', source: 'app', type: 'text', stage: 'design' },
@@ -131,7 +133,6 @@ export const ACTIVITY_FIELDS: SheetField[] = [
 
   { key: 'client_unit', label: 'Client unit name', group: 'account', source: 'sheet', type: 'text', formats: ['sawcod', 'nawcod'], hint: 'Aramco unit name' },
   { key: 'org_code', label: 'Org code', group: 'account', source: 'sheet', type: 'text', formats: ['sawcod'] },
-  { key: 'km', label: 'KM', group: 'account', source: 'sheet', type: 'number', formats: ['sawcod', 'nawcod', 'razor', 'dwo'] },
   { key: 'land_offshore', label: 'Land / offshore', group: 'account', source: 'sheet', type: 'choice', choices: ['Land', 'Offshore'], formats: ['razor', 'dwo'] },
   { key: 'rig_assigned', label: 'Rig assigned', group: 'account', source: 'sheet', type: 'choice', choices: ['Assigned', 'Non-assigned'], formats: ['razor', 'dwo'] },
   { key: 'unit_type', label: 'Unit type', group: 'account', source: 'sheet', type: 'choice', choices: ['DD', 'HD'], formats: ['dwo', 'unc'] },
@@ -191,7 +192,7 @@ export const DAILY_FIELDS: SheetField[] = [
   { key: 'well_type', label: 'Well type', group: 'well', source: 'both', type: 'choice', choices: ['Oil', 'Gas', 'Water', 'Injector', 'N/A'] },
   { key: 'location_type', label: 'Location type', group: 'well', source: 'sheet', type: 'choice', choices: LOCATION_TYPES, carry: true },
   { key: 'utilization', label: 'Utilisation', group: 'well', source: 'calc', type: 'text', hint: 'From the status' },
-  { key: 'entity', label: 'Entity', group: 'well', source: 'sheet', type: 'choice', choices: ['N', 'S', 'BH'], carry: true, hint: 'N NESR, S SAPESCO, BH Bahrain' },
+  { key: 'entity', label: 'Entity', group: 'well', source: 'both', type: 'choice', choices: ['N', 'S', 'BH'], carry: true, hint: 'N NESR, S SAPESCO, BH Bahrain; suggested from the job’s company' },
 
   { key: 'remarks', label: 'Remarks', group: 'notes', source: 'sheet', type: 'longtext' },
 ];
@@ -215,11 +216,6 @@ export interface SheetLine {
 }
 
 const num = (v: Value) => (v === null || v === '' || v === undefined ? null : Number(v));
-const hoursBetween = (a: Value, b: Value) => {
-  if (!a || !b) return null;
-  const t = (Date.parse(String(b).length === 10 ? `${b}T23:59:59Z` : String(b)) - Date.parse(String(a).length === 10 ? `${a}T00:00:00Z` : String(a))) / 3_600_000;
-  return Number.isFinite(t) && t >= 0 ? Math.round(t * 100) / 100 : null;
-};
 
 /** A field's live value on a line (before any lock). */
 export function liveValue(f: SheetField, line: Pick<SheetLine, 'app' | 'data'>, all: SheetField[]): Value {
@@ -230,7 +226,6 @@ export function liveValue(f: SheetField, line: Pick<SheetLine, 'app' | 'data'>, 
   const get = (k: string) => { const g = all.find((x) => x.key === k); return g ? liveValue(g, line, all) : null; };
   switch (f.key) {
     case 'total_hours': { const o = num(get('op_hours')), s = num(get('standby_hours')); return o === null && s === null ? null : Math.round(((o ?? 0) + (s ?? 0)) * 100) / 100; }
-    case 'man_hours': { const h = hoursBetween(get('arrived_at') ?? get('started_at'), get('finished_at')), n = num(line.app.crew_count); return h === null || !n ? null : Math.round(h * n * 100) / 100; }
     case 'net': { const g = num(get('gross')); return g === null ? null : Math.round((g - (num(get('partial')) ?? 0)) * 100) / 100; }
     case 'utilization': { const s = get('status'); return DAILY_STATUSES.find((d) => d.status === s)?.utilization ?? null; }
     default: return null;

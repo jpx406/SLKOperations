@@ -19,3 +19,21 @@ export function runEfficiency(ok: number | null, failed: number | null): number 
   if (!total) return null;
   return Math.round(((ok ?? 0) / total) * 1000) / 10;
 }
+
+/** People counted for man-hours: the named crew still on the job, else the planned head count. */
+export function peopleAssigned(crew: { end_date?: string | null }[], headcount?: { supervisors: number; operators: number; assistant_operators: number; helpers: number } | null): number {
+  const named = crew.filter((p) => !p.end_date).length;
+  return named || (headcount ? headcount.supervisors + headcount.operators + headcount.assistant_operators + headcount.helpers : 0);
+}
+
+/** Man-hours on Closure: operating hours × people assigned, unless the SDM typed a figure. */
+export function manHours(op: number | null, people: number, override: number | null): number | null {
+  if (override != null) return override;
+  return op != null && people > 0 ? Math.round(op * people * 100) / 100 : null;
+}
+
+/** Travel on Closure: the distance to the location there and back, unless the SDM typed a figure. */
+export function travelKm(kmToLocation: number | null, override: number | null): number | null {
+  if (override != null) return override;
+  return kmToLocation != null ? Math.round(kmToLocation * 2 * 10) / 10 : null;
+}

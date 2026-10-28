@@ -41,10 +41,10 @@ describe('account formats', () => {
 });
 
 describe('values', () => {
-  it('works out total time, man-hours and net revenue', () => {
+  it('works out total time and net revenue, and reads man-hours from the job', () => {
     const l = line();
     expect(liveValue(f('total_hours'), l, ACTIVITY_FIELDS)).toBe(6);
-    expect(liveValue(f('man_hours'), l, ACTIVITY_FIELDS)).toBe(18);
+    expect(liveValue(f('man_hours'), { ...l, app: { ...l.app, man_hours: 12 } }, ACTIVITY_FIELDS)).toBe(12);
     expect(liveValue(f('net'), l, ACTIVITY_FIELDS)).toBe(750);
   });
   it('uses a typed revenue month over the one from the job', () => {
@@ -94,7 +94,7 @@ describe('columns and files', () => {
     const keys = cols.map((c) => c.key);
     expect(keys).toContain('land_offshore');
     expect(keys).not.toContain('org_code');
-    expect(cols.find((c) => c.key === 'km')?.highlight).toBe(true);
+    expect(cols.find((c) => c.key === 'land_offshore')?.highlight).toBe(true);
   });
   it('writes n/a for a column the line’s account does not keep, and short summaries', () => {
     const l = line({ format: 'dwo' });
@@ -124,5 +124,19 @@ describe('columns and files', () => {
     expect(pdf.startsWith('%PDF-1.4')).toBe(true);
     expect(pdf).toContain('/MediaBox [0 0 841.89 595.28]');
     expect((pdf.match(/\/Type \/Page \/Parent/g) ?? []).length).toBeGreaterThan(1);
+  });
+});
+
+describe('man-hours and travel on Closure', () => {
+  it('multiply operating hours by the people assigned, and the distance by two, unless overridden', async () => {
+    const { manHours, peopleAssigned, travelKm } = await import('../src/shared/metrics');
+    expect(peopleAssigned([{ end_date: null }, { end_date: null }, { end_date: '2026-10-02' }], null)).toBe(2);
+    expect(peopleAssigned([], { supervisors: 1, operators: 2, assistant_operators: 0, helpers: 1 })).toBe(4);
+    expect(manHours(6.5, 3, null)).toBe(19.5);
+    expect(manHours(6.5, 0, null)).toBeNull();
+    expect(manHours(null, 3, 40)).toBe(40);
+    expect(travelKm(125, null)).toBe(250);
+    expect(travelKm(125, 300)).toBe(300);
+    expect(travelKm(null, null)).toBeNull();
   });
 });

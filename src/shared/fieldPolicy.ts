@@ -8,7 +8,7 @@ import type { Role } from './types';
 
 /** Execution fields: on a job that needs a JRA they stay closed until the JRA is approved. */
 export const EXECUTION_FIELDS = ['arrived_at', 'rig_up_at', 'rig_down_at', 'runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'max_overpull_lb',
-  'jarring_minutes', 'wire_cut_ft', 'npt_hours', 'failure', 'plug_type', 'op_time_details', 'survey_details', 'fishing_details', 'perforation_details'];
+  'jarring_minutes', 'wire_cut_ft', 'npt_hours', 'km_to_location', 'failure', 'plug_type', 'op_time_details', 'survey_details', 'fishing_details', 'perforation_details'];
 const PLAIN_EXECUTION = EXECUTION_FIELDS.filter((f) => !f.endsWith('_details') || f === 'op_time_details');
 
 type Policy = { rule: string; badge: string; kind?: 'json' | 'money' };
@@ -18,7 +18,7 @@ const fields = (names: string[], rule: string, badge: string, kind?: Policy['kin
 
 export const FIELD_POLICY: Record<string, Policy> = {
   // 01 Design
-  ...fields(['ticket_no', 'drss_no', 'dmr_no', 'run_details', 'start_date', 'location', 'field', 'rig', 'well', 'conveyance', 'third_party_required'], 'job.design', 'SALES'),
+  ...fields(['ticket_no', 'drss_no', 'dmr_no', 'run_details', 'start_date', 'location', 'field', 'rig', 'well', 'conveyance', 'third_party_required', 'company'], 'job.design', 'SALES'),
   status: { rule: 'job.design', badge: 'SALES / SDM' },
   ...fields(['sdm_username', 'unit_number', 'end_date', 'program_in_place'], 'job.design_sdm', 'SDM'),
   // 02 Preparation
@@ -39,6 +39,7 @@ export const FIELD_POLICY: Record<string, Policy> = {
   ...fields(['eight_min_facts_done', 'prelim_report', 'final_report', 'report_closure_status', 'report_closure_date', 'gears_no', 'failure_description'], 'closure.failure', 'SQM / SDM'),
   ...fields(['service_order', 'service_order_no', 'bonus_remarks'], 'closure.service', 'SDM'),
   revenue_cents: { rule: 'closure.revenue', badge: 'SDM / SALES', kind: 'money' },
+  ...fields(['man_hours_override', 'travel_km_override'], 'closure.man_hours', 'SDM'),
 };
 
 export const EDITABLE_FIELDS = Object.keys(FIELD_POLICY);

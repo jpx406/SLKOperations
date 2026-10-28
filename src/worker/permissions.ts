@@ -6,7 +6,7 @@ export const MENU_KEYS = [
   'reconciliation', 'statistics', 'npt_analysis', 'utilization', 'competency', 'attendance',
   'inventory_explosive', 'inventory_hardware', 'inventory_mcr', 'wires', 'knowledge_hub', 'users', 'audit', 'ai_assistant',
   'bonus', 'sales_dashboard', 'headcount_roster', 'ai_agent',
-  'job_design', 'job_preparation', 'job_execution', 'job_closure', 'form_templates',
+  'job_design', 'job_preparation', 'job_execution', 'job_closure', 'form_templates', 'companies',
 ] as const;
 const STAGE_KEYS = ['job_design', 'job_preparation', 'job_execution', 'job_closure'];
 
@@ -55,6 +55,9 @@ export function effectiveMenus(
 // the same central-table approach as WIREGUARD's SOX Phase 1 WRITE_RULES.
 export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: keyof MenuRight }[] = [
   { method: 'POST', re: /^\/api\/jobs$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/companies$/, menu: 'companies', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/companies\/[^/]+$/, menu: 'companies', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/companies\/[^/]+$/, menu: 'companies', action: 'delete' },
   // Sales sheets: typing and locking need edit on the Sales Dashboard (unlocking is checked for Admin in the handler)
   { method: 'PUT', re: /^\/api\/sales\/(activity\/[^/]+|formats|daily\/[^/]+(\/[^/]+)?)$/, menu: 'sales_dashboard', action: 'edit' },
   { method: 'POST', re: /^\/api\/sales\/(activity|daily\/[^/]+)\/(lock|unlock)$/, menu: 'sales_dashboard', action: 'edit' },
@@ -156,6 +159,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status|passkeys|roles|rules)$/, menus: 'any' },
   { re: /^\/api\/schedule$/, menus: ['schedule'] },
   { re: /^\/api\/audit$/, menus: ['audit'] },
+  { re: /^\/api\/companies$/, menus: ['companies'] },
   { re: /^\/api\/account-colors$/, menus: ['schedule', 'jobs', 'job_log'] },
   { re: /^\/api\/form-templates(\/[^/]+)?$/, menus: ['form_templates'] },
   { re: /^\/api\/job-forms\/[^/]+$/, menus: ['jobs'] },

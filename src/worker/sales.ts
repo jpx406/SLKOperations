@@ -4,6 +4,7 @@ import {
   ACTIVITY_FIELDS, DAILY_FIELDS, FORMAT_KEYS, cleanValue, clientFor, dailyStatus, formatOf, snapshotOf,
   type FormatKey, type SheetField, type SheetLine, type Values,
 } from '../shared/salesSheets';
+import { manHours, travelKm } from '../shared/metrics';
 import type { AppBindings, AuthedUser, Env } from './env';
 
 // Sales Dashboard (Administrator Manual 2), decided 2026-10-24: an aggregate of the revenue entered on each job.
@@ -75,6 +76,10 @@ async function crewOf(env: Env, jobIds: string[], day?: string) {
 const JOB_COLS = `j.id, j.country, j.ticket_no, j.drss_no, j.dmr_no, j.service_order_no, j.status, j.location, j.field, j.rig, j.well, j.unit_number,
   j.well_type, j.start_date, j.end_date, j.arrived_at, j.rig_up_at, j.rig_down_at, j.npt_hours, coalesce(j.op_hours_override, j.op_hours_auto) AS op_hours,
   j.ticket_signed, j.revenue_cents, j.revenue_currency, j.max_inclination_deg, j.conveyance, p.label AS pce_label,
+  x.company, x.km_to_location, x.man_hours_override, x.travel_km_override,
+  -- people assigned for the man-hours: the named crew still on the job, else the planned head count
+  coalesce(nullif((SELECT count(*) FROM job_crew c WHERE c.job_id = j.id AND c.end_date IS NULL), 0),
+    (SELECT supervisors + operators + assistant_operators + helpers FROM job_headcount h WHERE h.job_id = j.id), 0) AS people,
   (SELECT group_concat(job_type_name, ', ') FROM (SELECT job_type_name FROM job_services s WHERE s.job_id = j.id ORDER BY s.position)) AS services`;
 type JobRow = Record<string, string | number | null>;
 
@@ -88,9 +93,10 @@ function activityApp(j: JobRow, crew: { supervisors: string[]; operators: string
     revenue_month: autoMonth(j), account: j.location, field_rig: rigWell(j), well: j.well, job_type: j.services, job_status: STATUS_WORD[String(j.status)] ?? j.status,
     unit: j.unit_number, well_type: j.well_type,
     supervisor: sup[0] ?? null, supervisor_2: sup.slice(1).join(', ') || null, operators: crew?.operators.join(', ') || null,
-    crew_count: sup.length + (crew?.operators.length ?? 0) || null,
     planned_mob_on: j.start_date, arrived_at: j.arrived_at, started_at: j.rig_up_at ?? j.start_date, finished_at: j.rig_down_at ?? j.end_date,
-    op_hours: j.op_hours, npt_hours: j.npt_hours,
+    op_hours: j.op_hours, npt_hours: j.npt_hours, entity: j.company,
+    man_hours: manHours(j.op_hours == null ? null : Number(j.op_hours), Number(j.people) || 0, j.man_hours_override == null ? null : Number(j.man_hours_override)),
+    km: j.km_to_location, travel_km: travelKm(j.km_to_location == null ? null : Number(j.km_to_location), j.travel_km_override == null ? null : Number(j.travel_km_override)),
     fst_no: j.ticket_no, drss_no: j.drss_no, dmr_no: j.dmr_no, service_order_no: j.service_order_no, ticket_signed: j.ticket_signed ? YES[String(j.ticket_signed)] ?? j.ticket_signed : null,
     gross: j.revenue_cents == null ? null : Number(j.revenue_cents) / 100, currency: j.revenue_currency,
     pce: j.pce_label, max_deviation: j.max_inclination_deg,
@@ -119,7 +125,7 @@ async function activityLines(env: Env, user: AuthedUser, opts: { month?: string;
   }
   const { results } = await env.DB.prepare(
     `SELECT ${JOB_COLS}, s.data, s.locked_by, s.locked_at, s.snapshot, coalesce(u.full_name, s.locked_by) AS locked_name
-     FROM jobs j LEFT JOIN sales_activity s ON s.job_id = j.id LEFT JOIN pce p ON p.id = j.pce_id LEFT JOIN user_roles u ON u.username = s.locked_by
+     FROM jobs j LEFT JOIN job_extras x ON x.job_id = j.id LEFT JOIN sales_activity s ON s.job_id = j.id LEFT JOIN pce p ON p.id = j.pce_id LEFT JOIN user_roles u ON u.username = s.locked_by
      WHERE ${where.join(' AND ')} ORDER BY j.location, coalesce(j.end_date, j.start_date), j.ticket_no LIMIT 5000`,
   ).bind(...binds).all<JobRow>();
   const crew = await crewOf(env, results.map((r) => String(r.id)));
@@ -232,7 +238,7 @@ async function dailyLines(env: Env, user: AuthedUser, day: string, onlyUnits?: s
     ).bind(countries, day),
     // a job covers its start to end date, an ongoing one runs to today even past its planned end
     env.DB.prepare(
-      `SELECT ${JOB_COLS} FROM jobs j LEFT JOIN pce p ON p.id = j.pce_id
+      `SELECT ${JOB_COLS} FROM jobs j LEFT JOIN job_extras x ON x.job_id = j.id LEFT JOIN pce p ON p.id = j.pce_id
        WHERE j.deleted_at IS NULL AND j.status <> 'canceled' AND j.unit_number IS NOT NULL AND j.start_date IS NOT NULL
          AND j.country IN (SELECT value FROM json_each(?1)) AND j.start_date <= ?2
          AND (CASE WHEN j.status = 'ongoing' THEN max(coalesce(j.end_date, j.start_date), ?3) ELSE coalesce(j.end_date, j.start_date) END) >= ?2
@@ -277,7 +283,7 @@ async function dailyLines(env: Env, user: AuthedUser, day: string, onlyUnits?: s
         client: j ? clientFor(j.location as string | null, offshore) : null, account: j?.location ?? null,
         rig_site: j ? rigWell(j) : null, well: j?.well ?? null, activity: j?.services ?? null,
         supervisor: cr?.supervisors.join(' / ') || null, operators: cr?.operators.join(', ') || null,
-        pce: j?.pce_label ?? null, well_type: j?.well_type ? String(j.well_type).replace(/^./, (x) => x.toUpperCase()) : null,
+        pce: j?.pce_label ?? null, entity: j?.company ? ({ NESR: 'N', SAPESCO: 'S' } as Record<string, string>)[String(j.company).toUpperCase()] ?? null : null, well_type: j?.well_type ? String(j.well_type).replace(/^./, (x) => x.toUpperCase()) : null,
       },
       data, locked: s ? lockInfo(s as never) : null, snapshot: s?.snapshot ? parse(s.snapshot) : null,
       carried: carried.length ? { from: prev!.day, keys: carried } : null,

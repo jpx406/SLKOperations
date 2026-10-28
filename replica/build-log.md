@@ -1282,3 +1282,16 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified:**
   - tests 276;
   - in the browser: edits, lock and unlock, carry-over, Excel (activity, day, month) and PDF downloads, dark theme.
+
+## 6z — Company, distance to location, man-hours and travel
+
+- **Administration → Companies** (menu right `companies`, admins by default): add, rename, reorder, switch off and remove companies; NESR and SAPESCO are there to start. A rename follows through to the jobs; a company on jobs can be switched off but not removed. Every change goes to the audit trail (Database area).
+- **Job Design → Company**: picked from the active companies (Sales rights, `job.design`); the API only takes a company on the list.
+- **Job Execution → Distance to location (km)**, one way (crew rights, `job.exec`; waits for the JRA like the other Execution fields).
+- **Job Closure → Man-hours and travel**: man-hours = operating hours × people assigned (the named crew still on the job, else the planned head count); travel = distance × 2. Each can be overridden; the new rule `closure.man_hours` (SDM and Deputy SDM by default) controls who.
+- The jobs table is at D1's 100-column limit (on a table and on a result set), so the four fields live in `job_extras` (one row per job), written with the job and read beside it. Migration 0018 adds `companies` and `job_extras`.
+- **Sales sheets**: the Activity sheet's Company, KM to location, Man-hours and Travel km now come from the job (in "Hours & distance", for every account); the Daily report's entity is suggested from the job's company (N / S).
+- Data export & import now carry `companies`, `job_extras` and the four sales tables.
+- **Verified:**
+  - tests 280;
+  - in the browser: a company added, renamed and removed; "sapesco" saved as SAPESCO and an unknown company refused; Closure showed 18.2 h × 3 people = 54.6 h and 120 km × 2 = 240 km; the Activity sheet read the same.

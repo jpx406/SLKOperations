@@ -26,6 +26,7 @@ import { wires } from './wires';
 import { sendDigests } from './digest';
 import { bonus } from './bonus';
 import { sales } from './sales';
+import { companies } from './companies';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
@@ -121,7 +122,7 @@ app.post('/wg/sync', async (c) => {
 app.get('/lookups', async (c) => {
   const countries = JSON.stringify(c.get('user').countries);
   const inC = 'country IN (SELECT value FROM json_each(?))';
-  const [units, jt, loc, fld, rig, conv, lists, pce, gp, sp] = await c.env.DB.batch([
+  const [units, jt, loc, fld, rig, conv, lists, pce, gp, sp, cos] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT unit_number, country, year, wg_active FROM wg_units WHERE wg_active = 1 AND ${inC} ORDER BY unit_number`).bind(countries),
     c.env.DB.prepare(`SELECT DISTINCT name FROM wg_job_types WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(countries),
     c.env.DB.prepare(`SELECT DISTINCT name FROM wg_job_locations WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(countries),
@@ -132,6 +133,7 @@ app.get('/lookups', async (c) => {
     c.env.DB.prepare(`SELECT id, country, label, kind, bore_in, rating_psi, length_ft, active FROM pce WHERE ${inC} ORDER BY label`).bind(countries),
     c.env.DB.prepare(`SELECT id, country, label, panel_type, active FROM grease_panels WHERE ${inC} ORDER BY label`).bind(countries),
     c.env.DB.prepare('SELECT job_type_name, domain, is_plug, is_fishing, is_memory, is_perforation, is_explosive FROM service_profiles'),
+    c.env.DB.prepare('SELECT name FROM companies WHERE active = 1 ORDER BY sort, name'),
   ]);
   const names = (r: D1Result) => (r.results as { name?: string; value?: string }[]).map((x) => (x.name ?? x.value) as string);
   const byKind: Record<string, string[]> = {};
@@ -143,6 +145,7 @@ app.get('/lookups', async (c) => {
     pce: pce.results as unknown as Lookups['pce'],
     greasePanels: gp.results as unknown as Lookups['greasePanels'],
     serviceProfiles: sp.results as unknown as Lookups['serviceProfiles'],
+    companies: names(cos),
   };
   return c.json(out);
 });
@@ -244,6 +247,7 @@ app.route('/attachments', attachments);
 
 app.route('/bonus', bonus);
 app.route('/sales', sales);
+app.route('/companies', companies);
 app.route('/recon', recon);
 
 // AI Agent: each tool reads through this same app with the asker's cookie and country switch

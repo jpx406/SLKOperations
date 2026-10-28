@@ -27,6 +27,7 @@ export const STATIC_RULES: RuleDef[] = [
   { key: 'closure.failure', group: 'Closure checklist', label: 'Failure follow-up: 8 Min. Facts, reports, GEARS, failure description', defaults: QUALITY },
   { key: 'closure.service', group: 'Closure checklist', label: 'Service order and bonus remarks', defaults: ['sdm', 'operations_manager'] },
   { key: 'closure.revenue', group: 'Closure checklist', label: 'Ticket value (revenue)', defaults: ['sdm', 'sales'] },
+  { key: 'closure.man_hours', group: 'Closure checklist', label: 'Override the man-hours and travel km', help: 'Worked out by the app: operating hours × people assigned, and distance to location × 2', defaults: ['sdm', 'deputy_sdm'] },
   { key: 'forms.approve', group: 'Job forms', label: 'Approve job checklists and the job package', help: 'The job’s own SDM always can. Approved forms are filed as PDFs; only an admin reopens one.', defaults: ['sdm', 'deputy_sdm'] },
   { key: 'bonus.approve', group: 'Bonus', label: 'Distribute and approve the crew bonus on Closure', defaults: ['sdm', 'deputy_sdm'] },
   { key: 'bonus.reopen', group: 'Bonus', label: 'Reopen an approved bonus distribution', defaults: [] },

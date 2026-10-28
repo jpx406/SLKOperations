@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useNavigate, useParams } from 'react-router';
 import { EXECUTION_FIELDS, FIELD_POLICY, canEditField, stageOfField } from '../../shared/fieldPolicy';
 import { useRules } from '../rules';
-import { jobEfficiency, opHours, runEfficiency } from '../../shared/metrics';
+import { jobEfficiency, manHours, opHours, peopleAssigned, runEfficiency, travelKm } from '../../shared/metrics';
 import { STAGES, canEditStage, canSeeStage, hasFailure, stagePercent, type Stage } from '../../shared/stages';
 import type { ToolPart } from '../../shared/toolstring';
-import type { Job, Lookups } from '../../shared/types';
+import type { Job, JobCrew, Lookups } from '../../shared/types';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
 import { useMe } from '../auth';
 import { JraBanner, useJraLock } from './Jra';
@@ -143,6 +143,8 @@ export function JobEditor() {
 
   const canEditJobs = !!me?.menus.jobs?.edit;
   const jraLocked = useJraLock(job?.id);
+  // the crew assigned, for the man-hours on Closure (the same query the crew panel uses)
+  const crewQ = useQuery({ queryKey: ['crew', job?.id], queryFn: () => api<JobCrew>(`/jobs/${job!.id}/crew`), enabled: !!job?.id });
   // Execution waits for an approved JRA on jobs that need one (the API refuses it too)
   const rules = useRules().data?.rules;
   const stageOpen = (s: Stage) => !!me && canSeeStage(me.menus, s);
@@ -210,6 +212,8 @@ export function JobEditor() {
   const op = opHours(preview.rig_up_at ?? null, preview.rig_down_at ?? null, num('op_hours_override'));
   const eff = jobEfficiency(op, num('npt_hours') ?? 0);
   const runEff = runEfficiency(num('runs_ok'), num('runs_failed'));
+  const people = peopleAssigned(crewQ.data?.crew ?? [], crewQ.data?.headcount);
+  const manAuto = manHours(op, people, null), travelAuto = travelKm(num('km_to_location'), null);
 
   return (
     <section aria-labelledby="job-title">
@@ -278,6 +282,7 @@ export function JobEditor() {
               <datalist id="rig-list">{(L?.rigs ?? []).map((r) => <option key={r} value={r} />)}</datalist>
               {text('well', 'Well')}
               {select('conveyance', 'Conveyance', (L?.conveyances ?? []).map((v) => ({ value: v, label: v })))}
+              {select('company', 'Company', (L?.companies ?? []).map((v) => ({ value: v, label: v })), 'NESR, SAPESCO … (Administration → Companies)')}
               <div className="md:col-span-2 xl:col-span-3">
                 <Field id="run_details" label="Run details" badge={FIELD_POLICY.run_details.badge}>
                   <textarea id="run_details" rows={3} className={cx(inputClass, 'h-auto py-2')} value={values.run_details ?? ''}
@@ -320,6 +325,7 @@ export function JobEditor() {
               {text('jarring_minutes', 'Jarring time', { type: 'number', unit: 'min' })}
               {text('wire_cut_ft', 'Wire cut', { type: 'number', unit: 'ft', hint: 'Compared with WIREGUARD runs in reconciliation' })}
               {text('npt_hours', 'NPT', { type: 'number', unit: 'h' })}
+              {text('km_to_location', 'Distance to location', { type: 'number', unit: 'km', hint: 'One way from the base; travel on Closure is twice this' })}
               {select('failure', 'Failure', [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }, { value: 'na', label: 'N/A' }])}
               {text('op_hours_override', 'Operating hours override', { type: 'number', unit: 'h', hint: 'SDM or Ops Manager only. Leave empty to use rig-up → rig-down' })}
               {select('plug_type', 'Plug type', flags.is_plug ? list('plug_type') : [], flags.is_plug ? 'Set or pulled on this job' : 'Opens with a plug service', undefined, !flags.is_plug)}
@@ -428,6 +434,18 @@ export function JobEditor() {
                 <JobPackage jobId={job.id} canEdit={canEditJobs && canEditStage(me!.menus, 'closure')} />
               </>
             )}
+
+            <SectionTitle aside="Worked out by the app; the SDM can override">Man-hours and travel</SectionTitle>
+            <dl className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2" aria-live="polite">
+              <Metric label="Man-hours" value={manHours(op, people, num('man_hours_override')) != null ? `${manHours(op, people, num('man_hours_override'))} h` : '—'}
+                note={values.man_hours_override ? `override (worked out: ${manAuto ?? '—'} h)` : op == null ? 'needs the operating hours' : !people ? 'needs the crew assigned' : `${op} h operating × ${people} people assigned`} />
+              <Metric label="Travel" value={travelKm(num('km_to_location'), num('travel_km_override')) != null ? `${travelKm(num('km_to_location'), num('travel_km_override'))} km` : '—'}
+                note={values.travel_km_override ? `override (worked out: ${travelAuto ?? '—'} km)` : num('km_to_location') == null ? 'needs the distance to location (Execution)' : `${num('km_to_location')} km × 2, there and back`} />
+            </dl>
+            <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
+              {text('man_hours_override', 'Man-hours override', { type: 'number', unit: 'h', hint: 'SDM only. Leave empty to use operating hours × people assigned' })}
+              {text('travel_km_override', 'Travel override', { type: 'number', unit: 'km', hint: 'SDM only. Leave empty to use distance × 2' })}
+            </div>
 
             <SectionTitle aside="SDM or Sales">Revenue and bonus</SectionTitle>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">

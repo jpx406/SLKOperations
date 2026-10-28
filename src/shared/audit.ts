@@ -11,7 +11,7 @@ export const AUDIT_AREAS = {
   quality: { label: 'Reports & quality', types: ['pre_job_note', 'eight_min_facts', 'incident', 'failure_roster', 'quick_plan', 'quick_plan_cards', 'signature', 'signatures'] },
   bonus: { label: 'Bonus & sales', types: ['bonus', 'bonus_rules', 'statements', 'sales'] },
   inventory: { label: 'Inventory & wires', types: ['inventory', 'inventory_item', 'inventory_movement', 'wire', 'reconciliation'] },
-  database: { label: 'Database', types: ['lookup_values', 'service_profiles', 'pce', 'grease_panels', 'knowledge', 'knowledge_docs'] },
+  database: { label: 'Database', types: ['company', 'lookup_values', 'service_profiles', 'pce', 'grease_panels', 'knowledge', 'knowledge_docs'] },
   system: { label: 'System', types: ['ai_settings', 'data', 'data_package', 'sync'] },
   other: { label: 'Other', types: [] as string[] },
 } as const;
