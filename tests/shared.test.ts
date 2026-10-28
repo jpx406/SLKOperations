@@ -167,8 +167,9 @@ describe('read rules (deny by default)', () => {
 describe('menu clusters (grant checklist grouped like the navigation)', () => {
   it('puts keys under their nav group and the rest under Other', () => {
     const cl = menuClusters(['schedule', 'jobs', 'bonus', 'audit', 'ai_assistant']);
-    expect(cl.map((c) => c.label)).toEqual(['Operation', 'Bonus', 'Other']);
-    expect(cl.find((c) => c.label === 'Other')!.keys).toEqual(['audit', 'ai_assistant']);
+    // the audit trail has its own page under Administration now
+    expect(cl.map((c) => c.label)).toEqual(['Operation', 'Bonus', 'Administration', 'Other']);
+    expect(cl.find((c) => c.label === 'Other')!.keys).toEqual(['ai_assistant']);
   });
 });
 
@@ -178,5 +179,13 @@ describe('WIREGUARD role defaults', () => {
     expect(defaultRoleFor('Admin')).toBe('admin');
     expect(defaultRoleFor('Something new')).toBe('viewer');
     expect(defaultRoleFor(null)).toBe('viewer');
+  });
+});
+
+describe('audit trail areas', () => {
+  it('files each entry under an area, unknown ones under Other', async () => {
+    const { areaOf, actionLabel } = await import('../src/shared/audit');
+    expect([areaOf('auth'), areaOf('job'), areaOf('form_template'), areaOf('something_new')]).toEqual(['auth', 'jobs', 'forms', 'other']);
+    expect([actionLabel('login_failed'), actionLabel('made_up_action')]).toEqual(['Sign-in failed', 'made up action']);
   });
 });

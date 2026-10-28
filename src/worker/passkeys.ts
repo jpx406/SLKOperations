@@ -5,6 +5,7 @@ import {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { Hono, type Context } from 'hono';
 import type { AppBindings, Env } from './env';
+import { authEvent } from './audit';
 import { openSession } from './session';
 import { importWgUsers, wgUserActive } from './wgUsers';
 
@@ -91,8 +92,7 @@ async function signIn(c: Context<AppBindings>, user: UserRow, method: 'passkey' 
   await openSession(c, { username: user.username, fullName: user.full_name, wgRole: user.wg_role, countries: JSON.parse(user.countries || '[]'), method });
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE user_roles SET last_login_at = ? WHERE username = ?').bind(new Date().toISOString(), user.username),
-    c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'login', 'auth', user.username, how),
+    authEvent(c, user.username, 'login', how),
   ]);
 }
 
@@ -105,7 +105,7 @@ passkeyAuth.post('/passkey/options', async (c) => c.json(await authOptions(c)));
 passkeyAuth.post('/passkey/verify', async (c) => {
   const b = await c.req.json<{ challengeId?: string; response?: AuthenticationResponseJSON }>().catch(() => ({} as { challengeId?: string; response?: AuthenticationResponseJSON }));
   const r = await verifyAssertion(c, b.challengeId, b.response);
-  if ('error' in r) return c.json({ error: r.error }, r.status);
+  if ('error' in r) { await authEvent(c, '(Face ID)', 'login_failed', `Face ID / fingerprint sign-in failed: ${r.error}`).run(); return c.json({ error: r.error }, r.status); }
   await signIn(c, r.user, 'passkey', `Signed in with Face ID / fingerprint (${r.device})`);
   return c.json({ username: r.user.username });
 });
@@ -176,7 +176,10 @@ passkeyAuth.post('/qr/:id/approve', async (c) => {
 passkeyAuth.post('/qr/:id/deny', async (c) => {
   const id = c.req.param('id');
   const r = await qrGet(c.env, id);
-  if (r && r.status === 'pending') await qrPut(c.env, id, { ...r, status: 'denied' });
+  if (r && r.status === 'pending') {
+    await qrPut(c.env, id, { ...r, status: 'denied' });
+    await authEvent(c, '(QR code)', 'login_failed', `QR sign-in turned down on the phone${r.device ? ` (laptop: ${r.device})` : ''}`).run();
+  }
   return c.json({ ok: true });
 });
 

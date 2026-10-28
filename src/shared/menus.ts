@@ -64,6 +64,7 @@ export const NAV: Group[] = [
     label: 'Administration',
     pages: [
       { key: 'users', label: 'Users & Roles', path: '/admin/users', screen: 'S34', milestone: '2a' },
+      { key: 'audit', label: 'Audit trail', path: '/admin/audit', screen: 'S49', milestone: '6' },
       { key: 'form_templates', label: 'Form templates', path: '/admin/form-templates', screen: 'S48', milestone: '6' },
       { key: 'ai_agent', label: 'AI Agent', path: '/admin/ai-agent', screen: 'S35', milestone: '5' },
       { key: 'users', label: 'Data export & import', path: '/admin/data', screen: 'S47', milestone: '4' },

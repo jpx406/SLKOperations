@@ -1242,3 +1242,29 @@ Every label, message and empty state was written here. No code, assets or copy f
     - the job then completed;
     - an SDM's reopen was refused (403), and the admin's reopen worked;
     - the audit trail shows each step and the answers changed.
+
+## 6x — Audit trail in Administration
+
+- **Administration → Audit trail** (menu right `audit`, admins by default; migration 0016 adds the address and browser to sign-in events and two indexes):
+  - every change any screen writes to `audit_log`, plus sign-in events, newest first with seconds, Riyadh time;
+  - filters: dates (today, 7 / 30 / 90 days, or chosen), area (Sign-in, Jobs, Form templates, Files, Users & Roles, Attendance, Reports & quality, Bonus & sales, Inventory & wires, Database, System, Other), person, action and free text (ticket, name, what changed);
+  - filters live in the address;
+  - counts of entries, sign-ins, failed sign-ins and people, each a shortcut filter;
+  - job entries link to the job;
+  - load older entries page by page;
+  - XLSX / CSV export of up to 5,000 entries.
+- **Sign-in events now recorded**:
+  - signed in (password, Face ID, QR) and signed out;
+  - failed password, Face ID and QR sign-ins (with the reason);
+  - sessions ended by inactivity or by WIREGUARD;
+  - access refused because SLK Ops access is off;
+  - a manual WIREGUARD sync.
+  - each keeps the IP address and the browser.
+- Users & Roles → History links to the full trail.
+- **Verified:**
+  - tests 259;
+  - in the browser:
+    - a wrong password, a sign-in, a sign-out and a sign-in again showed as four entries with the IP and "Chrome on Windows";
+    - searching DV-26071 found its 29 entries;
+    - XLSX downloaded;
+    - the Foreman gets 403 on the trail.

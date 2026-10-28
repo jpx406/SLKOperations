@@ -2,7 +2,7 @@ import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CloudDownload, ExternalLink, Fingerprint, Plus, Search, Smartphone, Trash2, X } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { MENU_LABELS, menuClusters } from '../../shared/menus';
 import { roleLabel } from '../../shared/roles';
 import { useRoles, useRules, type RoleRow } from '../rules';
@@ -465,6 +465,8 @@ function History() {
   if (h.isError) return <Banner tone="danger">{h.error.message}</Banner>;
   if (!h.data.length) return <EmptyState title="No changes yet" />;
   return (
+    <>
+    <p className="mb-2 text-sm text-text-muted">The latest 100 changes to people, roles and sign-ins. <Link className="font-semibold text-accent-text hover:underline" to="/admin/audit?area=users&area=auth">Open the full audit trail</Link> to search everything.</p>
     <ul className="divide-y divide-border rounded-lg border border-border bg-surface text-sm">
       {h.data.map((r, i) => (
         <li key={i} className="grid gap-1 px-3 py-2 md:grid-cols-[10rem_9rem_1fr]">
@@ -474,6 +476,7 @@ function History() {
         </li>
       ))}
     </ul>
+    </>
   );
 }
 

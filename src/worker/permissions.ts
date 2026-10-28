@@ -152,6 +152,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
 export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status|passkeys|roles|rules)$/, menus: 'any' },
   { re: /^\/api\/schedule$/, menus: ['schedule'] },
+  { re: /^\/api\/audit$/, menus: ['audit'] },
   { re: /^\/api\/account-colors$/, menus: ['schedule', 'jobs', 'job_log'] },
   { re: /^\/api\/form-templates(\/[^/]+)?$/, menus: ['form_templates'] },
   { re: /^\/api\/job-forms\/[^/]+$/, menus: ['jobs'] },

@@ -29,6 +29,7 @@ import { sales } from './sales';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
+import { audit, authEvent } from './audit';
 import { accounts } from './accounts';
 import { forms, jobForms } from './forms';
 import { isOpenWrite, readAllowed, ruleFor } from './permissions';
@@ -58,6 +59,7 @@ app.post('/auth/login', async (c) => {
   } catch (e) {
     if (e instanceof WgError) {
       const msg = e.status === 401 ? 'Wrong username or password' : e.message;
+      await authEvent(c, username.trim(), 'login_failed', `Password sign-in failed: ${msg}`).run();
       return c.json({ error: msg }, e.status === 401 || e.status === 403 || e.status === 429 ? e.status : 503);
     }
     throw e;
@@ -109,7 +111,12 @@ app.get('/me', (c) => {
 });
 
 app.get('/wg/status', async (c) => c.json(await syncStatus(c.env)));
-app.post('/wg/sync', async (c) => c.json({ results: await syncAll(c.env) }));
+app.post('/wg/sync', async (c) => {
+  const results = await syncAll(c.env);
+  await c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), c.get('user').username, 'run', 'sync', 'wireguard', 'Synced WIREGUARD lists by hand').run();
+  return c.json({ results });
+});
 
 app.get('/lookups', async (c) => {
   const countries = JSON.stringify(c.get('user').countries);
@@ -209,6 +216,7 @@ app.get('/schedule', async (c) => {
 
 app.route('/jobs', jobs);
 app.route('/account-colors', accounts);
+app.route('/audit', audit);
 app.route('/form-templates', forms);
 app.route('/job-forms', jobForms);
 app.get('/admin/ai', aiAdminGet);

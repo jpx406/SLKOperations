@@ -6,6 +6,7 @@ import type { AppBindings, AuthedUser, Env, Session } from './env';
 import { loadMenus } from './permissions';
 import { WgError, wgCountriesFor, wgGet, wgLogin } from './wg';
 import { wgUserActive } from './wgUsers';
+import { authEvent } from './audit';
 
 const COOKIE = 'slk_session';
 const REVALIDATE_MS = 60_000;          // re-check with WIREGUARD at most once a minute
@@ -28,8 +29,7 @@ export async function login(c: Context<AppBindings>, username: string, password:
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
        ON CONFLICT (username) DO UPDATE SET full_name = ?2, wg_role = ?5, last_login_at = ?6`,
     ).bind(user.username, user.fullName, role, JSON.stringify(countries), user.role, now()),
-    env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'login', 'auth', user.username, `Signed in through WIREGUARD (${user.role})`),
+    authEvent(c, user.username, 'login', `Signed in with the WIREGUARD password (${user.role})`),
   ]);
 
   await openSession(c, { username: user.username, fullName: user.fullName, wgRole: user.role, wgToken: token, countries, method: 'password' });
@@ -48,6 +48,8 @@ export async function openSession(c: Context<AppBindings>, s: Pick<Session, 'use
 
 export async function logout(c: Context<AppBindings>) {
   const id = getCookie(c, COOKIE);
+  const raw = id ? await c.env.KV.get(key(id)) : null;
+  if (raw) { const s = JSON.parse(raw) as Session; await authEvent(c, s.username, 'logout', `Signed out (${s.method ?? 'password'} session)`).run(); }
   if (id) await c.env.KV.delete(key(id));
   deleteCookie(c, COOKIE, { path: '/' });
 }
@@ -80,12 +82,14 @@ export async function resolveSession(c: Context<AppBindings>): Promise<Resolved>
 
   if (t - s.lastSeen > Number(env.IDLE_MINUTES || 60) * 60_000) {
     await env.KV.delete(key(id));
+    await authEvent(c, s.username, 'session_ended', `Signed out after ${env.IDLE_MINUTES || 60} minutes without activity`).run();
     return { error: 'Signed out after inactivity', status: 401 };
   }
   if (t - s.validatedAt > REVALIDATE_MS) {
     const v = await revalidate(env, s);
     if (v === 'revoked') {
       await env.KV.delete(key(id));
+      await authEvent(c, s.username, 'session_ended', s.wgToken ? 'WIREGUARD ended the session' : 'WIREGUARD account no longer active').run();
       return { error: s.wgToken ? 'Your WIREGUARD session ended. Sign in again.' : 'Your WIREGUARD account is no longer active. Ask an administrator.', status: 401 };
     }
     if (v === 'outage' && t - s.validatedAt > OUTAGE_GRACE_MS) {
@@ -97,7 +101,10 @@ export async function resolveSession(c: Context<AppBindings>): Promise<Resolved>
   await env.KV.put(key(id), JSON.stringify(s), { expirationTtl: SESSION_TTL_S });
 
   const row = await env.DB.prepare('SELECT role, active, countries FROM user_roles WHERE username = ?').bind(s.username).first<{ role: Role; active: number; countries: string }>();
-  if (!row || !row.active) return { error: 'Your SLK Ops access is switched off. Ask an administrator.', status: 403 };
+  if (!row || !row.active) {
+    await authEvent(c, s.username, 'login_failed', 'Refused: SLK Ops access is switched off').run();
+    return { error: 'Your SLK Ops access is switched off. Ask an administrator.', status: 403 };
+  }
   const menus = await loadMenus(env, row.role, s.username);
   // countries belong to the SLK Ops admin (Users & Roles); admins see every country WIREGUARD has
   let countries = JSON.parse(row.countries || '[]') as string[];
