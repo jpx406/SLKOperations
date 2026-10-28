@@ -98,8 +98,9 @@ describe('JRA Excel form', () => {
     expect(parseJraForm(await readXlsx(workbook([{ r: 'A1', v: 'Shopping list' }], [])))).toHaveProperty('error');
     await expect(readXlsx(new Uint8Array([1, 2, 3]))).rejects.toThrow(/not an Excel workbook/);
   });
-  it('lets job editors upload', () => {
-    expect(ruleFor('POST', '/api/jra/job1/upload')).toMatchObject({ menu: 'jobs', action: 'edit' });
+  it('loads forms in Administration, not on the job', () => {
+    expect(ruleFor('POST', '/api/jra/job1/upload')).toBeUndefined();
+    expect(ruleFor('POST', '/api/form-templates/read')).toMatchObject({ menu: 'form_templates', action: 'edit' });
   });
   // NESR's own form, when it is on this machine (it is never committed)
   const real = 'C:/Users/JuanCeron/Downloads/SLK_JRA.xlsx';

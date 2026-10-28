@@ -1,4 +1,5 @@
 import { allowed, type Rules } from './approvalRules';
+import { canEditStage, type Stage } from './stages';
 import type { Role } from './types';
 
 // Who may edit each job field, on top of the jobs:edit menu right. Admin may edit everything.
@@ -46,12 +47,20 @@ export const JSON_FIELDS = EDITABLE_FIELDS.filter((f) => FIELD_POLICY[f].kind ==
 export const canEditField = (role: Role, field: string, rules?: Rules | null) =>
   role === 'admin' || (!!FIELD_POLICY[field] && allowed(rules, FIELD_POLICY[field].rule, role));
 
-/** Splits a patch into what this role may write and what it may not. */
-export function filterPatch(role: Role, patch: Record<string, unknown>, rules?: Rules | null) {
+const RULE_STAGE: Record<string, Stage> = { 'job.design': 'design', 'job.design_sdm': 'design', 'job.prep': 'preparation', 'job.exec': 'execution', 'job.op_hours': 'execution' };
+/** The job stage a field is on, for the per-stage rights. */
+export const stageOfField = (field: string): Stage | null => {
+  const rule = FIELD_POLICY[field]?.rule;
+  return !rule ? null : rule.startsWith('closure.') ? 'closure' : RULE_STAGE[rule] ?? null;
+};
+
+/** Splits a patch into what this role may write and what it may not. With the caller's rights, the field's stage must be editable too. */
+export function filterPatch(role: Role, patch: Record<string, unknown>, rules?: Rules | null, menus?: Parameters<typeof canEditStage>[0]) {
   const allowedPatch: Record<string, unknown> = {};
   const dropped: string[] = [];
   for (const [k, v] of Object.entries(patch)) {
-    if (EDITABLE_FIELDS.includes(k) && canEditField(role, k, rules)) allowedPatch[k] = v;
+    const stage = stageOfField(k);
+    if (EDITABLE_FIELDS.includes(k) && canEditField(role, k, rules) && (!menus || !stage || canEditStage(menus, stage))) allowedPatch[k] = v;
     else dropped.push(k);
   }
   return { allowed: allowedPatch, dropped };

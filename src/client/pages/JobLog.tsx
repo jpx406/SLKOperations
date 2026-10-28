@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileSpreadsheet, Printer, Search } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { activeFilterCount, filtersToQuery } from '../../shared/filters';
 import { JOB_LOG_COLUMNS, displayValue, jobLogTable, type JobLogRow } from '../../shared/jobLog';
 import { csv, workbook } from '../../shared/xlsx';
 import { api } from '../api';
 import { FilterBar, useFilters } from '../components/FilterBar';
+import { AccountLegend, useAccountColors } from '../components/Accounts';
+import { NO_ACCOUNT, byAccount, tint } from '../../shared/accounts';
 import { Banner, Button, EmptyState, PageTitle, Skeleton, StatusPill, cx, inputSized } from '../components/ui';
 import type { JobStatus } from '../../shared/types';
 
@@ -32,6 +34,8 @@ function JraPill({ status }: { status: string }) {
   return <span className={cx('label-caps inline-flex rounded-pill border px-2 py-0.5', JRA_PILL[status] ?? JRA_PILL.draft)}>{status}</span>;
 }
 
+const accountCounts = (xs: { location: string | null }[]) => xs.reduce((m, x) => m.set(x.location?.trim() || NO_ACCOUNT, (m.get(x.location?.trim() || NO_ACCOUNT) ?? 0) + 1), new Map<string, number>());
+
 export function JobLog() {
   const [filters] = useFilters();
   const [params, setParams] = useSearchParams();
@@ -39,7 +43,10 @@ export function JobLog() {
   const [q, setQ] = useState(params.get('q') ?? '');
   const query = [filtersToQuery(filters), params.get('q') ? `q=${encodeURIComponent(params.get('q')!)}` : ''].filter(Boolean).join('&');
   const log = useQuery({ queryKey: ['job-log', query], queryFn: () => api<{ rows: JobLogRow[]; truncated: boolean; limit: number }>(`/job-log?${query}`), refetchInterval: 30_000 });
-  const rows = log.data?.rows ?? [];
+  const colorOf = useAccountColors();
+  // grouped by account (name order), the server's order kept inside each account
+  const groups = byAccount(log.data?.rows ?? [], (r) => r.location);
+  const rows = groups.flatMap((g) => g.items);
 
   const search = (v: string) => {
     setQ(v);
@@ -71,6 +78,7 @@ export function JobLog() {
           </span>
         </label>
       </FilterBar>
+      {log.data && <AccountLegend counts={accountCounts(log.data.rows)} />}
       <p className="mb-3 hidden text-xs print:block">
         Printed {stamp()}{activeFilterCount(filters) ? ` · filters: ${Object.entries(filters).map(([k, v]) => `${k} ${v?.join('/')}`).join('; ')}` : ''}
       </p>
@@ -97,14 +105,27 @@ export function JobLog() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} tabIndex={0} className="cursor-pointer hover:bg-surface-2 focus-visible:bg-surface-2"
+              {groups.map((g) => (
+                <Fragment key={g.account}>
+                  <tr>
+                    <th scope="colgroup" colSpan={JOB_LOG_COLUMNS.length} className="border-b border-border p-0 text-left">
+                      <span className="sticky left-0 flex w-max items-center gap-2 px-3 py-1.5 font-display text-xs font-extrabold tracking-wide uppercase">
+                        <i aria-hidden className="inline-block size-3 rounded-full border border-black/10" style={{ backgroundColor: colorOf(g.account) }} />
+                        {g.account}<span className="font-mono font-medium text-text-muted">{g.items.length}</span>
+                      </span>
+                    </th>
+                  </tr>
+                  {g.items.map((r) => {
+                    const bg = tint(colorOf(r.location), 16);
+                    return (
+                <tr key={r.id} tabIndex={0} className="group cursor-pointer" style={{ backgroundColor: bg }}
                   onClick={() => navigate(`/operation/jobs/${r.id}/design`)} onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/operation/jobs/${r.id}/design`); }}>
                   {JOB_LOG_COLUMNS.map((c, i) => {
                     const v = displayValue(r, c.key);
                     return (
-                      <td key={c.key} className={cx('border-b border-border px-3 py-3 align-middle', c.num && 'text-right font-mono', c.mono && 'font-mono',
-                        i === 0 && 'sticky left-0 bg-surface font-semibold text-accent-text print:static', c.key === 'sdm' || c.width >= 26 ? 'max-w-48 whitespace-normal' : 'whitespace-nowrap')}>
+                      <td key={c.key} style={i === 0 ? { backgroundColor: bg ?? 'var(--color-surface)', boxShadow: colorOf(r.location) ? `inset 5px 0 ${colorOf(r.location)}` : undefined } : undefined}
+                        className={cx('border-b border-border px-3 py-3 align-middle group-hover:brightness-95 group-focus-visible:brightness-95', c.num && 'text-right font-mono', c.mono && 'font-mono',
+                        i === 0 && 'sticky left-0 pl-4 font-semibold text-accent-text print:static', c.key === 'sdm' || c.width >= 26 ? 'max-w-48 whitespace-normal' : 'whitespace-nowrap')}>
                         {c.key === 'status' ? <StatusPill status={r.status as JobStatus} />
                           : c.key === 'jra_status' ? (v ? <JraPill status={String(r.jra_status)} /> : <span className="text-text-subtle">—</span>)
                           : c.key === 'ticket_no' && !v ? <span className="font-normal text-text-subtle">no ticket</span>
@@ -113,6 +134,9 @@ export function JobLog() {
                     );
                   })}
                 </tr>
+                    );
+                  })}
+                </Fragment>
               ))}
             </tbody>
           </table>

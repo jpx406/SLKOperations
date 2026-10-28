@@ -1,10 +1,7 @@
 import { Hono } from 'hono';
-import { DEFAULT_TEMPLATE, approvalLevel, cleanAnswers, flags, jraReasons, progress, riskScore, type Answer, type Template } from '../shared/jra';
-import { parseJraForm } from '../shared/jraForm';
+import { DEFAULT_TEMPLATE, approvalLevel, cleanAnswers, jraReasons, progress, riskScore, type Answer, type Template } from '../shared/jra';
 import { jraPdf } from '../shared/jraPdf';
 import { ROLE_LABEL } from '../shared/roles';
-import { canonical } from '../shared/signature';
-import { readXlsx } from '../shared/xlsxRead';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { getJob } from './jobs';
 import { storeAttachment } from './attachments';
@@ -20,12 +17,12 @@ const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: 
 
 /** The country's active template; the default is stored on first use so later revisions don't change old JRAs. */
 async function template(env: Env, country: string): Promise<{ id: string; t: Template }> {
-  const row = await env.DB.prepare('SELECT id, code, revision, questions, approval_levels FROM jra_templates WHERE country = ? AND active = 1 ORDER BY revision DESC LIMIT 1')
+  const row = await env.DB.prepare(`SELECT id, code, revision, questions, approval_levels FROM jra_templates WHERE country = ? AND kind = 'jra' AND active = 1 ORDER BY revision DESC LIMIT 1`)
     .bind(country).first<{ id: string; code: string; revision: string; questions: string; approval_levels: string }>();
   if (row) return { id: row.id, t: fromRow(row) };
   const id = crypto.randomUUID();
   const t = DEFAULT_TEMPLATE;
-  await env.DB.prepare('INSERT OR IGNORE INTO jra_templates (id, country, code, revision, questions, approval_levels) VALUES (?, ?, ?, ?, ?, ?)')
+  await env.DB.prepare(`INSERT OR IGNORE INTO jra_templates (id, country, code, revision, questions, approval_levels, name, kind, stage) VALUES (?, ?, ?, ?, ?, ?, 'Job Risk Assessment', 'jra', 'preparation')`)
     .bind(id, country, t.code, t.revision, JSON.stringify({ sections: t.sections, questions: t.questions }), JSON.stringify(t.approval_levels)).run();
   return template(env, country);
 }
@@ -37,44 +34,11 @@ function fromRow(row: TemplateRow): Template {
   const q = JSON.parse(row.questions) as Pick<Template, 'sections' | 'questions' | 'title' | 'notes' | 'exemption_points'>;
   return { code: row.code, revision: row.revision, sections: q.sections, questions: q.questions, approval_levels: JSON.parse(row.approval_levels), title: q.title, notes: q.notes, exemption_points: q.exemption_points };
 }
-const storedQuestions = (t: Template) => JSON.stringify({ sections: t.sections, questions: t.questions, title: t.title, notes: t.notes, exemption_points: t.exemption_points });
 
 async function templateById(env: Env, id: string): Promise<Template> {
   const row = await env.DB.prepare('SELECT code, revision, questions, approval_levels FROM jra_templates WHERE id = ?').bind(id).first<TemplateRow>();
   return fromRow(row!);
 }
-
-/**
- * Finds or stores the uploaded form's revision for the country. The same revision with different questions is refused
- * when another JRA already uses it, so an approved JRA never changes underneath. A newer form becomes the one new JRAs use.
- */
-async function registerTemplate(env: Env, user: AuthedUser, country: string, t: Template, jobId: string, dry: boolean): Promise<{ id: string; isNew: boolean } | { error: string }> {
-  const same = (row: TemplateRow) => canonical(JSON.parse(row.questions)) === canonical(JSON.parse(storedQuestions(t))) && canonical(JSON.parse(row.approval_levels)) === canonical(t.approval_levels);
-  const row = await env.DB.prepare('SELECT id, code, revision, questions, approval_levels FROM jra_templates WHERE country = ? AND code = ? AND revision = ?').bind(country, t.code, t.revision).first<TemplateRow & { id: string }>();
-  if (row && same(row)) return { id: row.id, isNew: false };
-  if (row) {
-    const used = await env.DB.prepare('SELECT count(*) AS n FROM jras WHERE template_id = ? AND job_id <> ?').bind(row.id, jobId).first<{ n: number }>();
-    if (used?.n) return { error: `This file’s questions differ from ${t.code} Rev ${t.revision} already in SLK Operations, which ${used.n} other JRA${used.n === 1 ? '' : 's'} use. Use the current form, or ask QHSE to raise the revision.` };
-    if (!dry) await env.DB.batch([
-      env.DB.prepare('UPDATE jra_templates SET questions = ?, approval_levels = ? WHERE id = ?').bind(storedQuestions(t), JSON.stringify(t.approval_levels), row.id),
-      audit(env, user, 'update_form', row.id, `${country} JRA form ${t.code} Rev ${t.revision} replaced (no other JRA used it)`),
-    ]);
-    return { id: row.id, isNew: false };
-  }
-  const id = crypto.randomUUID();
-  if (dry) return { id, isNew: true };
-  const active = await env.DB.prepare('SELECT code, revision FROM jra_templates WHERE country = ? AND active = 1').bind(country).first<{ code: string; revision: string }>();
-  // the uploaded form takes over unless it is an older revision of the active one
-  const takeOver = !active || active.code !== t.code || Number.isNaN(Number(t.revision)) || Number(t.revision) >= Number(active.revision);
-  await env.DB.batch([
-    ...(takeOver ? [env.DB.prepare('UPDATE jra_templates SET active = 0 WHERE country = ?').bind(country)] : []),
-    env.DB.prepare('INSERT INTO jra_templates (id, country, code, revision, questions, approval_levels, active) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, country, t.code, t.revision, storedQuestions(t), JSON.stringify(t.approval_levels), takeOver ? 1 : 0),
-    audit(env, user, 'load_form', id, `${country} JRA form ${t.code} Rev ${t.revision} loaded from Excel (${t.questions.length} questions)${takeOver ? ', now used for new JRAs' : ''}`),
-  ]);
-  return { id, isNew: true };
-}
-
 
 export async function explosiveService(env: Env, jobId: string) {
   return !!(await env.DB.prepare('SELECT 1 FROM job_services s JOIN service_profiles p ON p.job_type_name = s.job_type_name WHERE s.job_id = ? AND p.is_explosive = 1 LIMIT 1').bind(jobId).first());
@@ -121,56 +85,6 @@ jra.put('/:jobId', async (c) => {
      ON CONFLICT (job_id) DO UPDATE SET answers = ?4, risk_score = ?5, approval_level = ?6, updated_at = ?7`,
   ).bind(row?.id ?? crypto.randomUUID(), job.id, t.id, JSON.stringify(a), score, level, at).run();
   return c.json({ ok: true, risk_score: score, approval_level: level, progress: progress(t.t, a) });
-});
-
-const MAX_UPLOAD = 5 * 1024 * 1024;
-
-/**
- * A JRA filled in on NESR's Excel form. ?dry=1 reads it and shows what would change; without it the answers replace the
- * draft's (the form's revision is loaded first if it is new). Upload again to update, as long as the JRA is a draft.
- */
-jra.post('/:jobId/upload', async (c) => {
-  const user = c.get('user');
-  const job = await getJob(c.env, user, c.req.param('jobId'));
-  if (!job) return c.json({ error: 'Job not found' }, 404);
-  const dry = c.req.query('dry') === '1';
-  const row = await c.env.DB.prepare('SELECT * FROM jras WHERE job_id = ?').bind(job.id).first<JraRow>();
-  if (row && row.status !== 'draft') return c.json({ error: row.status === 'approved' ? 'The JRA is approved and locked' : 'The JRA is waiting for approval. Ask the approver to reject it to upload a new version.' }, 409);
-  const bytes = new Uint8Array(await c.req.arrayBuffer());
-  if (!bytes.length) return c.json({ error: 'Choose the filled JRA file (.xlsx)' }, 400);
-  if (bytes.length > MAX_UPLOAD) return c.json({ error: 'The file is larger than 5 MB' }, 400);
-  let parsed;
-  try { parsed = parseJraForm(await readXlsx(bytes)); } catch (e) { return c.json({ error: (e as Error).message || 'Can’t read this file. Save it as .xlsx and try again.' }, 400); }
-  if ('error' in parsed) return c.json({ error: parsed.error }, 400);
-  const { template: t, answers, remarks, details } = parsed;
-  const warnings = [...parsed.warnings];
-  if (details.country && details.country.toLowerCase() !== job.country.toLowerCase()) warnings.push(`The form says ${details.country}; this job is in ${job.country}.`);
-  const squash = (v: string) => v.replace(/\s/g, '').toLowerCase();
-  if (details.job_no && job.ticket_no && !squash(details.job_no).includes(squash(job.ticket_no))) warnings.push(`The form’s job no. is ${details.job_no}; this job’s ticket is ${job.ticket_no}.`);
-  const reg = await registerTemplate(c.env, user, job.country, t, job.id, dry);
-  if ('error' in reg) return c.json({ error: reg.error }, 409);
-  const score = riskScore(t, answers);
-  const level = approvalLevel(t, score);
-  const before = row ? (JSON.parse(row.answers) as Record<string, Answer>) : {};
-  const changed = row?.template_id === reg.id ? t.questions.filter((x) => before[x.id] !== answers[x.id]).map((x) => x.id) : t.questions.map((x) => x.id);
-  const summary = {
-    form: `${t.code} Rev ${t.revision}`, newForm: reg.isNew, sameForm: row?.template_id === reg.id, questions: t.questions.length, answered: Object.keys(answers).length,
-    missing: progress(t, answers).missing, score, level, flags: flags(t, answers), changed, details, warnings,
-  };
-  if (dry) return c.json({ dry: true, ...summary });
-  const at = new Date().toISOString();
-  const name = decodeURIComponent(c.req.header('x-file-name') ?? '').slice(0, 200);
-  const formDetails = JSON.stringify({ ...details, remarks, file: name || null, uploaded_by: user.username, uploaded_at: at });
-  await c.env.DB.batch([
-    c.env.DB.prepare(
-      `INSERT INTO jras (id, job_id, template_id, answers, risk_score, approval_level, form_details, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-       ON CONFLICT (job_id) DO UPDATE SET template_id = ?3, answers = ?4, risk_score = ?5, approval_level = ?6, form_details = ?7, updated_at = ?8`,
-    ).bind(row?.id ?? crypto.randomUUID(), job.id, reg.id, JSON.stringify(answers), score, level, formDetails, at),
-    audit(c.env, user, 'upload', row?.id ?? job.id, `JRA for ticket ${job.ticket_no ?? '—'} uploaded from ${name || 'Excel'} (${t.code} Rev ${t.revision}, ${Object.keys(answers).length}/${t.questions.length} answered, score ${score}, ${level})`),
-  ]);
-  // keep the original file with the job's attachments; the JRA itself is already saved if storage isn't set up
-  const kept = await storeAttachment(c.env, user, { country: job.country, entity: 'job', entityId: job.id, category: 'jra_form', name: name || 'JRA.xlsx', bytes });
-  return c.json({ ok: true, ...summary, file_kept: !('error' in kept) });
 });
 
 /** Who this JRA can be sent to: people holding a role for its approval level, in the job's country. */

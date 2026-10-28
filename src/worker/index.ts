@@ -29,6 +29,8 @@ import { sales } from './sales';
 import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
+import { accounts } from './accounts';
+import { forms, jobForms } from './forms';
 import { isOpenWrite, readAllowed, ruleFor } from './permissions';
 import { login, logout, requireSession, resolveSession } from './session';
 import { syncAll, syncStatus } from './sync';
@@ -206,6 +208,9 @@ app.get('/schedule', async (c) => {
 });
 
 app.route('/jobs', jobs);
+app.route('/account-colors', accounts);
+app.route('/form-templates', forms);
+app.route('/job-forms', jobForms);
 app.get('/admin/ai', aiAdminGet);
 app.put('/admin/ai', aiAdminPut);
 app.route('/admin', admin);

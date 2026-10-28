@@ -22,7 +22,7 @@ export async function loadSettings(env: Env): Promise<AiSettings> {
   return parseSettings(results);
 }
 
-async function spend(env: Env, username: string, feature: 'agent' | 'assistant' = 'agent') {
+export async function spend(env: Env, username: string, feature: 'agent' | 'assistant' = 'agent') {
   const [month, today] = await env.DB.batch([
     env.DB.prepare('SELECT coalesce(sum(cost_microusd), 0) AS micro FROM ai_usage WHERE occurred_at >= ?').bind(monthStart()),
     env.DB.prepare(`SELECT count(*) AS n FROM ai_usage WHERE feature = ? AND username = ? AND occurred_at >= ?`).bind(feature, username, dayStart()),
@@ -50,9 +50,9 @@ function readHistory(body: ChatIn) {
   return history.length && history[history.length - 1].role === 'user' ? history : null;
 }
 
-const client = (env: Env) => new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, ...(env.ANTHROPIC_BASE_URL ? { baseURL: env.ANTHROPIC_BASE_URL } : {}) });
-const fallbackFor = (model: string) => (model === 'claude-haiku-5-5' ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const });
-const serviceError = (e: unknown) => {
+export const client = (env: Env) => new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, ...(env.ANTHROPIC_BASE_URL ? { baseURL: env.ANTHROPIC_BASE_URL } : {}) });
+export const fallbackFor = (model: string) => (model === 'claude-haiku-5-5' ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const });
+export const serviceError = (e: unknown) => {
   if (!(e instanceof Anthropic.APIError)) return null;
   console.error('ai', e.status, e.message);
   return e.status === 429 || e.status === 529 ? 'The AI service is busy. Try again in a minute.' : 'The AI service returned an error. Try again, or tell an admin if it keeps happening.';

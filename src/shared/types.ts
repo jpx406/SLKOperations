@@ -104,7 +104,13 @@ export interface Lookups {
 
 export interface Employee { id: string; country: string; eid: string; full_name: string; title: string; crew_role: string | null }
 
-export interface CrewMember { employee_id: string; crew_role: 'slickline_supervisor' | 'slickline_operator' | 'assistant_operator' | 'helper'; slot?: number; full_name?: string; eid?: string }
+export interface CrewMember {
+  employee_id: string; crew_role: 'slickline_supervisor' | 'slickline_operator' | 'assistant_operator' | 'helper'; slot?: number; full_name?: string; eid?: string;
+  /** The days the person is on the job when they differ from the job's (joined as a replacement, or left). */
+  start_date?: string | null; end_date?: string | null;
+  /** Who they replaced, who replaced them, the reason given, and who made the change. */
+  replaces_name?: string | null; replaced_by_name?: string | null; change_note?: string | null; changed_by?: string | null;
+}
 
 export interface JobCrew {
   headcount: { supervisors: number; operators: number; assistant_operators: number; helpers: number };

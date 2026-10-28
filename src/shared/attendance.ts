@@ -25,7 +25,7 @@ export function monthDays(month: string): string[] {
 /** Friday and Saturday, the Saudi and Bahraini weekend. */
 export const isWeekend = (day: string) => [5, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay());
 
-export interface Assignment { employee_id: string; job_id: string; ticket_no: string | null; start_date: string; end_date: string | null }
+export interface Assignment { employee_id: string; job_id: string; ticket_no: string | null; start_date: string; end_date: string | null; well?: string | null }
 
 /** Jobs a person is crewed on that cover the day. */
 export const assignmentsOn = (list: Assignment[], employee: string, day: string) =>

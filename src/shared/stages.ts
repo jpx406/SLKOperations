@@ -6,6 +6,14 @@ import type { Job } from './types';
 export const STAGES = ['design', 'preparation', 'execution', 'closure'] as const;
 export type Stage = (typeof STAGES)[number];
 
+/** Each stage has its own right in Users & Roles (view / edit), next to Jobs. */
+export const stageMenu = (s: Stage) => `job_${s}`;
+export const STAGE_MENUS = STAGES.map(stageMenu);
+export const STAGE_LABEL: Record<Stage, string> = { design: '01 Design', preparation: '02 Preparation', execution: '03 Execution', closure: '04 Closure' };
+type Rights = Record<string, { view: boolean; edit: boolean } | undefined>;
+export const canSeeStage = (menus: Rights, s: Stage) => !!menus[stageMenu(s)]?.view;
+export const canEditStage = (menus: Rights, s: Stage) => !!menus.jobs?.edit && !!menus[stageMenu(s)]?.edit;
+
 export const STAGE_FIELDS: Record<Stage, (keyof Job)[]> = {
   design: ['ticket_no', 'sdm_username', 'status', 'unit_number', 'start_date', 'end_date', 'location', 'field', 'rig', 'well', 'conveyance'],
   preparation: ['well_type', 'fluid_type', 'target_depth_ft', 'min_restriction_in', 'siwhp_psi', 'wire_serial_number', 'drum_no', 'pce_id', 'pressure_rating_psi', 'toolstring'],

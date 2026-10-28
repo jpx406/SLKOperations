@@ -1,6 +1,6 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Info, Send, ShieldCheck, Upload, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Info, Send, ShieldCheck, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { SignatureBadge } from '../components/Signature';
@@ -68,7 +68,6 @@ export function JraPage() {
         <Link to={`/operation/jobs/${id}/preparation`} className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3"><ArrowLeft aria-hidden className="size-4" />Job</Link>
         <h1 id="jra-title" className="font-display text-xl font-extrabold uppercase">Job risk assessment</h1>
         <span className="font-mono text-sm text-text-muted">{d.job.ticket_no ?? 'no ticket'} · {d.template.code} rev {d.template.revision}</span>
-        {canEdit && <span className="ml-auto"><JraUpload jobId={id} /></span>}
         <SaveStatus state={save.state} at={save.at} message={save.message} />
       </div>
       {restored && <div className="mb-3"><Banner tone="info">Answers that hadn’t reached the server were kept on this device and have been restored. They are saving now.</Banner></div>}
@@ -179,7 +178,6 @@ const STATUS_TEXT: Record<string, string> = { none: 'Not started', draft: 'Draft
 
 /** JRA briefing on the Preparation stage: always shown, with where the JRA stands and the Excel upload. */
 export function JraBanner({ jobId }: { jobId: string }) {
-  const { data: me } = useMe();
   const q = useQuery({ queryKey: ['jra', jobId], queryFn: () => api<JraData>(`/jra/${jobId}`) });
   if (!q.data) return null;
   const { reasons, jra, template } = q.data;
@@ -187,7 +185,6 @@ export function JraBanner({ jobId }: { jobId: string }) {
   const answers = jra?.answers ?? {};
   const score = riskScore(template, answers);
   const fl = flags(template, answers).filter((f) => f.requirement).length;
-  const canUpload = !!me?.menus.jobs?.edit && (st === 'none' || st === 'draft');
   return (
     <div className={cx('mb-4 rounded-md border p-3', st === 'approved' ? 'border-success' : reasons.length ? 'border-warning' : 'border-border')}>
       <div className="flex flex-wrap items-center gap-3">
@@ -196,73 +193,17 @@ export function JraBanner({ jobId }: { jobId: string }) {
         <span className={cx('label-caps rounded-pill px-2 py-0.5', st === 'approved' ? 'bg-success-subtle text-success' : st === 'sent' ? 'bg-info-subtle text-info' : 'bg-neutral-subtle text-text-muted')}>{STATUS_TEXT[st] ?? st}</span>
         <span className="font-mono text-xs text-text-subtle">{template.code} rev {template.revision}</span>
         <span className="ml-auto flex flex-wrap gap-2">
-          {canUpload && <JraUpload jobId={jobId} />}
           <Link className="inline-flex h-(--layout-control-sm) items-center rounded-md bg-accent px-3 text-sm font-semibold text-on-accent hover:bg-accent-hover" to={`/operation/jobs/${jobId}/jra`}>{st === 'none' ? 'Start JRA' : 'Open JRA'}</Link>
         </span>
       </div>
       <p className="mt-1 text-xs text-text-muted">
-        {st === 'approved' ? `Approved by ${jra?.decided_by_name ?? jra?.decided_by}.` : st === 'sent' ? `Waiting for ${jra?.sent_to_name ?? jra?.sent_to}.` : reasons.length ? `This job needs an approved JRA before Execution (${reasons.join(', ')}).` : 'Answer it on screen, or upload the filled Excel form (QHSE’s template). Upload again to update it while it is a draft.'}
+        {st === 'approved' ? `Approved by ${jra?.decided_by_name ?? jra?.decided_by}.` : st === 'sent' ? `Waiting for ${jra?.sent_to_name ?? jra?.sent_to}.` : reasons.length ? `This job needs an approved JRA before Execution (${reasons.join(', ')}).` : 'Answer it on screen. The form itself is managed in Administration → Form templates.'}
         {jra?.form_details?.file && ` Last upload: ${jra.form_details.file}, ${when(jra.form_details.uploaded_at ?? null)}.`}
       </p>
     </div>
   );
 }
 
-interface UploadSummary { form: string; newForm: boolean; sameForm: boolean; questions: number; answered: number; missing: string[]; score: number; level: string; flags: { id: string; requirement: string | null; approver: string | null }[]; changed: string[]; warnings: string[] }
-
-/** Upload a filled JRA form: read it first (dry run), show what it says, then replace the draft's answers. */
-export function JraUpload({ jobId }: { jobId: string }) {
-  const qc = useQueryClient();
-  const input = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<UploadSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const send = (f: File, dry: boolean) => api<UploadSummary>(`/jra/${jobId}/upload${dry ? '?dry=1' : ''}`, { method: 'POST', body: f, headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name) } });
-  const pick = async (f: File | undefined) => {
-    if (!f) return;
-    setFile(f); setError(null); setPreview(null); setBusy(true);
-    try { setPreview(await send(f, true)); } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); if (input.current) input.current.value = ''; }
-  };
-  const confirm = async () => {
-    if (!file) return;
-    setBusy(true); setError(null);
-    try { await send(file, false); await qc.invalidateQueries({ queryKey: ['jra', jobId] }); qc.invalidateQueries({ queryKey: ['attachments', 'job', jobId] }); setFile(null); setPreview(null); } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
-  };
-  const close = () => { setFile(null); setPreview(null); setError(null); };
-  return (
-    <>
-      <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" aria-label="Filled JRA form (.xlsx)" onChange={(e) => pick(e.target.files?.[0])} />
-      <Button size="sm" loading={busy && !preview} onClick={() => input.current?.click()}><Upload aria-hidden className="size-4" />Upload Excel JRA</Button>
-      {(preview || error) && file && (
-        <div role="dialog" aria-modal="true" aria-labelledby="jra-up-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4">
-          <Card className="max-h-[85vh] w-full max-w-xl overflow-y-auto">
-            <div className="mb-3 flex items-start gap-3"><h2 id="jra-up-title" className="flex-1 font-display text-lg font-bold">Upload {file.name}</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={close}><X aria-hidden className="size-4" /></Button></div>
-            {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
-            {preview && (
-              <>
-                <dl className="grid grid-cols-2 gap-2 text-sm">
-                  <div><dt className="text-text-muted">Form</dt><dd className="font-semibold">{preview.form}{preview.newForm && <span className="ml-1 text-xs font-normal text-info">new revision: it will be loaded</span>}</dd></div>
-                  <div><dt className="text-text-muted">Answered</dt><dd className="font-semibold">{preview.answered} of {preview.questions}</dd></div>
-                  <div><dt className="text-text-muted">Risk index</dt><dd className="font-semibold">{preview.score}</dd></div>
-                  <div><dt className="text-text-muted">Approval</dt><dd className="font-semibold">{preview.level}</dd></div>
-                </dl>
-                {preview.flags.length > 0 && <div className="mt-3 text-sm"><p className="font-semibold">Triggers</p><ul className="text-text-muted">{preview.flags.map((f) => <li key={f.id}><span className="font-mono">{f.id}</span> {f.requirement ?? ''}{f.approver ? ` → ${f.approver}` : ''}</li>)}</ul></div>}
-                {preview.missing.length > 0 && <p className="mt-3 text-sm text-warning">Not answered in the file: {preview.missing.join(', ')}. You can answer them on screen after uploading.</p>}
-                <p className="mt-3 text-sm">{preview.sameForm ? (preview.changed.length ? `Changes ${preview.changed.length} answer${preview.changed.length === 1 ? '' : 's'}: ${preview.changed.join(', ')}.` : 'Same answers as now.') : 'Replaces the current answers.'}</p>
-                {preview.warnings.length > 0 && <div className="mt-3"><Banner tone="warning"><ul className="list-disc pl-4">{preview.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul></Banner></div>}
-                <div className="mt-4 flex gap-2">
-                  <Button variant="primary" loading={busy} onClick={confirm}><Upload aria-hidden className="size-4" />Upload and use these answers</Button>
-                  <Button onClick={close}>Cancel</Button>
-                </div>
-              </>
-            )}
-          </Card>
-        </div>
-      )}
-    </>
-  );
-}
 
 export function useJraLock(jobId: string | undefined) {
   const q = useQuery({ queryKey: ['jra', jobId], queryFn: () => api<JraData>(`/jra/${jobId}`), enabled: !!jobId });

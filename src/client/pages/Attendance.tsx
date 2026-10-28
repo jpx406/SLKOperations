@@ -1,8 +1,8 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Check, Download, FileSpreadsheet, Mail, MousePointerClick, Save, Search, Tags, Trash2, X } from 'lucide-react';
+import { CalendarDays, Check, Download, ExternalLink, FileSpreadsheet, Mail, MousePointerClick, Save, Search, Tags, Trash2, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { CODES, CODE_LIST, LEAVE, assignmentsOn, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
 import { roleLabel } from '../../shared/roles';
 import type { Role } from '../../shared/types';
@@ -138,8 +138,7 @@ export function Attendance() {
   const clickCell = (pi: number, di: number, shift: boolean) => {
     const p = flat[pi], d = days[di], k = cellKey(p.id, d);
     setRowOn(p.id);
-    if (!editable(p)) return;
-    if (!multi) { setMenu(menu === k ? null : k); return; }
+    if (!multi || !editable(p)) { setMenu(menu === k ? null : k); return; }
     setPicked((cur) => {
       const n = new Set(cur);
       if (shift && anchor) {
@@ -244,11 +243,6 @@ export function Attendance() {
           </label>
         )}
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          {anyFill && (
-            <Button variant={multi ? 'primary' : 'secondary'} aria-pressed={multi} onClick={() => { setMulti(!multi); setPicked(new Set()); setMenu(null); }}>
-              <MousePointerClick aria-hidden className="size-4" />Multi-Select {multi ? 'ON' : 'OFF'}
-            </Button>
-          )}
           {anyFill && <Button variant="primary" onClick={save} loading={saving} disabled={!nPending}><Save aria-hidden className="size-4" />Save{nPending ? ` (${nPending})` : ''}</Button>}
           <Button variant="primary" onClick={() => exportXlsx(flat, 'all-sheets')} disabled={!flat.length}><Download aria-hidden className="size-4" />XLSX (all sheets)</Button>
           <Button onClick={exportHtml} disabled={!flat.length}><Download aria-hidden className="size-4" />HTML</Button>
@@ -288,17 +282,24 @@ export function Attendance() {
             <span className="text-xs text-text-subtle">Only rows you fill and haven't been approved. Nothing is stored until Save.</span>
           </div>
         )}
+        {anyFill && (
+          <div className="flex w-full flex-wrap items-center gap-2 border-t border-border pt-2 text-sm">
+            <Button size="sm" variant={multi ? 'primary' : 'secondary'} aria-pressed={multi} onClick={() => { setMulti(!multi); setPicked(new Set()); setMenu(null); }}>
+              <MousePointerClick aria-hidden className="size-4" />Multi-Select {multi ? 'ON' : 'OFF'}
+            </Button>
+            {multi ? (
+              <>
+                <span className="text-text-muted">{picked.size} cell{picked.size === 1 ? '' : 's'} picked · click cells, Shift-click for a range</span>
+                <Select aria-label="Apply code to the selected cells" className={inputSized('w-56')} value="" disabled={!picked.size}
+                  onChange={(e) => { if (!e.target.value) return; setCodes([...picked], e.target.value === 'clear' ? null : (e.target.value as Code)); setPicked(new Set()); }}>
+                  <option value="">Apply code…</option>{CODE_LIST.map((c) => <option key={c} value={c}>{c} · {CODES[c]}</option>)}<option value="clear">Clear cells</option>
+                </Select>
+                {picked.size > 0 && <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>Unpick all</Button>}
+              </>
+            ) : <span className="text-xs text-text-subtle">Turn on to pick several cells and give them one code.</span>}
+          </div>
+        )}
       </div>
-
-      {multi && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-text-muted">{picked.size} cell{picked.size === 1 ? '' : 's'} picked · Shift-click for a range</span>
-          <Select aria-label="Apply code to the selected cells" className={inputSized('w-56')} value="" disabled={!picked.size}
-            onChange={(e) => { if (!e.target.value) return; setCodes([...picked], e.target.value === 'clear' ? null : (e.target.value as Code)); setPicked(new Set()); }}>
-            <option value="">Apply code…</option>{CODE_LIST.map((c) => <option key={c} value={c}>{c} · {CODES[c]}</option>)}<option value="clear">Clear cells</option>
-          </Select>
-        </div>
-      )}
 
       {notice && <div className="mb-3"><Banner tone={notice.tone} action={<Button size="sm" variant="ghost" aria-label="Dismiss" onClick={() => setNotice(null)}><X aria-hidden className="size-4" /></Button>}>{notice.text}</Banner></div>}
 
@@ -397,22 +398,28 @@ export function Attendance() {
                                 return (
                                   <td key={d} className={cx('relative border-b border-border p-0.5 text-center', isWeekend(d) && 'bg-surface-3/60', hol && 'hatch-blocked')}>
                                     <button type="button" aria-label={`${p.full_name}, ${d}: ${c ? CODES[c] : 'no code'}${clash ? ', on leave while assigned to a job' : ''}`} title={tip || undefined}
-                                      aria-pressed={multi ? picked.has(k) : undefined} disabled={!editable(p)}
+                                      aria-pressed={multi ? picked.has(k) : undefined} disabled={!editable(p) && !jobs.length}
                                       onClick={(e) => clickCell(pi, di, e.shiftKey)}
-                                      className={cx('h-8 w-8 rounded-xs bg-surface-2/70 font-mono', autoCells.has(k) && !(k in pending) && 'border border-dashed border-accent-edge/50', ' text-[11px] font-semibold disabled:cursor-default in-data-[density=touch]:h-11 in-data-[density=touch]:w-11', CODE_TONE[c as Code], k in pending && 'italic underline', picked.has(k) && 'bg-accent/30', clash && 'outline-2 -outline-offset-2 outline-danger')}>
+                                      className={cx('h-8 w-8 rounded-xs font-mono', picked.has(k) ? 'bg-notice-bg ring-2 ring-accent-edge ring-inset' : 'bg-surface-2/70', autoCells.has(k) && !(k in pending) && 'border border-dashed border-accent-edge/50', ' text-[11px] font-semibold disabled:cursor-default in-data-[density=touch]:h-11 in-data-[density=touch]:w-11', CODE_TONE[c as Code], k in pending && 'italic underline', clash && 'outline-2 -outline-offset-2 outline-danger')}>
                                       {c ?? ''}
                                       {jobs.length > 0 && <span aria-hidden className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-accent" />}
                                     </button>
                                     {menu === k && (
-                                      <div role="menu" aria-label={`Code for ${p.full_name} on ${d}`} className="absolute top-9 left-0 z-40 grid w-80 grid-cols-2 gap-1 rounded-md border border-border bg-surface p-1.5 text-left shadow-pop"
+                                      <div role="menu" aria-label={`${p.full_name} on ${d}`} className="absolute top-9 left-0 z-40 grid w-80 grid-cols-2 gap-1 rounded-md border border-border bg-surface p-1.5 text-left shadow-pop"
                                         onKeyDown={(e) => { if (e.key === 'Escape') setMenu(null); else rovingKeys(e); }}>
-                                        {CODE_LIST.map((cc) => (
+                                        {jobs.map((j) => (
+                                          <Link key={j.job_id} role="menuitem" to={`/operation/jobs/${j.job_id}/execution`} autoFocus={!editable(p)}
+                                            className="col-span-2 flex min-h-9 items-center gap-1.5 rounded px-1.5 py-1 text-xs font-semibold text-accent-text hover:bg-surface-2 in-data-[density=touch]:min-h-11">
+                                            <ExternalLink aria-hidden className="size-3.5 shrink-0" />Open job {j.ticket_no ?? '(no ticket yet)'}{j.well ? ` · ${j.well}` : ''}
+                                          </Link>
+                                        ))}
+                                        {editable(p) && CODE_LIST.map((cc) => (
                                           <button key={cc} type="button" role="menuitemradio" aria-checked={cc === c} autoFocus={cc === (c ?? 'P')} onClick={() => { setCodes([k], cc); setMenu(null); }}
                                             className={cx('flex min-h-9 items-baseline gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-surface-2 in-data-[density=touch]:min-h-11', cc === c && 'bg-surface-2 font-bold')}>
                                             <span className={cx('font-mono font-bold', CODE_TONE[cc])}>{cc}</span><span className="truncate text-text-muted">{CODES[cc]}</span>
                                           </button>
                                         ))}
-                                        <button type="button" role="menuitem" onClick={() => { setCodes([k], null); setMenu(null); }} className="col-span-2 min-h-9 rounded px-1.5 py-1 text-xs text-text-muted hover:bg-surface-2 in-data-[density=touch]:min-h-11">Clear</button>
+                                        {editable(p) && <button type="button" role="menuitem" onClick={() => { setCodes([k], null); setMenu(null); }} className="col-span-2 min-h-9 rounded px-1.5 py-1 text-xs text-text-muted hover:bg-surface-2 in-data-[density=touch]:min-h-11">Clear</button>}
                                       </div>
                                     )}
                                   </td>

@@ -6,7 +6,9 @@ export const MENU_KEYS = [
   'reconciliation', 'statistics', 'npt_analysis', 'utilization', 'competency', 'attendance',
   'inventory_explosive', 'inventory_hardware', 'inventory_mcr', 'wires', 'knowledge_hub', 'users', 'audit', 'ai_assistant',
   'bonus', 'sales_dashboard', 'headcount_roster', 'ai_agent',
+  'job_design', 'job_preparation', 'job_execution', 'job_closure', 'form_templates',
 ] as const;
+const STAGE_KEYS = ['job_design', 'job_preparation', 'job_execution', 'job_closure'];
 
 export async function loadMenus(env: Env, role: Role, username: string): Promise<Record<string, MenuRight>> {
   const menus: Record<string, MenuRight> = {};
@@ -44,6 +46,8 @@ export function effectiveMenus(
     menus[g.menu_key] = { view: true, edit: cur.edit || !!g.can_edit, delete: cur.delete };
   }
   for (const g of grants.filter((x) => x.effect === 'deny')) delete menus[g.menu_key];
+  // a role nobody has set the job stages for yet (one added later) follows its Jobs right
+  if (menus.jobs) for (const k of STAGE_KEYS) if (!perms.some((r) => r.menu_key === k) && !grants.some((g) => g.menu_key === k)) menus[k] = { view: menus.jobs.view, edit: menus.jobs.edit, delete: false };
   return menus;
 }
 
@@ -51,9 +55,15 @@ export function effectiveMenus(
 // the same central-table approach as WIREGUARD's SOX Phase 1 WRITE_RULES.
 export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: keyof MenuRight }[] = [
   { method: 'POST', re: /^\/api\/jobs$/, menu: 'jobs', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/account-colors\/[^/]+$/, menu: 'database', action: 'edit' },
+  { method: 'POST', re: /^\/api\/form-templates(\/(read|ai))?$/, menu: 'form_templates', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/form-templates\/[^/]+$/, menu: 'form_templates', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/form-templates\/[^/]+$/, menu: 'form_templates', action: 'delete' },
+  { method: 'PUT', re: /^\/api\/job-forms\/[^/]+\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/jobs\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/services$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/(headcount|crew)$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/jobs\/[^/]+\/crew\/[^/]+\/(remove|replace|restore)$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/jobs\/[^/]+\/events$/, menu: 'jobs', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/jobs\/[^/]+\/events\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/jobs\/[^/]+\/move$/, menu: 'schedule', action: 'edit' },
@@ -124,7 +134,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/pre-job-notes\/[^/]+\/sent$/, menu: 'pre_job_notes', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/pre-job-notes\/[^/]+$/, menu: 'pre_job_notes', action: 'delete' },
   { method: 'PUT', re: /^\/api\/jra\/[^/]+$/, menu: 'jobs', action: 'edit' },
-  { method: 'POST', re: /^\/api\/jra\/[^/]+\/(send|decide|upload|pdf)$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/jra\/[^/]+\/(send|decide|pdf)$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/bonus\/(rules|splits)$/, menu: 'bonus', action: 'edit' },
   { method: 'POST', re: /^\/api\/bonus\/statements$/, menu: 'bonus', action: 'edit' },
   { method: 'PUT', re: /^\/api\/bonus\/jobs\/[^/]+$/, menu: 'jobs', action: 'edit' },
@@ -140,6 +150,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
 export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status|passkeys|roles|rules)$/, menus: 'any' },
   { re: /^\/api\/schedule$/, menus: ['schedule'] },
+  { re: /^\/api\/account-colors$/, menus: ['schedule', 'jobs', 'job_log'] },
+  { re: /^\/api\/form-templates(\/[^/]+)?$/, menus: ['form_templates'] },
+  { re: /^\/api\/job-forms\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/jobs(\/[^/]+)?$/, menus: ['jobs', 'schedule'] },
   { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options|events)$/, menus: ['jobs'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },

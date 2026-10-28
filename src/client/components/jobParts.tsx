@@ -1,6 +1,6 @@
 import { Select } from './Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Plus, Trash2, UserMinus, X } from 'lucide-react';
 import { useState } from 'react';
 import { TOOLSTRING_COMPONENTS, preJobWireStatus, toolChecks, toolTotals, type ToolPart } from '../../shared/toolstring';
 import type { CrewMember, Employee, Job, JobCrew, Lookups, WireOptions } from '../../shared/types';
@@ -137,24 +137,33 @@ const ROLES: { role: CrewMember['crew_role']; head: keyof JobCrew['headcount']; 
   { role: 'helper', head: 'helpers', label: 'Helpers' },
 ];
 
-/** Planned head count per role and the named crew picked from this country's roster. */
+/**
+ * Planned head count per role and the named crew picked from this country's roster. Once the job has started, a
+ * person is replaced or taken off from a date rather than deleted, so their days stay on the attendance sheet.
+ */
 export function CrewPanel({ job, canEdit }: { job: Job; canEdit: boolean }) {
   const qc = useQueryClient();
   const crewQ = useQuery({ queryKey: ['crew', job.id], queryFn: () => api<JobCrew>(`/jobs/${job.id}/crew`) });
   const empQ = useQuery({ queryKey: ['employees', job.country], queryFn: () => api<Employee[]>(`/employees?country=${job.country}`), staleTime: 5 * 60_000 });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [change, setChange] = useState<{ kind: 'replace' | 'remove'; member: CrewMember } | null>(null);
   if (crewQ.isPending) return <p className="text-sm text-text-muted">Loading crew…</p>;
   if (crewQ.isError) return <Banner tone="danger">{crewQ.error.message}</Banner>;
   const { headcount, crew, caps } = crewQ.data;
-  const run = async (path: string, json: unknown) => {
-    setBusy(true); setError(null);
-    try {
-      await api(`/jobs/${job.id}/${path}`, { method: 'PUT', json });
-      await qc.invalidateQueries({ queryKey: ['crew', job.id] });
-      qc.invalidateQueries({ queryKey: ['job', job.id] });
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  const current = crew.filter((m) => !m.end_date);
+  const refresh = async () => {
+    await qc.invalidateQueries({ queryKey: ['crew', job.id] });
+    qc.invalidateQueries({ queryKey: ['job', job.id] });
+    qc.invalidateQueries({ queryKey: ['attendance'] });
   };
+  const run = async (path: string, json: unknown, method: 'PUT' | 'POST' = 'PUT') => {
+    setBusy(true); setError(null);
+    try { await api(`/jobs/${job.id}/${path}`, { method, json }); await refresh(); return true; } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
+  };
+  const plan = (list: CrewMember[]) => run('crew', { crew: list.map(({ employee_id, crew_role }) => ({ employee_id, crew_role })) });
+  // a job under way keeps who worked on it: changes need a date
+  const started = job.status === 'ongoing' || job.status === 'completed';
   const taken = new Set(crew.map((m) => m.employee_id));
   const people = empQ.data ?? [];
   return (
@@ -162,7 +171,8 @@ export function CrewPanel({ job, canEdit }: { job: Job; canEdit: boolean }) {
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {ROLES.map(({ role, head, label }) => {
-          const members = crew.filter((m) => m.crew_role === role);
+          const members = current.filter((m) => m.crew_role === role);
+          const gone = crew.filter((m) => m.crew_role === role && m.end_date);
           const short = headcount[head] > members.length;
           return (
             <fieldset key={role} className="border-t border-border pt-3">
@@ -175,27 +185,111 @@ export function CrewPanel({ job, canEdit }: { job: Job; canEdit: boolean }) {
               </label>
               <ul className="mt-2 space-y-1">
                 {members.map((m) => (
-                  <li key={m.employee_id} className="flex items-center gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate">{m.full_name}</span><span className="font-mono text-xs text-text-subtle">{m.eid}</span>
-                    <Button variant="ghost" size="sm" aria-label={`Remove ${m.full_name}`} disabled={!canEdit || busy}
-                      onClick={() => run('crew', { crew: crew.filter((x) => x.employee_id !== m.employee_id) })}><Trash2 aria-hidden className="size-3.5" /></Button>
+                  <li key={m.employee_id} className="text-sm">
+                    <div className="flex items-center gap-1">
+                      <span className="min-w-0 flex-1 truncate">{m.full_name}</span><span className="font-mono text-xs text-text-subtle">{m.eid}</span>
+                      <Button variant="ghost" size="sm" aria-label={`Replace ${m.full_name}`} title="Replace from a date" disabled={!canEdit || busy}
+                        onClick={() => setChange({ kind: 'replace', member: m })}><ArrowLeftRight aria-hidden className="size-3.5" /></Button>
+                      <Button variant="ghost" size="sm" aria-label={`Remove ${m.full_name}`} title={started ? 'Take off the job from a date' : 'Take off the plan'} disabled={!canEdit || busy}
+                        onClick={() => (started ? setChange({ kind: 'remove', member: m }) : plan(current.filter((x) => x.employee_id !== m.employee_id)))}><UserMinus aria-hidden className="size-3.5" /></Button>
+                    </div>
+                    {m.replaces_name && <p className="text-xs text-text-subtle">From {m.start_date}, replacing {m.replaces_name}</p>}
                   </li>
                 ))}
               </ul>
               {members.length < caps[head] && (
                 <Select aria-label={`Add to ${label.toLowerCase()}`} className={cx(inputClass, 'mt-2 h-(--layout-control-sm)')} disabled={!canEdit || busy} value=""
-                  onChange={(e) => e.target.value && run('crew', { crew: [...crew.map(({ employee_id, crew_role }) => ({ employee_id, crew_role })), { employee_id: e.target.value, crew_role: role }] })}>
+                  onChange={(e) => e.target.value && plan([...current, { employee_id: e.target.value, crew_role: role }])}>
                   <option value="">Add person…</option>
                   {people.filter((p) => !taken.has(p.id)).sort((a, b) => Number(b.crew_role === role) - Number(a.crew_role === role))
                     .map((p) => <option key={p.id} value={p.id}>{p.full_name} · {p.title}</option>)}
                 </Select>
               )}
               {short && <p className="mt-1.5 text-xs text-warning">{headcount[head] - members.length} still to name</p>}
+              {gone.length > 0 && (
+                <ul className="mt-2 space-y-1 border-t border-dashed border-border pt-2" aria-label={`${label} who left the job`}>
+                  {gone.map((m) => (
+                    <li key={m.employee_id} className="text-xs text-text-muted">
+                      <div className="flex items-center gap-1">
+                        <span className="min-w-0 flex-1 truncate line-through decoration-text-subtle">{m.full_name}</span>
+                        <Button variant="ghost" size="sm" disabled={!canEdit || busy} onClick={() => run(`crew/${m.employee_id}/restore`, {}, 'POST')}>Undo</Button>
+                      </div>
+                      <p>Last day {m.end_date}{m.replaced_by_name ? `, replaced by ${m.replaced_by_name}` : ', taken off the job'}{m.change_note ? ` · ${m.change_note}` : ''}{m.changed_by ? ` · by ${m.changed_by}` : ''}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </fieldset>
           );
         })}
       </div>
-      {empQ.data && !people.length && <p className="mt-2 text-xs text-text-subtle">No one on the {job.country} roster yet. People are added in Attendance.</p>}
+      {empQ.data && !people.length && <p className="mt-2 text-xs text-text-subtle">No one on the {job.country} roster yet. People are added in Users & Roles.</p>}
+      {change && (
+        <CrewChange job={job} kind={change.kind} member={change.member} people={people.filter((p) => !taken.has(p.id))} busy={busy}
+          onClose={() => setChange(null)}
+          onSave={async (b) => { if (await run(`crew/${change.member.employee_id}/${change.kind}`, b, 'POST')) setChange(null); }} />
+      )}
+    </div>
+  );
+}
+
+const todayRiyadh = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+
+/** Replace a person from a date, or take them off the job after a last day. Attendance follows the dates. */
+function CrewChange({ job, kind, member, people, busy, onClose, onSave }: {
+  job: Job; kind: 'replace' | 'remove'; member: CrewMember; people: Employee[]; busy: boolean;
+  onClose: () => void; onSave: (b: { date: string; employee_id?: string; handover?: boolean; note?: string }) => void;
+}) {
+  const first = member.start_date ?? job.start_date ?? '';
+  const last = job.status === 'completed' ? job.end_date ?? '' : '';
+  const clamp = (d: string) => (first && d < first ? first : last && d > last ? last : d);
+  const [date, setDate] = useState(clamp(todayRiyadh()));
+  const [who, setWho] = useState('');
+  const [handover, setHandover] = useState(false);
+  const [note, setNote] = useState('');
+  const replace = kind === 'replace';
+  const ok = !!date && (!replace || !!who);
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="crew-change-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4"
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+      <div className="w-full max-w-md rounded-lg border border-card-edge bg-surface p-5 shadow-pop">
+        <div className="mb-3 flex items-start gap-3">
+          <h2 id="crew-change-title" className="flex-1 font-display text-lg font-bold">{replace ? `Replace ${member.full_name}` : `Take ${member.full_name} off the job`}</h2>
+          <Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button>
+        </div>
+        <div className="space-y-4">
+          {replace && (
+            <div>
+              <label htmlFor="crew-who" className="label-caps mb-1.5 block text-text-muted">Replacement</label>
+              <Select id="crew-who" search className={inputClass} value={who} onChange={(e) => setWho(e.target.value)}>
+                <option value="">Pick a person…</option>
+                {[...people].sort((a, b) => Number(b.crew_role === member.crew_role) - Number(a.crew_role === member.crew_role))
+                  .map((p) => <option key={p.id} value={p.id}>{p.full_name} · {p.title}</option>)}
+              </Select>
+            </div>
+          )}
+          <div>
+            <label htmlFor="crew-date" className="label-caps mb-1.5 block text-text-muted">{replace ? 'Date of the change' : 'Last day on the job'}</label>
+            <input id="crew-date" type="date" className={inputClass} value={date} min={first || undefined} max={last || undefined} onChange={(e) => setDate(e.target.value)} />
+            <p className="mt-1 text-xs text-text-subtle">
+              {replace
+                ? `The replacement's attendance starts this day. ${member.full_name} ${handover ? 'also works this day' : 'works until the day before'}.`
+                : `${member.full_name}'s attendance from this job stops after this day.`}
+            </p>
+          </div>
+          {replace && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={handover} onChange={(e) => setHandover(e.target.checked)} />Both on the job that day (handover)</label>}
+          <div>
+            <label htmlFor="crew-note" className="label-caps mb-1.5 block text-text-muted">Reason <span className="normal-case text-text-subtle">(optional)</span></label>
+            <input id="crew-note" className={inputClass} maxLength={300} value={note} placeholder="e.g. crew change, sick leave, rotation" onChange={(e) => setNote(e.target.value)} />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} disabled={!ok} onClick={() => onSave({ date, note, ...(replace ? { employee_id: who, handover } : {}) })}>
+            {replace ? 'Replace' : 'Take off the job'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CalendarClock, Check, ChevronLeft, ChevronRight, Filter, Play, Plus, Tag, Wrench, X, type LucideIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { canEditField } from '../../shared/fieldPolicy';
 import { useRules } from '../rules';
@@ -13,6 +13,8 @@ import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, EmptyState, Field, Skeleton, cx, inputClass } from '../components/ui';
 import { ReconBanner } from '../components/ReconBanner';
+import { AccountLegend, useAccountColors } from '../components/Accounts';
+import { NO_ACCOUNT, tint } from '../../shared/accounts';
 
 interface SJob { id: string; ticket_no: string | null; well: string | null; unit_number: string; status: JobStatus; start_date: string; end_date: string; updated_at: string; sdm_username: string | null; sdm_name: string | null; location: string | null }
 interface SEvent { id: string; unit_number: string; kind: string; detail: string | null; starts_on: string; ends_on: string; note: string | null }
@@ -47,6 +49,7 @@ const BAR: Record<JobStatus, string> = {
 };
 const DOT: Record<string, string> = { planned: 'bg-info', ongoing: 'bg-warning', completed: 'bg-success' };
 // a shape per status, so the bar doesn't depend on its colour alone
+const STATUS_TEXT: Record<JobStatus, string> = { planned: 'text-info', ongoing: 'text-warning', completed: 'text-success', canceled: 'text-neutral' };
 const BAR_ICON: Record<JobStatus, LucideIcon> = { planned: CalendarClock, ongoing: Play, completed: Check, canceled: X };
 const BLOCK_LABEL = EVENT_LABEL;
 
@@ -92,6 +95,7 @@ export function Schedule() {
   // the standard filters (SDM, account, area, service, unit ...) narrow the jobs drawn; Unit # also narrows the rows.
   // Events and free days stay visible.
   const [filters] = useFilters();
+  const colorOf = useAccountColors();
   const fq = filtersToQuery({ ...filters, year: undefined, month: undefined });
   const nFilters = activeFilterCount({ ...filters, year: undefined, month: undefined });
   const [showFilters, setShowFilters] = useState(nFilters > 0);
@@ -151,6 +155,35 @@ export function Schedule() {
   const unitsList = q.data?.units.map((u) => u.unit_number) ?? [];
 
   // where each job is drawn right now: dragging > saving > server
+  /** Units by the account they spend most days on this month; units without jobs come last (hidden while an account is picked). */
+  const unitGroups = () => {
+    if (!q.data) return [];
+    const data = q.data;
+    const days = new Map<string, Map<string, number>>();
+    for (const j of data.jobs.filter(shown).map(placed)) {
+      if (j.end_date < data.first || j.start_date > data.last) continue;
+      const from = j.start_date < data.first ? data.first : j.start_date, to = j.end_date > data.last ? data.last : j.end_date;
+      const n = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
+      const t = days.get(j.unit_number) ?? new Map<string, number>();
+      const a = j.location?.trim() || NO_ACCOUNT;
+      t.set(a, (t.get(a) ?? 0) + n);
+      days.set(j.unit_number, t);
+    }
+    const main = (u: string) => [...(days.get(u) ?? new Map<string, number>()).entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))[0]?.[0] ?? null;
+    const groups = new Map<string, typeof data.units>();
+    for (const u of data.units) {
+      const a = main(u.unit_number) ?? (filters.account?.length ? null : 'No jobs this month');
+      if (a) groups.set(a, [...(groups.get(a) ?? []), u]);
+    }
+    const last = (a: string) => (a === 'No jobs this month' ? 2 : a === NO_ACCOUNT ? 1 : 0);
+    return [...groups.entries()].sort(([a], [b]) => last(a) - last(b) || a.localeCompare(b)).map(([account, units]) => ({ account, units }));
+  };
+  const accountCounts = () => {
+    const m = new Map<string, number>();
+    for (const j of q.data?.jobs ?? []) m.set(j.location?.trim() || NO_ACCOUNT, (m.get(j.location?.trim() || NO_ACCOUNT) ?? 0) + 1);
+    return m;
+  };
+
   const placed = (j: SJob): SJob => {
     if (drag?.job.id === j.id && drag.moved) return { ...j, ...targetOf(drag) };
     if (pending?.id === j.id) return { ...j, ...pending.t };
@@ -265,6 +298,7 @@ export function Schedule() {
         </div>
       )}
       {showFilters && <div id="sched-filters"><FilterBar optionsPath="/filter-options" variant="panel" dims={['account', 'area', 'domain', 'service', 'sdm', 'unit', 'conveyance']} /></div>}
+      {q.data && <AccountLegend counts={accountCounts()} />}
 
       <p aria-live="polite" className="sr-only">{live}</p>
       <ReconBanner />
@@ -306,7 +340,17 @@ export function Schedule() {
                 </div>
               ))}
             </div>
-            {q.data.units.map((u) => {
+            {unitGroups().map((g) => (
+              <Fragment key={g.account}>
+                <div role="row" className="contents">
+                  <div role="rowheader" aria-label={`${g.account}, ${g.units.length} unit${g.units.length === 1 ? '' : 's'}`} className="border-b border-border" style={{ gridColumn: '1 / -1', backgroundColor: tint(colorOf(g.account), 30) ?? 'var(--color-surface-2)' }}>
+                    <span className="sticky left-0 flex w-max items-center gap-2 px-4 py-1.5 font-display text-xs font-extrabold tracking-wide uppercase">
+                      <i aria-hidden className="inline-block size-3 rounded-full border border-black/10" style={{ backgroundColor: colorOf(g.account) }} />
+                      {g.account}<span className="font-mono font-medium text-text-muted">{g.units.length} unit{g.units.length === 1 ? '' : 's'}</span>
+                    </span>
+                  </div>
+                </div>
+            {g.units.map((u) => {
               const bars = lanes([
                 ...q.data.jobs.filter(shown).map(placed).filter((j) => j.unit_number === u.unit_number && j.end_date >= q.data.first && j.start_date <= q.data.last)
                   .map((j) => ({ kind: 'job' as const, job: j, start: col(j.start_date), end: col(j.end_date) })),
@@ -316,7 +360,7 @@ export function Schedule() {
               const ws = wiresOf(u.unit_number);
               return (
                 <div role="row" key={u.unit_number} className="contents">
-                  <div role="rowheader" className="sticky left-0 z-10 border-r border-b border-border bg-surface px-4 py-2.5">
+                  <div role="rowheader" className="sticky left-0 z-10 border-r border-b border-border bg-surface px-4 py-2.5" style={{ boxShadow: colorOf(g.account) ? `inset 5px 0 ${colorOf(g.account)}` : undefined }}>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-base font-bold whitespace-nowrap">{u.unit_number}</span>
                       <span className="label-caps ml-auto rounded-xs border border-pill-completed-border bg-pill-completed-bg px-1.5 text-pill-completed-fg">Active</span>
@@ -330,17 +374,18 @@ export function Schedule() {
                     style={{ gridColumn: `2 / span ${days.length}`, gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${laneCount}, calc(var(--spacing) * 7)) minmax(0, 1fr)`, rowGap: 'calc(var(--spacing) * 1.5)', paddingBlock: 'calc(var(--spacing) * 2)' }}>
                     {days.map((d) => (d.weekend || d.iso === today) && <div key={d.day} aria-hidden className={d.iso === today ? 'bg-today' : 'bg-surface-2/60'} style={{ gridColumn: d.day, gridRow: '1 / -1', marginBlock: 'calc(var(--spacing) * -2)' }} />)}
                     {bars.map((b) => b.kind === 'job' ? (
-                      <a key={b.job.id} href={`/operation/jobs/${b.job.id}/design`} title={`${b.job.ticket_no ?? 'No ticket'} · ${b.job.well ?? ''}${b.job.sdm_name ? ` · SDM ${b.job.sdm_name}` : ''}`}
+                      <a key={b.job.id} href={`/operation/jobs/${b.job.id}/design`} title={`${b.job.ticket_no ?? 'No ticket'} · ${b.job.well ?? ''}${b.job.location ? ` · ${b.job.location}` : ''}${b.job.sdm_name ? ` · SDM ${b.job.sdm_name}` : ''}`}
                         onClick={(e) => e.preventDefault()}
                         onPointerDown={(e) => (canMove ? onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'move') : undefined)}
                         onPointerUp={() => { if (!canMove) navigate(`/operation/jobs/${b.job.id}/design`); }}
                         onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/operation/jobs/${b.job.id}/design`); else onBarKey(e, q.data.jobs.find((j) => j.id === b.job.id)!); }}
                         aria-label={`Job ${b.job.ticket_no ?? 'without ticket'}, ${b.job.well ?? 'no well'}, ${b.job.start_date} to ${b.job.end_date}, ${b.job.status}, unit ${u.unit_number}${b.job.sdm_name ? `, SDM ${b.job.sdm_name}` : ''}${canMove ? '. Shift+arrows move a day, Alt+up or down changes unit, [ and ] change the end, { and } change the start' : ''}`}
-                        className={cx('group relative z-[1] mx-0.5 flex touch-none items-center gap-1.5 overflow-hidden rounded-md border px-2 font-mono text-xs font-bold whitespace-nowrap hover:brightness-125',
-                          BAR[b.job.status], canMove && 'cursor-grab', (drag?.job.id === b.job.id || pending?.id === b.job.id) && 'opacity-80 shadow-pop')}
-                        style={{ gridColumn: `${b.start} / ${b.end + 1}`, gridRow: b.lane + 1 }}>
+                        className={cx('group relative z-[1] mx-0.5 flex touch-none items-center gap-1.5 overflow-hidden rounded-md border px-2 font-mono text-xs font-bold whitespace-nowrap hover:brightness-110',
+                          BAR[b.job.status], colorOf(b.job.location) && 'text-text', canMove && 'cursor-grab', (drag?.job.id === b.job.id || pending?.id === b.job.id) && 'opacity-80 shadow-pop')}
+                        style={{ gridColumn: `${b.start} / ${b.end + 1}`, gridRow: b.lane + 1,
+                          ...(colorOf(b.job.location) ? { backgroundColor: tint(colorOf(b.job.location), 45), borderLeftWidth: 5, borderLeftColor: colorOf(b.job.location) } : {}) }}>
                         {canMove && <span aria-hidden className="absolute inset-y-0 left-0 w-2.5 cursor-ew-resize" onPointerDown={(e) => onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'start')} />}
-                        <StatusGlyph status={b.job.status} />
+                        <StatusGlyph status={b.job.status} className={STATUS_TEXT[b.job.status]} />
                         <span>{b.job.ticket_no ?? 'No ticket'}</span>
                         {b.job.well && <span className="font-sans font-medium text-text">{b.job.well}</span>}
                         {canMove && <span aria-hidden className="absolute inset-y-0 right-0 w-2.5 cursor-ew-resize" onPointerDown={(e) => onPointerDown(e, q.data.jobs.find((j) => j.id === b.job.id)!, 'end')} />}
@@ -360,6 +405,8 @@ export function Schedule() {
                 </div>
               );
             })}
+              </Fragment>
+            ))}
           </div>
         </div>
       )}

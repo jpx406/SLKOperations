@@ -3,7 +3,8 @@ import { Hono, type Context } from 'hono';
 import { EXECUTION_FIELDS, FAILURE_GATED, SERVICE_GATED, canEditField, filterPatch } from '../shared/fieldPolicy';
 import { jraReasons } from '../shared/jra';
 import { loadRules } from './rules';
-import { FAILURE_FOLLOW_UP, STAGE_FIELDS } from '../shared/stages';
+import { ensureAccountColor } from './accounts';
+import { FAILURE_FOLLOW_UP, STAGE_FIELDS, canEditStage } from '../shared/stages';
 import { parseToolstring, toolTotals } from '../shared/toolstring';
 import type { Job } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
@@ -199,7 +200,7 @@ jobs.get('/:id', async (c) => {
 jobs.post('/', async (c) => {
   const user = c.get('user');
   const body = await c.req.json<{ patch?: Record<string, unknown>; country?: string }>().catch(() => ({} as { patch?: Record<string, unknown>; country?: string }));
-  const { allowed, dropped } = filterPatch(user.role, body.patch ?? {}, await loadRules(c.env));
+  const { allowed, dropped } = filterPatch(user.role, body.patch ?? {}, await loadRules(c.env), user.menus);
   if (!Object.keys(allowed).length) return c.json({ error: 'Nothing to save yet', ignored: dropped }, 400);
 
   let country = body.country ?? null;
@@ -226,6 +227,7 @@ jobs.post('/', async (c) => {
       updateStatement(c.env, id, allowed, user.username, at),
       audit(c.env, user, 'create', id, `Created job: ${JSON.stringify(allowed)}`),
     ]);
+    await ensureAccountColor(c.env, allowed.location);
   } catch (e) {
     return c.json({ error: constraintMessage(e) ?? 'Could not save the job' }, 400);
   }
@@ -272,7 +274,7 @@ async function applyPatch(c: Context<AppBindings>, id: string, raw: Record<strin
   if (expectedUpdatedAt && expectedUpdatedAt !== current.updated_at) {
     return c.json({ error: `Changed by ${current.updated_by ?? 'someone else'} since you opened it`, job: current }, 409);
   }
-  const { allowed, dropped } = filterPatch(user.role, raw, await loadRules(c.env));
+  const { allowed, dropped } = filterPatch(user.role, raw, await loadRules(c.env), strict ? undefined : user.menus);
   // a schedule move is all-or-nothing: moving the dates but not the unit would put the job somewhere nobody chose
   if (strict && dropped.length) return c.json({ error: `Your role cannot change ${dropped.join(', ')}`, job: current }, 403);
   if (!Object.keys(allowed).length) return c.json({ job: current, ignored: dropped });
@@ -295,6 +297,7 @@ async function applyPatch(c: Context<AppBindings>, id: string, raw: Record<strin
       updateStatement(c.env, id, allowed, user.username, at),
       audit(c.env, user, strict ? 'move' : 'edit', id, changes.map((k) => `${k}: ${String((current as unknown as Record<string, unknown>)[k])} → ${String(allowed[k])}`).join('; ')),
     ]);
+    if ('location' in allowed) await ensureAccountColor(c.env, allowed.location);
   } catch (e) {
     return c.json({ error: constraintMessage(e) ?? 'Could not save the change', job: current }, 400);
   }
@@ -318,7 +321,7 @@ jobs.post('/:id/move', async (c) => {
 jobs.put('/:id/services', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  if (!canEditField(user.role, 'run_details', await loadRules(c.env))) return c.json({ error: 'Your role cannot change services' }, 403);
+  if (!canEditField(user.role, 'run_details', await loadRules(c.env)) || !canEditStage(user.menus, 'design')) return c.json({ error: 'Your role cannot change services' }, 403);
   const job = await getJob(c.env, user, id);
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const { services } = await c.req.json<{ services: string[] }>().catch(() => ({ services: [] as string[] }));
@@ -349,9 +352,13 @@ jobs.get('/:id/crew', async (c) => {
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const [head, crew] = await c.env.DB.batch([
     c.env.DB.prepare('SELECT supervisors, operators, assistant_operators, helpers FROM job_headcount WHERE job_id = ?').bind(job.id),
+    // everyone who was on the job: the current crew, and those replaced or taken off (end_date set)
     c.env.DB.prepare(
-      `SELECT c.employee_id, c.crew_role, c.slot, e.full_name, e.eid FROM job_crew c JOIN employees e ON e.id = c.employee_id
-       WHERE c.job_id = ? ORDER BY c.crew_role, c.slot`,
+      `SELECT c.employee_id, c.crew_role, c.slot, e.full_name, e.eid, c.start_date, c.end_date, c.change_note, coalesce(u.full_name, c.changed_by) AS changed_by,
+              (SELECT pe.full_name FROM job_crew p JOIN employees pe ON pe.id = p.employee_id WHERE p.id = c.replaces_id) AS replaces_name,
+              (SELECT ne.full_name FROM job_crew n JOIN employees ne ON ne.id = n.employee_id WHERE n.replaces_id = c.id) AS replaced_by_name
+       FROM job_crew c JOIN employees e ON e.id = c.employee_id LEFT JOIN user_roles u ON u.username = c.changed_by
+       WHERE c.job_id = ? ORDER BY c.crew_role, c.end_date IS NOT NULL, c.slot`,
     ).bind(job.id),
   ]);
   return c.json({ headcount: head.results[0] ?? { supervisors: 0, operators: 0, assistant_operators: 0, helpers: 0 }, crew: crew.results, caps: HEAD_CAP });
@@ -359,7 +366,7 @@ jobs.get('/:id/crew', async (c) => {
 
 jobs.put('/:id/headcount', async (c) => {
   const user = c.get('user');
-  if (!canEditField(user.role, 'well_type', await loadRules(c.env))) return c.json({ error: 'Your role cannot plan the crew' }, 403);
+  if (!canEditField(user.role, 'well_type', await loadRules(c.env)) || !canEditStage(user.menus, 'preparation')) return c.json({ error: 'Your role cannot plan the crew' }, 403);
   const job = await getJob(c.env, user, c.req.param('id'));
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const b = await c.req.json<Record<keyof typeof HEAD_CAP, number>>().catch(() => ({} as Record<keyof typeof HEAD_CAP, number>));
@@ -383,7 +390,7 @@ jobs.put('/:id/headcount', async (c) => {
 
 jobs.put('/:id/crew', async (c) => {
   const user = c.get('user');
-  if (!canEditField(user.role, 'well_type', await loadRules(c.env))) return c.json({ error: 'Your role cannot assign the crew' }, 403);
+  if (!canEditField(user.role, 'well_type', await loadRules(c.env)) || !canEditStage(user.menus, 'preparation')) return c.json({ error: 'Your role cannot assign the crew' }, 403);
   const job = await getJob(c.env, user, c.req.param('id'));
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const { crew } = await c.req.json<{ crew: { employee_id: string; crew_role: (typeof CREW_ROLES)[number] }[] }>().catch(() => ({ crew: [] as { employee_id: string; crew_role: (typeof CREW_ROLES)[number] }[] }));
@@ -397,19 +404,122 @@ jobs.put('/:id/crew', async (c) => {
       .bind(JSON.stringify(list.map((m) => m.employee_id)), job.country).all<{ id: string }>();
     if (results.length !== list.length) return c.json({ error: 'Pick people from this country’s active roster' }, 400);
   }
+  const ids = JSON.stringify(list.map((m) => m.employee_id));
+  const left = await c.env.DB.prepare('SELECT e.full_name FROM job_crew c JOIN employees e ON e.id = c.employee_id WHERE c.job_id = ? AND c.end_date IS NOT NULL AND c.employee_id IN (SELECT value FROM json_each(?))')
+    .bind(job.id, ids).first<{ full_name: string }>();
+  if (left) return c.json({ error: `${left.full_name} already left this job. Use Undo on their row to put them back.` }, 409);
   const slots: Record<string, number> = {};
   const at = new Date().toISOString();
+  // only the current crew is planned here; people replaced or taken off keep their rows (and their days)
   await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM job_crew WHERE job_id = ?').bind(job.id),
+    c.env.DB.prepare('DELETE FROM job_crew WHERE job_id = ? AND end_date IS NULL AND employee_id NOT IN (SELECT value FROM json_each(?))').bind(job.id, ids),
     ...list.map((m) => {
       slots[m.crew_role] = (slots[m.crew_role] ?? 0) + 1;
-      return c.env.DB.prepare('INSERT INTO job_crew (id, job_id, employee_id, crew_role, slot) VALUES (?, ?, ?, ?, ?)')
-        .bind(crypto.randomUUID(), job.id, m.employee_id, m.crew_role, slots[m.crew_role]);
+      return c.env.DB.prepare(
+        `INSERT INTO job_crew (id, job_id, employee_id, crew_role, slot) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (job_id, employee_id) DO UPDATE SET crew_role = excluded.crew_role, slot = excluded.slot`,
+      ).bind(crypto.randomUUID(), job.id, m.employee_id, m.crew_role, slots[m.crew_role]);
     }),
     c.env.DB.prepare('UPDATE jobs SET updated_by = ?, updated_at = ? WHERE id = ?').bind(user.username, at, job.id),
     audit(c.env, user, 'edit', job.id, `crew: ${list.length} people`),
   ]);
   return c.json({ ok: true, job: await getJob(c.env, user, job.id) });
+});
+
+const isDay = (d: unknown): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`));
+const dayBefore = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+type CrewRow = { id: string; employee_id: string; crew_role: string; slot: number; start_date: string | null; end_date: string | null; full_name: string };
+
+/** The crew row of one person on the job, after the same checks as planning the crew. */
+async function crewChange(c: Context<AppBindings>) {
+  const user = c.get('user');
+  if (!canEditField(user.role, 'well_type', await loadRules(c.env)) || !canEditStage(user.menus, 'preparation')) return { error: c.json({ error: 'Your role cannot change the crew' }, 403) };
+  const job = await getJob(c.env, user, c.req.param('id')!);
+  if (!job) return { error: c.json({ error: 'Job not found' }, 404) };
+  const row = await c.env.DB.prepare('SELECT c.id, c.employee_id, c.crew_role, c.slot, c.start_date, c.end_date, e.full_name FROM job_crew c JOIN employees e ON e.id = c.employee_id WHERE c.job_id = ? AND c.employee_id = ?')
+    .bind(job.id, c.req.param('employeeId')!).first<CrewRow>();
+  if (!row) return { error: c.json({ error: 'That person is not on this job' }, 404) };
+  return { user, job, row };
+}
+
+/** The date has to fall on the job: from the person's first day on it to the job's end once it is completed. */
+function checkDay(job: Job, row: CrewRow, date: unknown, what: string): string | null {
+  if (!isDay(date)) return `Pick the ${what}`;
+  const from = row.start_date ?? job.start_date;
+  if (from && date < from) return `The ${what} can't be before ${row.full_name}'s first day on the job (${from})`;
+  if (job.status === 'completed' && job.end_date && date > job.end_date) return `The ${what} can't be after the job ended (${job.end_date})`;
+  return null;
+}
+
+const crewNote = (n: unknown) => (typeof n === 'string' ? n.trim().slice(0, 300) || null : null);
+
+/**
+ * Takes a person off the job: `date` is their last day on it, and their attendance from the job stops there.
+ * Someone who never worked on it is taken off the plan instead (the crew list).
+ */
+jobs.post('/:id/crew/:employeeId/remove', async (c) => {
+  const ctx = await crewChange(c);
+  if ('error' in ctx) return ctx.error;
+  const { user, job, row } = ctx;
+  if (row.end_date) return c.json({ error: `${row.full_name} already left the job after ${row.end_date}` }, 409);
+  const b = await c.req.json<{ date?: string; note?: string }>().catch(() => ({} as { date?: string; note?: string }));
+  const bad = checkDay(job, row, b.date, 'last day on the job');
+  if (bad) return c.json({ error: bad }, 400);
+  const note = crewNote(b.note);
+  const at = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE job_crew SET end_date = ?, change_note = ?, changed_by = ?, changed_at = ? WHERE id = ?').bind(b.date, note, user.username, at, row.id),
+    c.env.DB.prepare('UPDATE jobs SET updated_by = ?, updated_at = ? WHERE id = ?').bind(user.username, at, job.id),
+    audit(c.env, user, 'edit', job.id, `crew: ${row.full_name} off the job after ${b.date}${note ? ` (${note})` : ''}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+/**
+ * Replaces a person from a date: the new person starts on `date` in the same place, and the person leaving works
+ * until the day before, or that day too when `handover` is set (both on the job that day).
+ */
+jobs.post('/:id/crew/:employeeId/replace', async (c) => {
+  const ctx = await crewChange(c);
+  if ('error' in ctx) return ctx.error;
+  const { user, job, row } = ctx;
+  if (row.end_date) return c.json({ error: `${row.full_name} already left the job after ${row.end_date}` }, 409);
+  type Body = { employee_id?: string; date?: string; handover?: boolean; note?: string };
+  const b = await c.req.json<Body>().catch(() => ({} as Body));
+  const bad = checkDay(job, row, b.date, 'date of the change');
+  if (bad) return c.json({ error: bad }, 400);
+  const date = b.date as string;
+  const lastDay = b.handover ? date : dayBefore(date);
+  const first = row.start_date ?? job.start_date;
+  if (first && lastDay < first) return c.json({ error: `${row.full_name} would leave before their first day. Tick “both on the job that day”, or take them off the plan instead.` }, 400);
+  const who = await c.env.DB.prepare('SELECT id, full_name FROM employees WHERE id = ? AND country = ? AND active = 1').bind(b.employee_id ?? '', job.country).first<{ id: string; full_name: string }>();
+  if (!who) return c.json({ error: 'Pick the replacement from this country’s active roster' }, 400);
+  if (await c.env.DB.prepare('SELECT 1 FROM job_crew WHERE job_id = ? AND employee_id = ?').bind(job.id, who.id).first()) return c.json({ error: `${who.full_name} is already on this job` }, 409);
+  const note = crewNote(b.note);
+  const at = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE job_crew SET end_date = ?, change_note = ?, changed_by = ?, changed_at = ? WHERE id = ?').bind(lastDay, note, user.username, at, row.id),
+    c.env.DB.prepare('INSERT INTO job_crew (id, job_id, employee_id, crew_role, slot, start_date, replaces_id, change_note, changed_by, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), job.id, who.id, row.crew_role, row.slot, date, row.id, note, user.username, at),
+    c.env.DB.prepare('UPDATE jobs SET updated_by = ?, updated_at = ? WHERE id = ?').bind(user.username, at, job.id),
+    audit(c.env, user, 'edit', job.id, `crew: ${who.full_name} replaces ${row.full_name} from ${date}${b.handover ? ' (both on the job that day)' : ''}${note ? ` (${note})` : ''}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+/** Undo: puts a person who left back on the job. Their replacement, if any, stays until taken off too. */
+jobs.post('/:id/crew/:employeeId/restore', async (c) => {
+  const ctx = await crewChange(c);
+  if ('error' in ctx) return ctx.error;
+  const { user, job, row } = ctx;
+  if (!row.end_date) return c.json({ ok: true });
+  const at = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE job_crew SET end_date = NULL, change_note = NULL, changed_by = ?, changed_at = ? WHERE id = ?').bind(user.username, at, row.id),
+    c.env.DB.prepare('UPDATE jobs SET updated_by = ?, updated_at = ? WHERE id = ?').bind(user.username, at, job.id),
+    audit(c.env, user, 'edit', job.id, `crew: ${row.full_name} back on the job (had left after ${row.end_date})`),
+  ]);
+  return c.json({ ok: true });
 });
 
 /** Drums on the job's unit with the wire spooled on each, its limits and its latest tests (all from WIREGUARD). */

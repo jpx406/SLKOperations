@@ -3,15 +3,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Check, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { EXECUTION_FIELDS, FIELD_POLICY, canEditField } from '../../shared/fieldPolicy';
+import { EXECUTION_FIELDS, FIELD_POLICY, canEditField, stageOfField } from '../../shared/fieldPolicy';
 import { useRules } from '../rules';
 import { jobEfficiency, opHours, runEfficiency } from '../../shared/metrics';
-import { STAGES, hasFailure, stagePercent, type Stage } from '../../shared/stages';
+import { STAGES, canEditStage, canSeeStage, hasFailure, stagePercent, type Stage } from '../../shared/stages';
 import type { ToolPart } from '../../shared/toolstring';
 import type { Job, Lookups } from '../../shared/types';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
 import { useMe } from '../auth';
 import { JraBanner, useJraLock } from './Jra';
+import { StageForms } from '../components/JobForms';
 import { Attachments } from '../components/Attachments';
 import { JobLogEvents } from '../components/JobLogEvents';
 import { BonusDistribution } from './Bonus';
@@ -144,7 +145,11 @@ export function JobEditor() {
   const jraLocked = useJraLock(job?.id);
   // Execution waits for an approved JRA on jobs that need one (the API refuses it too)
   const rules = useRules().data?.rules;
-  const editable = (f: string) => canEditJobs && !!me && canEditField(me.role, f, rules) && !(jraLocked && EXECUTION_FIELDS.includes(f));
+  const stageOpen = (s: Stage) => !!me && canSeeStage(me.menus, s);
+  const editable = (f: string) => {
+    const s = stageOfField(f) ?? stage;
+    return canEditJobs && !!me && canEditField(me.role, f, rules) && canEditStage(me.menus, s) && !(jraLocked && EXECUTION_FIELDS.includes(f));
+  };
   const preview = useMemo(() => ({ ...(job ?? {}), ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, fromInput(k, v)])), services: job?.services ?? [] }) as Partial<Job>, [job, values]);
 
   if (!isNew && jobQ.isPending) return <div aria-busy="true"><Skeleton className="mb-4 h-24" /><Skeleton className="h-96" /></div>;
@@ -230,6 +235,13 @@ export function JobEditor() {
       <div role="tablist" aria-label="Job stages" className="mb-5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         {STAGES.map((s) => {
           const pct = stagePercent(preview, s);
+          if (!stageOpen(s)) return (
+            <div key={s} role="tab" aria-selected={false} aria-disabled="true" title="Your role does not see this stage (Users & Roles → rights)" className="rounded-lg border border-dashed border-border bg-surface p-3 opacity-60">
+              <span className="font-mono text-xs text-text-subtle">{STAGE_INFO[s].n} · no access</span>
+              <span className="mt-1 block font-display text-lg leading-none font-extrabold uppercase">{STAGE_INFO[s].title}</span>
+              <span className="mt-1 block text-xs text-text-muted">Not open to your role</span>
+            </div>
+          );
           return (
             <Link key={s} role="tab" aria-selected={s === stage} to={`/operation/jobs/${id}/${s}`} replace
               className={cx('rounded-lg border bg-surface p-3', s === stage ? 'border-accent-edge bg-surface-2' : 'border-border hover:border-border-strong')}>
@@ -242,9 +254,12 @@ export function JobEditor() {
         })}
       </div>
 
-      <div role="tabpanel" aria-label={STAGE_INFO[stage].title}>
+      {!stageOpen(stage) && <Card><LockHint>Your role does not see the {STAGE_INFO[stage].title} stage. An admin opens it in Users & Roles.</LockHint></Card>}
+      {stageOpen(stage) && !canEditStage(me!.menus, stage) && canEditJobs && <div className="mb-4"><Banner tone="info">You can view the {STAGE_INFO[stage].title} stage. Your role does not edit it.</Banner></div>}
+      <div role="tabpanel" aria-label={STAGE_INFO[stage].title} hidden={!stageOpen(stage)}>
         {stage === 'design' && (
           <Card>
+            {job && <StageForms jobId={job.id} stage="design" canEdit={canEditJobs && canEditStage(me!.menus, 'design')} />}
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
               {text('ticket_no', 'Field ticket', { placeholder: 'e.g. 26560', hint: 'Matched against WIREGUARD runs' })}
               {text('drss_no', 'DRSS number')}
@@ -279,6 +294,7 @@ export function JobEditor() {
         {stage === 'execution' && (
           <Card>
             {job && <JraBanner jobId={job.id} />}
+            {job && <StageForms jobId={job.id} stage="execution" canEdit={canEditJobs && canEditStage(me!.menus, 'execution') && !jraLocked} showJra={false} />}
             <dl className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3" aria-live="polite">
               <Metric label="Operating hours" value={op != null ? `${op} h` : '—'} note={op == null ? 'needs rig-up and rig-down' : preview.op_hours_override ? 'override' : 'rig-up → rig-down'} />
               <Metric label="Job efficiency" value={eff != null ? `${eff}%` : '—'} note="(1 − NPT ÷ op hours) × 100" />
@@ -337,7 +353,7 @@ export function JobEditor() {
 
         {stage === 'preparation' && (needsJob ?? (job && (
           <Card>
-            <JraBanner jobId={job.id} />
+            <StageForms jobId={job.id} stage="preparation" canEdit={canEditJobs && canEditStage(me!.menus, 'preparation')} />
             <PrepChecks job={job} values={values} toolstring={json<ToolPart[]>('toolstring', [])}
               ctx={{ minRestrictionIn: num('min_restriction_in'), pceBoreIn: pce?.bore_in ?? null, lubricatorFt: num('lubricator_length_ft') }} />
             <SectionTitle>Well</SectionTitle>
@@ -394,6 +410,7 @@ export function JobEditor() {
 
         {stage === 'closure' && (needsJob ?? (
           <Card>
+            {job && <StageForms jobId={job.id} stage="closure" canEdit={canEditJobs && canEditStage(me!.menus, 'closure')} />}
             <SectionTitle>Sign-off</SectionTitle>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
               {select('job_log_signed', 'Job log signed', YES_NO)}

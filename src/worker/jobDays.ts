@@ -4,10 +4,11 @@ import type { Env } from './env';
 
 // Attendance from the jobs (owner request, 2026-10-26). For people in a category set to fill from jobs, every day
 // they are crewed on an ongoing or completed job gets the category's code: start to end for a completed job,
-// start to today for an ongoing one. Each time the sheet is read (and nightly) the days are worked out again, so
+// start to today for an ongoing one (even past its planned end). Each time the sheet is read (and nightly) the days are worked out again, so
 // they follow the schedule, and a job that ends earlier or later than planned is rechecked once it's completed.
 // Only cells the app filled are touched (updated_by = 'auto:job'): anything typed by hand stays, and a row that is
-// reviewed or approved for the month is left alone.
+// reviewed or approved for the month is left alone. A crew member replaced or taken off the job (or who joined it
+// late) counts only the days between their own start and end dates on the job.
 
 export const AUTO_BY = 'auto:job';
 
@@ -22,10 +23,12 @@ export async function syncJobDays(env: Env, people: { id: string; country: strin
   const ids = JSON.stringify(list.map((p) => p.id));
   const [crew, entries, locks] = await env.DB.batch([
     env.DB.prepare(
-      `SELECT cr.employee_id, j.start_date, coalesce(j.end_date, j.start_date) AS end_date, j.status FROM job_crew cr JOIN jobs j ON j.id = cr.job_id
-       WHERE j.deleted_at IS NULL AND j.status IN ('ongoing', 'completed') AND j.start_date IS NOT NULL
-         AND j.start_date <= ?2 AND coalesce(j.end_date, j.start_date) >= ?1 AND cr.employee_id IN (SELECT value FROM json_each(?3))`,
-    ).bind(first, last, ids),
+      // a person who joined late (a replacement) or left early (removed or replaced) counts only their own days
+      `SELECT * FROM (SELECT cr.employee_id, max(j.start_date, coalesce(cr.start_date, j.start_date)) AS start_date,
+         min(CASE WHEN j.status = 'ongoing' THEN ?4 ELSE coalesce(j.end_date, j.start_date) END, coalesce(cr.end_date, '9999-12-31')) AS end_date, j.status FROM job_crew cr JOIN jobs j ON j.id = cr.job_id
+       WHERE j.deleted_at IS NULL AND j.status IN ('ongoing', 'completed') AND j.start_date IS NOT NULL AND cr.employee_id IN (SELECT value FROM json_each(?3)))
+       WHERE start_date <= ?2 AND end_date >= ?1 AND start_date <= end_date`,
+    ).bind(first, last, ids, today),
     env.DB.prepare(`SELECT employee_id, day, updated_by FROM attendance_entries WHERE day BETWEEN ?1 AND ?2 AND employee_id IN (SELECT value FROM json_each(?3))`).bind(first, last, ids),
     env.DB.prepare(
       `SELECT employee_id FROM attendance_approvals WHERE month = ?1 AND employee_id IN (SELECT value FROM json_each(?2))
@@ -36,7 +39,7 @@ export async function syncJobDays(env: Env, people: { id: string; country: strin
   const want = new Set<string>();
   for (const r of crew.results as { employee_id: string; start_date: string; end_date: string; status: string }[]) {
     if (locked.has(r.employee_id)) continue;
-    const end = [r.end_date, last, ...(r.status === 'ongoing' ? [today] : [])].sort()[0];
+    const end = r.end_date < last ? r.end_date : last;
     for (let d = r.start_date < first ? first : r.start_date; d <= end; d = addDay(d)) want.add(`${r.employee_id}|${d}`);
   }
   const have = new Map((entries.results as { employee_id: string; day: string; updated_by: string | null }[]).map((e) => [`${e.employee_id}|${e.day}`, e.updated_by]));

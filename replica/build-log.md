@@ -1174,3 +1174,42 @@ Every label, message and empty state was written here. No code, assets or copy f
     - approval before review was refused, review locked the row, then approval passed;
     - "Drivers" was added, renamed to "Drivers & Riggers" and deleted, with Operators & Helpers' delete disabled;
     - Approvals lists the review and final approval rules.
+
+## 6v — Account colours, form templates, job-stage rights, crew changes by date, attendance links
+
+- **Account colours** (migration 0014, `account_colors`):
+  - each account (the job's location) gets a light colour when its first job is created; accounts already in use get theirs the first time the list is read;
+  - the schedule, the job board and the job log are grouped and tinted by account, with a legend on top;
+  - clicking an account in the legend filters to it (the same `account` filter as the filter panel);
+  - Database editors can change a colour from the legend.
+- **Form templates** (Administration → Form templates; `jra_templates` gains name, kind, stage, source file; `job_forms`):
+  - the JRA and the job checklists: list by stage, filter, edit, copy, switch in use, delete (refused once a job filled it);
+  - each template belongs to a job stage and shows there; one JRA in use per country;
+  - new questions on a template jobs already used are saved as the next revision;
+  - templates are made by hand, from a Word (.docx) or Excel (.xlsx) file, or with the AI assistant, which uses the existing AI settings and budget;
+  - NESR's JRA form is still read exactly;
+  - checklists are answered Yes / No / N/A with remarks on the job, then marked complete or reopened;
+  - the Upload Excel JRA button and its API are gone from the job.
+- **Job-stage rights**:
+  - Design, Preparation, Execution and Closure are rights of their own in Users & Roles, under Jobs, seeded from each role's Jobs rights;
+  - a role without them follows Jobs;
+  - the editor hides stages a role can't see and locks stages it can't edit;
+  - the API drops fields of stages the caller can't edit (a schedule move keeps the Schedule right).
+- **Crew changes by date** (`job_crew` start/end dates):
+  - on a started job a crew member is replaced from a date (optionally both on the job that day) or taken off after a last day, with a reason, and can be put back;
+  - attendance from jobs counts only each person's own days;
+  - ongoing jobs fill up to today even past their planned end.
+- **Attendance**:
+  - clicking a day on a job opens a menu with a link to that job, also for rows you don't fill;
+  - picked cells are highlighted;
+  - Multi-Select moved below "Fill empty days".
+- **Verified:**
+  - tests 249;
+  - in the browser:
+    - legends on all three screens, and the D&WO filter from the legend;
+    - replacing the Foreman from 6 Oct cut their job days to 4–5 Oct, and Undo restored them;
+    - two picked cells highlighted, and the job link opened DV-26061;
+    - a Word file was read into 4 questions with sections, saved for Execution, then shown, answered and completed on a job;
+    - delete and new questions on the used template were refused (409);
+    - no Upload Excel JRA button on the job;
+    - the AI assistant reports the missing key locally.

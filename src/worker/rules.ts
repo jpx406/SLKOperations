@@ -16,7 +16,7 @@ export async function roleKeys(env: Env): Promise<string[]> {
 
 /** Every approval level and MOC / exemption approver named on the JRA forms in use. */
 export async function jraLevels(env: Env): Promise<string[]> {
-  const { results } = await env.DB.prepare('SELECT approval_levels, questions FROM jra_templates WHERE active = 1').all<{ approval_levels: string; questions: string }>();
+  const { results } = await env.DB.prepare(`SELECT approval_levels, questions FROM jra_templates WHERE active = 1 AND kind = 'jra'`).all<{ approval_levels: string; questions: string }>();
   const out = new Set<string>(['SDM', 'Operations Manager', 'Country Manager']);
   for (const r of results) {
     try { for (const l of JSON.parse(r.approval_levels) as { label?: string }[]) if (l.label?.trim()) out.add(l.label.trim()); } catch { /* skip */ }

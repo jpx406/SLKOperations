@@ -68,8 +68,11 @@ attendance.get('/', async (c) => {
     c.env.DB.prepare(`SELECT id, country, day, name FROM holidays WHERE country IN (SELECT value FROM json_each(?1)) AND day BETWEEN ?2 AND ?3 ORDER BY day`)
       .bind(JSON.stringify(user.countries), first, last),
     c.env.DB.prepare(
-      `SELECT cr.employee_id, j.id AS job_id, j.ticket_no, j.start_date, j.end_date FROM job_crew cr JOIN jobs j ON j.id = cr.job_id
-       WHERE j.deleted_at IS NULL AND j.status <> 'canceled' AND j.start_date <= ?3 AND coalesce(j.end_date, j.start_date) >= ?2 AND cr.employee_id IN (SELECT value FROM json_each(?1))`,
+      // the days each person is on the job: the job's dates, narrowed when they joined late or left early
+      `SELECT * FROM (SELECT cr.employee_id, j.id AS job_id, j.ticket_no, j.well, max(j.start_date, coalesce(cr.start_date, j.start_date)) AS start_date,
+         min(coalesce(j.end_date, j.start_date), coalesce(cr.end_date, '9999-12-31')) AS end_date FROM job_crew cr JOIN jobs j ON j.id = cr.job_id
+       WHERE j.deleted_at IS NULL AND j.status <> 'canceled' AND j.start_date IS NOT NULL AND cr.employee_id IN (SELECT value FROM json_each(?1)))
+       WHERE start_date <= ?3 AND end_date >= ?2 AND start_date <= end_date`,
     ).bind(ids, first, last),
     // who last saved each row this month, by name where SLK Ops knows them
     c.env.DB.prepare(

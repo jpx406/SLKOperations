@@ -22,6 +22,7 @@ import { JobReport } from './pages/JobReport';
 import { BonusAnalysis, BonusReport, BonusRules } from './pages/Bonus';
 import { SalesDashboard } from './pages/Sales';
 import { AdminData } from './pages/AdminData';
+import { FormTemplates } from './pages/FormTemplates';
 import { AiAgent } from './pages/AiAgent';
 import { KnowledgeHub } from './pages/Knowledge';
 import { QuickPlan } from './pages/QuickPlan';
@@ -33,7 +34,7 @@ import { QrApprove } from './pages/QrApprove';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/ai-agent', '/knowledge', '/operation/quick-plan']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/ai-agent', '/knowledge', '/operation/quick-plan']);
 
 /** Sends an old address to the page's new one, keeping its filters (?severity=high ...). */
 function MovedTo({ path }: { path: string }) {
@@ -85,6 +86,7 @@ const router = createBrowserRouter([
       { path: 'operation/database', element: <Database /> },
       { path: 'admin/users', element: <AdminUsers /> },
       { path: 'admin/data', element: <AdminData /> },
+      { path: 'admin/form-templates', element: <FormTemplates /> },
       { path: 'admin/ai-agent', element: <AiAgent /> },
       { path: 'knowledge', element: <KnowledgeHub /> },
       { path: 'operation/quick-plan', element: <QuickPlan /> },

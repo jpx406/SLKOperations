@@ -8,6 +8,8 @@ import type { Job } from '../../shared/types';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { FilterBar, useFilters } from '../components/FilterBar';
+import { AccountLegend, useAccountColors } from '../components/Accounts';
+import { NO_ACCOUNT, byAccount, tint } from '../../shared/accounts';
 import { Banner, Button, EmptyState, PageTitle, Skeleton, StatusPill, cx, inputSized } from '../components/ui';
 import { ReconBanner } from '../components/ReconBanner';
 
@@ -29,6 +31,7 @@ function attention(j: Job): string | null {
   return missing.length ? `Missing ${missing.join(' and ')}` : null;
 }
 
+const accountCounts = (xs: { location: string | null }[]) => xs.reduce((m, x) => m.set(x.location?.trim() || NO_ACCOUNT, (m.get(x.location?.trim() || NO_ACCOUNT) ?? 0) + 1), new Map<string, number>());
 const day = (d: string | null) => (d ? new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : null);
 
 export function JobBoard() {
@@ -50,6 +53,7 @@ export function JobBoard() {
   const list = (jobs.data ?? []).filter((j) => !onlyAttention || attention(j));
   const flagged = (jobs.data ?? []).filter((j) => attention(j)).length;
   const filtered = activeFilterCount(filters) > 0 || !!qText;
+  const colorOf = useAccountColors();
 
   return (
     <section aria-labelledby="board-title">
@@ -77,6 +81,7 @@ export function JobBoard() {
       </PageTitle>
       <ReconBanner />
       <FilterBar optionsPath="/filter-options" variant="panel" />
+      {jobs.data && <AccountLegend counts={accountCounts(jobs.data)} />}
 
       {jobs.isPending && <div className="flex flex-col gap-3">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-28" />)}</div>}
       {jobs.isError && <Banner tone="danger" action={<Button size="sm" onClick={() => jobs.refetch()}>Retry</Button>}>Couldn't load jobs. {jobs.error.message}</Banner>}
@@ -84,20 +89,31 @@ export function JobBoard() {
         ? <EmptyState title="No jobs match" action={<Button onClick={() => setParams({})}>Clear filters</Button>}>Try a different ticket, well or filter.</EmptyState>
         : <EmptyState title="No jobs yet">Jobs you and your team create appear here, newest first.</EmptyState>)}
 
-      <ul className="flex flex-col gap-3">
-        {list.map((j) => <JobCard key={j.id} job={j} sdm={name(j.sdm_username)} canDelete={!!me?.menus.jobs?.delete} />)}
-      </ul>
+      <div className="flex flex-col gap-5">
+        {byAccount(list, (j) => j.location).map((g) => (
+          <section key={g.account} aria-label={`${g.account}, ${g.items.length} jobs`}>
+            <h2 className="mb-2 flex items-center gap-2 font-display text-sm font-extrabold tracking-wide uppercase">
+              <i aria-hidden className="inline-block size-3 rounded-full border border-black/10" style={{ backgroundColor: colorOf(g.account) }} />
+              {g.account}<span className="font-mono text-xs font-medium text-text-muted">{g.items.length}</span>
+            </h2>
+            <ul className="flex flex-col gap-3">
+              {g.items.map((j) => <JobCard key={j.id} job={j} color={colorOf(j.location)} sdm={name(j.sdm_username)} canDelete={!!me?.menus.jobs?.delete} />)}
+            </ul>
+          </section>
+        ))}
+      </div>
     </section>
   );
 }
 
-function JobCard({ job: j, sdm, canDelete }: { job: Job; sdm: string | null; canDelete: boolean }) {
+function JobCard({ job: j, sdm, canDelete, color }: { job: Job; sdm: string | null; canDelete: boolean; color?: string }) {
   const why = attention(j);
   const dates = [day(j.start_date), day(j.end_date)].filter(Boolean);
   const where = [j.location, j.field].filter(Boolean).join(' / ');
   const services = j.services?.slice(0, 2).join(', ');
   return (
-    <li className="relative rounded-lg border border-card-edge bg-surface shadow-card hover:border-border-strong">
+    <li className="relative rounded-lg border border-l-[6px] border-card-edge bg-surface shadow-card hover:border-border-strong"
+      style={color ? { backgroundColor: tint(color, 14), borderLeftColor: color } : undefined}>
       <div className="grid grid-cols-1 items-center gap-x-6 gap-y-3 p-4 pr-12 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,24rem)_auto]">
         <div className="min-w-0">
           <Link to={`/operation/jobs/${j.id}/design`} className="block truncate font-display text-xl font-extrabold text-accent-text uppercase after:absolute after:inset-0 after:content-['']">

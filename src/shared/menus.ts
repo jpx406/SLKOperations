@@ -64,6 +64,7 @@ export const NAV: Group[] = [
     label: 'Administration',
     pages: [
       { key: 'users', label: 'Users & Roles', path: '/admin/users', screen: 'S34', milestone: '2a' },
+      { key: 'form_templates', label: 'Form templates', path: '/admin/form-templates', screen: 'S48', milestone: '6' },
       { key: 'ai_agent', label: 'AI Agent', path: '/admin/ai-agent', screen: 'S35', milestone: '5' },
       { key: 'users', label: 'Data export & import', path: '/admin/data', screen: 'S47', milestone: '4' },
     ],
@@ -76,13 +77,20 @@ export const MENU_LABELS: Record<string, string> = {
   ...Object.fromEntries(NAV.flatMap((g) => g.pages.map((p) => [p.key, p.key === 'bonus' ? 'Bonus' : p.label])).reverse()),
   audit: 'Audit trail',
   ai_assistant: 'Help assistant',
+  job_design: 'Job · 01 Design',
+  job_preparation: 'Job · 02 Preparation',
+  job_execution: 'Job · 03 Execution',
+  job_closure: 'Job · 04 Closure',
 };
+
+/** The job stages sit under Jobs in the rights list. */
+const AFTER: Record<string, string[]> = { jobs: ['job_design', 'job_preparation', 'job_execution', 'job_closure'] };
 
 /** Menu keys grouped like the top navigation (Admin Manual 5.1: the grant checklist follows the nav clusters). */
 export function menuClusters(keys: readonly string[]): { label: string; keys: string[] }[] {
   const seen = new Set<string>();
   const out = NAV.map((g) => {
-    const ks = [...new Set(g.pages.map((p) => p.key))].filter((k) => keys.includes(k) && !seen.has(k));
+    const ks = [...new Set(g.pages.flatMap((p) => [p.key, ...(AFTER[p.key] ?? [])]))].filter((k) => keys.includes(k) && !seen.has(k));
     ks.forEach((k) => seen.add(k));
     return { label: g.label, keys: ks };
   }).filter((g) => g.keys.length);
