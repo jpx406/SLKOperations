@@ -124,6 +124,10 @@ describe('columns and files', () => {
     expect(pdf.startsWith('%PDF-1.4')).toBe(true);
     expect(pdf).toContain('/MediaBox [0 0 841.89 595.28]');
     expect((pdf.match(/\/Type \/Page \/Parent/g) ?? []).length).toBeGreaterThan(1);
+    // A3 fits every column on one page width: one page for 40 lines
+    const a3 = new TextDecoder('latin1').decode(tablePdf({ title: 'Activity', subtitle: 's', lead: [{ label: 'Line', value: (l) => l.id }], cols, fields: ACTIVITY_FIELDS, sections: [{ title: 'SAWCOD', lines }], footer: 'f', paper: 'A3' }));
+    expect(a3).toContain('/MediaBox [0 0 1190.55 841.89]');
+    expect((a3.match(/\/Type \/Page \/Parent/g) ?? []).length).toBe(1);
   });
 });
 

@@ -1295,3 +1295,10 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified:**
   - tests 280;
   - in the browser: a company added, renamed and removed; "sapesco" saved as SAPESCO and an unknown company refused; Closure showed 18.2 h × 3 people = 54.6 h and 120 km × 2 = 240 km; the Activity sheet read the same.
+
+## 6z.1 — Activity sheet PDF on A3
+
+- The Activity sheet has two PDF buttons: **PDF A4** (the columns open on screen, extra columns continue on further pages) and **PDF A3 · all columns** (every column on one A3 landscape page width; when they are wider than the page, columns and type shrink together). The PDF writer takes A3 as well as A4.
+- **Verified:**
+  - tests 280, including the A3 PDF holding 40 lines on one page;
+  - in the browser: the October sheet's 50-odd columns printed on a single A3 page.

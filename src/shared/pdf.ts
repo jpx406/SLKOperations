@@ -1,7 +1,7 @@
-// A small PDF writer for text documents (the approved JRA): A4 pages, Helvetica and Helvetica-Bold, word-wrapped
+// A small PDF writer for text documents (the approved JRA): A4 or A3 pages, Helvetica and Helvetica-Bold, word-wrapped
 // lines, rules and filled boxes. No dependencies, so it runs in the Worker. Text is encoded as WinAnsi (Windows-1252).
 
-const A4 = [595.28, 841.89]; // in points
+const PAPER = { A4: [595.28, 841.89], A3: [841.89, 1190.55] } as const; // in points
 
 // Helvetica glyph widths (per 1000) for characters 32–126, from the standard font metrics
 const HELV = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
@@ -66,9 +66,10 @@ export class PdfDoc {
   private images: { width: number; height: number; data: Uint8Array }[] = [];
   y = 0;
 
-  /** A4 portrait, or landscape for wide tables. */
-  constructor(opts: { landscape?: boolean } = {}) {
-    [this.width, this.height] = opts.landscape ? [A4[1], A4[0]] : [A4[0], A4[1]];
+  /** A4 (or A3) portrait, or landscape for wide tables. */
+  constructor(opts: { landscape?: boolean; paper?: keyof typeof PAPER } = {}) {
+    const [w, h] = PAPER[opts.paper ?? 'A4'];
+    [this.width, this.height] = opts.landscape ? [h, w] : [w, h];
     this.addPage();
   }
   get page() { return this.pages[this.pages.length - 1]; }

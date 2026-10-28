@@ -141,15 +141,18 @@ export interface PdfTable {
   /** Extra blocks under the table (counts, upcoming operations): a title and lines of text. */
   notes?: { title: string; lines: string[] }[];
   footer: string;
+  /** A4 by default. A3 also fits every column on one page width, shrinking the type when it has to. */
+  paper?: 'A4' | 'A3';
 }
 
 const hex = (c?: string): [number, number, number] | null => (c && /^#[0-9a-f]{6}$/i.test(c) ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16) / 255) as [number, number, number] : null);
 const mix = (c: [number, number, number], pct: number): [number, number, number] => c.map((x) => 1 - (1 - x) * pct) as [number, number, number];
 
 export function tablePdf(t: PdfTable): Uint8Array {
-  const doc = new PdfDoc({ landscape: true });
+  const doc = new PdfDoc({ landscape: true, paper: t.paper });
   const m = doc.margin, full = doc.width - 2 * m;
-  const size = 6.5, rowH = size * 1.75, headH = size * 2.9;
+  const fit = t.paper === 'A3';
+  let size = 6.5;
   type PCol = { label: string; w: number; highlight: boolean; get: (l: SheetLine) => string; group: string };
   const lines = t.sections.flatMap((s) => s.lines);
   // each column as wide as its longest header word and most of its values, within limits
@@ -167,8 +170,15 @@ export function tablePdf(t: PdfTable): Uint8Array {
     const get = (l: SheetLine) => cellText(c, l, t.fields);
     return { label: c.label, w: natural(c.label, get, c.summary || c.field?.type === 'longtext' ? 170 : 110), highlight: c.highlight, get, group: c.group };
   });
+  // on A3 every column goes on the page: when they are wider than it, columns and type shrink together
+  if (fit) {
+    const k = Math.min(1, full / [...fixed, ...rest].reduce((a, c) => a + c.w, 0));
+    size *= k;
+    for (const c of [...fixed, ...rest]) c.w *= k;
+  }
+  const rowH = size * 1.75, headH = size * 2.9;
   // columns that don't fit the page width continue on the next pages, with the line's name repeated
-  const room = full - fixed.reduce((a, c) => a + c.w, 0);
+  const room = fit ? Infinity : full - fixed.reduce((a, c) => a + c.w, 0);
   const bands: PCol[][] = [];
   for (const c of rest) {
     const b = bands[bands.length - 1];
