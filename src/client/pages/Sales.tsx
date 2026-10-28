@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { FileSpreadsheet, Printer, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { money } from '../../shared/bonus';
 import { filtersToQuery } from '../../shared/filters';
@@ -9,15 +9,18 @@ import { api, formatDate } from '../api';
 import { BarChart, KpiTile, saveFile } from '../components/charts';
 import { FilterBar, useFilters } from '../components/FilterBar';
 import { Banner, Card, EmptyState, PageTitle, Skeleton, Button, cx, inputSized } from '../components/ui';
+import { SalesActivity } from './SalesActivity';
+import { SalesDaily } from './SalesDaily';
 
 // Sales Dashboard (Administrator Manual 2): revenue entered on each job, by account, with Analysis,
-// Find/Edit Job (opens the job's Closure) and Incomplete Data (completed jobs without revenue).
+// Find/Edit Job (opens the job's Closure) and Incomplete Data (completed jobs without revenue). Next to it, the
+// Activity sheet and the Daily report that replace the two Excel workbooks (owner request 2026-10-28).
 
 interface SJob { id: string; ticket_no: string | null; status: string; start_date: string | null; location: string | null; field: string | null; unit_number: string | null; well: string | null; revenue_cents: number | null; revenue_currency: string; sdm: string | null; services: string[]; domains: string[]; bonus_cents: number }
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const quarter = (d: string) => `${d.slice(0, 4)} Q${Math.ceil(Number(d.slice(5, 7)) / 3)}`;
 
-export function SalesDashboard() {
+function SalesRevenue({ views }: { views: ReactNode }) {
   const [filters] = useFilters();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'all';
@@ -51,6 +54,7 @@ export function SalesDashboard() {
           <Button size="sm" onClick={exportXlsx} disabled={!rows.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
         </div>
       )}><span id="sales-title">Sales dashboard</span></PageTitle>
+        {views}
         <p className="-mt-3 mb-3 text-sm text-text-muted">Revenue is entered on each job’s Closure stage (SDM or Sales). Correcting it there updates this page and Bonus % of Revenue.</p>
         <FilterBar optionsPath="/filter-options" withStatus={false} />
         <div role="tablist" aria-label="Sales views" className="mb-4 flex flex-wrap gap-1.5 print:hidden">
@@ -100,6 +104,30 @@ export function SalesDashboard() {
             </div>
           </>
         )}
+    </section>
+  );
+}
+
+const VIEWS = [['revenue', 'Revenue', 'Revenue by account, quarter and service'], ['activity', 'Activity sheet', 'A billing line per job for the month, checked and locked line by line'], ['daily', 'Daily report', 'Every unit’s day: status, rig, well and crew']] as const;
+
+export function SalesDashboard() {
+  const [params, setParams] = useSearchParams();
+  const view = VIEWS.some(([k]) => k === params.get('view')) ? params.get('view')! : 'revenue';
+  const setView = (v: string) => { const n = new URLSearchParams(params); n.delete('tab'); n.delete('show'); if (v === 'revenue') n.delete('view'); else n.set('view', v); setParams(n, { replace: true }); };
+  const views = (
+    <div role="tablist" aria-label="Sales dashboard sections" className="mb-4 flex flex-wrap gap-1 border-b border-border print:hidden">
+      {VIEWS.map(([k, label, hint]) => (
+        <button key={k} type="button" role="tab" aria-selected={view === k} title={hint} onClick={() => setView(k)}
+          className={cx('-mb-px border-b-2 px-4 py-2 text-sm font-semibold', view === k ? 'border-accent text-text' : 'border-transparent text-text-muted hover:text-text')}>{label}</button>
+      ))}
+    </div>
+  );
+  if (view === 'revenue') return <SalesRevenue views={views} />;
+  return (
+    <section aria-labelledby="sales-title">
+      <PageTitle><span id="sales-title">Sales dashboard</span></PageTitle>
+      {views}
+      {view === 'activity' ? <SalesActivity /> : <SalesDaily />}
     </section>
   );
 }

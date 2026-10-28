@@ -1,5 +1,6 @@
-// A small XLSX writer: one sheet, bold frozen header, autofilter, column widths. Strings and numbers only.
-// Files are zipped without compression ("stored"), which every spreadsheet app opens. No dependencies.
+// A small XLSX writer: one or more sheets, bold frozen header (with an optional row naming column groups), autofilter,
+// column widths, shaded headers. Strings and numbers only. Files are zipped without compression ("stored"), which every
+// spreadsheet app opens. No dependencies.
 
 export type Cell = string | number | null | undefined;
 
@@ -66,44 +67,105 @@ export function columnLetter(i: number): string {
 
 const NS = 'http://schemas.openxmlformats.org';
 
-/** Builds a one-sheet workbook. Strings stay text (never formulas), so a value starting with "=" is harmless. */
-export function workbook(sheetName: string, header: string[], rows: Cell[][], widths?: number[]): Uint8Array<ArrayBuffer> {
+/** One sheet of a workbook. `groups` adds a row above the header naming each run of columns (Job, Dates …);
+ *  `highlight` marks header cells to shade (the columns only some accounts keep). */
+export interface SheetSpec {
+  name: string;
+  header: string[];
+  rows: Cell[][];
+  widths?: number[];
+  groups?: { label: string; span: number }[];
+  highlight?: boolean[];
+  /** Rows (0-based, in `rows`) written in grey italics: a section title or a total line. */
+  muted?: number[];
+}
+
+// cell styles: 0 plain, 1 bold header, 2 bold shaded header, 3 bold group band, 4 grey italic
+const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="${NS}/spreadsheetml/2006/main">` +
+  `<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><i/><sz val="11"/><color rgb="FF6B7280"/><name val="Calibri"/></font></fonts>` +
+  `<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>` +
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFFFF1C2"/><bgColor indexed="64"/></patternFill></fill>` +
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFE5E7EB"/><bgColor indexed="64"/></patternFill></fill></fills>` +
+  `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
+  `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
+  `<cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>` +
+  `<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/>` +
+  `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>` +
+  `</styleSheet>`;
+
+const sheetName = (n: string) => n.slice(0, 31).replace(/[\\/?*[\]:]/g, ' ').trim() || 'Sheet';
+
+function sheetXml(s: SheetSpec): string {
   const cell = (v: Cell, ref: string, style = 0) => {
-    if (v === null || v === undefined || v === '') return '';
-    const s = style ? ` s="${style}"` : '';
-    return typeof v === 'number' && Number.isFinite(v) ? `<c r="${ref}"${s}><v>${v}</v></c>` : `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${xml(String(v))}</t></is></c>`;
+    const st = style ? ` s="${style}"` : '';
+    if (v === null || v === undefined || v === '') return style >= 2 && style <= 3 ? `<c r="${ref}"${st}/>` : '';
+    return typeof v === 'number' && Number.isFinite(v) ? `<c r="${ref}"${st}><v>${v}</v></c>` : `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xml(String(v))}</t></is></c>`;
   };
-  const last = columnLetter(header.length - 1);
-  const sheetRows = [header, ...rows].map((r, ri) =>
-    `<row r="${ri + 1}">${r.map((v, ci) => cell(v, `${columnLetter(ci)}${ri + 1}`, ri === 0 ? 1 : 0)).join('')}</row>`).join('');
-  const cols = widths?.length ? `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
-  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${NS}/spreadsheetml/2006/main">` +
-    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
-    `${cols}<sheetData>${sheetRows}</sheetData><autoFilter ref="A1:${last}${rows.length + 1}"/></worksheet>`;
+  const top = s.groups?.length ? 1 : 0;
+  const last = columnLetter(Math.max(0, s.header.length - 1));
+  const out: string[] = [];
+  const merges: string[] = [];
+  if (top) {
+    let c = 0;
+    const cells: string[] = [];
+    for (const g of s.groups!) {
+      for (let i = 0; i < g.span; i++) cells.push(cell(i === 0 ? g.label : null, `${columnLetter(c + i)}1`, 3));
+      if (g.span > 1) merges.push(`${columnLetter(c)}1:${columnLetter(c + g.span - 1)}1`);
+      c += g.span;
+    }
+    out.push(`<row r="1">${cells.join('')}</row>`);
+  }
+  out.push(`<row r="${top + 1}">${s.header.map((h, ci) => cell(h, `${columnLetter(ci)}${top + 1}`, s.highlight?.[ci] ? 2 : 1)).join('')}</row>`);
+  const muted = new Set(s.muted ?? []);
+  s.rows.forEach((r, ri) => {
+    const n = ri + top + 2;
+    out.push(`<row r="${n}">${r.map((v, ci) => cell(v, `${columnLetter(ci)}${n}`, muted.has(ri) ? 4 : 0)).join('')}</row>`);
+  });
+  const cols = s.widths?.length ? `<cols>${s.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
+  const head = top + 1;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${NS}/spreadsheetml/2006/main">` +
+    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${head}" topLeftCell="A${head + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+    `${cols}<sheetData>${out.join('')}</sheetData><autoFilter ref="A${head}:${last}${s.rows.length + head}"/>` +
+    `${merges.length ? `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : ''}</worksheet>`;
+}
+
+/** Builds a workbook with one or more sheets. Strings stay text (never formulas), so a value starting with "=" is harmless. */
+export function workbookSheets(specs: SheetSpec[]): Uint8Array<ArrayBuffer> {
+  // sheet names must be unique in a workbook
+  const used = new Set<string>();
+  const names = specs.map((s) => {
+    const base = sheetName(s.name);
+    let n = base;
+    for (let i = 2; used.has(n.toLowerCase()); i++) n = `${base.slice(0, 27)} (${i})`;
+    used.add(n.toLowerCase());
+    return n;
+  });
   const files: Record<string, string> = {
     '[Content_Types].xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="${NS}/package/2006/content-types">` +
       `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>` +
       `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-      `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+      specs.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') +
       `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
     '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${NS}/package/2006/relationships">` +
       `<Relationship Id="rId1" Type="${NS}/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
     'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="${NS}/spreadsheetml/2006/main" xmlns:r="${NS}/officeDocument/2006/relationships">` +
-      `<sheets><sheet name="${xml(sheetName.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '))}" sheetId="1" r:id="rId1"/></sheets>` +
-      `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${xml(sheetName.slice(0, 31))}'!$A$1:$${last}$${rows.length + 1}</definedName></definedNames></workbook>`,
+      `<sheets>${names.map((n, i) => `<sheet name="${xml(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>` +
+      `<definedNames>${specs.map((s, i) => {
+        const head = s.groups?.length ? 2 : 1;
+        return `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${xml(names[i].replace(/'/g, "''"))}'!$A$${head}:$${columnLetter(Math.max(0, s.header.length - 1))}$${s.rows.length + head}</definedName>`;
+      }).join('')}</definedNames></workbook>`,
     'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${NS}/package/2006/relationships">` +
-      `<Relationship Id="rId1" Type="${NS}/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
-      `<Relationship Id="rId2" Type="${NS}/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
-    'xl/styles.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="${NS}/spreadsheetml/2006/main">` +
-      `<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>` +
-      `<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>` +
-      `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
-      `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-      `<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>` +
-      `</styleSheet>`,
-    'xl/worksheets/sheet1.xml': sheet,
+      specs.map((_, i) => `<Relationship Id="rId${i + 1}" Type="${NS}/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('') +
+      `<Relationship Id="rId${specs.length + 1}" Type="${NS}/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+    'xl/styles.xml': STYLES,
   };
+  specs.forEach((s, i) => { files[`xl/worksheets/sheet${i + 1}.xml`] = sheetXml(s); });
   return zip(Object.entries(files).map(([name, s]) => ({ name, data: enc.encode(s) })));
+}
+
+/** Builds a one-sheet workbook. */
+export function workbook(sheetName: string, header: string[], rows: Cell[][], widths?: number[]): Uint8Array<ArrayBuffer> {
+  return workbookSheets([{ name: sheetName, header, rows, widths }]);
 }
 
 /** CSV for the plain download. Cells that a spreadsheet would read as a formula get a leading apostrophe. */

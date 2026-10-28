@@ -1268,3 +1268,17 @@ Every label, message and empty state was written here. No code, assets or copy f
     - searching DV-26071 found its 29 entries;
     - XLSX downloaded;
     - the Foreman gets 403 on the trail.
+
+## 6y — Activity sheet and Daily report in the Sales dashboard
+
+- Replaces the two Excel workbooks "NESR Activity Sheet" (a billing line per job, one tab per account: Site-less SAWCOD, NAWCOD, RAZOR, D&W Oper, UNC, LSTK, Wireline & FRAC-LSTK OOS) and "Daily Report" (a line per unit per day, one tab per day). Migration 0017 adds `sales_activity`, `sales_daily`, `sales_daily_days` and `sales_account_formats`.
+- **One format for every account** (`shared/salesSheets.ts`): the columns all accounts share, plus the few only some keep (Org code, Aramco unit name, KM, land/offshore, rig assigned, unit type, site, campaign, PR plug serial …), shaded on screen and in Excel. Each account picks its format by name (SAWCOD, NAWCO, D&WO, Unconventional, LSTK) and Sales can change it on the sheet. Ticket statuses follow the account's own list.
+- **Where each value comes from:** from the job (read-only, a link opens the job stage to fix it, amber when missing), typed on the sheet (DMR status, ticket follow-up dates, stand-by, partially billed, comments …), suggested by the app and overridable (revenue month, a unit's daily status and client), or calculated (total time, man-hours, net revenue, utilisation).
+- **Sales dashboard → Activity sheet:** revenue month (the job's end month unless the line says otherwise), account legend filter, search, to check / checked / changed since checked; KPI tiles; grouped by account with net subtotal; column groups (Job, Crew, Dates, Hours, Ticket & documents, Ticket follow-up, Revenue, Account details, Comments) fold to one summary column each, or all at once; accounts fold too.
+- **Sales dashboard → Daily report:** day picker with a month strip of progress; every active unit with its status from its job or maintenance/loan, client, rig, well, activity, crew; unit type, PCE, location type and entity carry over from the day before; counts by status, location type, client and well type; upcoming planned jobs for 3 weeks plus rigs typed by hand; people on board; grouped by client.
+- **Review:** each line is checked and locked (one or many), with who and when; the values are frozen as a snapshot and a warning shows when the job changed afterwards; only an Admin unlocks, with a reason. Every edit, lock and unlock goes to the audit trail.
+- **Exports:** Excel with a group row and one sheet per account (Activity) or for the day / one sheet per day of the month (Daily); landscape PDF of the columns open on screen, sized to content, continuing wide tables on more pages. The XLSX writer now writes several sheets; the PDF writer has landscape pages.
+- **Gaps the app cannot fill:** call-out, booking, mob and demob dates; KM; stand-by hours; DMR status and ticket follow-up; partially billed amounts; client unit names and org codes; unit type, location type and entity per unit; SAPESCO rigs with no job; people on board. Razor and Wireline jobs sit under other accounts in WIREGUARD, so their format is picked per account.
+- **Verified:**
+  - tests 276;
+  - in the browser: edits, lock and unlock, carry-over, Excel (activity, day, month) and PDF downloads, dark theme.

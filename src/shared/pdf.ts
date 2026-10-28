@@ -1,7 +1,7 @@
 // A small PDF writer for text documents (the approved JRA): A4 pages, Helvetica and Helvetica-Bold, word-wrapped
 // lines, rules and filled boxes. No dependencies, so it runs in the Worker. Text is encoded as WinAnsi (Windows-1252).
 
-const W = 595.28, H = 841.89; // A4 in points
+const A4 = [595.28, 841.89]; // in points
 
 // Helvetica glyph widths (per 1000) for characters 32–126, from the standard font metrics
 const HELV = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
@@ -59,16 +59,20 @@ const esc = (codes: number[]) => codes.map((c) => (c === 40 || c === 41 || c ===
 export interface TextOpts { size?: number; bold?: boolean; color?: [number, number, number] }
 
 export class PdfDoc {
-  readonly width = W;
-  readonly height = H;
+  readonly width: number;
+  readonly height: number;
   readonly margin = 42;
   private pages: string[][] = [];
   private images: { width: number; height: number; data: Uint8Array }[] = [];
   y = 0;
 
-  constructor() { this.addPage(); }
+  /** A4 portrait, or landscape for wide tables. */
+  constructor(opts: { landscape?: boolean } = {}) {
+    [this.width, this.height] = opts.landscape ? [A4[1], A4[0]] : [A4[0], A4[1]];
+    this.addPage();
+  }
   get page() { return this.pages[this.pages.length - 1]; }
-  addPage() { this.pages.push([]); this.y = H - this.margin; }
+  addPage() { this.pages.push([]); this.y = this.height - this.margin; }
   /** Starts a new page when fewer than `h` points are left. */
   need(h: number) { if (this.y - h < this.margin + 24) this.addPage(); }
 
@@ -90,7 +94,7 @@ export class PdfDoc {
   }
   /** Writes wrapped text at the cursor and moves it down; returns the height used. */
   para(s: string, o: TextOpts & { x?: number; width?: number; gap?: number } = {}) {
-    const size = o.size ?? 10, x = o.x ?? this.margin, width = o.width ?? W - this.margin - x;
+    const size = o.size ?? 10, x = o.x ?? this.margin, width = o.width ?? this.width - this.margin - x;
     const lead = size * 1.3;
     const lines = wrap(s, width, size, o.bold);
     for (const l of lines) { this.need(lead); this.y -= lead; this.text(x, this.y + size * 0.25, l, o); }
@@ -102,10 +106,10 @@ export class PdfDoc {
   bytes(footer = ''): Uint8Array {
     const n = this.pages.length;
     this.pages.forEach((p, i) => {
-      p.push(`0.6 G 0.4 w ${this.margin} 34 m ${W - this.margin} 34 l S`);
+      p.push(`0.6 G 0.4 w ${this.margin} 34 m ${this.width - this.margin} 34 l S`);
       p.push(`BT 0.4 0.4 0.4 rg /F1 7.5 Tf ${this.margin} 24 Td (${esc(toWinAnsi(footer))}) Tj ET`);
       const label = `Page ${i + 1} of ${n}`;
-      p.push(`BT 0.4 0.4 0.4 rg /F1 7.5 Tf ${(W - this.margin - textWidth(label, 7.5)).toFixed(2)} 24 Td (${label}) Tj ET`);
+      p.push(`BT 0.4 0.4 0.4 rg /F1 7.5 Tf ${(this.width - this.margin - textWidth(label, 7.5)).toFixed(2)} 24 Td (${label}) Tj ET`);
     });
     const objs: string[] = [];
     const add = (body: string) => { objs.push(body); return objs.length; };
@@ -121,7 +125,7 @@ endstream`));
     for (const p of this.pages) {
       const content = p.join('\n');
       const c = add(`<< /Length ${new TextEncoder().encode(content).length} >>\nstream\n${content}\nendstream`);
-      kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >>${xobj} >> /Contents ${c} 0 R >>`));
+      kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${this.width} ${this.height}] /Resources << /Font << /F1 ${f1} 0 R /F2 ${f2} 0 R >>${xobj} >> /Contents ${c} 0 R >>`));
     }
     objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
     objs[pagesId - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`;

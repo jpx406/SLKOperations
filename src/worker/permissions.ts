@@ -55,6 +55,9 @@ export function effectiveMenus(
 // the same central-table approach as WIREGUARD's SOX Phase 1 WRITE_RULES.
 export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: keyof MenuRight }[] = [
   { method: 'POST', re: /^\/api\/jobs$/, menu: 'jobs', action: 'edit' },
+  // Sales sheets: typing and locking need edit on the Sales Dashboard (unlocking is checked for Admin in the handler)
+  { method: 'PUT', re: /^\/api\/sales\/(activity\/[^/]+|formats|daily\/[^/]+(\/[^/]+)?)$/, menu: 'sales_dashboard', action: 'edit' },
+  { method: 'POST', re: /^\/api\/sales\/(activity|daily\/[^/]+)\/(lock|unlock)$/, menu: 'sales_dashboard', action: 'edit' },
   { method: 'PUT', re: /^\/api\/account-colors\/[^/]+$/, menu: 'database', action: 'edit' },
   { method: 'POST', re: /^\/api\/form-templates(\/(read|ai))?$/, menu: 'form_templates', action: 'edit' },
   { method: 'PUT', re: /^\/api\/form-templates\/[^/]+$/, menu: 'form_templates', action: 'edit' },
@@ -175,7 +178,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/wires\/data$/, menus: ['wires', 'statistics'] },
   { re: /^\/api\/bonus\/(rules|lines|revenue)$/, menus: ['bonus'] },
   { re: /^\/api\/bonus\/jobs\/[^/]+$/, menus: ['jobs'] },
-  { re: /^\/api\/sales\/jobs$/, menus: ['sales_dashboard'] },
+  { re: /^\/api\/sales\/(jobs|activity|daily)$/, menus: ['sales_dashboard'] },
   // each inventory opens only with its own tab, so explosives stay apart from slickline hardware
   { re: /^\/api\/inventory\/explosive(\/(movements|reconciliation))?$/, menus: ['inventory_explosive'] },
   { re: /^\/api\/inventory\/hardware(\/(movements|reconciliation))?$/, menus: ['inventory_hardware'] },
