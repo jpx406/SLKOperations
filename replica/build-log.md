@@ -1333,3 +1333,8 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified:**
   - tests 282;
   - in the browser: unfold, edit stand-by, lock from the line end (inputs close, lock at start), Admin unlock, fold, unfold all 12.
+
+## 6z.5 — Activity sheet PDF A4 in the full-detail layout
+
+- **PDF A4** now prints the same full-detail layout as **PDF A3**: a title strip per job and every field in labelled group blocks, four columns on A4 (two jobs a page in October), five on A3. The A4 table layout is no longer offered on the Activity sheet (the Daily report keeps its table).
+- **Verified:** tests 282; the October A4 PDF rendered.
