@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ACCOUNT_PALETTE, NO_ACCOUNT, byAccount, nextColor } from '../src/shared/accounts';
 import { filterPatch, stageOfField } from '../src/shared/fieldPolicy';
-import { checklistProgress, cleanTemplate, linesToTemplate } from '../src/shared/forms';
+import { applies, checklistProgress, cleanTemplate, defaultPackage, linesToTemplate } from '../src/shared/forms';
+import { packageFolder } from '../src/worker/forms';
 import { menuClusters } from '../src/shared/menus';
 import { canEditStage } from '../src/shared/stages';
 import { MENU_KEYS, effectiveMenus, ruleFor } from '../src/worker/permissions';
@@ -64,5 +65,27 @@ describe('form templates', () => {
   it('counts the required questions still open', () => {
     const t = { questions: [{ id: 'A1', required: true }, { id: 'A2', required: false }, { id: 'A3', required: true }] } as Parameters<typeof checklistProgress>[0];
     expect(checklistProgress(t, { A1: 'yes' })).toEqual({ answered: 1, total: 3, missing: ['A3'] });
+  });
+});
+
+describe('job package', () => {
+  it('lives in a month folder named after the rig, well and completion date', () => {
+    expect(packageFolder({ rig: 'RIG-102', well: 'W 1858', end_date: '2026-10-07', start_date: '2026-10-04' }))
+      .toEqual({ month: '2026-10', name: 'RIG-102-W-1858-2026-10-07', path: 'job-packages/2026-10/RIG-102-W-1858-2026-10-07' });
+    expect(packageFolder({ rig: null, well: 'A/B', end_date: null, start_date: '2026-09-30' }).path).toBe('job-packages/2026-09/NO-RIG-A-B-2026-09-30');
+  });
+  it('asks only for the documents that apply to the job', () => {
+    const t = defaultPackage();
+    const facts = { service_order: false, failure: true, explosive: false, third_party: false, jra: true };
+    const needed = t.questions.filter((q) => q.required && applies(q, facts)).map((q) => q.id);
+    expect(needed).toContain('C2');
+    expect(needed).not.toContain('A3');
+    expect(needed).not.toContain('B6');
+  });
+  it('keeps a package on Closure with its conditions', () => {
+    const r = cleanTemplate({ ...defaultPackage(), stage: 'design' });
+    if ('error' in r) throw new Error(r.error);
+    expect(r.template.stage).toBe('closure');
+    expect(r.template.questions.find((q) => q.id === 'A3')?.applies_if).toBe('service_order');
   });
 });

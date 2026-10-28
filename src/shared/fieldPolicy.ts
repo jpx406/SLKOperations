@@ -37,7 +37,7 @@ export const FIELD_POLICY: Record<string, Policy> = {
   // 04 Closure
   ...fields(['job_log_signed', 'ticket_signed', 'job_package_url', 'wellsite_audit', 'wg_runs_logged'], 'closure.signoff', 'CREW'),
   ...fields(['eight_min_facts_done', 'prelim_report', 'final_report', 'report_closure_status', 'report_closure_date', 'gears_no', 'failure_description'], 'closure.failure', 'SQM / SDM'),
-  ...fields(['service_order', 'bonus_remarks'], 'closure.service', 'SDM'),
+  ...fields(['service_order', 'service_order_no', 'bonus_remarks'], 'closure.service', 'SDM'),
   revenue_cents: { rule: 'closure.revenue', badge: 'SDM / SALES', kind: 'money' },
 };
 

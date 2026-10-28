@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, FolderArchive, Printer } from 'lucide-react';
+import { stampText } from '../../shared/formPdf';
 import { useRef } from 'react';
 import { Link, useParams } from 'react-router';
 import { STAGES, stagePercent } from '../../shared/stages';
@@ -28,7 +29,7 @@ export function JobReport() {
   const crew = useQuery({ queryKey: ['crew', id], queryFn: () => api<JobCrew>(`/jobs/${id}/crew`) });
   const events = useQuery({ queryKey: ['job-events', id], queryFn: () => api<LogEvent[]>(`/jobs/${id}/events`) });
   const emf = useQuery({ queryKey: ['emf', 'job', id], queryFn: () => api<{ id: string; log_no: string; title: string; total_npt: number; severity: string; status: string }[]>(`/emf?job=${id}`), enabled: !!me?.menus.eight_min_facts?.view });
-  const jra = useQuery({ queryKey: ['jra', id], queryFn: () => api<{ jra: { status: string; risk_score: number; approval_level: string | null; decided_by: string | null } | null; reasons: string[] }>(`/jra/${id}`) });
+  const jra = useQuery({ queryKey: ['jra', id], queryFn: () => api<{ jra: { status: string; risk_score: number; approval_level: string | null; decided_by: string | null; decided_at: string | null } | null; reasons: string[] }>(`/jra/${id}`) });
   const pjn = useQuery({ queryKey: ['pjn-job', id], queryFn: () => api<{ log_no: string; status: string; current_version: number } | null>(`/pre-job-notes/by-job/${id}`), enabled: !!me?.menus.pre_job_notes?.view });
   if (job.isPending) return <Skeleton className="h-96" />;
   if (job.isError) return <Banner tone="danger">{job.error.message}</Banner>;
@@ -76,7 +77,7 @@ export function JobReport() {
           {row('Wire / drum', [j.wire_serial_number, j.drum_no].filter(Boolean).join(' on '))}{row('Pressure control', [j.pressure_rating_psi && `${j.pressure_rating_psi.toLocaleString()} psi`, j.lubricator_length_ft && `lubricator ${j.lubricator_length_ft} ft`, j.stuffing_box_type].filter(Boolean).join(' · '))}
           {row('Toolstring', (j.toolstring ?? []).length ? `${(j.toolstring ?? []).map((p) => p.component).join(' → ')} (${t.length_ft ?? '—'} ft, max OD ${t.max_od_in ?? '—'} in, stem ${t.stem_weight_lb ?? '—'} lb)` : null)}
           {row('Crew', (crew.data?.crew ?? []).map((m) => `${m.full_name} (${ROLE[m.crew_role] ?? m.crew_role})`).join(', '))}
-          {row('JRA', jra.data?.jra ? `${jra.data.jra.status} · score ${jra.data.jra.risk_score} · ${jra.data.jra.approval_level ?? ''}${jra.data.jra.decided_by ? ` · decided by ${jra.data.jra.decided_by}` : ''}` : jra.data?.reasons.length ? `needed (${jra.data.reasons.join(', ')}) but not started` : 'not needed')}
+          {row('JRA', jra.data?.jra ? `${jra.data.jra.status} · score ${jra.data.jra.risk_score} · ${jra.data.jra.approval_level ?? ''}${jra.data.jra.decided_by ? ` · decided by ${jra.data.jra.decided_by}${jra.data.jra.decided_at ? ` on ${stampText(jra.data.jra.decided_at)}` : ''}` : ''}` : jra.data?.reasons.length ? `needed (${jra.data.reasons.join(', ')}) but not started` : 'not needed')}
           {jra.data?.jra?.status === 'approved' && row('JRA signature', <SignatureBadge type="jra" id={j.id} />)}
           {pjn.data !== undefined && row('Pre-Job Note', pjn.data ? `${pjn.data.log_no} v${pjn.data.current_version} · ${pjn.data.status === 'sent' ? 'sent' : 'not sent'}` : 'none')}
         </tbody></table></section>

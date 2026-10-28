@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { CODES, CODE_LIST, LEAVE, assignmentsOn, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
 import { roleLabel } from '../../shared/roles';
+import { stampText } from '../../shared/formPdf';
 import type { Role } from '../../shared/types';
 import { workbook } from '../../shared/xlsx';
 import { ApiError, api } from '../api';
@@ -428,7 +429,7 @@ export function Attendance() {
                               <td className="border-b border-border px-2 font-mono text-[11px] whitespace-nowrap text-text-muted" title={p.updated_by ? `Last saved by ${p.updated_by}` : undefined}>{s.present} on · {s.field} field · {s.leave} leave</td>
                               <td className="border-b border-border px-2 whitespace-nowrap">
                                 {appr ? (
-                                  <span className="inline-flex items-center gap-1 text-success" title={`Approved by ${appr.approved_by}`}><Check aria-hidden className="size-3.5" />{appr.approved_by}
+                                  <span className="inline-flex items-center gap-1 text-success" title={`Approved by ${appr.approved_by} · ${stampText(appr.approved_at)}`}><Check aria-hidden className="size-3.5" />{appr.approved_by}<span className="font-mono text-[11px] text-text-muted">{stampText(appr.approved_at).replace(' Riyadh', '')}</span>
                                     <SignedToggle type="attendance" id={`${p.id}|${month}`} />
                                     {p.can_approve && <Button size="sm" variant="ghost" onClick={() => approve([p], false)}>Unapprove</Button>}</span>
                                 ) : meta.two_step && !reviewed.has(p.id) ? (
@@ -436,7 +437,7 @@ export function Attendance() {
                                     : <span className="text-text-subtle">waiting for review by {meta.review_by}</span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1.5">
-                                    {meta.two_step && <span className="text-info" title={`Reviewed by ${reviewed.get(p.id)?.reviewed_by}`}>Reviewed by {reviewed.get(p.id)?.reviewed_by}</span>}
+                                    {meta.two_step && <span className="text-info" title={`Reviewed by ${reviewed.get(p.id)?.reviewed_by} · ${stampText(reviewed.get(p.id)!.reviewed_at)}`}>Reviewed by {reviewed.get(p.id)?.reviewed_by} <span className="font-mono text-[11px] text-text-muted">{stampText(reviewed.get(p.id)!.reviewed_at).replace(' Riyadh', '')}</span></span>}
                                     {p.can_approve ? <Button size="sm" onClick={() => approve([p], true)} disabled={days.some((d) => cellKey(p.id, d) in pending)}>{meta.two_step ? 'Final approval' : 'Approve'}</Button>
                                       : <span className="text-text-subtle">waiting for {meta.approve_by}</span>}
                                     {meta.two_step && p.can_review && <Button size="sm" variant="ghost" onClick={() => review([p], false)}>Undo review</Button>}

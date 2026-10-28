@@ -7,8 +7,48 @@ import type { Answer, ApprovalLevel, Question, Template } from './jra';
 import { STAGES, type Stage } from './stages';
 import { unzip, type Sheet } from './xlsxRead';
 
-export type FormKind = 'jra' | 'checklist';
-export const FORM_KINDS: Record<FormKind, string> = { jra: 'Risk assessment (JRA)', checklist: 'Checklist' };
+export type FormKind = 'jra' | 'checklist' | 'package';
+export const FORM_KINDS: Record<FormKind, string> = { jra: 'Risk assessment (JRA)', checklist: 'Checklist', package: 'Job package (documents)' };
+
+/**
+ * Job package items that are needed only on some jobs. The package is the list of documents uploaded on Closure
+ * (to R2, job-packages/<YYYY-MM>/<Rig-Well-Date>/) and approved by the SDM before the job can be completed.
+ */
+export const APPLIES_IF = {
+  always: 'Every job', service_order: 'Service order raised', failure: 'NPT or a failure', explosive: 'An explosive service',
+  third_party: 'A third party on the job', jra: 'A JRA was needed',
+} as const;
+export type AppliesIf = keyof typeof APPLIES_IF;
+export type JobFacts = Record<Exclude<AppliesIf, 'always'>, boolean>;
+export const applies = (q: Pick<Question, 'applies_if'>, facts: JobFacts) => !q.applies_if || q.applies_if === 'always' || !!facts[q.applies_if as keyof JobFacts];
+
+/**
+ * The job package as known today (owner request 2026-10-28), loaded for each country the first time a job needs it
+ * and edited in Administration → Form templates as the package changes.
+ */
+export function defaultPackage(): Omit<FormTemplate, 'country' | 'active'> {
+  const item = (id: string, text: string, applies_if: AppliesIf = 'always', required = true, guidance?: string): Question =>
+    ({ id, section: id[0], text, risk_if: 'no', points: 0, required, ...(applies_if !== 'always' ? { applies_if } : {}), ...(guidance ? { guidance } : {}) });
+  return {
+    name: 'Job package', kind: 'package', stage: 'closure', code: 'SLK-JOB-PACKAGE', revision: '1', title: 'Job package contents',
+    sections: { A: 'Signed by the client', B: 'Job records', C: 'When the job had them' },
+    questions: [
+      item('A1', 'Field ticket signed by the client'),
+      item('A2', 'Job log signed by the client'),
+      item('A3', 'Service Order', 'service_order', true, 'The client’s Service Order, with the number entered on Closure'),
+      item('B1', 'Approved JRA (PDF)', 'jra', true, 'Filed automatically in the job’s attachments when approved; upload it here too'),
+      item('B2', 'Pre-job safety meeting / toolbox talk record'),
+      item('B3', 'Pressure test chart of the pressure control equipment'),
+      item('B4', 'Wire records: tension and torsion tests, wire cut'),
+      item('B5', 'Run summary / WIREGUARD runs report'),
+      item('B6', 'Photos of the rig-up and the equipment', 'always', false),
+      item('C1', 'Explosives logbook, transport and usage forms', 'explosive'),
+      item('C2', '8 Min. Facts and the preliminary failure report', 'failure'),
+      item('C3', 'Third-party service reports and POs', 'third_party'),
+    ],
+    approval_levels: [], source_file: null,
+  };
+}
 
 /** A template as the editor and the API exchange it. */
 export interface FormTemplate extends Template {
@@ -22,10 +62,11 @@ const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/\s+
 export function cleanTemplate(input: unknown): { template: Omit<FormTemplate, 'id' | 'country' | 'active'> } | { error: string } {
   if (!input || typeof input !== 'object') return { error: 'The template is empty' };
   const b = input as Record<string, unknown>;
-  const kind: FormKind = b.kind === 'jra' ? 'jra' : 'checklist';
+  const kind: FormKind = b.kind === 'jra' ? 'jra' : b.kind === 'package' ? 'package' : 'checklist';
   const name = str(b.name, 120);
   if (!name) return { error: 'Name the template' };
-  const stage = (STAGES as readonly string[]).includes(String(b.stage)) ? (b.stage as Stage) : null;
+  // the job package is uploaded and approved on Closure
+  const stage = kind === 'package' ? 'closure' : (STAGES as readonly string[]).includes(String(b.stage)) ? (b.stage as Stage) : null;
   if (!stage) return { error: 'Pick the job stage the template belongs to' };
   const code = str(b.code, 40) || name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'FORM';
   const revision = str(b.revision, 20) || '1';
@@ -56,6 +97,7 @@ export function cleanTemplate(input: unknown): { template: Omit<FormTemplate, 'i
     if (options.length >= 2 && options.length < 3) out.options = options;
     const guidance = str(q.guidance, 500);
     if (guidance) out.guidance = guidance;
+    if (kind === 'package' && typeof q.applies_if === 'string' && q.applies_if in APPLIES_IF && q.applies_if !== 'always') out.applies_if = q.applies_if;
     if (kind === 'jra' && q.scores && typeof q.scores === 'object') out.scores = q.scores as Question['scores'];
     if (kind === 'jra' && q.requirement) out.requirement = q.requirement as Question['requirement'];
     if (kind === 'jra' && q.approver) out.approver = q.approver as Question['approver'];
@@ -164,7 +206,7 @@ export const TEMPLATE_SCHEMA = {
   type: 'object',
   properties: {
     name: { type: 'string', description: 'Short name of the form, e.g. "Rig-up checklist"' },
-    kind: { type: 'string', enum: ['jra', 'checklist'], description: 'jra for a job risk assessment with risk points and approval levels, otherwise checklist' },
+    kind: { type: 'string', enum: ['jra', 'checklist', 'package'], description: 'jra for a job risk assessment with risk points and approval levels, package for the list of documents a job package must hold, otherwise checklist' },
     stage: { type: 'string', enum: [...STAGES], description: 'The job stage where the form is filled: design, preparation, execution or closure' },
     code: { type: 'string', description: 'Form code from the document, if any (e.g. QHSE-F-012)' },
     revision: { type: 'string', description: 'Revision from the document, if any' },
@@ -181,6 +223,7 @@ export const TEMPLATE_SCHEMA = {
           risk_if: { type: 'string', enum: ['yes', 'no'], description: 'JRA only: the answer that adds risk' },
           points: { type: 'integer', description: 'JRA only: risk points for the risky answer' },
           guidance: { type: 'string', description: 'Optional hint shown under the question' },
+          applies_if: { type: 'string', enum: ['always', 'service_order', 'failure', 'explosive', 'third_party', 'jra'], description: 'Package only: the document is needed only when the job has this' },
         },
         required: ['section', 'text', 'required'],
       },

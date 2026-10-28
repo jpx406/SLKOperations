@@ -1,5 +1,6 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { stampText } from '../../shared/formPdf';
 import { FileSpreadsheet, Mail, Printer, RotateCcw, ShieldCheck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -201,7 +202,7 @@ interface JobBonus {
   job: { id: string; ticket_no: string | null; status: string; services: string[]; runs_ok: number | null; revenue_cents: number | null };
   pool: { cents: number; rule: { job_type_name: string; basis: Basis; amount_cents: number | null; pct: number | null; currency: string } | null; note: string | null };
   crew: { employee_id: string; full_name: string; crew_role: CrewRole }[];
-  lines: (Line & { full_name?: string; status?: string; approved_by?: string | null; statement_sent_at?: string | null })[];
+  lines: (Line & { full_name?: string; status?: string; approved_by?: string | null; approved_at?: string | null; statement_sent_at?: string | null })[];
   status: 'proposed' | 'draft' | 'approved';
 }
 
@@ -236,7 +237,7 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
         {d.pool.note && <span className="ml-1 text-warning">· {d.pool.note}</span>}
       </p>
       {d.job.status !== 'completed' && <p className="mb-2 text-xs text-text-subtle">Opens once the job is completed.</p>}
-      {d.status === 'approved' && <div className="mb-2"><Banner tone="success">Approved by {d.lines[0]?.approved_by}. {me?.role === 'admin' ? 'Reopening affects the Bonus Report and statements already sent.' : 'Only an admin can reopen it.'}</Banner><SignatureBadge className="mt-2" type="bonus" id={jobId} /></div>}
+      {d.status === 'approved' && <div className="mb-2"><Banner tone="success">Approved by {d.lines[0]?.approved_by}{d.lines[0]?.approved_at ? ` · ${stampText(d.lines[0].approved_at)}` : ''}. {me?.role === 'admin' ? 'Reopening affects the Bonus Report and statements already sent.' : 'Only an admin can reopen it.'}</Banner><SignatureBadge className="mt-2" type="bonus" id={jobId} /></div>}
       {error && <div className="mb-2"><Banner tone="danger">{error}</Banner></div>}
       {!d.crew.length ? <p className="text-sm text-text-subtle">Name the crew on Preparation first.</p> : (
         <table className="w-full max-w-2xl text-sm">

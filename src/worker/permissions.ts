@@ -60,6 +60,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PUT', re: /^\/api\/form-templates\/[^/]+$/, menu: 'form_templates', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/form-templates\/[^/]+$/, menu: 'form_templates', action: 'delete' },
   { method: 'PUT', re: /^\/api\/job-forms\/[^/]+\/[^/]+$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/job-forms\/[^/]+\/[^/]+\/files\/[^/]+$/, menu: 'jobs', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/job-forms\/[^/]+\/[^/]+\/files\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/jobs\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/services$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/(headcount|crew)$/, menu: 'jobs', action: 'edit' },

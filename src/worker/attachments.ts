@@ -23,18 +23,24 @@ const may = (user: AuthedUser, entity: AttachEntity, action: 'view' | 'edit') =>
 
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 
-/** Stores one file and its row. Used by the upload route and by the JRA upload, which keeps the original Excel. */
-export async function storeAttachment(env: Env, user: AuthedUser, a: { country: string; entity: AttachEntity; entityId: string; category: Category; name: string; bytes: Uint8Array; note?: string | null }) {
+/**
+ * Stores one file and its row. Used by the upload route, the approved-form PDFs and the job package, whose files go
+ * in the package's own folder (`folder`) and record the template and item they belong to.
+ */
+export async function storeAttachment(env: Env, user: AuthedUser, a: {
+  country: string; entity: AttachEntity; entityId: string; category: Category; name: string; bytes: Uint8Array; note?: string | null;
+  folder?: string; templateId?: string; packageItem?: string;
+}) {
   const ok = checkUpload(a.name, a.bytes.length);
   if ('error' in ok) return ok;
   if (!env.FILES) return { error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' };
   const id = crypto.randomUUID();
   const sha = hex(await crypto.subtle.digest('SHA-256', a.bytes));
-  const key = `${a.entity}/${a.entityId}/${id}`;
+  const key = a.folder ? `${a.folder}/${a.packageItem ? `${a.packageItem} ` : ''}${id.slice(0, 8)} ${ok.name}` : `${a.entity}/${a.entityId}/${id}`;
   await env.FILES.put(key, a.bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username, sha256: sha } });
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO attachments (id, country, entity_type, entity_id, category, file_name, content_type, size_bytes, sha256, r2_key, note, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, a.country, a.entity, a.entityId, a.category, ok.name, ok.type, a.bytes.length, sha, key, a.note?.slice(0, 300) || null, user.username),
+    env.DB.prepare('INSERT INTO attachments (id, country, entity_type, entity_id, category, file_name, content_type, size_bytes, sha256, r2_key, note, uploaded_by, template_id, package_item) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, a.country, a.entity, a.entityId, a.category, ok.name, ok.type, a.bytes.length, sha, key, a.note?.slice(0, 300) || null, user.username, a.templateId ?? null, a.packageItem ?? null),
     audit(env, user, 'upload', id, `${CATEGORIES[a.category]} “${ok.name}” on ${a.entity} ${a.entityId} (${a.bytes.length} bytes)`),
   ]);
   return { id, name: ok.name };
@@ -77,8 +83,8 @@ attachments.post('/:entity/:entityId', async (c) => {
 });
 
 async function fileRow(c: Context<AppBindings>, s: { entity: AttachEntity; entityId: string }) {
-  return c.env.DB.prepare('SELECT id, file_name, content_type, r2_key FROM attachments WHERE id = ? AND entity_type = ? AND entity_id = ? AND deleted_at IS NULL')
-    .bind(c.req.param('fileId'), s.entity, s.entityId).first<{ id: string; file_name: string; content_type: string; r2_key: string }>();
+  return c.env.DB.prepare('SELECT id, file_name, content_type, r2_key, template_id FROM attachments WHERE id = ? AND entity_type = ? AND entity_id = ? AND deleted_at IS NULL')
+    .bind(c.req.param('fileId'), s.entity, s.entityId).first<{ id: string; file_name: string; content_type: string; r2_key: string; template_id: string | null }>();
 }
 
 /** The file itself. Images and PDFs can open in the page (?inline=1); everything else downloads. */
@@ -108,6 +114,8 @@ attachments.delete('/:entity/:entityId/:fileId', async (c) => {
   if ('error' in s) return c.json({ error: s.error }, s.status);
   const row = await fileRow(c, s);
   if (!row) return c.json({ error: 'File not found' }, 404);
+  // package files are removed from the Job package on Closure, which checks it is still open
+  if (row.template_id) return c.json({ error: 'This file is part of the job package. Remove it from Closure → Job package.' }, 409);
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE attachments SET deleted_at = ?, deleted_by = ? WHERE id = ?').bind(new Date().toISOString(), s.user.username, row.id),
     audit(c.env, s.user, 'remove', row.id, `Removed “${row.file_name}” from ${s.entity} ${s.entityId}`),

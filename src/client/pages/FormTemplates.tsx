@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Check, FilePlus2, FileUp, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { FORM_KINDS, type FormKind, type FormTemplate } from '../../shared/forms';
+import { APPLIES_IF, FORM_KINDS, type FormKind, type FormTemplate } from '../../shared/forms';
 import type { Question } from '../../shared/jra';
 import { STAGES, STAGE_LABEL, type Stage } from '../../shared/stages';
 import { ApiError, api, countryScope } from '../api';
@@ -118,7 +118,7 @@ export function FormTemplates() {
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-display text-base font-bold">{t.name}</span>
-                    <Badge>{t.kind === 'jra' ? 'JRA' : 'Checklist'}</Badge>
+                    <Badge>{t.kind === 'jra' ? 'JRA' : t.kind === 'package' ? 'Job package' : 'Checklist'}</Badge>
                     <span className="font-mono text-xs text-text-muted">{t.code} Rev {t.revision}</span>
                     {(me?.countries.length ?? 0) > 1 && <span className="text-xs text-text-subtle">{t.country}</span>}
                   </p>
@@ -163,6 +163,7 @@ function TemplateEditor({ init, lines, note, countries, onClose }: { init: Draft
   const [aiNote, setAiNote] = useState<string | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const jra = d.kind === 'jra';
+  const pkg = d.kind === 'package';
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
   const setQ = (i: number, p: Partial<Question>) => set({ questions: d.questions.map((x, j) => (j === i ? { ...x, ...p } : x)) });
   const move = (i: number, by: number) => { const qs = [...d.questions]; const [x] = qs.splice(i, 1); qs.splice(Math.max(0, Math.min(qs.length, i + by)), 0, x); set({ questions: qs }); };
@@ -226,14 +227,14 @@ function TemplateEditor({ init, lines, note, countries, onClose }: { init: Draft
           <Card>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <Field id="ft-name" label="Name" required><input id="ft-name" className={inputClass} value={d.name} disabled={!canEdit} placeholder="e.g. Rig-up checklist" onChange={(e) => set({ name: e.target.value })} /></Field>
-              <Field id="ft-kind" label="Kind" hint={d.id ? 'Fixed once saved' : jra ? 'Risk points and approval levels; one in use per country' : 'Yes / No / N/A with remarks, marked complete'}>
+              <Field id="ft-kind" label="Kind" hint={d.id ? 'Fixed once saved' : jra ? 'Risk points and approval levels; one in use per country' : pkg ? 'The documents uploaded on Closure; one in use per country' : 'Yes / No / N/A with remarks, then approved by the SDM'}>
                 <Select id="ft-kind" className={inputClass} value={d.kind} disabled={!canEdit || !!d.id}
-                  onChange={(e) => { const k = e.target.value as FormKind; set({ kind: k, approval_levels: k === 'jra' && !d.approval_levels.length ? blank('preparation', 'jra').approval_levels : d.approval_levels }); }}>
+                  onChange={(e) => { const k = e.target.value as FormKind; set({ kind: k, ...(k === 'package' ? { stage: 'closure' as Stage } : {}), approval_levels: k === 'jra' && !d.approval_levels.length ? blank('preparation', 'jra').approval_levels : d.approval_levels }); }}>
                   {Object.entries(FORM_KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </Select>
               </Field>
-              <Field id="ft-stage" label="Job stage" hint="Where the form shows on the job">
-                <Select id="ft-stage" className={inputClass} value={d.stage} disabled={!canEdit} onChange={(e) => set({ stage: e.target.value as Stage })}>
+              <Field id="ft-stage" label="Job stage" hint={pkg ? 'The job package is always on Closure' : 'Where the form shows on the job'}>
+                <Select id="ft-stage" className={inputClass} value={d.stage} disabled={!canEdit || pkg} onChange={(e) => set({ stage: e.target.value as Stage })}>
                   {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
                 </Select>
               </Field>
@@ -284,7 +285,7 @@ function TemplateEditor({ init, lines, note, countries, onClose }: { init: Draft
                     <li key={i} className="rounded-md border border-border p-2.5">
                       <div className="flex items-start gap-2">
                         <span className="mt-2 w-8 shrink-0 font-mono text-xs text-text-subtle">{k}{n + 1}</span>
-                        <textarea aria-label={`Question ${k}${n + 1}`} rows={1} className={cx(inputClass, 'h-auto min-h-(--layout-control-md) py-2')} disabled={!canEdit} value={x.text} placeholder="The question, answered Yes / No / N/A"
+                        <textarea aria-label={`Question ${k}${n + 1}`} rows={1} className={cx(inputClass, 'h-auto min-h-(--layout-control-md) py-2')} disabled={!canEdit} value={x.text} placeholder={pkg ? 'The document, e.g. Field ticket signed by the client' : 'The question, answered Yes / No / N/A'}
                           onChange={(e) => setQ(i, { text: e.target.value })} />
                         {canEdit && (
                           <span className="flex shrink-0">
@@ -295,8 +296,14 @@ function TemplateEditor({ init, lines, note, countries, onClose }: { init: Draft
                         )}
                       </div>
                       <div className="mt-2 ml-10 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                        <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={x.required} disabled={!canEdit} onChange={(e) => setQ(i, { required: e.target.checked })} />Required</label>
-                        <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={!x.options || x.options.includes('na')} disabled={!canEdit} onChange={(e) => setQ(i, { options: e.target.checked ? undefined : ['yes', 'no'] })} />N/A allowed</label>
+                        <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={x.required} disabled={!canEdit} onChange={(e) => setQ(i, { required: e.target.checked })} />{pkg ? 'Must be uploaded' : 'Required'}</label>
+                        {pkg ? (
+                          <label className="inline-flex items-center gap-1.5 text-text-muted">Needed when the job has
+                            <Select className={inputSized('h-(--layout-control-sm) w-56')} value={x.applies_if ?? 'always'} disabled={!canEdit} onChange={(e) => setQ(i, { applies_if: e.target.value === 'always' ? undefined : e.target.value })}>
+                              {Object.entries(APPLIES_IF).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                            </Select>
+                          </label>
+                        ) : <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={!x.options || x.options.includes('na')} disabled={!canEdit} onChange={(e) => setQ(i, { options: e.target.checked ? undefined : ['yes', 'no'] })} />N/A allowed</label>}
                         {sectionKeys.length > 1 && (
                           <label className="inline-flex items-center gap-1.5 text-text-muted">Section
                             <Select className={inputSized('h-(--layout-control-sm) w-40')} value={x.section} disabled={!canEdit} onChange={(e) => setQ(i, { section: e.target.value })}>

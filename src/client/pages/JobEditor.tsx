@@ -12,7 +12,7 @@ import type { Job, Lookups } from '../../shared/types';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
 import { useMe } from '../auth';
 import { JraBanner, useJraLock } from './Jra';
-import { StageForms } from '../components/JobForms';
+import { JobPackage, StageForms } from '../components/JobForms';
 import { Attachments } from '../components/Attachments';
 import { JobLogEvents } from '../components/JobLogEvents';
 import { BonusDistribution } from './Bonus';
@@ -418,8 +418,16 @@ export function JobEditor() {
               {select('wellsite_audit', 'Wellsite audit', YES_NO)}
               {select('wg_runs_logged', 'Runs logged in WIREGUARD', YES_NO, 'Reconciliation checks this against WIREGUARD')}
               {select('service_order', 'Service order raised', YES_NO)}
-              {text('job_package_url', 'Job package link', { placeholder: 'https://… or a network path', hint: 'Where the signed documents are filed' })}
+              {values.service_order === 'yes' && text('service_order_no', 'Service Order number', { placeholder: 'e.g. 4500123456', hint: values.service_order_no ? 'Needed to complete the job' : 'Required: the job can’t be completed without it' })}
             </div>
+
+            {job && (
+              <>
+                <SectionTitle aside="Uploaded to the job’s folder, approved by the SDM">Job package</SectionTitle>
+                <p className="mb-3 text-xs text-text-muted">The job can be completed once every document that applies is uploaded and the SDM has approved the package. The list is kept in Administration → Form templates.</p>
+                <JobPackage jobId={job.id} canEdit={canEditJobs && canEditStage(me!.menus, 'closure')} />
+              </>
+            )}
 
             <SectionTitle aside="SDM or Sales">Revenue and bonus</SectionTitle>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">

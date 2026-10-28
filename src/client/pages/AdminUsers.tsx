@@ -843,6 +843,7 @@ const GROUPS: { key: RuleGroup; title: string; note: string }[] = [
   { key: 'Job', title: 'Job', note: 'Who fills each stage of a job, and who can be its SDM.' },
   { key: 'JRA', title: 'JRA approvals', note: 'Each approval level and MOC / exemption approver named on your JRA forms. The JRA is sent to someone holding one of these roles.' },
   { key: 'Closure checklist', title: 'Closure checklist', note: 'Who signs each item on the job’s Closure.' },
+  { key: 'Job forms', title: 'Job forms', note: 'Who approves the checklists and the job package (Administration → Form templates). Each approval is stamped with its time and filed as a PDF.' },
   { key: 'Bonus', title: 'Bonus', note: 'Crew bonus distribution on Closure.' },
   { key: 'Attendance', title: 'Attendance', note: 'Who fills and who approves each attendance sheet.' },
 ];

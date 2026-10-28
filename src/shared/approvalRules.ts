@@ -6,7 +6,7 @@ import type { Role } from './types';
 // JRA approval levels come from the JRA forms themselves (each form names its levels, like "Cell Leader" or
 // "Ops or Technical Manager"), so each level found on a form gets its own rule.
 
-export type RuleGroup = 'Job' | 'JRA' | 'Closure checklist' | 'Bonus' | 'Attendance';
+export type RuleGroup = 'Job' | 'JRA' | 'Closure checklist' | 'Job forms' | 'Bonus' | 'Attendance';
 export interface RuleDef { key: string; group: RuleGroup; label: string; help?: string; defaults: Role[] }
 
 const MANAGERS: Role[] = ['sdm', 'deputy_sdm', 'operations_manager'];
@@ -27,6 +27,7 @@ export const STATIC_RULES: RuleDef[] = [
   { key: 'closure.failure', group: 'Closure checklist', label: 'Failure follow-up: 8 Min. Facts, reports, GEARS, failure description', defaults: QUALITY },
   { key: 'closure.service', group: 'Closure checklist', label: 'Service order and bonus remarks', defaults: ['sdm', 'operations_manager'] },
   { key: 'closure.revenue', group: 'Closure checklist', label: 'Ticket value (revenue)', defaults: ['sdm', 'sales'] },
+  { key: 'forms.approve', group: 'Job forms', label: 'Approve job checklists and the job package', help: 'The job’s own SDM always can. Approved forms are filed as PDFs; only an admin reopens one.', defaults: ['sdm', 'deputy_sdm'] },
   { key: 'bonus.approve', group: 'Bonus', label: 'Distribute and approve the crew bonus on Closure', defaults: ['sdm', 'deputy_sdm'] },
   { key: 'bonus.reopen', group: 'Bonus', label: 'Reopen an approved bonus distribution', defaults: [] },
 ];

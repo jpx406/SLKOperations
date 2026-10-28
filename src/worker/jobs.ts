@@ -4,6 +4,7 @@ import { EXECUTION_FIELDS, FAILURE_GATED, SERVICE_GATED, canEditField, filterPat
 import { jraReasons } from '../shared/jra';
 import { loadRules } from './rules';
 import { ensureAccountColor } from './accounts';
+import { completionBlock } from './forms';
 import { FAILURE_FOLLOW_UP, STAGE_FIELDS, canEditStage } from '../shared/stages';
 import { parseToolstring, toolTotals } from '../shared/toolstring';
 import type { Job } from '../shared/types';
@@ -212,6 +213,7 @@ jobs.post('/', async (c) => {
   if (!user.countries.includes(country)) return c.json({ error: 'You cannot create jobs for that country' }, 403);
 
   // a new job has no services and no NPT yet, so the gated sections can't be filled on creation
+  if (allowed.status === 'completed') return c.json({ error: 'Save the job first, then upload its package and have the SDM approve it before completing it' }, 400);
   const early = [...Object.keys(SERVICE_GATED), ...FAILURE_GATED].find((k) => k in allowed && allowed[k] !== null && allowed[k] !== '');
   if (early) return c.json({ error: 'Save the job and add its services first' }, 400);
   const err = await clean(c.env, allowed, country)
@@ -278,7 +280,10 @@ async function applyPatch(c: Context<AppBindings>, id: string, raw: Record<strin
   // a schedule move is all-or-nothing: moving the dates but not the unit would put the job somewhere nobody chose
   if (strict && dropped.length) return c.json({ error: `Your role cannot change ${dropped.join(', ')}`, job: current }, 403);
   if (!Object.keys(allowed).length) return c.json({ job: current, ignored: dropped });
-  const gate = await gateCheck(c.env, current, allowed);
+  // no Service Order, no number
+  if ('service_order' in allowed && allowed.service_order !== 'yes' && current.service_order_no) allowed.service_order_no = null;
+  const gate = await gateCheck(c.env, current, allowed)
+    ?? (allowed.status === 'completed' && current.status !== 'completed' ? await completionBlock(c.env, current, allowed) : null);
   if (gate) return c.json({ error: gate, job: current }, 400);
   const err = await clean(c.env, allowed, current.country);
   if (err) return c.json({ error: err, job: current }, 400);

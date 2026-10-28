@@ -1213,3 +1213,32 @@ Every label, message and empty state was written here. No code, assets or copy f
     - delete and new questions on the used template were refused (409);
     - no Upload Excel JRA button on the job;
     - the AI assistant reports the missing key locally.
+
+## 6w — Service Order number, job package in R2, SDM approval of job forms, PDFs and timestamps
+
+- **Service Order** (migration 0015, `jobs.service_order_no`):
+  - when "Service order raised" is Yes, Closure asks for the Service Order number;
+  - setting it back to No clears the number;
+  - the job can't be completed without it.
+- **Job package**:
+  - a form template of a new kind, one in use per country, on Closure;
+  - the list known today is loaded the first time a country needs it, and is edited in Administration → Form templates;
+  - items can apply only when the job has a Service Order, NPT or a failure, explosives, a third party or a JRA;
+  - each document is uploaded into R2 under `job-packages/<YYYY-MM>/<Rig-Well-Date>/` (the date is the job's end date), and files move there at approval if the dates changed;
+  - the package is marked complete once every document that applies is uploaded, then approved by the SDM;
+  - **the job can't be completed until the package is approved.**
+- **Approval of job forms**:
+  - checklists and the package: complete → SDM approval (rule `forms.approve`, plus the job's own SDM), each step stamped with who and when;
+  - on approval a PDF is filed in the job's attachments (the package's contents list also goes in its folder); the JRA already did this;
+  - only an admin can reopen, and the reopening keeps who and when;
+  - every save, upload, removal, completion, approval and reopening goes to the audit trail, with the answers that changed;
+  - package files can't be removed from the general attachments list.
+- **Timestamps**: approvals show date and time on the JRA briefing, attendance (review and approval), bonus, the job report and every job form.
+- **Verified:**
+  - tests 255;
+  - in the browser on DV-26071:
+    - completing was refused first for the missing SO number, then for the package;
+    - 8 documents were uploaded into `job-packages/2026-10/RIG-102-W-1595-2026-10-27/`, completed by the admin and approved by the SDM (PDF filed);
+    - the job then completed;
+    - an SDM's reopen was refused (403), and the admin's reopen worked;
+    - the audit trail shows each step and the answers changed.

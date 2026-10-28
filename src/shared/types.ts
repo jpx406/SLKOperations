@@ -78,7 +78,7 @@ export interface Job {
   // 04 Closure
   job_log_signed: YesNo | null; ticket_signed: YesNo | null; eight_min_facts_done: YesNo | null; prelim_report: YesNo | null; final_report: YesNo | null;
   job_package_url: string | null; report_closure_status: 'open' | 'pending_review' | 'closed' | 'na' | null; report_closure_date: string | null;
-  gears_no: string | null; wellsite_audit: YesNo | null; wg_runs_logged: YesNo | null; service_order: string | null;
+  gears_no: string | null; wellsite_audit: YesNo | null; wg_runs_logged: YesNo | null; service_order: string | null; service_order_no: string | null;
   failure_description: string | null; bonus_remarks: string | null; revenue_cents: number | null; revenue_currency: string;
   created_by: string | null;
   updated_by: string | null;

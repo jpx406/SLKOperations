@@ -8,6 +8,8 @@ export interface Question {
   id: string; section: string; text: string; risk_if: 'yes' | 'no'; points: number; required: boolean;
   /** Loaded from NESR's form: the answers offered, the points each one scores, and what each one triggers. */
   options?: Answer[]; scores?: Partial<Record<Answer, number>>; requirement?: Conditional; approver?: Conditional; guidance?: string;
+  /** Job package items only: the item is needed only when the job has this (see forms.ts APPLIES_IF). */
+  applies_if?: string;
 }
 export interface ApprovalLevel { min: number; label: string }
 export interface Template {

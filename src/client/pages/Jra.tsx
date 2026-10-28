@@ -1,5 +1,6 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { stampText } from '../../shared/formPdf';
 import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Info, Send, ShieldCheck, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
@@ -19,7 +20,7 @@ interface JraData {
   jra: { status: 'draft' | 'sent' | 'approved' | 'rejected'; answers: Record<string, Answer>; risk_score: number; approval_level: string | null; sent_to: string | null; sent_at: string | null; decided_by: string | null; decided_by_name?: string | null; sent_to_name?: string | null; decided_at: string | null; updated_at: string; form_details: FormDetails | null } | null;
   reasons: string[];
 }
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const when = (iso: string | null) => (iso ? stampText(iso) : '');
 interface FormDetails { job_no?: string; performed_by?: string; position?: string; jra_date?: string; country?: string; client?: string; location?: string; rig_well?: string; job_description?: string; expected_date?: string; remarks?: Record<string, string>; file?: string | null; uploaded_by?: string; uploaded_at?: string }
 const DETAIL_LABEL: [keyof FormDetails, string][] = [['job_no', 'Job no.'], ['performed_by', 'Performed by'], ['position', 'Position'], ['jra_date', 'JRA date'], ['client', 'Client'], ['location', 'Location'], ['rig_well', 'Rig / well'], ['job_description', 'The job'], ['expected_date', 'Expected date']];
 
@@ -197,7 +198,7 @@ export function JraBanner({ jobId }: { jobId: string }) {
         </span>
       </div>
       <p className="mt-1 text-xs text-text-muted">
-        {st === 'approved' ? `Approved by ${jra?.decided_by_name ?? jra?.decided_by}.` : st === 'sent' ? `Waiting for ${jra?.sent_to_name ?? jra?.sent_to}.` : reasons.length ? `This job needs an approved JRA before Execution (${reasons.join(', ')}).` : 'Answer it on screen. The form itself is managed in Administration → Form templates.'}
+        {st === 'approved' ? `Approved by ${jra?.decided_by_name ?? jra?.decided_by} · ${when(jra?.decided_at ?? null)}.` : st === 'sent' ? `Sent ${when(jra?.sent_at ?? null)}, waiting for ${jra?.sent_to_name ?? jra?.sent_to}.` : reasons.length ? `This job needs an approved JRA before Execution (${reasons.join(', ')}).` : 'Answer it on screen. The form itself is managed in Administration → Form templates.'}
         {jra?.form_details?.file && ` Last upload: ${jra.form_details.file}, ${when(jra.form_details.uploaded_at ?? null)}.`}
       </p>
     </div>
