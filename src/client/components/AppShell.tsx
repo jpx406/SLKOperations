@@ -1,6 +1,6 @@
 import { Select } from './Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Clock, Database, Fingerprint, KeyRound, LogOut, Menu, RefreshCw, Sun, X } from 'lucide-react';
+import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown, ChevronRight, ClipboardList, Clock, Database, Fingerprint, Gauge, KeyRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, Sun, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav, type Group } from '../../shared/menus';
@@ -90,7 +90,7 @@ function NavDrawer({ nav, current, onClose, status }: { nav: Group[]; current: s
     return () => { document.removeEventListener('keydown', esc); document.body.style.overflow = overflow; prev?.focus(); };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-(--z-drawer) lg:hidden print:hidden">
+    <div className="fixed inset-0 z-(--z-drawer) print:hidden">
       <button type="button" aria-label="Close the menu" tabIndex={-1} className="absolute inset-0 bg-bg/70" onClick={onClose} />
       <div ref={panel} role="dialog" aria-modal="true" aria-label="Menu"
         className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col border-r border-border bg-surface shadow-pop">
@@ -125,6 +125,87 @@ function NavDrawer({ nav, current, onClose, status }: { nav: Group[]; current: s
   );
 }
 
+const GROUP_ICONS: Record<string, LucideIcon> = {
+  Operation: ClipboardList, 'Service Quality': Gauge, Bonus: Award, 'SLK Activity Dashboard': ChartColumn, Attendance: CalendarCheck,
+  Inventory: Boxes, Wires: Cable, 'Knowledge Hub': BookOpen, Administration: ShieldCheck,
+};
+const readStore = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const writeStore = (k: string, v: string | null) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode: this visit only */ } };
+
+/**
+ * Desktop navigation (owner request 2026-10-29, Apple HIG review for desktop): a sidebar with the groups as
+ * disclosures and their pages under them (sidebars.md: at most two levels, let people hide it). It shows from
+ * 1280px up; narrower windows, or a hidden sidebar, fall back to the menu button and the section pills.
+ */
+function Sidebar({ nav, current, onHide }: { nav: Group[]; current?: Group; onHide: () => void }) {
+  const [open, setOpen] = useState<string[]>(() => { try { return JSON.parse(readStore('slk-sidebar-open') ?? '[]'); } catch { return []; } });
+  const toggle = (label: string, isOpen: boolean) => {
+    const next = isOpen ? open.filter((l) => l !== label) : [...open, label];
+    setOpen(next);
+    writeStore('slk-sidebar-open', JSON.stringify(next));
+  };
+  const row = 'touch-row flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm';
+  const rowState = (active: boolean) => (active ? 'bg-surface-3 font-semibold text-text shadow-[inset_3px_0_var(--color-accent-edge)]' : 'text-text-muted hover:bg-surface-2 hover:text-text');
+  return (
+    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border bg-surface xl:flex print:hidden">
+      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
+        <a href="/" aria-label="SLK Operations, home"><NesrLogo className="h-8" /></a>
+        <span aria-hidden className="flex-1"><Wordmark className="text-sm leading-tight whitespace-nowrap" /></span>
+        <Button size="sm" variant="ghost" className="-mr-2" aria-label="Hide sidebar" title="Hide sidebar" onClick={onHide}><PanelLeftClose aria-hidden className="size-4" /></Button>
+      </div>
+      <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 pb-3">
+        <ul className="space-y-0.5">
+          {nav.map((g) => {
+            const Icon = GROUP_ICONS[g.label] ?? ClipboardList;
+            const here = g === current;
+            if (g.pages.length === 1) {
+              const p = g.pages[0];
+              return (
+                <li key={g.label}>
+                  <NavLink to={p.path} className={({ isActive }) => cx(row, 'font-medium', rowState(isActive))}>
+                    <Icon aria-hidden className="size-4 shrink-0" /><span className="truncate">{g.label}</span>
+                  </NavLink>
+                </li>
+              );
+            }
+            const isOpen = here || open.includes(g.label);
+            return (
+              <li key={g.label}>
+                {/* the section you are in stays open, so its name is a label, not a toggle */}
+                {here ? (
+                  <p className={cx(row, 'font-semibold text-text')}><Icon aria-hidden className="size-4 shrink-0 text-accent-text" /><span className="truncate">{g.label}</span></p>
+                ) : (
+                  <button type="button" aria-expanded={isOpen} onClick={() => toggle(g.label, isOpen)} className={cx(row, 'font-medium text-text-muted hover:bg-surface-2 hover:text-text')}>
+                    <Icon aria-hidden className="size-4 shrink-0" />
+                    <span className="flex-1 truncate">{g.label}</span>
+                    <ChevronRight aria-hidden className={cx('size-3.5 shrink-0 opacity-60 transition-transform', isOpen && 'rotate-90')} />
+                  </button>
+                )}
+                {isOpen && (
+                  <ul className="mt-0.5 mb-1.5 space-y-0.5">
+                    {g.pages.map((p) => (
+                      <li key={p.path}>
+                        <NavLink to={p.path} end={g.pages.some((o) => o !== p && o.path.startsWith(`${p.path}/`))}
+                          className={({ isActive }) => cx(row, 'pl-9', rowState(isActive))}>
+                          <span className="truncate">{p.label}</span>
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+      <div className="border-t border-border px-4 py-3">
+        <Contacts className="text-label leading-snug text-text-subtle" />
+        <p className="mt-1 font-mono text-label text-text-subtle" title={VERSION_TEXT}>v{APP_VERSION}</p>
+      </div>
+    </aside>
+  );
+}
+
 export function AppShell() {
   const { data: me } = useMe();
   const config = useQuery({ queryKey: ['config'], queryFn: () => api<{ wireguardUrl: string }>('/config'), staleTime: Infinity });
@@ -137,6 +218,10 @@ export function AppShell() {
   const page = group?.pages.filter((p) => loc.pathname.startsWith(p.path)).sort((a, b) => b.path.length - a.path.length)[0];
   const [drawer, setDrawer] = useState(false);
   useEffect(() => setDrawer(false), [loc.pathname]);
+  // the desktop sidebar is shown unless someone hid it; `wide` is what applies from 1280px up when it is shown
+  const [sidebar, setSidebar] = useState(() => readStore('slk-sidebar') !== 'hidden');
+  const showSidebar = (on: boolean) => { setSidebar(on); writeStore('slk-sidebar', on ? null : 'hidden'); };
+  const wide = (cls: string) => (sidebar ? cls : '');
 
   const signOut = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
@@ -147,20 +232,23 @@ export function AppShell() {
   const newVersion = useNewVersion();
   useRoles(); // names of added or renamed roles, for roleLabel() everywhere
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex min-h-full">
+      {sidebar && <Sidebar nav={nav} current={group} onHide={() => showSidebar(false)} />}
+    <div className="flex min-w-0 flex-1 flex-col">
       <NewVersionBar show={newVersion} />
       <header className="border-b border-border bg-bg px-4 md:px-5 print:hidden">
         {/* one row from tablet width up; on phones the tools wrap under the name instead of being cut off */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
-          <div className="flex shrink-0 items-center gap-2.5">
-            <Button size="sm" variant="ghost" className="-ml-2 lg:hidden" aria-label="Menu" aria-expanded={drawer} onClick={() => setDrawer(true)}><Menu aria-hidden className="size-5" /></Button>
+          <div className={cx('flex shrink-0 items-center gap-2.5', wide('xl:hidden'))}>
+            <Button size="sm" variant="ghost" className="-ml-2 xl:hidden" aria-label="Menu" aria-expanded={drawer} onClick={() => setDrawer(true)}><Menu aria-hidden className="size-5" /></Button>
+            {!sidebar && <Button size="sm" variant="ghost" className="-ml-2 hidden xl:inline-flex" aria-label="Show sidebar" title="Show sidebar" onClick={() => showSidebar(true)}><PanelLeftOpen aria-hidden className="size-5" /></Button>}
             <a href="/" aria-label="SLK Operations, home"><NesrLogo className="h-7 sm:h-9" /></a>
             <div className="hidden flex-col min-[30rem]:flex">
               <span aria-hidden><Wordmark className="text-base leading-tight sm:text-lg" /></span>
               <Contacts className="hidden text-label leading-tight lg:block" />
             </div>
           </div>
-          <span className="hidden font-mono text-xs text-text-subtle md:inline" title={VERSION_TEXT}>v{APP_VERSION}</span>
+          <span className={cx('hidden font-mono text-xs text-text-subtle md:inline', wide('xl:hidden'))} title={VERSION_TEXT}>v{APP_VERSION}</span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {me && <span className="hidden sm:inline-flex"><CountrySwitch countries={me.allCountries ?? me.countries} /></span>}
             <span className="hidden sm:inline-flex"><SyncStatus canSync={!!me?.menus.schedule?.edit} /></span>
@@ -171,7 +259,7 @@ export function AppShell() {
           </div>
         </div>
         {/* phones and tablets: where you are, and the menu with every group and page */}
-        <div className="-mt-1 flex items-center gap-2 pb-2.5 lg:hidden">
+        <div className={cx('-mt-1 flex items-center gap-2 pb-2.5', wide('xl:hidden'))}>
           <button type="button" onClick={() => setDrawer(true)} aria-label={`Menu: ${group?.label ?? ''}${page ? `, ${page.label}` : ''}`}
             className="inline-flex h-(--layout-control-sm) min-w-0 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-sm font-semibold">
             <span className="truncate">{group?.label}</span>
@@ -180,19 +268,9 @@ export function AppShell() {
           </button>
           <span className="ml-auto sm:hidden"><SyncStatus canSync={!!me?.menus.schedule?.edit} /></span>
         </div>
-        <nav aria-label="Main" className="-mb-px hidden gap-1.5 overflow-x-auto pb-3 lg:flex">
-          {nav.map((g) => (
-            <NavLink key={g.label} to={g.pages[0].path}
-              aria-current={g === group ? 'page' : undefined}
-              className={cx('inline-flex h-(--layout-control-md) shrink-0 items-center rounded-md border px-3 text-sm font-semibold',
-                g === group ? 'border-border-strong bg-surface-3' : 'border-border hover:bg-surface-2')}>
-              {g.label}
-            </NavLink>
-          ))}
-        </nav>
       </header>
       {group && group.pages.length > 1 && (
-        <nav aria-label="Section" className="sticky top-0 z-(--z-sticky) flex gap-2 overflow-x-auto border-b border-border bg-bg px-4 py-2.5 [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:px-5 lg:[mask-image:none] print:hidden">
+        <nav aria-label="Section" className={cx('sticky top-0 z-(--z-sticky) flex gap-2 overflow-x-auto border-b border-border bg-bg px-4 py-2.5 [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:px-5 lg:[mask-image:none] print:hidden', wide('xl:hidden'))}>
           {group.pages.map((p) => (
             <NavLink key={p.path} to={p.path} end={group.pages.some((o) => o !== p && o.path.startsWith(`${p.path}/`))}
               className={({ isActive }) => cx('inline-flex h-(--layout-control-sm) shrink-0 items-center rounded-pill border px-3.5 text-sm font-semibold',
@@ -213,6 +291,7 @@ export function AppShell() {
         {me && <FaceIdOffer username={me.username} />}
         <Outlet />
       </main>
+    </div>
     </div>
   );
 }

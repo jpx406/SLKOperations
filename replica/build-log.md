@@ -1371,3 +1371,10 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Screen reader audit** of 23 screens (2,169 controls): every control has a spoken name; one h1 per page and no skipped heading levels (Attachments, chart titles, Daily report cards and the Activity detail groups moved to h2); the header wordmark is no longer a focusable link hidden from screen readers; the hidden file pickers on Closure and Form templates are named; chart tables have column headers.
 - **Keyboard**: every tab stop on the job board, Activity sheet and job Design shows a focus ring; date, month and time fields get the ring on their inner part too.
 - **Verified:** tests 282; the checks above re-run clean.
+
+## 6z.9 — Desktop sidebar (Apple HIG desktop review)
+
+- **Review:** on a 1440 px desk the shell stacked three rows of equally weighted boxed buttons (header, nine groups, section pills) above every page, and the header carried the contact names and version. Apple's desktop guidance puts top-level navigation in a sidebar with at most two levels that people can hide (sidebars.md › Best practices) and lets branding defer to content (branding.md).
+- **Sidebar from 1280 px:** groups with icons, pages indented under them, the current group always open and the others remembered as disclosures; the current page gets a soft fill and a 3 px lime edge. Mark and wordmark at the top, contacts and version at the bottom. The group button row is gone; the section pills show only when the sidebar is not.
+- **Hide sidebar / Show sidebar**, remembered per browser. Below 1280 px (Apple: hide the sidebar as the window narrows) the menu button and drawer take over as before.
+- **Verified:** tests 282; screen-reader audit 0 issues on 23 screens; no sideways scroll at 1280 px or 320 px; Control Room and Sunlight screenshots checked.

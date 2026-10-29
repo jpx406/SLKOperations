@@ -288,7 +288,7 @@ Under touch density the same roles grow: label 12px / 16px, caption 13px / 18px,
 
 ## Layout
 
-The app shell is one header row (brand · country switch · WIREGUARD sync · Riyadh clock · Help · Ask · account menu) over the group tabs. Below that, the section's pill row **stays pinned to the top** while the page scrolls, then content in a 20px gutter (16px on phones) up to 1600px wide. The header is about 100px with the group tabs on a desk and 120px under touch. Display settings, password, Data and Sign out live in the account menu.
+On a desk (1280px and up) the app shell is a 240px **sidebar** on the left (mark and wordmark, the groups with their pages, contacts and version at the bottom) beside a slim toolbar row (country switch · WIREGUARD sync · Riyadh clock · Help · Ask · account menu). Narrower windows, or a hidden sidebar, use one header row (menu button · brand · the same tools) with the "Group › Page" menu button under it; there the section's pill row **stays pinned to the top** while the page scrolls. Then content in a 20px gutter (16px on phones) up to 1600px wide. The toolbar row is about 52px beside the sidebar. Display settings, password, Data and Sign out live in the account menu.
 
 - **Forms** are 1–4 column grids (`md:2`, `xl:4`) with 16–20px gaps. Sections are separated by mono label rules rather than nested boxes.
 - **The job editor** puts a four-step stage strip (number · percent, title, one-line purpose, progress bar) over one stage card at a time, with Attachments as the final card on every stage.
@@ -355,9 +355,9 @@ Precise and quiet: controls look like tools, not decorations.
   - **Large touch controls** (Auto / On / Off; Auto follows the pointer);
   - Change password in WIREGUARD, Data export & import (admins) and Sign out.
   - It closes on Escape or a tap outside, and holds the country switch on phones.
-- **Group tabs:** outlined tabs at control height; the active group is filled Panel Pressed with a strong rule.
-- **Section pills:** the pinned row (see Chips).
-- **Mobile:** tab rows scroll horizontally; nothing wraps into a hamburger.
+- **Sidebar (1280px and up):** two levels only (Apple HIG sidebars.md). Each group is a row with its icon; groups with several pages open and close like a disclosure, the group you are in always stays open, and which others are open is remembered. Pages are 32px rows indented under their group; the current page is Panel Pressed with a 3px lime edge, the only lime in the sidebar besides the current group's icon. A Hide sidebar button sits beside the wordmark; hidden, a Show sidebar button takes the toolbar's leading edge. The choice is remembered.
+- **Menu button and drawer (narrower windows or a hidden sidebar):** the same two-level list in a drawer from the left.
+- **Section pills:** the pinned row (see Chips), shown only when the sidebar is not.
 
 ### JRA answer toggle
 A segmented Yes / No (/ N/A) control, 32px tall on a desk and 48px under touch, at least 48px wide per option. The chosen answer fills with the accent. An answer that scores points or triggers MOC / Exemption fills amber instead, and "+points" plus the requirement tag appear beside it, so the risk reads without relying on colour.
