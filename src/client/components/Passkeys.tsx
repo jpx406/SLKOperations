@@ -1,6 +1,6 @@
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Fingerprint, RefreshCw, Smartphone, Trash2 } from 'lucide-react';
+import { Fingerprint, QrCode, RefreshCw, Smartphone, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { renderSVG } from 'uqr';
 import { ApiError, api } from '../api';
@@ -146,5 +146,60 @@ export function MyPasskeys() {
         ? <Button variant="primary" loading={busy} disabled={!q.data.allowed} onClick={add}><Fingerprint aria-hidden className="size-4" />Set up on this device</Button>
         : <p className="text-sm text-text-subtle">This browser can't do Face ID / fingerprint sign-in.</p>}
     </div>
+  );
+}
+
+/** The Face ID / fingerprint dialog: the person's devices, set up this one, and how QR sign-in works. */
+export function FaceIdDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="faceid-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-pop">
+        <div className="mb-3 flex items-start gap-3">
+          <h2 id="faceid-title" className="flex-1 font-display text-lg font-bold">Face ID / fingerprint and QR sign-in</h2>
+          <Button size="sm" variant="ghost" aria-label="Close" onClick={onClose} autoFocus><X aria-hidden className="size-4" /></Button>
+        </div>
+        <MyPasskeys />
+        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
+          <p className="mb-1 flex items-center gap-2 font-semibold"><QrCode aria-hidden className="size-4" />Signing in on a laptop with your phone</p>
+          <ol className="list-decimal space-y-0.5 pl-5 text-text-muted">
+            <li>Set up Face ID on your phone first (open SLK Operations on the phone, sign in, then use this menu).</li>
+            <li>On the laptop’s sign-in page, choose “Sign in with your phone (QR code)”.</li>
+            <li>Scan the code with the phone’s camera and approve with Face ID. The laptop signs in by itself.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const OFFER_KEY = (username: string) => `slk-faceid-offer-${username}`;
+
+/** After a password sign-in on a device that can do it, offers once to set up Face ID / fingerprint (Not now waits 14 days). */
+export function FaceIdOffer({ username }: { username: string }) {
+  const q = useQuery({ queryKey: ['passkeys'], queryFn: () => api<{ allowed: boolean; devices: Device[] }>('/passkeys'), staleTime: 5 * 60_000 });
+  const [hidden, setHidden] = useState(() => {
+    try { const v = localStorage.getItem(OFFER_KEY(username)); return v === 'never' || (!!v && Date.now() < Number(v)); } catch { return false; }
+  });
+  const [open, setOpen] = useState(false);
+  const later = (never: boolean) => {
+    try { localStorage.setItem(OFFER_KEY(username), never ? 'never' : String(Date.now() + 14 * 86_400_000)); } catch { /* private mode */ }
+    setHidden(true);
+  };
+  // set up from the dialog: the offer has done its job
+  useEffect(() => { if (q.data && q.data.devices.length > 0 && open) later(true); }, [q.data, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!passkeysSupported() || hidden || !q.data?.allowed || q.data.devices.length > 0) return open ? <FaceIdDialog onClose={() => setOpen(false)} /> : null;
+  return (
+    <>
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-accent/40 bg-surface px-4 py-3 print:hidden">
+        <Fingerprint aria-hidden className="size-6 shrink-0 text-accent-text" />
+        <p className="min-w-0 flex-1 text-sm"><span className="font-semibold">Sign in faster next time.</span> Use Face ID, Touch ID, a fingerprint or Windows Hello on this device instead of your password. You can also sign a laptop in by scanning a QR code with your phone.</p>
+        <span className="flex gap-2">
+          <Button size="sm" variant="primary" onClick={() => setOpen(true)}><Fingerprint aria-hidden className="size-4" />Set up now</Button>
+          <Button size="sm" variant="ghost" onClick={() => later(false)}>Not now</Button>
+          <Button size="sm" variant="ghost" onClick={() => later(true)}>Don’t ask again</Button>
+        </span>
+      </div>
+      {open && <FaceIdDialog onClose={() => setOpen(false)} />}
+    </>
   );
 }

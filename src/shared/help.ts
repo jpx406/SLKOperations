@@ -8,6 +8,8 @@ export const HELP_SECTIONS: HelpSection[] = [
     id: 'start', title: 'Signing in and moving around', menus: 'any',
     body: `Sign in with your WIREGUARD username and password; SLK Operations has no passwords of its own, so change yours in WIREGUARD (the "Change password" link in the header). You are signed out after a period without activity.
 
+Face ID, Touch ID, a fingerprint or Windows Hello can replace the password. Set it up once on each phone or computer: sign in with your password, open the account menu (your name, top right) and choose "Set up Face ID / fingerprint & QR sign-in", then "Set up on this device". SLK Operations also offers it after a password sign-in. From then on use "Sign in with Face ID / fingerprint" on the sign-in page. On a laptop without either, choose "Sign in with your phone (QR code)", scan the code with a phone that has Face ID set up and approve there; the laptop signs in by itself. An administrator can switch Face ID off for a person in Users & Roles.
+
 The header shows the WIREGUARD sync time (green when recent, amber after 30 minutes, red after an error), the Riyadh clock, Help, Ask (the help assistant) and your name and role. If you cover more than one country, the country switch narrows every page to one of them (on a phone it is in the account menu).
 
 The account menu (your name, top right) holds Sunlight mode and Large touch controls. Sunlight is a high-contrast light theme for working outdoors; Large touch controls makes buttons and text bigger for fingers and gloves. Both switch on by themselves on tablets and phones; on a desk with a mouse the app opens dark and compact. Whatever you choose is remembered on that device.

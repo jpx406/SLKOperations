@@ -1338,3 +1338,13 @@ Every label, message and empty state was written here. No code, assets or copy f
 
 - **PDF A4** now prints the same full-detail layout as **PDF A3**: a title strip per job and every field in labelled group blocks, four columns on A4 (two jobs a page in October), five on A3. The A4 table layout is no longer offered on the Activity sheet (the Daily report keeps its table).
 - **Verified:** tests 282; the October A4 PDF rendered.
+
+## 6z.6 — Face ID / fingerprint and QR sign-in easier to find
+
+- Face ID / fingerprint and QR sign-in were already in place (sign-in page buttons; set-up in the account menu), but production had 0 devices set up for 95 allowed people because the set-up was hidden in the account menu.
+- After signing in on a device that can do it, people with no device set up now see an offer above the page: **Set up now** (opens the dialog), **Not now** (asks again in 14 days), **Don't ask again** (remembered on that device). It goes away once a device is set up.
+- The account menu item now reads "Set up Face ID / fingerprint & QR sign-in"; the dialog (shared by both) adds the three steps for signing a laptop in with a phone's QR code.
+- Help → "Signing in and moving around" explains both.
+- **Verified:**
+  - tests 282;
+  - in the browser with a virtual authenticator: offer shown, set up from it ("Windows PC · Chrome"), offer gone, signed out, signed back in with Face ID.
