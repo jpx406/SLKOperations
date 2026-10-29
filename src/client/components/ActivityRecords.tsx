@@ -67,7 +67,7 @@ function Detail({ l, fields, groups, canEdit, choicesFor, onSave }: {
       <div className="gap-4 [column-fill:balance] sm:columns-2 lg:columns-3 2xl:columns-5">
         {blocks.map((b) => (
           <section key={b.g.key} aria-label={b.g.label} className="mb-3 break-inside-avoid">
-            <h4 className="label-caps mb-1 border-b border-border pb-1 text-text-muted">{b.g.label}</h4>
+            <h2 className="label-caps mb-1 border-b border-border pb-1 text-text-muted">{b.g.label}</h2>
             {b.fs.map((f) => <FieldRow key={f.key} f={f} l={l} fields={fields} canEdit={canEdit} choices={choicesFor?.(f, l)} onSave={(k, v) => onSave(l, k, v)} />)}
           </section>
         ))}

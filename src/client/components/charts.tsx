@@ -42,7 +42,7 @@ export function BarChart({ title, buckets, unit, horizontal, selected, onSelect,
     <div ref={ref}>
       <Card className="h-full">
         <div className="mb-3 flex items-start gap-2">
-          <h3 id={id} className="flex-1 text-sm font-semibold">{title}</h3>
+          <h2 id={id} className="flex-1 text-sm font-semibold">{title}</h2>
           <span className="flex gap-1 print:hidden">
             <Button size="sm" variant="ghost" aria-label={`Print ${title}`} onClick={() => printOnly(ref.current)}><Printer aria-hidden className="size-3.5" /></Button>
             <Button size="sm" variant="ghost" aria-label={`${title} as XLSX`} onClick={exportXlsx} disabled={!buckets.length}><FileSpreadsheet aria-hidden className="size-3.5" /></Button>
@@ -78,6 +78,7 @@ export function BarChart({ title, buckets, unit, horizontal, selected, onSelect,
         {note && <p className="mt-2 text-xs text-text-subtle">{note}</p>}
         <table className="sr-only">
           <caption>{title}</caption>
+          <thead><tr><th scope="col">Group</th><th scope="col">{unit ? `Value (${unit})` : 'Value'}</th><th scope="col">Jobs</th></tr></thead>
           <tbody>{buckets.map((b) => <tr key={b.key}><th scope="row">{b.label}</th><td>{fmt(b.value, unit)}</td><td>{b.ids.length} jobs</td></tr>)}</tbody>
         </table>
       </Card>

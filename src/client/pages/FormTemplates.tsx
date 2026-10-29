@@ -69,7 +69,7 @@ export function FormTemplates() {
     <section aria-labelledby="ft-title">
       <PageTitle aside={canEdit && (
         <>
-          <input ref={file} type="file" accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" tabIndex={-1}
+          <input ref={file} type="file" accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" tabIndex={-1} aria-label="Word or Excel file to read"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) read(f); }} />
           <Button loading={busy === 'read'} onClick={() => file.current?.click()}><FileUp aria-hidden className="size-4" />From Word / Excel</Button>
           <Button onClick={() => setDraft({ d: blank(), note: 'Describe the form on the right and the AI assistant drafts it, or type the questions yourself.' })}><Sparkles aria-hidden className="size-4" />With the AI assistant</Button>
@@ -339,7 +339,7 @@ function TemplateEditor({ init, lines, note, countries, onClose }: { init: Draft
             <Card>
               <h2 id="ai-title" className="mb-1 flex items-center gap-2 font-display text-base font-bold uppercase"><Sparkles aria-hidden className="size-4 text-accent-text" />AI assistant</h2>
               <p className="mb-3 text-xs text-text-muted">It reads the attached file and the template above, and returns a draft you check before saving. Nothing is saved until you press Save.</p>
-              <input ref={file} type="file" accept=".docx,.xlsx" className="sr-only" tabIndex={-1} onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); }} />
+              <input ref={file} type="file" accept=".docx,.xlsx" className="sr-only" tabIndex={-1} aria-label="Word or Excel file to read" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); }} />
               <p className="mb-2 flex items-center gap-2 text-sm">
                 {docLines?.length ? <span className="min-w-0 flex-1 truncate">File: <b>{d.source_file ?? 'attached'}</b></span> : <span className="flex-1 text-text-muted">No file attached</span>}
                 <Button size="sm" loading={busy === 'read'} onClick={() => file.current?.click()}><FileUp aria-hidden className="size-3.5" />{docLines?.length ? 'Other file' : 'Attach Word / Excel'}</Button>

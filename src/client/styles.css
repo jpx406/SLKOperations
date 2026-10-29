@@ -13,6 +13,8 @@
     -webkit-font-smoothing: antialiased;
   }
   :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  /* date, month and time fields put focus on an inner part, which :focus-visible misses */
+  input:is([type=date], [type=month], [type=time], [type=datetime-local]):focus { outline: 2px solid var(--color-focus); outline-offset: 2px; }
   /* segmented controls clip an outside ring, and blue on a chalk fill is faint: draw it inside, in the text colour */
   [role=radiogroup] > [role=radio]:focus-visible { outline-color: currentColor; outline-offset: -4px; }
   input, select, textarea, button { font: inherit; color: inherit; }

@@ -242,7 +242,7 @@ export function JobEditor() {
           if (!stageOpen(s)) return (
             <div key={s} role="tab" aria-selected={false} aria-disabled="true" title="Your role does not see this stage (Users & Roles → rights)" className="rounded-lg border border-dashed border-border bg-surface p-3 opacity-60">
               <span className="font-mono text-xs text-text-subtle">{STAGE_INFO[s].n} · no access</span>
-              <span className="mt-1 block font-display text-lg leading-none font-extrabold uppercase">{STAGE_INFO[s].title}</span>
+              <span className="mt-1 block font-display text-lg leading-none font-extrabold uppercase [overflow-wrap:anywhere]">{STAGE_INFO[s].title}</span>
               <span className="mt-1 block text-xs text-text-muted">Not open to your role</span>
             </div>
           );
@@ -250,7 +250,7 @@ export function JobEditor() {
             <Link key={s} role="tab" aria-selected={s === stage} to={`/operation/jobs/${id}/${s}`} replace
               className={cx('rounded-lg border bg-surface p-3', s === stage ? 'border-accent-edge bg-surface-2' : 'border-border hover:border-border-strong')}>
               <span className="font-mono text-xs text-text-subtle">{STAGE_INFO[s].n} · {pct}%</span>
-              <span className="mt-1 block font-display text-lg leading-none font-extrabold uppercase">{STAGE_INFO[s].title}</span>
+              <span className="mt-1 block font-display text-lg leading-none font-extrabold uppercase [overflow-wrap:anywhere]">{STAGE_INFO[s].title}</span>
               <span className="mt-1 mb-2 block text-xs text-text-muted">{STAGE_INFO[s].sub}</span>
               <ProgressBar value={pct} label={STAGE_INFO[s].title} />
             </Link>

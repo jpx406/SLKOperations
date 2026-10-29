@@ -155,8 +155,8 @@ export function AppShell() {
           <div className="flex shrink-0 items-center gap-2.5">
             <Button size="sm" variant="ghost" className="-ml-2 lg:hidden" aria-label="Menu" aria-expanded={drawer} onClick={() => setDrawer(true)}><Menu aria-hidden className="size-5" /></Button>
             <a href="/" aria-label="SLK Operations, home"><NesrLogo className="h-7 sm:h-9" /></a>
-            <div className="hidden flex-col min-[480px]:flex">
-              <a href="/" tabIndex={-1} aria-hidden><Wordmark className="text-base leading-tight sm:text-lg" /></a>
+            <div className="hidden flex-col min-[30rem]:flex">
+              <span aria-hidden><Wordmark className="text-base leading-tight sm:text-lg" /></span>
               <Contacts className="hidden text-label leading-tight lg:block" />
             </div>
           </div>

@@ -206,7 +206,7 @@ export function JobPackage({ jobId, canEdit }: { jobId: string; canEdit: boolean
       <Steps f={f} />
       {error && <div className="my-3"><Banner tone="danger">{error}</Banner></div>}
       {note && <div className="my-3"><Banner tone="success">{note}</Banner></div>}
-      <input ref={file} type="file" multiple className="sr-only" tabIndex={-1} onChange={(e) => { if (target && e.target.files?.length) upload(target, e.target.files); }} />
+      <input ref={file} type="file" multiple className="sr-only" tabIndex={-1} aria-label="Files for this document" onChange={(e) => { if (target && e.target.files?.length) upload(target, e.target.files); }} />
       {Object.entries(t.sections).filter(([k]) => t.questions.some((x) => x.section === k)).map(([k, label]) => (
         <fieldset key={k} className="mt-4">
           <legend className="label-caps mb-2 text-text-muted">{k} · {label}</legend>

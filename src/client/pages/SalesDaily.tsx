@@ -162,7 +162,7 @@ export function SalesDaily() {
       <div className="mb-3 flex flex-wrap items-end gap-3 print:hidden">
         <div>
           <span className="label-caps mb-1 block text-text-muted">Day</span>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <Button size="sm" variant="ghost" aria-label="Day before" onClick={() => setDay(addDays(day, -1))}><ChevronLeft aria-hidden className="size-4" /></Button>
             <input type="date" aria-label="Day" className={inputSized('w-44')} value={day} onChange={(e) => setDay(e.target.value)} />
             <Button size="sm" variant="ghost" aria-label="Next day" onClick={() => setDay(addDays(day, 1))}><ChevronRight aria-hidden className="size-4" /></Button>
@@ -233,7 +233,7 @@ export function SalesDaily() {
           <div className="mt-4 grid gap-3 lg:grid-cols-[2fr_1fr]">
             <Card className="min-w-0 p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-display text-sm font-bold">Upcoming operations (next 3 weeks)</h3>
+                <h2 className="font-display text-sm font-bold">Upcoming operations (next 3 weeks)</h2>
                 {canEdit && <Button size="sm" variant="ghost" onClick={() => editRec({ ...rec, upcoming: [...(rec.upcoming ?? []), { rig_well: '', date: '', remarks: '', entity: 'NESR' }] })}><Plus aria-hidden className="size-3.5" />Add a rig with no job</Button>}
               </div>
               <div className="overflow-x-auto"><table className="w-full min-w-[34rem] text-sm">
@@ -266,7 +266,7 @@ export function SalesDaily() {
               <p className="mt-1 text-xs text-text-subtle">Planned jobs come from the schedule. Add a line for a rig that has no job yet (SAPESCO rigs, razor requests …).</p>
             </Card>
             <Card className="p-3">
-              <h3 className="mb-2 font-display text-sm font-bold">People on board</h3>
+              <h2 className="mb-2 font-display text-sm font-bold">People on board</h2>
               <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-2 text-sm">
                 {[['operators', 'Operators'], ['supervisors', 'Supervisors']].map(([k, label]) => (
                   <div key={k} className="contents">

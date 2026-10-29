@@ -49,7 +49,7 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
 
   return (
     <section aria-label={title}>
-      <h3 className="mb-2 flex items-center gap-2 font-display text-base font-bold uppercase"><Paperclip aria-hidden className="size-4" />{title} <span className="font-mono text-sm font-normal text-text-muted">{files.length}</span></h3>
+      <h2 className="mb-2 flex items-center gap-2 font-display text-base font-bold uppercase"><Paperclip aria-hidden className="size-4" />{title} <span className="font-mono text-sm font-normal text-text-muted">{files.length}</span></h2>
       {q.data && !q.data.storage && <div className="mb-2"><Banner tone="warning">File storage isn’t set up on the server yet (R2 bucket slkops-files).</Banner></div>}
       {errors.length > 0 && <div className="mb-2"><Banner tone="danger"><ul>{errors.map((e, i) => <li key={i}>{e}</li>)}</ul></Banner></div>}
       {canEdit && (

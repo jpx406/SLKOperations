@@ -265,10 +265,10 @@ export function Schedule() {
   return (
     <section aria-labelledby="sched-title">
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-        <h1 id="sched-title" className="font-display text-3xl font-extrabold tracking-wide uppercase">Unit schedule</h1>
-        <div className="flex items-center gap-2">
+        <h1 id="sched-title" className="font-display text-[1.375rem] leading-tight font-extrabold tracking-wide uppercase sm:text-3xl">Unit schedule</h1>
+        <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => setParam('month', shiftMonth(month, -1))} aria-label="Previous month"><ChevronLeft aria-hidden className="size-4" /></Button>
-          <span className="min-w-36 text-center font-mono text-base font-bold text-accent-text" aria-live="polite">{monthLabel}</span>
+          <span className="min-w-28 text-center font-mono sm:min-w-36 text-base font-bold text-accent-text" aria-live="polite">{monthLabel}</span>
           <Button onClick={() => setParam('month', shiftMonth(month, 1))} aria-label="Next month"><ChevronRight aria-hidden className="size-4" /></Button>
           <Button onClick={() => setParam('month', null)}>Today</Button>
         </div>

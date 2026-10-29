@@ -1363,3 +1363,11 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified:**
   - tests 282;
   - captures at three widths: no sideways scroll at any width; on phones no target under 32 px except two on the Schedule; the menu drawer opens, closes and navigates; the Export menu works.
+
+## 6z.8 — Large text and screen reader checks
+
+- **Text follows the browser's text-size setting** (the web counterpart of Dynamic Type). Text sizes, line heights, control heights, spacing and breakpoints were fixed in pixels, so Chrome's "Font size: Very large" changed nothing. `build_tokens.py` now writes them in rem (16 px = 1 rem): identical at the default, and 14 px body text becomes 21 px with a 24 px browser root. Breakpoints in rem also mean the phone/tablet menu takes over when large text no longer fits the group row. Attendance's fixed 11 px labels moved to rem too.
+- **Reflow at 320 px** (a laptop at 400% zoom): no sideways scroll on any screen. Fixed the Schedule month bar, the bonus distribution table on Closure and the Daily report's day picker. Long stage names ("PREPARATION") wrap inside their card at large sizes.
+- **Screen reader audit** of 23 screens (2,169 controls): every control has a spoken name; one h1 per page and no skipped heading levels (Attachments, chart titles, Daily report cards and the Activity detail groups moved to h2); the header wordmark is no longer a focusable link hidden from screen readers; the hidden file pickers on Closure and Form templates are named; chart tables have column headers.
+- **Keyboard**: every tab stop on the job board, Activity sheet and job Design shows a focus ring; date, month and time fields get the ring on their inner part too.
+- **Verified:** tests 282; the checks above re-run clean.

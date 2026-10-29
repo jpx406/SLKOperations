@@ -401,7 +401,7 @@ export function Attendance() {
                                     <button type="button" aria-label={`${p.full_name}, ${d}: ${c ? CODES[c] : 'no code'}${clash ? ', on leave while assigned to a job' : ''}`} title={tip || undefined}
                                       aria-pressed={multi ? picked.has(k) : undefined} disabled={!editable(p) && !jobs.length}
                                       onClick={(e) => clickCell(pi, di, e.shiftKey)}
-                                      className={cx('h-8 w-8 rounded-xs font-mono', picked.has(k) ? 'bg-notice-bg ring-2 ring-accent-edge ring-inset' : 'bg-surface-2/70', autoCells.has(k) && !(k in pending) && 'border border-dashed border-accent-edge/50', ' text-[11px] font-semibold disabled:cursor-default in-data-[density=touch]:h-11 in-data-[density=touch]:w-11', CODE_TONE[c as Code], k in pending && 'italic underline', clash && 'outline-2 -outline-offset-2 outline-danger')}>
+                                      className={cx('h-8 w-8 rounded-xs font-mono', picked.has(k) ? 'bg-notice-bg ring-2 ring-accent-edge ring-inset' : 'bg-surface-2/70', autoCells.has(k) && !(k in pending) && 'border border-dashed border-accent-edge/50', ' text-[0.6875rem] font-semibold disabled:cursor-default in-data-[density=touch]:h-11 in-data-[density=touch]:w-11', CODE_TONE[c as Code], k in pending && 'italic underline', clash && 'outline-2 -outline-offset-2 outline-danger')}>
                                       {c ?? ''}
                                       {jobs.length > 0 && <span aria-hidden className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-accent" />}
                                     </button>
@@ -426,10 +426,10 @@ export function Attendance() {
                                   </td>
                                 );
                               })}
-                              <td className="border-b border-border px-2 font-mono text-[11px] whitespace-nowrap text-text-muted" title={p.updated_by ? `Last saved by ${p.updated_by}` : undefined}>{s.present} on · {s.field} field · {s.leave} leave</td>
+                              <td className="border-b border-border px-2 font-mono text-[0.6875rem] whitespace-nowrap text-text-muted" title={p.updated_by ? `Last saved by ${p.updated_by}` : undefined}>{s.present} on · {s.field} field · {s.leave} leave</td>
                               <td className="border-b border-border px-2 whitespace-nowrap">
                                 {appr ? (
-                                  <span className="inline-flex items-center gap-1 text-success" title={`Approved by ${appr.approved_by} · ${stampText(appr.approved_at)}`}><Check aria-hidden className="size-3.5" />{appr.approved_by}<span className="font-mono text-[11px] text-text-muted">{stampText(appr.approved_at).replace(' Riyadh', '')}</span>
+                                  <span className="inline-flex items-center gap-1 text-success" title={`Approved by ${appr.approved_by} · ${stampText(appr.approved_at)}`}><Check aria-hidden className="size-3.5" />{appr.approved_by}<span className="font-mono text-[0.6875rem] text-text-muted">{stampText(appr.approved_at).replace(' Riyadh', '')}</span>
                                     <SignedToggle type="attendance" id={`${p.id}|${month}`} />
                                     {p.can_approve && <Button size="sm" variant="ghost" onClick={() => approve([p], false)}>Unapprove</Button>}</span>
                                 ) : meta.two_step && !reviewed.has(p.id) ? (
@@ -437,7 +437,7 @@ export function Attendance() {
                                     : <span className="text-text-subtle">waiting for review by {meta.review_by}</span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1.5">
-                                    {meta.two_step && <span className="text-info" title={`Reviewed by ${reviewed.get(p.id)?.reviewed_by} · ${stampText(reviewed.get(p.id)!.reviewed_at)}`}>Reviewed by {reviewed.get(p.id)?.reviewed_by} <span className="font-mono text-[11px] text-text-muted">{stampText(reviewed.get(p.id)!.reviewed_at).replace(' Riyadh', '')}</span></span>}
+                                    {meta.two_step && <span className="text-info" title={`Reviewed by ${reviewed.get(p.id)?.reviewed_by} · ${stampText(reviewed.get(p.id)!.reviewed_at)}`}>Reviewed by {reviewed.get(p.id)?.reviewed_by} <span className="font-mono text-[0.6875rem] text-text-muted">{stampText(reviewed.get(p.id)!.reviewed_at).replace(' Riyadh', '')}</span></span>}
                                     {p.can_approve ? <Button size="sm" onClick={() => approve([p], true)} disabled={days.some((d) => cellKey(p.id, d) in pending)}>{meta.two_step ? 'Final approval' : 'Approve'}</Button>
                                       : <span className="text-text-subtle">waiting for {meta.approve_by}</span>}
                                     {meta.two_step && p.can_review && <Button size="sm" variant="ghost" onClick={() => review([p], false)}>Undo review</Button>}

@@ -240,7 +240,7 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
       {d.status === 'approved' && <div className="mb-2"><Banner tone="success">Approved by {d.lines[0]?.approved_by}{d.lines[0]?.approved_at ? ` · ${stampText(d.lines[0].approved_at)}` : ''}. {me?.role === 'admin' ? 'Reopening affects the Bonus Report and statements already sent.' : 'Only an admin can reopen it.'}</Banner><SignatureBadge className="mt-2" type="bonus" id={jobId} /></div>}
       {error && <div className="mb-2"><Banner tone="danger">{error}</Banner></div>}
       {!d.crew.length ? <p className="text-sm text-text-subtle">Name the crew on Preparation first.</p> : (
-        <table className="w-full max-w-2xl text-sm">
+        <div className="overflow-x-auto"><table className="w-full max-w-2xl min-w-[22rem] text-sm">
           <thead><tr className="text-left text-xs text-text-muted"><th scope="col" className="py-1">Crew member</th><th scope="col" className="py-1">Role</th><th scope="col" className="py-1">Share %</th><th scope="col" className="py-1">Amount ({cur})</th></tr></thead>
           <tbody>
             {lines.map((l, i) => (
@@ -254,7 +254,7 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
             ))}
           </tbody>
           <tfoot><tr className="border-t border-border"><td className="py-1.5 font-semibold" colSpan={3}>Total</td><td className={cx('py-1.5 font-mono font-semibold', total > d.pool.cents && 'text-danger')}>{money(total, cur)}</td></tr></tfoot>
-        </table>
+        </table></div>
       )}
       {!locked && d.crew.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
