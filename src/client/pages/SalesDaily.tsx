@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Plus, Save, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, Lock, Plus, Save, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { DAILY_FIELDS, DAILY_GROUPS, DAILY_STATUSES, shownValue, type SheetLine } from '../../shared/salesSheets';
@@ -8,6 +8,7 @@ import { workbookSheets, type Cell, type SheetSpec } from '../../shared/xlsx';
 import { api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { useAccountColors } from '../components/Accounts';
+import { MenuButton } from '../components/MenuButton';
 import { saveFile } from '../components/charts';
 import { GroupSwitches, SheetGrid, SheetLegend, useOpenGroups, type GridLine, type GridSection } from '../components/SheetGrid';
 import { Banner, Button, Card, Skeleton, cx, inputSized } from '../components/ui';
@@ -170,9 +171,11 @@ export function SalesDaily() {
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
           {canEdit && <Button size="sm" variant="primary" disabled={!selected.size} loading={busy} onClick={() => onLock([...selected])}><Lock aria-hidden className="size-4" />Check & lock{selected.size ? ` (${selected.size})` : ''}</Button>}
-          <Button size="sm" onClick={exportDay} disabled={!lines.length}><FileSpreadsheet aria-hidden className="size-4" />Excel (day)</Button>
-          <Button size="sm" onClick={exportMonth} disabled={busy}><FileSpreadsheet aria-hidden className="size-4" />Excel (month)</Button>
-          <Button size="sm" onClick={exportPdf} disabled={!lines.length}><FileText aria-hidden className="size-4" />PDF</Button>
+          <MenuButton label="Export" icon={<Download aria-hidden className="size-4" />} items={[
+            { label: 'Excel, this day', icon: <FileSpreadsheet aria-hidden className="size-4" />, onSelect: exportDay, disabled: !lines.length },
+            { label: 'Excel, whole month', icon: <FileSpreadsheet aria-hidden className="size-4" />, onSelect: exportMonth, disabled: busy, hint: 'One sheet per day, up to today' },
+            { label: 'PDF', icon: <FileText aria-hidden className="size-4" />, onSelect: exportPdf, disabled: !lines.length },
+          ]} />
         </div>
       </div>
       <nav aria-label="Days of the month" className="mb-3 flex flex-wrap gap-1 print:hidden">
@@ -182,7 +185,7 @@ export function SalesDaily() {
           return (
             <button key={d} type="button" aria-current={d === day ? 'date' : undefined} onClick={() => setDay(d)} disabled={d > todayRiyadh()}
               title={p ? `${p.locked} of ${p.lines} saved lines checked` : 'Nothing typed or checked yet'}
-              className={cx('flex h-9 w-9 flex-col items-center justify-center rounded border text-xs font-semibold disabled:opacity-40', d === day ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+              className={cx('flex h-9 w-9 flex-col items-center justify-center rounded border text-xs font-semibold disabled:opacity-40', d === day ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
               {Number(d.slice(8))}
               <i aria-hidden className={cx('mt-0.5 block size-1.5 rounded-full', full ? 'bg-success' : p?.locked ? 'bg-warning' : p ? 'bg-border-strong' : 'bg-transparent')} />
             </button>
@@ -219,7 +222,7 @@ export function SalesDaily() {
               <span className="block leading-tight">
                 <span className="font-mono text-sm font-semibold">{l.id}</span>
                 <span className="block truncate text-xs text-text-muted">
-                  {l.job_id ? <Link to={`/operation/jobs/${l.job_id}/design`} className="text-accent-text underline-offset-2 hover:underline">{String(l.app.ticket ?? 'job')}</Link> : String(l.app.event ?? 'no job')}
+                  {l.job_id ? <Link to={`/operation/jobs/${l.job_id}/design`} className="touch-link text-accent-text underline-offset-2 hover:underline">{String(l.app.ticket ?? 'job')}</Link> : String(l.app.event ?? 'no job')}
                 </span>
               </span>
             ) }}
@@ -228,12 +231,12 @@ export function SalesDaily() {
           <SheetLegend />
 
           <div className="mt-4 grid gap-3 lg:grid-cols-[2fr_1fr]">
-            <Card className="p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
+            <Card className="min-w-0 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-display text-sm font-bold">Upcoming operations (next 3 weeks)</h3>
                 {canEdit && <Button size="sm" variant="ghost" onClick={() => editRec({ ...rec, upcoming: [...(rec.upcoming ?? []), { rig_well: '', date: '', remarks: '', entity: 'NESR' }] })}><Plus aria-hidden className="size-3.5" />Add a rig with no job</Button>}
               </div>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto"><table className="w-full min-w-[34rem] text-sm">
                 <thead><tr className="text-left text-xs text-text-muted">{['Date', 'Rig / well', 'Operation', 'Account', ''].map((h) => <th key={h} scope="col" className="label-caps py-1 pr-2 font-semibold">{h}</th>)}</tr></thead>
                 <tbody>
                   {q.data.upcoming.map((u) => (
@@ -259,7 +262,7 @@ export function SalesDaily() {
                   })}
                   {!q.data.upcoming.length && !(rec.upcoming ?? []).length && <tr><td colSpan={5} className="py-2 text-text-subtle">No planned job starts in the next three weeks.</td></tr>}
                 </tbody>
-              </table>
+              </table></div>
               <p className="mt-1 text-xs text-text-subtle">Planned jobs come from the schedule. Add a line for a rig that has no job yet (SAPESCO rigs, razor requests …).</p>
             </Card>
             <Card className="p-3">

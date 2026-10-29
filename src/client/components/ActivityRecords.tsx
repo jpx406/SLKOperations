@@ -38,7 +38,7 @@ function FieldRow({ f, l, fields, canEdit, choices, onSave }: {
           <span className={cx('truncate', empty && 'text-text-subtle')} title={empty ? undefined : String(v)}>{empty ? '—' : display(f, v)}</span>
           {f.source === 'app' && stage && canEdit && !l.locked && (
             <Link to={stage} title={`${empty ? 'Missing: fill it' : 'Change it'} in the job (${f.stage})`}
-              className={cx('shrink-0 hover:text-accent-text', empty ? 'text-warning' : 'text-text-subtle opacity-60 hover:opacity-100')}>
+              className={cx('touch-target inline-flex shrink-0 items-center justify-center hover:text-accent-text', empty ? 'text-warning' : 'text-text-subtle opacity-60 hover:opacity-100')}>
               <Link2 aria-hidden className="size-3.5" /><span className="sr-only">Open the job to change {f.label}</span>
             </Link>
           )}
@@ -149,7 +149,7 @@ export function ActivityRecords({ caption, fields, groups, sections, canEdit, ca
                       <div className="sticky left-0 flex w-max max-w-full flex-wrap items-center gap-2 px-2 py-1.5">
                         <button type="button" aria-expanded={!folded} aria-label={`${folded ? 'Show' : 'Fold'} ${s.title}`}
                           onClick={() => { const n = new Set(foldedSections); if (folded) n.delete(s.key); else n.add(s.key); setFoldedSections(n); }}
-                          className="inline-flex items-center gap-1.5 font-display text-xs font-extrabold tracking-wide uppercase">
+                          className="touch-row inline-flex items-center gap-1.5 font-display text-xs font-extrabold tracking-wide uppercase">
                           {folded ? <ChevronRight aria-hidden className="size-4" /> : <ChevronDown aria-hidden className="size-4" />}
                           <i aria-hidden className="inline-block size-3 rounded-full border border-black/10" style={{ backgroundColor: s.color }} />{s.title}
                         </button>
@@ -172,7 +172,7 @@ export function ActivityRecords({ caption, fields, groups, sections, canEdit, ca
                                 onChange={() => { const n = new Set(selected); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); setSelected(n); }} />}
                               {l.locked && <Lock aria-label="Checked and locked" className="size-4 shrink-0 text-success" />}
                               <button type="button" aria-expanded={isOpen} aria-label={`${isOpen ? 'Fold' : 'Unfold'} ${l.app.ticket ?? 'job'}`} onClick={() => toggle(l.id)}
-                                className="rounded p-0.5 text-text-muted hover:bg-surface-2 hover:text-text">
+                                className="touch-target inline-flex items-center justify-center rounded p-0.5 text-text-muted hover:bg-surface-2 hover:text-text">
                                 {isOpen ? <ChevronDown aria-hidden className="size-4" /> : <ChevronRight aria-hidden className="size-4" />}
                               </button>
                               <div className="min-w-0 flex-1">{lead(l)}</div>

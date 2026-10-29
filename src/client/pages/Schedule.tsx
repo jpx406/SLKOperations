@@ -288,7 +288,7 @@ export function Schedule() {
         </div>
       </div>
       {canBlock && (
-        <div className="mb-4 flex flex-wrap justify-end gap-2">
+        <div className="mb-4 flex flex-wrap gap-2 sm:justify-end">
           <button type="button" className={cx(outline, 'border-maint text-maint hover:bg-maint-subtle')} onClick={() => setBlockDialog({ mode: 'maintenance' })}>
             <Wrench aria-hidden className="size-4" />+ Maintenance Event
           </button>

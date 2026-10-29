@@ -104,7 +104,7 @@ export function AuditTrail() {
           <div role="radiogroup" aria-label="Dates" className="flex flex-wrap gap-1.5">
             {[...RANGES.map(([k, l]) => [k, l]), ['custom', 'Dates…']].map(([k, l]) => (
               <button key={k} type="button" role="radio" aria-checked={range === k} onClick={() => { const n = new URLSearchParams(params); n.set('range', k); if (k !== 'custom') { n.delete('from'); n.delete('to'); } else { n.set('from', from); n.set('to', to); } setParams(n, { replace: true }); }}
-                className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', range === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+                className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', range === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
             ))}
           </div>
           {range === 'custom' && (
@@ -126,7 +126,7 @@ export function AuditTrail() {
             const on = areas.includes(a);
             return (
               <button key={a} type="button" aria-pressed={on} onClick={() => set('area', on ? areas.filter((x) => x !== a) : [...areas, a])}
-                className={cx('inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-pill border px-3 text-sm font-semibold', on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+                className={cx('inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-pill border px-3 text-sm font-semibold', on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
                 {AUDIT_AREAS[a].label}<span className="font-mono text-xs font-medium opacity-80">{first?.facets.areas[a] ?? 0}</span>
               </button>
             );

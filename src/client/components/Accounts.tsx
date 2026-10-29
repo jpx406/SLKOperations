@@ -36,7 +36,7 @@ export function AccountLegend({ counts, noun = 'jobs' }: { counts: Map<string, n
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="label-caps mr-1 text-text-muted">By account</span>
         <button type="button" aria-pressed={!picked.length} onClick={() => setFilter('account', [])}
-          className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold print:hidden', !picked.length ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+          className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold print:hidden', !picked.length ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
           All
         </button>
         {names.filter((a) => a !== NO_ACCOUNT).map((a) => {

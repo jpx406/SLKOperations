@@ -123,7 +123,7 @@ export function Reconciliation() {
   const gaps = (s?.units ?? []).filter((u) => u.jobs > 0 && u.runs === 0).length;
   const filtered = !!(check || severity || unit || sdm || status !== 'open');
   const groups = SEVERITIES.map((k) => ({ k, rows: (findings.data ?? []).filter((f) => f.severity === k) })).filter((g) => g.rows.length);
-  const chip = (on: boolean) => cx('inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-pill border px-3 text-sm font-semibold', on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
+  const chip = (on: boolean) => cx('inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-pill border px-3 text-sm font-semibold', on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
 
   return (
     <section aria-labelledby="recon-title">

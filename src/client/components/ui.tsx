@@ -131,7 +131,7 @@ export function LockHint({ children }: { children: ReactNode }) {
 export function PageTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="font-display text-xl font-extrabold uppercase">{children}</h1>
+      <h1 className="font-display text-[1.375rem] leading-tight font-extrabold uppercase sm:text-xl">{children}</h1>
       {aside && <div className="flex flex-wrap items-center gap-2">{aside}</div>}
     </div>
   );

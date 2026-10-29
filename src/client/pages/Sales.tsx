@@ -58,7 +58,7 @@ function SalesRevenue({ views }: { views: ReactNode }) {
         <p className="-mt-3 mb-3 text-sm text-text-muted">Revenue is entered on each job’s Closure stage (SDM or Sales). Correcting it there updates this page and Bonus % of Revenue.</p>
         <FilterBar optionsPath="/filter-options" withStatus={false} />
         <div role="tablist" aria-label="Sales views" className="mb-4 flex flex-wrap gap-1.5 print:hidden">
-          {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text', k === 'incomplete' && incomplete.length > 0 && tab !== k && 'text-warning')}>{l}</button>)}
+          {tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', tab === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text', k === 'incomplete' && incomplete.length > 0 && tab !== k && 'text-warning')}>{l}</button>)}
         </div>
         {q.isPending && <Skeleton className="h-64" />}
         {q.isError && <Banner tone="danger">{q.error.message}</Banner>}

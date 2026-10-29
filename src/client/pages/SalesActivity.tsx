@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Link2, Lock, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, Link2, Lock, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { NO_ACCOUNT, byAccount } from '../../shared/accounts';
@@ -12,6 +12,7 @@ import { AccountLegend, useAccountColors } from '../components/Accounts';
 import { KpiTile, saveFile } from '../components/charts';
 import { useFilters } from '../components/FilterBar';
 import { ActivityRecords } from '../components/ActivityRecords';
+import { MenuButton } from '../components/MenuButton';
 import type { GridLine, GridSection } from '../components/SheetGrid';
 import { Banner, Button, EmptyState, Skeleton, cx, inputSized } from '../components/ui';
 
@@ -71,7 +72,7 @@ export function SalesActivity() {
           <span className="font-mono text-text-muted">Net {money(sumOf(g.items, 'net'))}</span>
           {canEdit && g.account !== NO_ACCOUNT ? (
             <label className="flex items-center gap-1 text-text-muted">Format
-              <select className="h-6 rounded border border-border bg-surface px-1 text-xs text-text" value={fmt} onChange={(e) => setFormat(g.account, e.target.value as FormatKey)}>
+              <select className="sheet-input h-6 rounded border border-border bg-surface px-1 text-xs text-text" value={fmt} onChange={(e) => setFormat(g.account, e.target.value as FormatKey)}>
                 {FORMAT_KEYS.map((k) => <option key={k} value={k}>{FORMATS[k].label}</option>)}
               </select>
             </label>
@@ -141,15 +142,17 @@ export function SalesActivity() {
           <Search aria-hidden className="pointer-events-none absolute bottom-2.5 left-2.5 size-3.5 text-text-subtle" />
           <input className={inputSized('pl-8')} placeholder="Ticket, well, DMR, SO, unit…" value={find} onChange={(e) => setFind(e.target.value)} />
         </label>
-        <div role="radiogroup" aria-label="Lines to show" className="flex flex-wrap gap-1">
+        <div role="radiogroup" aria-label="Lines to show" className="-mx-4 flex max-w-[100vw] gap-1 overflow-x-auto px-4 sm:mx-0 sm:max-w-none sm:flex-wrap sm:overflow-visible sm:px-0">
           {SHOW.map(([k, l]) => <button key={k} type="button" role="radio" aria-checked={show === k} onClick={() => setShow(k)}
-            className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', show === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>)}
+            className={cx('h-(--layout-control-sm) shrink-0 whitespace-nowrap rounded-pill border px-3 text-sm font-semibold', show === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>)}
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
           {canEdit && <Button size="sm" variant="primary" disabled={!selected.size} loading={busy} onClick={() => onLock([...selected])}><Lock aria-hidden className="size-4" />Check & lock{selected.size ? ` (${selected.size})` : ''}</Button>}
-          <Button size="sm" onClick={exportXlsx} disabled={!lines.length}><FileSpreadsheet aria-hidden className="size-4" />Excel</Button>
-          <Button size="sm" onClick={() => exportPdf('A4')} disabled={!lines.length} title="A4 landscape: every field of each job, grouped (Job, Crew, Dates, Hours, Ticket, Revenue …)"><FileText aria-hidden className="size-4" />PDF A4</Button>
-          <Button size="sm" onClick={() => exportPdf('A3')} disabled={!lines.length} title="A3 landscape: the same layout, larger"><FileText aria-hidden className="size-4" />PDF A3</Button>
+          <MenuButton label="Export" icon={<Download aria-hidden className="size-4" />} disabled={!lines.length} items={[
+            { label: 'Excel', icon: <FileSpreadsheet aria-hidden className="size-4" />, onSelect: exportXlsx, hint: 'A sheet for all accounts and one per account' },
+            { label: 'PDF A4', icon: <FileText aria-hidden className="size-4" />, onSelect: () => exportPdf('A4'), hint: 'Every field of each job, grouped' },
+            { label: 'PDF A3', icon: <FileText aria-hidden className="size-4" />, onSelect: () => exportPdf('A3'), hint: 'The same layout, larger' },
+          ]} />
         </div>
       </div>
       <AccountLegend counts={counts} noun="lines" />
@@ -176,7 +179,7 @@ export function SalesActivity() {
                 open={openJobs} setOpen={setOpenJobs} foldedSections={folded} setFoldedSections={setFolded}
                 lead={(l) => (
                   <span className="block leading-tight">
-                    <Link to={`/operation/jobs/${l.job_id}/design`} className="font-mono text-sm font-semibold text-accent-text underline-offset-2 hover:underline">{String(l.app.ticket ?? 'no ticket')}</Link>
+                    <Link to={`/operation/jobs/${l.job_id}/design`} className="touch-link font-mono text-sm font-semibold text-accent-text underline-offset-2 hover:underline">{String(l.app.ticket ?? 'no ticket')}</Link>
                     <span className="block truncate text-xs text-text-muted">{[l.app.well, l.app.unit].filter(Boolean).join(' · ') || '—'}</span>
                   </span>
                 )} />

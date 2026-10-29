@@ -33,7 +33,7 @@ export function PeriodPicker({ period, onChange }: { period: Period; onChange: (
     <div role="radiogroup" aria-label="Period" className="flex flex-wrap gap-1.5 print:hidden">
       {PERIODS.map((p) => (
         <button key={p.key} type="button" role="radio" aria-checked={period === p.key} onClick={() => onChange(p.key)}
-          className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', period === p.key ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{p.label}</button>
+          className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', period === p.key ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{p.label}</button>
       ))}
     </div>
   );

@@ -1,9 +1,9 @@
 import { Select } from './Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Clock, Database, Fingerprint, KeyRound, LogOut, RefreshCw, Sun } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, Clock, Database, Fingerprint, KeyRound, LogOut, Menu, RefreshCw, Sun, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { visibleNav } from '../../shared/menus';
+import { visibleNav, type Group } from '../../shared/menus';
 import { roleLabel } from '../../shared/roles';
 import type { WgStatus } from '../../shared/types';
 import { api, countryScope, setCountryScope } from '../api';
@@ -73,6 +73,58 @@ function SyncStatus({ canSync }: { canSync: boolean }) {
   );
 }
 
+/**
+ * Navigation on phones and tablets (owner request 2026-10-29, after an Apple HIG review): the group pills don't fit,
+ * so a menu button names where you are ("Operation › Jobs") and opens every group and page as a two-level list,
+ * like a sidebar. Desktop keeps the group row.
+ */
+function NavDrawer({ nav, current, onClose, status }: { nav: Group[]; current: string; onClose: () => void; status: ReactNode }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    panel.current?.querySelector<HTMLElement>('[aria-current="page"], a')?.focus();
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', esc); document.body.style.overflow = overflow; prev?.focus(); };
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-(--z-drawer) lg:hidden print:hidden">
+      <button type="button" aria-label="Close the menu" tabIndex={-1} className="absolute inset-0 bg-bg/70" onClick={onClose} />
+      <div ref={panel} role="dialog" aria-modal="true" aria-label="Menu"
+        className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col border-r border-border bg-surface shadow-pop">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <NesrLogo className="h-7" />
+          <Wordmark className="flex-1 text-base" />
+          <Button size="sm" variant="ghost" aria-label="Close the menu" onClick={onClose}><X aria-hidden className="size-5" /></Button>
+        </div>
+        <div className="border-b border-border px-4 py-2">{status}</div>
+        <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 py-2">
+          {nav.map((g) => (
+            <section key={g.label} className="mb-2">
+              <h2 className="label-caps px-3 pt-2 pb-1 text-text-muted">{g.label}</h2>
+              <ul>
+                {g.pages.map((pg) => (
+                  <li key={pg.path}>
+                    <NavLink to={pg.path} onClick={onClose} end={g.pages.some((o) => o !== pg && o.path.startsWith(`${pg.path}/`))}
+                      className={({ isActive }) => cx('flex min-h-11 items-center gap-2 rounded-md px-3 text-base font-semibold',
+                        isActive ? 'bg-accent text-on-accent' : 'text-text hover:bg-surface-2')}>
+                      <span className="flex-1">{pg.label}</span>
+                      <ChevronRight aria-hidden className="size-4 opacity-50" />
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </nav>
+        <p className="border-t border-border px-4 py-2 font-mono text-xs text-text-subtle">{current}</p>
+      </div>
+    </div>
+  );
+}
+
 export function AppShell() {
   const { data: me } = useMe();
   const config = useQuery({ queryKey: ['config'], queryFn: () => api<{ wireguardUrl: string }>('/config'), staleTime: Infinity });
@@ -82,6 +134,9 @@ export function AppShell() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const group = nav.find((g) => g.pages.some((p) => loc.pathname.startsWith(p.path))) ?? nav[0];
+  const page = group?.pages.filter((p) => loc.pathname.startsWith(p.path)).sort((a, b) => b.path.length - a.path.length)[0];
+  const [drawer, setDrawer] = useState(false);
+  useEffect(() => setDrawer(false), [loc.pathname]);
 
   const signOut = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
@@ -98,23 +153,34 @@ export function AppShell() {
         {/* one row from tablet width up; on phones the tools wrap under the name instead of being cut off */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
           <div className="flex shrink-0 items-center gap-2.5">
-            <a href="/" aria-label="SLK Operations, home"><NesrLogo className="h-9" /></a>
-            <div className="flex flex-col">
-              <a href="/" tabIndex={-1} aria-hidden><Wordmark className="text-lg leading-tight" /></a>
+            <Button size="sm" variant="ghost" className="-ml-2 lg:hidden" aria-label="Menu" aria-expanded={drawer} onClick={() => setDrawer(true)}><Menu aria-hidden className="size-5" /></Button>
+            <a href="/" aria-label="SLK Operations, home"><NesrLogo className="h-7 sm:h-9" /></a>
+            <div className="hidden flex-col min-[480px]:flex">
+              <a href="/" tabIndex={-1} aria-hidden><Wordmark className="text-base leading-tight sm:text-lg" /></a>
               <Contacts className="hidden text-label leading-tight lg:block" />
             </div>
           </div>
           <span className="hidden font-mono text-xs text-text-subtle md:inline" title={VERSION_TEXT}>v{APP_VERSION}</span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {me && <span className="hidden sm:inline-flex"><CountrySwitch countries={me.allCountries ?? me.countries} /></span>}
-            <SyncStatus canSync={!!me?.menus.schedule?.edit} />
+            <span className="hidden sm:inline-flex"><SyncStatus canSync={!!me?.menus.schedule?.edit} /></span>
             <RiyadhClock />
             <HelpButton />
             <AssistantLauncher />
             {me && <AccountMenu name={me.fullName} role={roleLabel(me.role)} admin={me.role === 'admin'} countries={me.allCountries ?? me.countries} passwordUrl={config.data?.wireguardUrl} display={display} onSignOut={signOut} />}
           </div>
         </div>
-        <nav aria-label="Main" className="-mb-px flex gap-1.5 overflow-x-auto pb-3">
+        {/* phones and tablets: where you are, and the menu with every group and page */}
+        <div className="-mt-1 flex items-center gap-2 pb-2.5 lg:hidden">
+          <button type="button" onClick={() => setDrawer(true)} aria-label={`Menu: ${group?.label ?? ''}${page ? `, ${page.label}` : ''}`}
+            className="inline-flex h-(--layout-control-sm) min-w-0 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-sm font-semibold">
+            <span className="truncate">{group?.label}</span>
+            {page && group && group.pages.length > 1 && <><ChevronRight aria-hidden className="size-3.5 shrink-0 text-text-muted" /><span className="truncate text-text-muted">{page.label}</span></>}
+            <ChevronDown aria-hidden className="size-4 shrink-0" />
+          </button>
+          <span className="ml-auto sm:hidden"><SyncStatus canSync={!!me?.menus.schedule?.edit} /></span>
+        </div>
+        <nav aria-label="Main" className="-mb-px hidden gap-1.5 overflow-x-auto pb-3 lg:flex">
           {nav.map((g) => (
             <NavLink key={g.label} to={g.pages[0].path}
               aria-current={g === group ? 'page' : undefined}
@@ -126,11 +192,11 @@ export function AppShell() {
         </nav>
       </header>
       {group && group.pages.length > 1 && (
-        <nav aria-label="Section" className="sticky top-0 z-(--z-sticky) flex gap-2 overflow-x-auto border-b border-border bg-bg px-4 py-2.5 md:px-5 print:hidden">
+        <nav aria-label="Section" className="sticky top-0 z-(--z-sticky) flex gap-2 overflow-x-auto border-b border-border bg-bg px-4 py-2.5 [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:px-5 lg:[mask-image:none] print:hidden">
           {group.pages.map((p) => (
             <NavLink key={p.path} to={p.path} end={group.pages.some((o) => o !== p && o.path.startsWith(`${p.path}/`))}
               className={({ isActive }) => cx('inline-flex h-(--layout-control-sm) shrink-0 items-center rounded-pill border px-3.5 text-sm font-semibold',
-                isActive ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+                isActive ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
               {p.label}
             </NavLink>
           ))}
@@ -142,6 +208,8 @@ export function AppShell() {
           <NesrLogo className="h-10" print />
           <Wordmark className="text-lg" />
         </div>
+        {drawer && <NavDrawer nav={nav} current={`Signed in as ${me?.fullName ?? ''}`} onClose={() => setDrawer(false)}
+          status={<span className="flex items-center justify-between gap-2"><SyncStatus canSync={!!me?.menus.schedule?.edit} />{me && <CountrySwitch countries={me.allCountries ?? me.countries} />}</span>} />}
         {me && <FaceIdOffer username={me.username} />}
         <Outlet />
       </main>

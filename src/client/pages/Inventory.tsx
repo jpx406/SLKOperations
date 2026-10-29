@@ -115,7 +115,7 @@ export function Inventory({ inv }: { inv: Inv }) {
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Category" onKeyDown={rovingKeys}>
               {['', ...cats].map((c) => (
                 <button key={c || 'all'} type="button" role="radio" aria-checked={cat === c} tabIndex={cat === c ? 0 : -1} onClick={() => setCat(c)}
-                  className={cx('h-7 in-data-[density=touch]:h-11 rounded-pill border px-3 text-xs font-semibold', cat === c ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{c || 'All'}</button>
+                  className={cx('h-7 in-data-[density=touch]:h-11 rounded-pill border px-3 text-xs font-semibold', cat === c ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{c || 'All'}</button>
               ))}
             </div>
             <label className="relative ml-auto"><span className="sr-only">Search description, part or SAP number</span>

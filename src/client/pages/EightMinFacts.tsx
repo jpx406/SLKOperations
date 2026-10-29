@@ -56,7 +56,7 @@ export function EightMinFactsList() {
         <div role="radiogroup" aria-label="Status" onKeyDown={rovingKeys} className="flex gap-1.5">
           {[['', 'All'], ['saved', 'Saved'], ['sent', 'Sent']].map(([v, l]) => (
             <button key={v} type="button" role="radio" aria-checked={status === v} tabIndex={status === v ? 0 : -1} onClick={() => set('status', v)}
-              className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', status === v ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+              className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', status === v ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
         </div>
         <label className="relative ml-auto">

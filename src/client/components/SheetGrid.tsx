@@ -39,7 +39,7 @@ export function GroupSwitches({ groups, open, setOpen, available }: { groups: re
         return (
           <button key={g.key} type="button" aria-pressed={on} title={`${on ? 'Fold' : 'Open'} ${g.label}: ${g.hint ?? ''}`}
             onClick={() => { const n = new Set(open); if (on) n.delete(g.key); else n.add(g.key); setOpen(n); }}
-            className={cx('inline-flex h-(--layout-control-sm) items-center gap-1 rounded-pill border px-3 text-sm font-semibold', on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+            className={cx('inline-flex h-(--layout-control-sm) items-center gap-1 rounded-pill border px-3 text-sm font-semibold', on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
             {on ? <ChevronDown aria-hidden className="size-3.5" /> : <ChevronRight aria-hidden className="size-3.5" />}{g.label}
           </button>
         );
@@ -53,7 +53,7 @@ export function GroupSwitches({ groups, open, setOpen, available }: { groups: re
 
 export function Editor({ f, line, value, choices, onSave }: { f: SheetField; line: GridLine; value: Value; choices?: readonly string[]; onSave: (v: string) => void }) {
   const label = `${f.label} for ${line.app.ticket ?? line.app.unit ?? line.id}`;
-  const base = 'h-7 w-full min-w-0 rounded border border-transparent bg-transparent px-1 text-sm hover:border-border focus:border-accent focus:bg-surface focus:outline-none';
+  const base = 'sheet-input h-7 w-full min-w-0 rounded border border-transparent bg-transparent px-1 text-sm hover:border-border focus:border-accent focus:bg-surface focus:outline-none';
   const cur = value === null || value === undefined ? '' : String(value);
   if (f.type === 'choice' || f.type === 'yesno') {
     const opts = [...new Set([...(choices ?? f.choices ?? []), ...(cur ? [cur] : [])])];
@@ -142,7 +142,7 @@ export function SheetGrid({ caption, fields, groups, open, sections, lead, canEd
                   <th scope="rowgroup" colSpan={cols.length + 1} className="border-b border-border p-0 text-left" style={{ backgroundColor: tint(s.color, 30) }}>
                     <div className="sticky left-0 flex w-max max-w-[100vw] flex-wrap items-center gap-2 px-2 py-1.5">
                       <button type="button" aria-expanded={!folded} aria-label={`${folded ? 'Show' : 'Fold'} ${s.title}`} onClick={() => { const n = new Set(foldedSections); if (folded) n.delete(s.key); else n.add(s.key); setFoldedSections(n); }}
-                        className="inline-flex items-center gap-1.5 rounded font-display text-xs font-extrabold tracking-wide uppercase">
+                        className="touch-row inline-flex items-center gap-1.5 rounded font-display text-xs font-extrabold tracking-wide uppercase">
                         {folded ? <ChevronRight aria-hidden className="size-4" /> : <ChevronDown aria-hidden className="size-4" />}
                         <i aria-hidden className="inline-block size-3 rounded-full border border-black/10" style={{ backgroundColor: s.color }} />{s.title}
                       </button>
@@ -191,7 +191,7 @@ export function SheetGrid({ caption, fields, groups, open, sections, lead, canEd
                               <span className={cx('flex items-center gap-1 px-1 whitespace-nowrap', f.source === 'calc' && 'font-semibold text-text-muted', num && 'justify-end')}>
                                 {v === null || v === '' ? <span className="text-text-subtle">—</span> : <span className={cx(f.type === 'longtext' && 'max-w-72 truncate')} title={String(v)}>{display(f, v)}</span>}
                                 {f.source === 'app' && stage && !l.locked && canEdit && (
-                                  <Link to={stage} title={`${v === null || v === '' ? 'Missing: fill it' : 'Change it'} in the job (${f.stage})`} className={cx('hover:text-accent-text hover:opacity-100 focus-visible:opacity-100', v === null || v === '' ? 'text-warning opacity-80' : 'text-text-subtle opacity-0 group-hover:opacity-60')}>
+                                  <Link to={stage} title={`${v === null || v === '' ? 'Missing: fill it' : 'Change it'} in the job (${f.stage})`} className={cx('touch-target inline-flex items-center justify-center hover:text-accent-text hover:opacity-100 focus-visible:opacity-100', v === null || v === '' ? 'text-warning opacity-80' : 'text-text-subtle opacity-0 group-hover:opacity-60')}>
                                     <Link2 aria-hidden className="size-3" /><span className="sr-only">Open the job to change {f.label}</span>
                                   </Link>
                                 )}

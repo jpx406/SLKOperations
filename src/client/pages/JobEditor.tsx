@@ -600,7 +600,7 @@ function ServicesPicker({ job, options, profiles, canEdit, onSaved }: { job: Job
             return (
               <button key={name} type="button" role="checkbox" aria-checked={on} disabled={!canEdit || busy} onClick={() => toggle(name)}
                 className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60',
-                  on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+                  on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
                 {on && selected.length > 1 && <span className="mr-1 font-mono">{selected.indexOf(name) + 1}.</span>}{name}
               </button>
             );

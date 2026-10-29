@@ -255,7 +255,7 @@ export function Attendance() {
         <div role="radiogroup" aria-label="Sheet" onKeyDown={rovingKeys} className="flex flex-wrap gap-1.5">
           {([['', 'All categories'], ...(sheet?.categories ?? []).map((k) => [k.key, k.label])] as [string, string][]).map(([k, l]) => (
             <button key={k || 'all'} type="button" role="radio" aria-checked={sheetPick === k} tabIndex={sheetPick === k ? 0 : -1} onClick={() => setSheetPick(k)}
-              className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', sheetPick === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+              className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', sheetPick === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
         </div>
         <label className="ml-2 inline-flex items-center gap-2 text-sm"><span className="text-text-muted">Status</span>
@@ -263,7 +263,7 @@ export function Attendance() {
         </label>
         {anyFill && (
           <button type="button" role="switch" aria-checked={mine} onClick={toggleMine}
-            className={cx('inline-flex h-(--layout-control-sm) items-center gap-2 rounded-pill border px-3 text-sm font-semibold', mine ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
+            className={cx('inline-flex h-(--layout-control-sm) items-center gap-2 rounded-pill border px-3 text-sm font-semibold', mine ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
             Only rows I fill
           </button>
         )}

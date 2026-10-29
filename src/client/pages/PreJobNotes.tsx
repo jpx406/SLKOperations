@@ -52,7 +52,7 @@ export function PreJobNotesList() {
         <div role="radiogroup" aria-label="Status" className="flex gap-1.5">
           {[['', 'All'], ['sent', 'Sent'], ['not_sent', 'Not sent']].map(([v, l]) => (
             <button key={v} type="button" role="radio" aria-checked={(params.get('status') ?? '') === v} onClick={() => set('status', v)}
-              className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', (params.get('status') ?? '') === v ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+              className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', (params.get('status') ?? '') === v ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
         </div>
         <label className="flex items-center gap-1.5 text-xs text-text-muted">From<input type="date" className={inputSized('h-(--layout-control-sm) w-38')} value={params.get('from') ?? ''} onChange={(e) => set('from', e.target.value)} /></label>

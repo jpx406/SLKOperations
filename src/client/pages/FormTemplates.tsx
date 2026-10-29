@@ -85,7 +85,7 @@ export function FormTemplates() {
         <div role="radiogroup" aria-label="Job stage" className="flex flex-wrap gap-1.5">
           {([['', 'All stages'], ...STAGES.map((s) => [s, STAGE_LABEL[s]])] as [Stage | '', string][]).map(([k, l]) => (
             <button key={k || 'all'} type="button" role="radio" aria-checked={stage === k} onClick={() => setStage(k)}
-              className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', stage === k ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+              className={cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', stage === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
           ))}
         </div>
         <label className="ml-2 inline-flex items-center gap-2 text-sm"><span className="text-text-muted">Kind</span>

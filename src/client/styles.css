@@ -57,3 +57,10 @@
   body.print-one .print-target, body.print-one .print-target * { visibility: visible; }
   body.print-one .print-target { position: absolute; inset: 0 auto auto 0; width: 100%; }
 }
+
+/* touch screens: the sheet's inline fields and every tick box get a finger-sized target (Apple HIG: 44 pt default, 28 pt minimum) */
+[data-density="touch"] .sheet-input { height: 2.5rem; }
+[data-density="touch"] input[type="checkbox"] { width: 1.75rem; height: 1.75rem; }
+[data-density="touch"] .touch-target { min-width: 2.75rem; min-height: 2.75rem; }
+[data-density="touch"] .touch-row { min-height: 2.75rem; }
+[data-density="touch"] .touch-link { display: inline-flex; align-items: center; min-height: 1.75rem; }

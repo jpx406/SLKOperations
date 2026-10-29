@@ -1348,3 +1348,18 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Verified:**
   - tests 282;
   - in the browser with a virtual authenticator: offer shown, set up from it ("Windows PC · Chrome"), offer gone, signed out, signed back in with Face ID.
+
+## 6z.7 — GUI review against Apple's HIG (desktop, tablet, phone)
+
+- Reviewed the schedule, job board, job editor, Activity sheet and Daily report at 1440, 820 and 390 px against the HIG foundations (accessibility, layout, typography, color) and the navigation, toolbar and button guidance. Text contrast passes everywhere (muted text 7.1:1 dark, 10.4:1 light; field borders 3.3:1); no text under 11 px.
+- **Navigation on phones and tablets** (below 1024 px): the 9-group pill row was cut off ("SLI…", "Wi…") with nothing saying more was there. It is replaced by a location button ("Operation › Schedule") that opens a menu drawer listing every group and its pages as a two-level list, like a sidebar (sync status and country switch at its top; Escape, the backdrop or picking a page closes it). The page row keeps scrolling with an edge fade. Desktop keeps the group row.
+- **Phone header** from four rows (~235 px) to two (~110 px): the wordmark hides under 480 px, the sync status moves beside the location button.
+- **Export menu**: the Activity sheet (Excel, PDF A4, PDF A3) and the Daily report (Excel day, Excel month, PDF) put their exports in one pull-down instead of a row of buttons that wrapped onto two or three lines.
+- **Page titles** 22 px on phones (28 px from 640 px up), so "SLK Activity Dashboard" fits one line.
+- **Daily report** no longer scrolls sideways on a phone (the upcoming-operations table scrolls inside its card).
+- **Selected pills** have an edge in the text colour, so the selection isn't shown by the lime fill alone (lime on white is 1.63:1).
+- **Touch targets** on touch screens: sheet fields 40 px, tick boxes 28 px, unfold arrows, fold headers and job-link icons 44 px, ticket links 28 px tall.
+- The Schedule's event buttons sit with the other controls on a phone instead of against the right edge.
+- **Verified:**
+  - tests 282;
+  - captures at three widths: no sideways scroll at any width; on phones no target under 32 px except two on the Schedule; the menu drawer opens, closes and navigates; the Export menu works.

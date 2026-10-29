@@ -29,7 +29,7 @@ export function KnowledgeHub() {
   const canEdit = !!q.data?.canEdit;
   const refresh = () => qc.invalidateQueries({ queryKey: ['knowledge'] });
   const pick = async (d: KnowledgeDoc) => { await api(`/knowledge/${d.id}/lesson-of-week`, { method: 'POST' }); refresh(); };
-  const chip = (on: boolean) => cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', on ? 'border-transparent bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
+  const chip = (on: boolean) => cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
 
   return (
     <section aria-labelledby="kh-title">
