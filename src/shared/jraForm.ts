@@ -168,7 +168,7 @@ export function parseJraForm(sheet: Sheet): ParsedForm | { error: string } {
     const section = [...questionRows.entries()].filter(([r]) => r > from - 6 && r <= to + 1 && r < rowOf(ref)).map(([r, id]) => ({ r, id }));
     const inSameSection = section.filter((x) => x.id[0] === (questionRows.get(to) ?? questionRows.get(from))?.[0]);
     const missed = inSameSection.filter((x) => x.r < from || x.r > to).map((x) => x.id);
-    if (missed.length) warnings.push(`The form’s total in ${ref} (${m[0].trim()}) leaves out ${missed.join(', ')}. SLK Operations counts every question, so its score can be higher than the form’s.`);
+    if (missed.length) warnings.push(`The form’s total in ${ref} (${m[0].trim()}) leaves out ${missed.join(', ')}. SLK Operations Hub counts every question, so its score can be higher than the form’s.`);
   }
 
   // approval levels and points per exemption

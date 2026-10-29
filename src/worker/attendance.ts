@@ -276,7 +276,7 @@ attendance.post('/notify', async (c) => {
     category: cat.label, month, by: user.fullName, url: `${c.env.APP_URL}/attendance?month=${month}`,
     people: people.map((p) => ({ name: p.full_name, eid: p.eid, approved: done.has(p.id), ...rowSummary(days.map((d) => codes.get(`${p.id}|${d}`))) })),
   });
-  for (const addr of to) await c.env.EMAIL.send({ to: addr, from: { email: c.env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations' }, subject: mail.subject, html: mail.html, text: mail.text });
+  for (const addr of to) await c.env.EMAIL.send({ to: addr, from: { email: c.env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations Hub' }, subject: mail.subject, html: mail.html, text: mail.text });
   await audit(c.env, user, 'notify', 'attendance_categories', `${b.country}|${cat.key}`, `${month} ${cat.label} (${step.endsWith('review') ? 'review' : 'approval'}): sent to ${to.join(', ')}`).run();
   return c.json({ ok: true, to: to.join(', ') });
 });

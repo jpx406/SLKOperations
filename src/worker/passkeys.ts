@@ -28,7 +28,7 @@ const QR_S = 180;
 /** The site the passkey belongs to: the address the browser is on. */
 function rp(c: Context<AppBindings>) {
   const u = new URL(c.req.url);
-  return { rpID: u.hostname, origin: u.origin, rpName: 'SLK Operations' };
+  return { rpID: u.hostname, origin: u.origin, rpName: 'SLK Operations Hub' };
 }
 
 export function deviceName(ua: string | undefined) {

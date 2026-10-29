@@ -31,7 +31,7 @@ export async function sendDigests(env: Env, now = new Date()) {
     if (!r.email) { noEmail++; continue; }
     if (!env.EMAIL) { skipped++; continue; }
     try {
-      await env.EMAIL.send({ to: r.email, from: { email: env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations' }, subject: d.subject, html: d.html, text: d.text });
+      await env.EMAIL.send({ to: r.email, from: { email: env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations Hub' }, subject: d.subject, html: d.html, text: d.text });
       sent++;
     } catch (e) {
       console.error('digest not sent', r.username, (e as Error).message);

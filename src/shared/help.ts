@@ -1,4 +1,4 @@
-// The in-app guide (S22). Written for SLK Operations; the help assistant (S23) answers from this text only.
+// The in-app guide (S22). Written for SLK Operations Hub; the help assistant (S23) answers from this text only.
 // Each section names the tab it belongs to, so the dialog shows only what the reader can open.
 
 export interface HelpSection { id: string; title: string; menus: string[] | 'any'; adminOnly?: boolean; body: string }
@@ -6,9 +6,9 @@ export interface HelpSection { id: string; title: string; menus: string[] | 'any
 export const HELP_SECTIONS: HelpSection[] = [
   {
     id: 'start', title: 'Signing in and moving around', menus: 'any',
-    body: `Sign in with your WIREGUARD username and password; SLK Operations has no passwords of its own, so change yours in WIREGUARD (the "Change password" link in the header). You are signed out after a period without activity.
+    body: `Sign in with your WIREGUARD username and password; SLK Operations Hub has no passwords of its own, so change yours in WIREGUARD (the "Change password" link in the header). You are signed out after a period without activity.
 
-Face ID, Touch ID, a fingerprint or Windows Hello can replace the password. Set it up once on each phone or computer: sign in with your password, open the account menu (your name, top right) and choose "Set up Face ID / fingerprint & QR sign-in", then "Set up on this device". SLK Operations also offers it after a password sign-in. From then on use "Sign in with Face ID / fingerprint" on the sign-in page. On a laptop without either, choose "Sign in with your phone (QR code)", scan the code with a phone that has Face ID set up and approve there; the laptop signs in by itself. An administrator can switch Face ID off for a person in Users & Roles.
+Face ID, Touch ID, a fingerprint or Windows Hello can replace the password. Set it up once on each phone or computer: sign in with your password, open the account menu (your name, top right) and choose "Set up Face ID / fingerprint & QR sign-in", then "Set up on this device". SLK Operations Hub also offers it after a password sign-in. From then on use "Sign in with Face ID / fingerprint" on the sign-in page. On a laptop without either, choose "Sign in with your phone (QR code)", scan the code with a phone that has Face ID set up and approve there; the laptop signs in by itself. An administrator can switch Face ID off for a person in Users & Roles.
 
 The header shows the WIREGUARD sync time (green when recent, amber after 30 minutes, red after an error), the Riyadh clock, Help, Ask (the help assistant) and your name and role. If you cover more than one country, the country switch narrows every page to one of them (on a phone it is in the account menu).
 
@@ -48,7 +48,7 @@ The Failure Roster lists failures by month with category, severity and action st
   },
   {
     id: 'recon', title: 'Reconciliation with WIREGUARD', menus: ['reconciliation'],
-    body: `Each night (and on demand) SLK Operations compares your jobs with WIREGUARD's runs: runs with no job, jobs with no runs, different dates, units, drums, wires, wells or services. Each finding has a severity. Fix the job here or the run in WIREGUARD, or explain the difference; explained findings stop showing. The morning digest emails each person the findings on their jobs. Find it under Wires → Reconciliation.`,
+    body: `Each night (and on demand) SLK Operations Hub compares your jobs with WIREGUARD's runs: runs with no job, jobs with no runs, different dates, units, drums, wires, wells or services. Each finding has a severity. Fix the job here or the run in WIREGUARD, or explain the difference; explained findings stop showing. The morning digest emails each person the findings on their jobs. Find it under Wires → Reconciliation.`,
   },
   {
     id: 'database', title: 'Equipment database', menus: ['database'],
@@ -70,7 +70,7 @@ People come from Users & Roles: each role is assigned to a sheet under Users & R
   },
   {
     id: 'wires', title: 'Wires', menus: ['wires'],
-    body: `The wire register and each wire's history come from WIREGUARD (drums, runs, cuts, jarring). SLK Operations only reads them; changes are made in WIREGUARD.`,
+    body: `The wire register and each wire's history come from WIREGUARD (drums, runs, cuts, jarring). SLK Operations Hub only reads them; changes are made in WIREGUARD.`,
   },
   {
     id: 'knowledge', title: 'Knowledge Hub', menus: ['knowledge_hub'],
@@ -82,11 +82,11 @@ People come from Users & Roles: each role is assigned to a sheet under Users & R
   },
   {
     id: 'ai', title: 'AI Agent and the help assistant', menus: ['ai_agent', 'ai_assistant'],
-    body: `The help assistant (Ask, in the header) answers questions about how to use SLK Operations from this guide; it can't see any job data. The AI Agent (Administration → AI Agent) answers questions about your data, reading only the pages you can open with your access; revenue needs the Sales or Bonus page unlocked first. Neither can change anything. An admin sets them on or off, the model, the monthly budget and the messages per person per day.`,
+    body: `The help assistant (Ask, in the header) answers questions about how to use SLK Operations Hub from this guide; it can't see any job data. The AI Agent (Administration → AI Agent) answers questions about your data, reading only the pages you can open with your access; revenue needs the Sales or Bonus page unlocked first. Neither can change anything. An admin sets them on or off, the model, the monthly budget and the messages per person per day.`,
   },
   {
     id: 'admin', title: 'Administration', menus: ['users'], adminOnly: true,
-    body: `Users & Roles: accounts live in WIREGUARD; here you set each person's SLK Operations role and countries, switch access off, and add or remove tabs per person. The role × tab matrix sets the defaults. Admins keep every right.
+    body: `Users & Roles: accounts live in WIREGUARD; here you set each person's SLK Operations Hub role and countries, switch access off, and add or remove tabs per person. The role × tab matrix sets the defaults. Admins keep every right.
 
 Data export & import (the Data link in the header): Export downloads the whole board as a package plus a spreadsheet per table, and counts as the backup an import needs. Import takes a package, shows a dry run (new, changed, unchanged, refused) and applies only after you type IMPORT within 15 minutes of a backup. It never deletes, and history tables only take new rows.
 
@@ -99,7 +99,7 @@ export function helpFor(menus: Record<string, { view: boolean }>, isAdmin: boole
 }
 
 export function assistantPrompt(sections: HelpSection[]) {
-  return `You are the help assistant inside SLK Operations, NESR's slickline operations hub. Answer questions about how to use the app, using only the guide below. You have no access to jobs, people or any other data; if asked about data, say the AI Agent (Administration → AI Agent) or the relevant page can answer it. If the guide doesn't cover something, say so and suggest asking an admin. Keep answers short and practical: the steps, then where to click.
+  return `You are the help assistant inside SLK Operations Hub, NESR's slickline operations app. Answer questions about how to use the app, using only the guide below. You have no access to jobs, people or any other data; if asked about data, say the AI Agent (Administration → AI Agent) or the relevant page can answer it. If the guide doesn't cover something, say so and suggest asking an admin. Keep answers short and practical: the steps, then where to click.
 
 <guide>
 ${sections.map((s) => `## ${s.title}\n${s.body}`).join('\n\n')}

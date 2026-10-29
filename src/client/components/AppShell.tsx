@@ -1,6 +1,6 @@
 import { Select } from './Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown, ChevronRight, ClipboardList, Clock, Database, Fingerprint, Gauge, KeyRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, Sun, X, type LucideIcon } from 'lucide-react';
+import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown, ChevronRight, ClipboardList, Clock, Database, Fingerprint, Gauge, Info, KeyRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, Sun, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav, type Group } from '../../shared/menus';
@@ -11,11 +11,11 @@ import { useMe } from '../auth';
 import { useDisplay, type DensityChoice } from '../display';
 import { AssistantLauncher, HelpButton } from './Help';
 import { Button, cx, rovingKeys } from './ui';
-import { Contacts, NesrLogo, Wordmark } from './Brand';
+import { AboutDialog, BrandHeader, NesrLogo, PRODUCT, Wordmark } from './Brand';
 import { NewVersionBar, useNewVersion } from './NewVersionBar';
 import { FaceIdDialog, FaceIdOffer } from './Passkeys';
 import { useRoles } from '../rules';
-import { APP_VERSION, VERSION_TEXT } from '../version';
+import { APP_VERSION } from '../version';
 
 /** Narrows every screen to one country for people who cover several. The server checks it against their countries. */
 function CountrySwitch({ countries }: { countries: string[] }) {
@@ -137,7 +137,7 @@ const writeStore = (k: string, v: string | null) => { try { if (v === null) loca
  * disclosures and their pages under them (sidebars.md: at most two levels, let people hide it). It shows from
  * 1280px up; narrower windows, or a hidden sidebar, fall back to the menu button and the section pills.
  */
-function Sidebar({ nav, current, onHide }: { nav: Group[]; current?: Group; onHide: () => void }) {
+function Sidebar({ nav, current, onHide, onAbout }: { nav: Group[]; current?: Group; onHide: () => void; onAbout: () => void }) {
   const [open, setOpen] = useState<string[]>(() => { try { return JSON.parse(readStore('slk-sidebar-open') ?? '[]'); } catch { return []; } });
   const toggle = (label: string, isOpen: boolean) => {
     const next = isOpen ? open.filter((l) => l !== label) : [...open, label];
@@ -148,12 +148,11 @@ function Sidebar({ nav, current, onHide }: { nav: Group[]; current?: Group; onHi
   const rowState = (active: boolean) => (active ? 'bg-surface-3 font-semibold text-text shadow-[inset_3px_0_var(--color-accent-edge)]' : 'text-text-muted hover:bg-surface-2 hover:text-text');
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-border bg-surface xl:flex print:hidden">
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <a href="/" aria-label="SLK Operations, home"><NesrLogo className="h-8" /></a>
-        <span aria-hidden className="flex-1"><Wordmark className="text-sm leading-tight whitespace-nowrap" /></span>
-        <Button size="sm" variant="ghost" className="-mr-2" aria-label="Hide sidebar" title="Hide sidebar" onClick={onHide}><PanelLeftClose aria-hidden className="size-4" /></Button>
+      {/* the brand sits in the header beside it; this strip matches the header's height so the two rules line up */}
+      <div className="flex h-[calc(4rem+1px)] shrink-0 items-center justify-end border-b border-border px-3">
+        <Button size="sm" variant="ghost" aria-label="Hide sidebar" title="Hide sidebar" onClick={onHide}><PanelLeftClose aria-hidden className="size-4" /></Button>
       </div>
-      <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 pb-3">
+      <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 py-3">
         <ul className="space-y-0.5">
           {nav.map((g) => {
             const Icon = GROUP_ICONS[g.label] ?? ClipboardList;
@@ -198,9 +197,10 @@ function Sidebar({ nav, current, onHide }: { nav: Group[]; current?: Group; onHi
           })}
         </ul>
       </nav>
-      <div className="border-t border-border px-4 py-3">
-        <Contacts className="text-label leading-snug text-text-subtle" />
-        <p className="mt-1 font-mono text-label text-text-subtle" title={VERSION_TEXT}>v{APP_VERSION}</p>
+      <div className="border-t border-border px-2 py-2">
+        <button type="button" onClick={onAbout} aria-label={`About ${PRODUCT}, version ${APP_VERSION}`} className={cx(row, 'text-text-muted hover:bg-surface-2 hover:text-text')}>
+          <Info aria-hidden className="size-4 shrink-0" /><span className="flex-1 truncate">About</span><span className="font-mono text-label text-text-subtle">v{APP_VERSION}</span>
+        </button>
       </div>
     </aside>
   );
@@ -222,6 +222,7 @@ export function AppShell() {
   const [sidebar, setSidebar] = useState(() => readStore('slk-sidebar') !== 'hidden');
   const showSidebar = (on: boolean) => { setSidebar(on); writeStore('slk-sidebar', on ? null : 'hidden'); };
   const wide = (cls: string) => (sidebar ? cls : '');
+  const [about, setAbout] = useState(false);
 
   const signOut = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
@@ -233,29 +234,24 @@ export function AppShell() {
   useRoles(); // names of added or renamed roles, for roleLabel() everywhere
   return (
     <div className="flex min-h-full">
-      {sidebar && <Sidebar nav={nav} current={group} onHide={() => showSidebar(false)} />}
+      {sidebar && <Sidebar nav={nav} current={group} onHide={() => showSidebar(false)} onAbout={() => setAbout(true)} />}
     <div className="flex min-w-0 flex-1 flex-col">
       <NewVersionBar show={newVersion} />
       <header className="border-b border-border bg-bg px-4 md:px-5 print:hidden">
         {/* one row from tablet width up; on phones the tools wrap under the name instead of being cut off */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
-          <div className={cx('flex shrink-0 items-center gap-2.5', wide('xl:hidden'))}>
+        <div className="flex min-h-16 flex-wrap items-center gap-x-3 gap-y-2 py-2.5 xl:h-16 xl:flex-nowrap xl:py-0">
+          <div className="flex min-w-0 items-center gap-2.5">
             <Button size="sm" variant="ghost" className="-ml-2 xl:hidden" aria-label="Menu" aria-expanded={drawer} onClick={() => setDrawer(true)}><Menu aria-hidden className="size-5" /></Button>
             {!sidebar && <Button size="sm" variant="ghost" className="-ml-2 hidden xl:inline-flex" aria-label="Show sidebar" title="Show sidebar" onClick={() => showSidebar(true)}><PanelLeftOpen aria-hidden className="size-5" /></Button>}
-            <a href="/" aria-label="SLK Operations, home"><NesrLogo className="h-7 sm:h-9" /></a>
-            <div className="hidden flex-col min-[30rem]:flex">
-              <span aria-hidden><Wordmark className="text-base leading-tight sm:text-lg" /></span>
-              <Contacts className="hidden text-label leading-tight lg:block" />
-            </div>
+            <BrandHeader />
           </div>
-          <span className={cx('hidden font-mono text-xs text-text-subtle md:inline', wide('xl:hidden'))} title={VERSION_TEXT}>v{APP_VERSION}</span>
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2 xl:flex-nowrap">
             {me && <span className="hidden sm:inline-flex"><CountrySwitch countries={me.allCountries ?? me.countries} /></span>}
             <span className="hidden sm:inline-flex"><SyncStatus canSync={!!me?.menus.schedule?.edit} /></span>
             <RiyadhClock />
             <HelpButton />
             <AssistantLauncher />
-            {me && <AccountMenu name={me.fullName} role={roleLabel(me.role)} admin={me.role === 'admin'} countries={me.allCountries ?? me.countries} passwordUrl={config.data?.wireguardUrl} display={display} onSignOut={signOut} />}
+            {me && <AccountMenu name={me.fullName} role={roleLabel(me.role)} admin={me.role === 'admin'} countries={me.allCountries ?? me.countries} passwordUrl={config.data?.wireguardUrl} display={display} onAbout={() => setAbout(true)} onSignOut={signOut} />}
           </div>
         </div>
         {/* phones and tablets: where you are, and the menu with every group and page */}
@@ -288,6 +284,7 @@ export function AppShell() {
         </div>
         {drawer && <NavDrawer nav={nav} current={`Signed in as ${me?.fullName ?? ''}`} onClose={() => setDrawer(false)}
           status={<span className="flex items-center justify-between gap-2"><SyncStatus canSync={!!me?.menus.schedule?.edit} />{me && <CountrySwitch countries={me.allCountries ?? me.countries} />}</span>} />}
+        {about && <AboutDialog onClose={() => setAbout(false)} />}
         {me && <FaceIdOffer username={me.username} />}
         <Outlet />
       </main>
@@ -297,8 +294,8 @@ export function AppShell() {
 }
 
 /** Account and display settings: who is signed in, password, Sunlight mode, touch controls, Data (admins), sign out. */
-function AccountMenu({ name, role, admin, countries, passwordUrl, display, onSignOut }: {
-  name: string; role: string; admin: boolean; countries: string[]; passwordUrl?: string; display: ReturnType<typeof useDisplay>; onSignOut: () => void;
+function AccountMenu({ name, role, admin, countries, passwordUrl, display, onAbout, onSignOut }: {
+  name: string; role: string; admin: boolean; countries: string[]; passwordUrl?: string; display: ReturnType<typeof useDisplay>; onAbout: () => void; onSignOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -316,7 +313,7 @@ function AccountMenu({ name, role, admin, countries, passwordUrl, display, onSig
   return (
     <div ref={box} className="relative">
       <Button size="sm" variant="ghost" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)} aria-label={`Account and display: ${name}`}>
-        <span className="hidden max-w-40 truncate xl:inline">{name}</span>
+        <span className="hidden max-w-40 truncate 2xl:inline">{name}</span>
         <span className="label-caps rounded-sm bg-success-subtle px-1.5 py-0.5 text-success">{role}</span>
         <ChevronDown aria-hidden className="size-4" />
       </Button>
@@ -345,6 +342,7 @@ function AccountMenu({ name, role, admin, countries, passwordUrl, display, onSig
             <button type="button" className={item} onClick={() => { setOpen(false); setFaceId(true); }}><Fingerprint aria-hidden className="size-4" />Set up Face ID / fingerprint &amp; QR sign-in</button>
             {passwordUrl && <a className={item} href={passwordUrl} target="_blank" rel="noreferrer"><KeyRound aria-hidden className="size-4" />Change password in WIREGUARD</a>}
             {admin && <NavLink to="/admin/data" className={item} onClick={() => setOpen(false)}><Database aria-hidden className="size-4" />Data export &amp; import</NavLink>}
+            <button type="button" className={item} onClick={() => { setOpen(false); onAbout(); }}><Info aria-hidden className="size-4" />About {PRODUCT}</button>
             <button type="button" className={item} onClick={onSignOut}><LogOut aria-hidden className="size-4" />Sign out</button>
           </div>
         </div>

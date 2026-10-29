@@ -45,7 +45,7 @@ export function AdminUsers() {
     <section aria-labelledby="admin-title">
       <PageTitle><span id="admin-title">Users &amp; roles</span></PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">
-        Accounts and passwords live in WIREGUARD. Here you decide what each person can do in SLK Operations and which countries they see.
+        Accounts and passwords live in WIREGUARD. Here you decide what each person can do in SLK Operations Hub and which countries they see.
         Someone signing in for the first time gets a role based on their WIREGUARD role and the countries WIREGUARD shows them. You can change both.
       </p>
       <div role="tablist" aria-label="Users and roles" className="mb-4 flex flex-wrap gap-2">
@@ -135,7 +135,7 @@ function People() {
       {shown.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[60rem] text-sm">
-            <caption className="sr-only">People with access to SLK Operations</caption>
+            <caption className="sr-only">People with access to SLK Operations Hub</caption>
             <thead className="bg-surface-2">
               <tr className="label-caps text-left text-text-muted">
                 {['Person', 'SLK Ops role', 'Countries', 'Attendance', 'Tabs', 'Face ID', 'Last sign-in', 'Access', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
@@ -776,7 +776,7 @@ function RolesPanel() {
   return (
     <div className="max-w-5xl">
       <p className="mb-3 text-sm text-text-muted">
-        The roles people can hold in SLK Operations. Roles marked WIREGUARD are what people get from their WIREGUARD role when they first sign in, so they can be renamed but not deleted.
+        The roles people can hold in SLK Operations Hub. Roles marked WIREGUARD are what people get from their WIREGUARD role when they first sign in, so they can be renamed but not deleted.
         A role still held by someone can't be deleted either: give those people another role first.
       </p>
       {msg && <div className="mb-3"><Banner tone={msg.tone} action={<Button size="sm" variant="ghost" aria-label="Dismiss" onClick={() => setMsg(null)}><X aria-hidden className="size-4" /></Button>}>{msg.text}</Banner></div>}
@@ -796,7 +796,7 @@ function RolesPanel() {
       {roles.isPending ? <Skeleton className="h-64" /> : roles.isError ? <Banner tone="danger">{roles.error.message}</Banner> : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
-            <caption className="sr-only">SLK Operations roles</caption>
+            <caption className="sr-only">SLK Operations Hub roles</caption>
             <thead className="bg-surface-2"><tr className="label-caps text-left text-text-muted">
               {['Role', 'Source', 'People', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
             </tr></thead>
@@ -887,7 +887,7 @@ function ApprovalsPanel() {
     <div className="max-w-5xl">
       <p className="mb-3 text-sm text-text-muted">
         Pick the roles for each approval and checklist item. Changes apply at once, on the server as well as on screen. Admin is always allowed.
-        “Default” is what SLK Operations did before; Reset puts it back.
+        “Default” is what SLK Operations Hub did before; Reset puts it back.
       </p>
       <label className="relative mb-4 block w-80 max-w-full"><span className="sr-only">Search approvals</span>
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-text-subtle" />

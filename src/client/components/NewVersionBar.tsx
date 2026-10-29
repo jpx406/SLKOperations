@@ -49,7 +49,7 @@ export function NewVersionBar({ show }: { show: boolean }) {
     <div role="status" aria-live="polite" className="bg-notice-bg px-4 py-2.5 text-sm text-notice-fg md:px-5 print:hidden">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <p className="min-w-0 flex-1">
-          <span className="font-bold">A new version of SLK Operations is available.</span>{' '}
+          <span className="font-bold">A new version of SLK Operations Hub is available.</span>{' '}
           Finish what you are typing and save it, then click <span className="font-bold">Refresh now</span>.
         </p>
         <button type="button" onClick={refresh}

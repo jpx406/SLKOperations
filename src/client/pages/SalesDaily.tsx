@@ -149,7 +149,7 @@ export function SalesDaily() {
         { title: 'Upcoming operations', lines: [...q.data.upcoming.map((u) => `${formatDate(u.start_date)}  ${[u.rig, u.well].filter(Boolean).join(' / ')}  ${u.services ?? ''}  (${u.location ?? '—'}${u.unit_number ? `, ${u.unit_number}` : ''})`),
           ...(rec.upcoming ?? []).map((u) => `${u.date ? formatDate(u.date) : '—'}  ${u.rig_well}  ${u.remarks ?? ''}  (${u.entity ?? ''})`)].slice(0, 40) },
       ],
-      footer: `SLK Operations · Daily report ${day} · printed ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' })} Riyadh by ${me?.fullName ?? ''}`,
+      footer: `SLK Operations Hub · Daily report ${day} · printed ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' })} Riyadh by ${me?.fullName ?? ''}`,
     });
     saveFile(`daily-report-${day}.pdf`, bytes as BlobPart, 'application/pdf');
   };

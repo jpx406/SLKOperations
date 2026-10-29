@@ -9,7 +9,7 @@ import { saveFile } from '../components/charts';
 import { Select } from '../components/Select';
 import { Banner, Button, EmptyState, PageTitle, Skeleton, cx, inputSized } from '../components/ui';
 
-// Administration → Audit trail (owner request 2026-10-28): every change made in SLK Operations and every sign-in
+// Administration → Audit trail (owner request 2026-10-28): every change made in SLK Operations Hub and every sign-in
 // event (signed in, failed, signed out, timed out, refused), newest first, filtered by dates, person, area, action
 // and text, and exported. Filters live in the address, so a view can be bookmarked or shared.
 
@@ -80,7 +80,7 @@ export function AuditTrail() {
           <Button disabled={!rows.length || exporting} onClick={() => exportAll('csv')}><Download aria-hidden className="size-4" />CSV</Button>
         </>
       }><span id="audit-title">Audit trail</span></PageTitle>
-      <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">Every change made in SLK Operations and every sign-in, newest first. Times are Riyadh time. Exports hold up to 5,000 entries of the current filters.</p>
+      <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">Every change made in SLK Operations Hub and every sign-in, newest first. Times are Riyadh time. Exports hold up to 5,000 entries of the current filters.</p>
 
       {first && (
         <dl className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">

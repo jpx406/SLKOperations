@@ -15,9 +15,9 @@ export const passkeysSupported = () => typeof window !== 'undefined' && browserS
 export function passkeyError(e: unknown): string {
   if (e instanceof ApiError) return e.message;
   const name = (e as { name?: string })?.name;
-  if (name === 'NotAllowedError' || name === 'AbortError') return 'Face ID was cancelled, or this device has no Face ID sign-in for SLK Operations yet. Sign in with your password, then set it up from your account menu.';
+  if (name === 'NotAllowedError' || name === 'AbortError') return 'Face ID was cancelled, or this device has no Face ID sign-in for SLK Operations Hub yet. Sign in with your password, then set it up from your account menu.';
   if (name === 'InvalidStateError') return 'This device is already set up for Face ID sign-in.';
-  if (name === 'SecurityError') return 'Face ID only works on the SLK Operations address (https).';
+  if (name === 'SecurityError') return 'Face ID only works on the SLK Operations Hub address (https).';
   return (e as Error)?.message ?? 'Face ID did not work';
 }
 
@@ -71,7 +71,7 @@ export function QrSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const svg = qr ? renderSVG(qr.url, { border: 2, ecc: 'M', whiteColor: '#ffffff', blackColor: '#0b121a' }) : '';
   return (
     <div className="flex flex-col items-center gap-3 text-center">
-      <p className="text-sm text-text-muted">Scan with the phone where you use Face ID for SLK Operations, then confirm on the phone.</p>
+      <p className="text-sm text-text-muted">Scan with the phone where you use Face ID for SLK Operations Hub, then confirm on the phone.</p>
       {state === 'loading' && <div className="size-52 animate-pulse rounded-md bg-surface-2" />}
       {qr && state === 'waiting' && (
         <>
@@ -162,7 +162,7 @@ export function FaceIdDialog({ onClose }: { onClose: () => void }) {
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
           <p className="mb-1 flex items-center gap-2 font-semibold"><QrCode aria-hidden className="size-4" />Signing in on a laptop with your phone</p>
           <ol className="list-decimal space-y-0.5 pl-5 text-text-muted">
-            <li>Set up Face ID on your phone first (open SLK Operations on the phone, sign in, then use this menu).</li>
+            <li>Set up Face ID on your phone first (open SLK Operations Hub on the phone, sign in, then use this menu).</li>
             <li>On the laptop’s sign-in page, choose “Sign in with your phone (QR code)”.</li>
             <li>Scan the code with the phone’s camera and approve with Face ID. The laptop signs in by itself.</li>
           </ol>

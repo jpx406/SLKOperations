@@ -112,7 +112,7 @@ export function SalesActivity() {
   // Both sizes print the full detail: every field of each job in labelled group blocks (A4 four columns, A3 five).
   const exportPdf = (paper: 'A4' | 'A3') => {
     const subtitle = `${lines.length} lines · ${lines.filter((l) => l.locked).length} checked · net revenue ${money(sumOf(lines, 'net'))} · ${me?.countries.join(', ') ?? ''}`;
-    const footer = `SLK Operations · Activity sheet ${monthLabel(month)} · printed ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' })} Riyadh by ${me?.fullName ?? ''}`;
+    const footer = `SLK Operations Hub · Activity sheet ${monthLabel(month)} · printed ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' })} Riyadh by ${me?.fullName ?? ''}`;
     const secs = sections.map((s) => ({ title: s.title, lines: s.lines, color: s.color, total: `Net ${money(sumOf(s.lines, 'net'))}` }));
     const bytes = recordPdf({ title: `Activity sheet · ${monthLabel(month)}`, subtitle, footer, sections: secs, fields: ACTIVITY_FIELDS, groups: ACTIVITY_GROUPS, paper,
         heading: (l) => {

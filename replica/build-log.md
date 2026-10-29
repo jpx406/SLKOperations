@@ -1378,3 +1378,11 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Sidebar from 1280 px:** groups with icons, pages indented under them, the current group always open and the others remembered as disclosures; the current page gets a soft fill and a 3 px lime edge. Mark and wordmark at the top, contacts and version at the bottom. The group button row is gone; the section pills show only when the sidebar is not.
 - **Hide sidebar / Show sidebar**, remembered per browser. Below 1280 px (Apple: hide the sidebar as the window narrows) the menu button and drawer take over as before.
 - **Verified:** tests 282; screen-reader audit 0 issues on 23 screens; no sideways scroll at 1280 px or 320 px; Control Room and Sunlight screenshots checked.
+
+## 6z.10 — SLK Operations Hub: title block and About
+
+- **Renamed** to SLK Operations Hub everywhere it is shown: wordmark, browser title, sign-in, emails' sender name, PDF footers, help text, the passkey name and the assistants' prompts.
+- **Title block** in the header, after WIREGUARD's: the NESR mark sized to the name and the tagline under it, so they read as one lock-up. The small mark crammed beside a one-line name in the sidebar is gone; the sidebar keeps only Hide sidebar at the top, on a strip the height of the header.
+- **About** (sidebar foot, with the version, and the account menu): a window sized to its content with version and build, what the app does, the authors and their email, © NESR. The names and version no longer sit in the header or under the sidebar.
+- Help, Ask and the account name show their labels from 1536 px, so the desktop header stays one row in Sunlight's larger controls.
+- **Verified:** tests 282; screen-reader audit 0 issues (2,152 controls); About opens with focus on Close and closes on Escape on desktop and phone; no sideways scroll; header and sidebar rules line up in both themes.

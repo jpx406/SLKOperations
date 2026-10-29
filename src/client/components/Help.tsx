@@ -14,7 +14,7 @@ export function HelpButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button size="sm" variant="ghost" aria-label="Help: the SLK Operations guide" onClick={() => setOpen(true)}><CircleHelp aria-hidden className="size-4" /><span className="hidden xl:inline">Help</span></Button>
+      <Button size="sm" variant="ghost" aria-label="Help: the SLK Operations Hub guide" onClick={() => setOpen(true)}><CircleHelp aria-hidden className="size-4" /><span className="hidden 2xl:inline">Help</span></Button>
       {open && <HelpDialog onClose={() => setOpen(false)} />}
     </>
   );
@@ -29,7 +29,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="help-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4">
       <Card className="flex max-h-[85vh] w-full max-w-4xl flex-col">
-        <div className="mb-3 flex items-start gap-3"><h2 id="help-title" className="flex-1 font-display text-lg font-bold">SLK Operations guide</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
+        <div className="mb-3 flex items-start gap-3"><h2 id="help-title" className="flex-1 font-display text-lg font-bold">SLK Operations Hub guide</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[14rem_1fr]">
           <nav aria-label="Guide sections" className="overflow-y-auto">
             <ul className="space-y-0.5 text-sm">
@@ -54,7 +54,7 @@ export function AssistantLauncher() {
   return (
     <>
       <Button size="sm" variant="ghost" aria-label="Open the help assistant" aria-expanded={open} onClick={() => setOpen(true)}>
-        <MessageCircleQuestion aria-hidden className="size-4" /><span className="hidden xl:inline">Ask</span>
+        <MessageCircleQuestion aria-hidden className="size-4" /><span className="hidden 2xl:inline">Ask</span>
       </Button>
       {open && <AssistantPanel onClose={() => setOpen(false)} />}
     </>
@@ -87,7 +87,7 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
         <MessageCircleQuestion aria-hidden className="size-5" /><h2 className="flex-1 font-display font-bold">Help assistant</h2>
         <Button size="sm" variant="ghost" aria-label="Close the help assistant" onClick={onClose}><X aria-hidden className="size-4" /></Button>
       </div>
-      <p className="border-b border-border px-3 py-2 text-xs text-text-muted">Answers how-to questions from the SLK Operations guide. It can’t see your jobs or any other data, and it can be wrong; check important steps in the guide.</p>
+      <p className="border-b border-border px-3 py-2 text-xs text-text-muted">Answers how-to questions from the SLK Operations Hub guide. It can’t see your jobs or any other data, and it can be wrong; check important steps in the guide.</p>
       <div role="log" aria-live="polite" className="flex-1 space-y-2 overflow-y-auto p-3">
         {!msgs.length && <p className="text-sm text-text-subtle">For example: “How do I approve a JRA?” or “Why is Execution locked?”</p>}
         {msgs.map((m, i) => (

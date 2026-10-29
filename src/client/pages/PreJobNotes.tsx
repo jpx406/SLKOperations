@@ -129,7 +129,7 @@ function NoteDocument({ note, contacts, job }: { note: Pick<Note, 'log_no' | 'cu
   const row = (k: string, v: React.ReactNode) => <tr><th scope="row" className="w-44 py-1 pr-3 text-left align-top font-semibold text-text-muted">{k}</th><td className="py-1 align-top">{v || '—'}</td></tr>;
   return (
     <article className="pjn-doc space-y-4 text-sm">
-      <header className="flex items-baseline justify-between border-b-2 border-accent-edge pb-2"><span className="font-display text-lg font-extrabold uppercase">SLK Operations · Pre-Job Note</span><span className="font-mono">{note.log_no} · v{note.current_version}</span></header>
+      <header className="flex items-baseline justify-between border-b-2 border-accent-edge pb-2"><span className="font-display text-lg font-extrabold uppercase">SLK Operations Hub · Pre-Job Note</span><span className="font-mono">{note.log_no} · v{note.current_version}</span></header>
       <section><h3 className="label-caps mb-1 text-text-muted">1 · Job information</h3><table className="w-full"><tbody>
         {row('Client', c.client)}{row('Field ticket', job.ticket_no)}{row('Rig / well', `${job.rig ?? '—'} / ${job.well ?? '—'}`)}{row('Rig type', c.rig_type)}{row('RDD department', c.rdd_dept)}
         {row('Casing size', c.casing)}{row('Suite #', c.suite_no)}{row('Expected dates', c.date_from ? `${formatDate(c.date_from)}${c.date_to ? ` to ${formatDate(c.date_to)}` : ''}` : '')}
@@ -321,7 +321,7 @@ function noteEmail(note: Note, job: { ticket_no: string | null; rig: string | nu
   ];
   const text = [`Pre-Job Note ${note.log_no} v${note.current_version}`, '', ...lines.map(([k, v]) => `${k}: ${v}`), '', 'Toolstrings and program:',
     ...c.toolstrings.map((t, i) => `${i + 1}. ${t.conveyance} | ${t.config} | ${t.details}`), '', 'Important notes:', c.important_notes].join('\n');
-  const html = `<div style="font-family:Arial,sans-serif;font-size:13px"><h2 style="border-bottom:2px solid #2b6cb0">SLK Operations · Pre-Job Note ${esc(note.log_no)} v${note.current_version}</h2>
+  const html = `<div style="font-family:Arial,sans-serif;font-size:13px"><h2 style="border-bottom:2px solid #2b6cb0">SLK Operations Hub · Pre-Job Note ${esc(note.log_no)} v${note.current_version}</h2>
 <table>${lines.map(([k, v]) => `<tr><th align="left" style="padding:2px 10px 2px 0;color:#555">${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>
 <h3>Toolstrings and program</h3><table border="1" cellpadding="4" style="border-collapse:collapse"><tr><th>#</th><th>Conveyance</th><th>Toolstring</th><th>Run details</th></tr>${c.toolstrings.map((t, i) => `<tr><td>${i + 1}</td><td>${esc(t.conveyance)}</td><td>${esc(t.config)}</td><td>${esc(t.details)}</td></tr>`).join('')}</table>
 <h3>Important notes</h3><p style="white-space:pre-wrap">${esc(c.important_notes)}</p></div>`;

@@ -36,7 +36,7 @@ export function cleanName(name: string): string {
 export function checkUpload(name: string, size: number): { error: string } | { name: string; type: string } {
   const n = cleanName(name);
   const type = TYPES[extOf(n)];
-  if (!type) return { error: `“${n}” isn’t a type SLK Operations keeps. Use a photo, PDF, Word, Excel, PowerPoint, text, CSV, email or zip file.` };
+  if (!type) return { error: `“${n}” isn’t a type SLK Operations Hub keeps. Use a photo, PDF, Word, Excel, PowerPoint, text, CSV, email or zip file.` };
   if (size <= 0) return { error: 'The file is empty' };
   if (size > MAX_BYTES) return { error: `“${n}” is larger than 25 MB` };
   return { name: n, type };

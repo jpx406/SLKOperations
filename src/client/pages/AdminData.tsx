@@ -65,7 +65,7 @@ export function AdminData() {
   return (
     <section aria-labelledby="data-title">
       <PageTitle><span id="data-title">Data export and import</span></PageTitle>
-      <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">Everything SLK Operations keeps, in one package. WIREGUARD’s wires, runs and units are not included; the sync brings them back.</p>
+      <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">Everything SLK Operations Hub keeps, in one package. WIREGUARD’s wires, runs and units are not included; the sync brings them back.</p>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       {done && <div className="mb-3"><Banner tone="success">{done}</Banner></div>}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

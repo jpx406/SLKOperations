@@ -44,7 +44,7 @@ export function Database() {
         </label>
       )}><span id="db-title">Equipment database</span></PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">
-        Units, drums, wires and job types come from WIREGUARD and change there. SLK Operations keeps its own pressure control equipment,
+        Units, drums, wires and job types come from WIREGUARD and change there. SLK Operations Hub keeps its own pressure control equipment,
         grease panels, pick lists and the sections each job type opens in the job editor.
       </p>
       {!rights.edit && <div className="mb-4"><Banner tone="info">You can view the database. Your role does not change it.</Banner></div>}

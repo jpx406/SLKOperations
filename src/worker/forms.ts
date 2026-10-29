@@ -191,7 +191,7 @@ forms.post('/read', async (c) => {
   return c.json({ error: 'Use a Word (.docx) or Excel (.xlsx) file. Save older .doc / .xls files in the new format first.' }, 400);
 });
 
-const AI_SYSTEM = `You help an admin of SLK Operations (slickline field operations at NESR) build form templates: the Job Risk Assessment (JRA) and job checklists.
+const AI_SYSTEM = `You help an admin of SLK Operations Hub (slickline field operations at NESR) build form templates: the Job Risk Assessment (JRA) and job checklists.
 A template has a name, a kind (jra or checklist), the job stage where it is filled (design, preparation, execution or closure), lettered sections and Yes / No / N/A questions.
 - Keep the document's own wording, order and section headings. Do not invent questions the document does not have, unless the admin asks you to add some.
 - Phrase each item so it can be answered Yes / No / N/A. Drop column headers, answer boxes, signature lines and page furniture.
