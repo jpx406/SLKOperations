@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEven
 import { Link, useParams, useSearchParams } from 'react-router';
 import {
   CONNECTIONS, FAMILY_OF, FORM, MAX_ROWS, PART_KINDS, RATINGS, crossoverFor, diagramChecks, drawPart, insertIndex, joints, kindsOf, rigTotals, rowFromPart,
-  layoutStack, stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row,
+  layoutStack, pictureFor, stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row,
 } from '../../shared/diagram';
 import type { ToolPart } from '../../shared/toolstring';
 import { ApiError, api, countryScope, formatDate } from '../api';
@@ -308,6 +308,7 @@ function Shapes({ prims }: { prims: Prim[] }) {
       {prims.map((p, i) => p.t === 'rect' ? <rect key={i} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.fill ?? 'none'} stroke={p.outline ? '#3b434d' : 'none'} strokeWidth={0.6} />
         : p.t === 'poly' ? <polygon key={i} points={p.pts.map((x) => x.join(',')).join(' ')} fill={p.fill} stroke="#3b434d" strokeWidth={0.6} />
         : p.t === 'circle' ? <circle key={i} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill ?? 'none'} stroke={p.stroke} strokeWidth={0.8} />
+        : p.t === 'image' ? <image key={i} href={`/diagram-parts/${p.key}.png`} x={p.x} y={p.y} width={p.w} height={p.h} preserveAspectRatio="none" />
         : p.t === 'text' ? <text key={i} x={p.x} y={p.y} fontSize={p.size} textAnchor="middle" dominantBaseline="central" fontFamily="Inter, sans-serif" fontWeight={700} fill="#1b2430">{p.s}</text>
         : <line key={i} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.width} />)}
     </g>
@@ -327,9 +328,14 @@ function Assembly({ rows, family, sel, onSelect }: { rows: Row[]; family: Family
     </svg>
   );
 }
-const PartIcon = ({ row, family }: { row: Row; family: Family }) => (
-  <span className="flex h-10 w-8 items-center justify-center rounded-sm bg-[#ffffff]"><Svg prims={drawPart(row, family, 60, 90)} w={60} h={90} className="h-9 w-8" /></span>
-);
+const PartIcon = ({ row, family }: { row: Row; family: Family }) => {
+  const pic = family === 'pce' ? pictureFor(row) : null;
+  return (
+    <span className="flex h-10 w-8 items-center justify-center rounded-sm bg-[#ffffff]">
+      {pic ? <img src={`/diagram-parts/${pic}.png`} alt="" className="max-h-9 max-w-7 object-contain" /> : <Svg prims={drawPart(row, family, 60, 90)} w={60} h={90} className="h-9 w-8" />}
+    </span>
+  );
+};
 
 // ---- the sheet ----
 

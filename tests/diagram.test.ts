@@ -169,10 +169,28 @@ describe('assembly layout', () => {
       expect(height).toBeLessThanOrEqual(H + 0.01);
       expect(marks).toHaveLength(list.length);
       for (const p of prims) {
-        const xs = p.t === 'rect' ? [p.x, p.x + p.w] : p.t === 'poly' ? p.pts.map(([x]) => x) : p.t === 'circle' ? [p.cx - p.r, p.cx + p.r] : p.t === 'text' ? [p.x] : [p.x1, p.x2];
+        const xs = p.t === 'rect' || p.t === 'image' ? [p.x, p.x + p.w] : p.t === 'poly' ? p.pts.map(([x]) => x) : p.t === 'circle' ? [p.cx - p.r, p.cx + p.r] : p.t === 'text' ? [p.x] : [p.x1, p.x2];
         expect(Math.min(...xs)).toBeGreaterThanOrEqual(-0.5);
         expect(Math.max(...xs)).toBeLessThanOrEqual(W + 0.5);
       }
     }
+  });
+});
+
+describe('Elmar pictures', () => {
+  it('each picture a part can use has its PNG and its PDF data', async () => {
+    const { existsSync } = await import('node:fs');
+    const { pictureFor, kindsOf } = await import('../src/shared/diagram');
+    const { PICTURES } = await import('../src/shared/diagramPictures');
+    const { PICTURE_SIZES } = await import('../src/shared/partPictures');
+    for (const kind of kindsOf('pce')) for (const rams of [1, 2, 3]) for (const name of ['Part', 'Lubricator - Integral 3"']) {
+      const k = pictureFor(row({ kind, rams, name }));
+      if (!k) continue;
+      expect(existsSync(`public/diagram-parts/${k}.png`)).toBe(true);
+      expect(PICTURES[k].base64.length).toBeGreaterThan(500);
+      expect(PICTURE_SIZES[k].pt[0]).toBeGreaterThan(0);
+    }
+    expect(pictureFor(row({ kind: 'wireline_valve', rams: 3 }))).toBe('bop_triple');
+    expect(pictureFor(row({ kind: 'chem_sub' }))).toBeNull();
   });
 });

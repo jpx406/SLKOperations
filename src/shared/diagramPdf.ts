@@ -3,11 +3,20 @@
 
 import { NESR_LOGO_JPEG } from './brandLogo';
 import { FAMILY_OF, FORM, layoutStack, rigTotals, stringTotals, type DiagramKind, type Row } from './diagram';
+import { PICTURES } from './diagramPictures';
+import type { PictureKey } from './partPictures';
 import { stampText } from './formPdf';
 import { PdfDoc, textWidth, wrap } from './pdf';
 
 const LOGO = { width: NESR_LOGO_JPEG.width, height: NESR_LOGO_JPEG.height, data: Uint8Array.from(atob(NESR_LOGO_JPEG.base64), (c) => c.charCodeAt(0)) };
 type RGB = [number, number, number];
+// decoded once per worker and reused, so the PDF stores each picture once
+const pictures = new Map<PictureKey, { width: number; height: number; data: Uint8Array }>();
+const picture = (k: PictureKey) => {
+  let pic = pictures.get(k);
+  if (!pic) { const j = PICTURES[k]; pic = { width: j.width, height: j.height, data: Uint8Array.from(atob(j.base64), (c) => c.charCodeAt(0)) }; pictures.set(k, pic); }
+  return pic;
+};
 const INK: RGB = [0.07, 0.09, 0.12], GREY: RGB = [0.4, 0.42, 0.45], HEAD: RGB = [0.91, 0.94, 0.83];
 const rgb = (hex: string): RGB => { const n = parseInt(hex.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
 const ft = (n: number | null) => (n == null ? '' : `${n.toFixed(2)} ft`);
@@ -53,7 +62,7 @@ export function diagramPdf(p: DiagramPdfInput): Uint8Array {
 
   // table
   const cols = rig
-    ? [['No.', 18], ['Description', 136], ['Rating', 48], ['ID in', 30], ['Top conn.', 70], ['Bottom conn.', 70], ['Length', 46]] as [string, number][]
+    ? [['No.', 18], ['Description', 112], ['Rating', 46], ['ID in', 28], ['Top conn.', 62], ['Bottom conn.', 62], ['Length', 44]] as [string, number][]
     : [['No.', 18], ['Description', 136], ['OD in', 34], ['F/N in', 34], ['Top conn.', 66], ['Bottom conn.', 66], ['Length', 46]] as [string, number][];
   const drawW = W - cols.reduce((a, [, w]) => a + w, 0);
   const all = [...cols, ['Assembly', drawW] as [string, number]];
@@ -93,6 +102,7 @@ export function diagramPdf(p: DiagramPdfInput): Uint8Array {
       if (g.t === 'rect') { if (g.fill) doc.rect(X(g.x), Y(g.y + g.h), g.w, g.h, rgb(g.fill)); if (g.outline) doc.box(X(g.x), Y(g.y + g.h), g.w, g.h, 0.23, 0.4); }
       else if (g.t === 'poly') doc.poly(g.pts.map(([px, py]) => [X(px), Y(py)]), rgb(g.fill));
       else if (g.t === 'circle') doc.circle(X(g.cx), Y(g.cy), g.r, g.fill ? rgb(g.fill) : null, rgb(g.stroke));
+      else if (g.t === 'image') doc.jpeg(picture(g.key), X(g.x), Y(g.y + g.h), g.w, g.h);
       else if (g.t === 'text') doc.text(X(g.x) - textWidth(g.s, g.size, true) / 2, Y(g.y) - g.size * 0.35, g.s, { size: g.size, bold: true, color: INK });
       else doc.stroke(X(g.x1), Y(g.y1), X(g.x2), Y(g.y2), rgb(g.stroke), g.width);
     }

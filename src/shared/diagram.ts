@@ -4,6 +4,7 @@
 // table (Pressure Standard §9.2.8) is not applied; the catalogue is kept here, seeded from the catalogues; each
 // diagram starts at Rev 0 and the next change after a PDF raises the revision.
 
+import { PICTURE_SIZES, type PictureKey } from './partPictures';
 import type { ToolPart } from './toolstring';
 
 export type Family = 'pce' | 'tool';
@@ -310,7 +311,8 @@ export type Prim =
   | { t: 'poly'; pts: [number, number][]; fill: string }
   | { t: 'circle'; cx: number; cy: number; r: number; fill: string | null; stroke: string }
   | { t: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number }
-  | { t: 'text'; x: number; y: number; s: string; size: number };
+  | { t: 'text'; x: number; y: number; s: string; size: number }
+  | { t: 'image'; key: PictureKey; x: number; y: number; w: number; h: number };
 
 /** Thread OD in inches from a connection like 6.125"-4x2 (4.750"). */
 export const threadOd = (c: string | null) => { const m = /^\s*([\d.]+)"/.exec(c ?? ''); return m ? Number(m[1]) : null; };
@@ -612,25 +614,63 @@ export type Mark = { index: number; y0: number; y1: number };
  * The whole stack in a W × H box: one scale for width and length, shrunk until it fits, so no part is stretched
  * and nothing runs off the page. Each part is tagged with its row number on the left.
  */
+/**
+ * The Elmar catalogue picture for a pressure-control part (owner decision 2026-11-04: the catalogue artwork, in grey).
+ * Parts the catalogue does not draw (chemical injection and bleed-off subs, crossovers, the client's tree) are drawn.
+ */
+export function pictureFor(r: Row): PictureKey | null {
+  switch (r.kind) {
+    case 'stuffing_box': return 'stuffing_box';
+    case 'grease_head': return 'grease_head';
+    case 'tool_catcher': case 'ball_check': return 'tool_catcher';
+    case 'lubricator': return /integral/i.test(r.name) ? 'lubricator_int' : 'lubricator';
+    case 'tool_trap': return 'tool_trap';
+    case 'quick_test_sub': return 'quick_test_sub';
+    case 'wireline_valve': { const n = r.rams ?? 1; return n >= 3 ? 'bop_triple' : n === 2 ? 'bop_dual' : 'bop_single'; }
+    case 'pump_in_sub': return 'pump_in_sub';
+    case 'wellhead_adapter': return 'wellhead_adapter';
+    default: return null;
+  }
+}
+
+/** Catalogue points per inch for drawn parts, so they sit at the same scale as the Elmar pictures. */
+const IN_PT = 1.8;
+
+/**
+ * The whole stack in a W × H box: every part at one scale (catalogue pictures at their catalogue size, drawn parts at
+ * the same scale), lined up on the string's axis, shrunk to fit so nothing is stretched or runs off the page. Only a
+ * lubricator stretches along its length, to show 4 to 10 ft. Each part is tagged with its row number on the left.
+ */
 export function layoutStack(rows: Row[], family: Family, W: number, H: number): { prims: Prim[]; marks: Mark[]; height: number } {
   if (!rows.length) return { prims: [], marks: [], height: 0 };
   const tag = 14;
-  const lens = rows.map((r) => drawnLength(r, family));
-  const total = lens.reduce((a, b) => a + b, 0);
-  const s = Math.min((W - tag - 2) / SPAN[family], H / total);
-  const dw = SPAN[family] * s, x0 = tag + (W - tag - dw) / 2;
+  const items = rows.map((r) => {
+    const key = family === 'pce' ? pictureFor(r) : null;
+    if (key) {
+      const p = PICTURE_SIZES[key];
+      const stretch = r.kind === 'lubricator' ? Math.max(0.55, Math.min(1.4, (r.length_ft ?? 8) / 8)) : 1;
+      return { key, w: p.pt[0], h: p.pt[1] * stretch, axis: p.axis };
+    }
+    const unit = family === 'pce' ? IN_PT : 1;
+    return { key: null, w: SPAN[family] * unit, h: drawnLength(r, family) * unit, axis: 0.5 };
+  });
+  const left = Math.max(...items.map((it) => it.w * it.axis)), right = Math.max(...items.map((it) => it.w * (1 - it.axis)));
+  const total = items.reduce((a, it) => a + it.h, 0);
+  const s = Math.min((W - tag - 2) / (left + right), H / total);
+  const ax = tag + 1 + left * s + (W - tag - 2 - (left + right) * s) / 2;
   const prims: Prim[] = [], marks: Mark[] = [];
   let y = 0;
   rows.forEach((r, i) => {
-    const h = lens[i] * s;
-    for (const p of drawPart(r, family, dw, h)) prims.push(shift(p, x0, y));
+    const it = items[i], w = it.w * s, h = it.h * s, x = ax - it.axis * w;
+    if (it.key) prims.push({ t: 'image', key: it.key, x, y, w, h });
+    else for (const p of drawPart(r, family, w, h)) prims.push(shift(p, x, y));
     marks.push({ index: i, y0: y, y1: y + h });
     y += h;
   });
-  // row tags: a numbered circle with a leader to the part
+  // row tags: a numbered circle with a leader towards the string
   marks.forEach((m) => {
     const cy = (m.y0 + m.y1) / 2, rr = Math.min(6, Math.max(4, (m.y1 - m.y0) / 2 - 0.5));
-    prims.push({ t: 'line', x1: rr * 2 + 1, y1: cy, x2: x0 + dw * 0.32, y2: cy, stroke: '#9aa3ad', width: 0.4 });
+    prims.push({ t: 'line', x1: rr * 2 + 1, y1: cy, x2: Math.max(rr * 2 + 2, ax - 6), y2: cy, stroke: '#9aa3ad', width: 0.4 });
     prims.push({ t: 'circle', cx: rr + 1, cy, r: rr, fill: '#ffffff', stroke: '#3b434d' });
     prims.push({ t: 'text', x: rr + 1, y: cy, s: String(m.index + 1), size: rr * 1.25 });
   });
@@ -642,7 +682,7 @@ const shift = (p: Prim, dx: number, dy: number): Prim => {
     case 'rect': return { ...p, x: p.x + dx, y: p.y + dy };
     case 'poly': return { ...p, pts: p.pts.map(([x, y]) => [x + dx, y + dy] as [number, number]) };
     case 'circle': return { ...p, cx: p.cx + dx, cy: p.cy + dy };
-    case 'text': return { ...p, x: p.x + dx, y: p.y + dy };
+    case 'text': case 'image': return { ...p, x: p.x + dx, y: p.y + dy };
     default: return { ...p, x1: p.x1 + dx, y1: p.y1 + dy, x2: p.x2 + dx, y2: p.y2 + dy };
   }
 };
