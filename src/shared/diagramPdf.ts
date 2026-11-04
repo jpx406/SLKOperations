@@ -2,20 +2,12 @@
 // title block, job header, one row per part with its drawing, totals, and Prepared / Reviewed boxes.
 
 import { NESR_LOGO_JPEG } from './brandLogo';
-import { FAMILY_OF, FORM, drawPart, pictureFor, rigTotals, stringTotals, type DiagramKind, type PictureKey, type Row } from './diagram';
-import { PICTURE_JPEGS } from './diagramPictures';
+import { FAMILY_OF, FORM, drawPart, rigTotals, stringTotals, type DiagramKind, type Row } from './diagram';
 import { stampText } from './formPdf';
 import { PdfDoc, wrap } from './pdf';
 
 const LOGO = { width: NESR_LOGO_JPEG.width, height: NESR_LOGO_JPEG.height, data: Uint8Array.from(atob(NESR_LOGO_JPEG.base64), (c) => c.charCodeAt(0)) };
 type RGB = [number, number, number];
-// decoded once per worker; the same object each time, so the PDF stores each picture once
-const pictures = new Map<PictureKey, { width: number; height: number; data: Uint8Array }>();
-const picture = (k: PictureKey) => {
-  let p = pictures.get(k);
-  if (!p) { const j = PICTURE_JPEGS[k]; p = { width: j.width, height: j.height, data: Uint8Array.from(atob(j.base64), (c) => c.charCodeAt(0)) }; pictures.set(k, p); }
-  return p;
-};
 const INK: RGB = [0.07, 0.09, 0.12], GREY: RGB = [0.4, 0.42, 0.45], HEAD: RGB = [0.91, 0.94, 0.83];
 const rgb = (hex: string): RGB => { const n = parseInt(hex.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
 const ft = (n: number | null) => (n == null ? '' : `${n.toFixed(2)} ft`);
@@ -89,11 +81,11 @@ export function diagramPdf(p: DiagramPdfInput): Uint8Array {
     else { cell(2, top, [r.od_in != null ? r.od_in.toFixed(3) : '']); cell(3, top, [r.fn_in != null ? r.fn_in.toFixed(3) : '']); }
     cell(4, top, conn(r.top_conn, cols[4][1])); cell(5, top, conn(r.bottom_conn, cols[5][1]));
     cell(6, top, [ft(r.length_ft), m(r.length_ft), ...(r.stroke_ft ? [`+${r.stroke_ft.toFixed(2)} ft stroke`] : [])]);
-    const pic = pictureFor(r);
-    if (pic) { const w = drawW * pic.width; doc.jpeg(picture(pic.key), xs[7] + (drawW - w) / 2, top - rowH, w, rowH); }
-    else for (const g of drawPart(r, family, drawW, rowH)) {
-      const X = (x: number) => xs[7] + x, Y = (yy: number) => top - yy;
-      if (g.t === 'rect') doc.rect(X(g.x), Y(g.y + g.h), g.w, g.h, rgb(g.fill));
+    // same proportions as the screen: a box twice as wide as tall at most, centred in the column
+    const bw = Math.min(drawW, rowH * 2), bx = xs[7] + (drawW - bw) / 2;
+    for (const g of drawPart(r, family, bw, rowH)) {
+      const X = (x: number) => bx + x, Y = (yy: number) => top - yy;
+      if (g.t === 'rect') { if (g.fill) doc.rect(X(g.x), Y(g.y + g.h), g.w, g.h, rgb(g.fill)); if (g.outline) doc.box(X(g.x), Y(g.y + g.h), g.w, g.h, 0.23, 0.4); }
       else if (g.t === 'poly') doc.poly(g.pts.map(([px, py]) => [X(px), Y(py)]), rgb(g.fill));
       else if (g.t === 'circle') doc.circle(X(g.cx), Y(g.cy), g.r, g.fill ? rgb(g.fill) : null, rgb(g.stroke));
       else doc.stroke(X(g.x1), Y(g.y1), X(g.x2), Y(g.y2), rgb(g.stroke), g.width);

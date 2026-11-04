@@ -299,162 +299,209 @@ export const FORM = {
   toolstring: { code: 'QAF14010', title: 'Slickline String Diagram' },
 } as const;
 
-// ---- pictures from the workbooks ----
-
-/**
- * Which workbook picture shows a row, and how wide it is drawn as a share of the assembly column. Pictures are
- * stretched to the row's height so the stack reads as one continuous string. Owner's classification 2026-11-04:
- * R6 tool trap, R15 WHE crossover, R19 quick test sub, R3 ported lubricator. Parts with no picture are drawn.
- */
-export type PictureKey =
-  | 'tree' | 'wellhead_adapter' | 'bop_single' | 'bop_dual' | 'pump_in_sub' | 'lubricator' | 'lubricator_ported' | 'tool_trap' | 'pce_crossover' | 'quick_test_sub' | 'stuffing_box'
-  | 'rope_socket' | 'stem' | 'stem_big' | 'roller_stem' | 'knuckle' | 'spang_jar' | 'tubular_jar' | 'hydraulic_jar' | 'knuckle_jar' | 'tool_crossover'
-  | 'gauge_cutter' | 'impression_block' | 'blind_box' | 'sample_bailer' | 'hydrostatic_bailer' | 'pump_bailer' | 'wire_grab'
-  | 'gs' | 'otis_sb' | 'otis_rb' | 'b_shifting' | 'camco_jd' | 'running_tool' | 'otis_rx' | 'otis_plug' | 'prong' | 'eq_prong';
-
-/** Width of each PCE picture as a share of the column, for a 4.75" quick union; bigger unions draw wider. */
-const PCE_WIDTH: Partial<Record<PictureKey, number>> = {
-  stuffing_box: 0.8, lubricator: 0.2, lubricator_ported: 0.27, tool_trap: 0.24, quick_test_sub: 0.2, pce_crossover: 0.3,
-  bop_single: 0.95, bop_dual: 0.95, pump_in_sub: 0.42, wellhead_adapter: 0.6, tree: 0.95,
-};
-/** Tool pictures wider than their body (dogs, prongs, fingers). */
-const TOOL_SPREAD: Partial<Record<PictureKey, number>> = { gs: 1.3, wire_grab: 1.5, otis_sb: 1.2, otis_rb: 1.2, b_shifting: 1.2, camco_jd: 1.2 };
-
-export function pictureFor(r: Row): { key: PictureKey; width: number } | null {
-  const n = r.name.toLowerCase();
-  const pce = (key: PictureKey) => {
-    const scale = key === 'tree' || key.startsWith('bop') ? 1 : Math.max(0.9, Math.min(1.35, (threadOd(r.bottom_conn) ?? threadOd(r.top_conn) ?? 4.75) / 4.75));
-    return { key, width: Math.min(0.98, PCE_WIDTH[key]! * scale) };
-  };
-  const tool = (key: PictureKey) => ({ key, width: Math.min(0.9, ((r.od_in ?? 1.875) / 9) * (TOOL_SPREAD[key] ?? 1)) });
-  switch (r.kind) {
-    case 'stuffing_box': return pce('stuffing_box');
-    case 'lubricator': return pce(/ported/.test(n) ? 'lubricator_ported' : 'lubricator');
-    case 'tool_trap': return pce('tool_trap');
-    case 'quick_test_sub': return pce('quick_test_sub');
-    case 'wireline_valve': return pce((r.rams ?? 1) >= 2 ? 'bop_dual' : 'bop_single');
-    case 'pump_in_sub': return pce('pump_in_sub');
-    case 'pce_crossover': return pce('pce_crossover');
-    case 'wellhead_adapter': return pce('wellhead_adapter');
-    case 'tree': return pce('tree');
-    case 'rope_socket': return tool('rope_socket');
-    case 'swivel': return tool('knuckle');
-    case 'stem': return tool((r.od_in ?? 0) >= 2.1 ? 'stem_big' : 'stem');
-    case 'roller_stem': return tool('roller_stem');
-    case 'knuckle': return tool(/jar/.test(n) ? 'knuckle_jar' : 'knuckle');
-    case 'jar_mech': return tool('spang_jar');
-    case 'jar_tubular': case 'jar_spring': return tool('tubular_jar');
-    case 'jar_hyd': case 'accelerator': return tool('hydraulic_jar');
-    case 'tool_crossover': return tool('tool_crossover');
-    case 'gauge_cutter': return tool('gauge_cutter');
-    case 'impression_block': return tool('impression_block');
-    case 'blind_box': return tool('blind_box');
-    case 'bailer': return tool(/hydrostatic/.test(n) ? 'hydrostatic_bailer' : /pump|sand/.test(n) ? 'pump_bailer' : 'sample_bailer');
-    case 'wire_finder': return /grab/.test(n) ? tool('wire_grab') : null;
-    case 'pulling_tool':
-      return tool(/shifting/.test(n) ? 'b_shifting' : /camco|\bj[du]\b/.test(n) ? 'camco_jd' : /otis s\b|\bsb\b/.test(n) ? 'otis_sb' : /otis r\b|\brb\b/.test(n) ? 'otis_rb'
-        : /\bx running|\brx\b/.test(n) ? 'otis_rx' : /running/.test(n) ? 'running_tool' : 'gs');
-    case 'plug_prong': return tool(/prong/.test(n) ? (/equali/.test(n) ? 'eq_prong' : 'prong') : 'otis_plug');
-    default: return null;
-  }
-}
-
 // ---- drawings ----
 
-/** Drawing primitives in a W × H box, y down. The editor turns them into SVG, the PDF into paths. */
+/**
+ * Drawing primitives in a W × H box, y down. The editor turns them into SVG, the PDF into paths.
+ * A rect with fill null is an outline only; with outline true it gets the dark edge too.
+ */
 export type Prim =
-  | { t: 'rect'; x: number; y: number; w: number; h: number; fill: string }
+  | { t: 'rect'; x: number; y: number; w: number; h: number; fill: string | null; outline?: boolean }
   | { t: 'poly'; pts: [number, number][]; fill: string }
   | { t: 'circle'; cx: number; cy: number; r: number; fill: string | null; stroke: string }
   | { t: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number };
 
-/** Body blue with the working-pressure colour band (Pressure Standard §8.2). */
-export const BAND: Record<number, string> = { 3000: '#f2c94c', 5000: '#d0312d', 10000: '#111111', 15000: '#f4f4f4', 20000: '#7b4a26' };
-const BLUE = '#2f6db0', STEEL = '#b7bfc8', STEEL_D = '#7d8792', DARK = '#5b6673', RED = '#c0392b', BROWN = '#8a5a2b', LIGHT = '#dfe4ea';
-
 /** Thread OD in inches from a connection like 6.125"-4x2 (4.750"). */
 export const threadOd = (c: string | null) => { const m = /^\s*([\d.]+)"/.exec(c ?? ''); return m ? Number(m[1]) : null; };
 
-/** Draws one row. Widths follow the part's connection (PCE) or OD (tools), so the stack reads in proportion. */
+// Owner request 2026-11-04 (after WirelineMaster): plain steel, no colours, every part at one scale so none looks
+// oversized. Bodies are shaded cylinders (vertical bands), so they read as round in SVG and in the PDF alike.
+const EDGE = '#3b434d';
+const STEEL = ['#69727d', '#a3abb4', '#d6dbe0', '#f1f3f5', '#c3c9cf', '#8b939c'];
+const COLLAR = ['#525a64', '#808892', '#adb4bc', '#cdd2d7', '#9aa1a9', '#6c747e'];
+const BANDS = [0.08, 0.16, 0.18, 0.2, 0.22, 0.16];
+/** Inches across the assembly column: the same for every part of a family, so sizes compare truly. */
+const SPAN: Record<Family, number> = { pce: 15, tool: 8.5 };
+
 export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
-  const g: Prim[] = [], cx = W / 2;
-  const rect = (x: number, y: number, w: number, h: number, fill: string) => g.push({ t: 'rect', x, y, w, h, fill });
-  const poly = (pts: [number, number][], fill: string) => g.push({ t: 'poly', pts, fill });
+  const g: Prim[] = [], cx = W / 2, k = W / SPAN[family];
+  const rect = (x: number, y: number, w: number, h: number, fill: string | null, outline = false) => g.push({ t: 'rect', x, y, w, h, fill, outline });
+  const poly = (pts: [number, number][], fill = STEEL[2]) => g.push({ t: 'poly', pts, fill });
+  const line = (x1: number, y1: number, x2: number, y2: number, width = 0.6, stroke = EDGE) => g.push({ t: 'line', x1, y1, x2, y2, stroke, width });
+  const circle = (x: number, y: number, rr: number, fill: string | null = null) => g.push({ t: 'circle', cx: x, cy: y, r: rr, fill, stroke: EDGE });
+  /** A shaded cylinder d inches across, centred on x (vertical) or y (horizontal). */
+  const cyl = (y: number, d: number, h: number, tone = STEEL, x = cx) => {
+    const w = Math.min(d * k, W), x0 = x - w / 2;
+    let at = x0;
+    BANDS.forEach((f, i) => { rect(at, y, w * f + 0.3, h, tone[i]); at += w * f; });
+    rect(x0, y, w, h, null, true);
+  };
+  const hcyl = (x: number, y: number, len: number, d: number, tone = STEEL) => {
+    const h = d * k, y0 = y - h / 2;
+    let at = y0;
+    BANDS.forEach((f, i) => { rect(x, at, len, h * f + 0.3, tone[i]); at += h * f; });
+    rect(x, y0, len, h, null, true);
+  };
+  /** A quick-union collar with grip lines. */
+  const collar = (y: number, d: number, h: number) => {
+    cyl(y, d, h, COLLAR);
+    const w = Math.min(d * k, W);
+    for (let i = 1; i < 4; i++) line(cx - w / 2 + (w * i) / 4, y + 1, cx - w / 2 + (w * i) / 4, y + h - 1, 0.4);
+  };
+  const taper = (y: number, d1: number, d2: number, h: number) => {
+    const a = (d1 * k) / 2, b = (d2 * k) / 2;
+    poly([[cx - a, y], [cx + a, y], [cx + b, y + h], [cx - b, y + h]]);
+  };
+
   if (family === 'pce') {
-    const scale = Math.min(W / 11, 14);
-    const body = Math.min(W * 0.62, (threadOd(r.bottom_conn) ?? threadOd(r.top_conn) ?? 4.75) * scale * 0.7);
-    const band = r.rating_psi ? BAND[r.rating_psi] ?? DARK : null;
-    const stripe = (y: number, w: number) => band && rect(cx - w / 2, y, w, H * 0.08, band);
-    const nut = (y: number, w: number) => rect(cx - w / 2 - 3, y, w + 6, Math.max(3, H * 0.09), DARK);
+    const thread = (c: string | null, fallback: number) => threadOd(c) ?? fallback;
+    const top = thread(r.top_conn, thread(r.bottom_conn, 4.75)), bot = thread(r.bottom_conn, top);
+    const body = Math.max(top, bot) + 0.3;
+    const cu = Math.max(3, H * 0.1);
+    const tube = (r.id_in ?? 3) + 1;
     switch (r.kind) {
-      case 'stuffing_box':
-        rect(cx - body / 2, H * 0.3, body, H * 0.6, BLUE); g.push({ t: 'circle', cx, cy: H * 0.17, r: H * 0.14, fill: LIGHT, stroke: '#1b2430' }); stripe(H * 0.48, body); nut(H * 0.88, body * 0.8); break;
+      case 'stuffing_box': {
+        cyl(H * 0.36, body - 0.6, H * 0.64 - cu);
+        cyl(H * 0.3, body + 0.2, H * 0.12, COLLAR);
+        // sheave on top, with the line running over it
+        const rr = Math.min(H * 0.18, 3.2 * k);
+        circle(cx, H * 0.15, rr, STEEL[3]); circle(cx, H * 0.15, rr * 0.35, STEEL[1]);
+        line(cx, H * 0.15 + rr * 0.35, cx, H * 0.3, 1.2, STEEL[0]);
+        collar(H - cu, bot + 0.4, cu); break;
+      }
       case 'grease_head':
-        rect(cx - body * 0.25, H * 0.02, body * 0.5, H * 0.88, BLUE);
-        for (let i = 1; i < 5; i++) g.push({ t: 'line', x1: cx - body * 0.25, y1: H * 0.18 * i, x2: cx + body * 0.25, y2: H * 0.18 * i, stroke: '#9fc3ea', width: 1 });
-        stripe(H * 0.5, body * 0.5); nut(H * 0.88, body * 0.7); break;
-      case 'lubricator': {
-        const w = Math.min(W * 0.5, ((r.id_in ?? 3) + 1.2) * scale * 0.7);
-        rect(cx - w / 2, 0, w, H, STEEL); stripe(H * 0.42, w); nut(0, w); nut(H - Math.max(3, H * 0.09), w); break;
-      }
-      case 'tool_catcher': case 'tool_trap':
-        rect(cx - body / 2, H * 0.1, body, H * 0.8, BLUE); rect(cx + body / 2, H * 0.35, Math.max(6, W * 0.06), H * 0.2, DARK); stripe(H * 0.42, body); nut(0, body * 0.7); nut(H * 0.91, body * 0.7); break;
-      case 'wireline_valve': {
-        const n = Math.max(1, Math.min(4, r.rams ?? 1)), bw = body * 0.9;
-        rect(cx - bw / 2, 0, bw, H, BLUE);
-        for (let i = 0; i < n; i++) {
-          const y = H * (0.12 + i * (0.76 / n)), h = H * 0.62 / n;
-          rect(cx - W * 0.44, y, W * 0.88, h, '#3d7fc6');
-          rect(cx - W * 0.48, y + h * 0.3, W * 0.04, h * 0.4, '#d0312d'); rect(cx + W * 0.44, y + h * 0.3, W * 0.04, h * 0.4, '#d0312d');
+        cyl(0, 2.6, H - cu);
+        for (let i = 1; i < 6; i++) line(cx - 1.3 * k, (H - cu) * i / 6, cx + 1.3 * k, (H - cu) * i / 6, 0.4);
+        cyl(H * 0.72, body, H * 0.16, COLLAR); collar(H - cu, bot + 0.4, cu); break;
+      case 'lubricator':
+        cyl(0, tube, H);
+        collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu);
+        if (/ported/i.test(r.name)) { hcyl(cx + (tube * k) / 2, H * 0.7, 1.2 * k, 0.8); cyl(H * 0.62, 0.5, H * 0.16, COLLAR, cx + (tube / 2 + 1.4) * k); }
+        break;
+      case 'tool_catcher': case 'tool_trap': case 'ball_check': case 'chem_sub': case 'bleed_sub': case 'quick_test_sub': {
+        const d = r.kind === 'tool_catcher' || r.kind === 'tool_trap' ? body + 0.4 : body - 0.4;
+        cyl(cu, d, H - 2 * cu);
+        collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu);
+        const side = cx + (d * k) / 2;
+        if (r.kind === 'tool_catcher') { hcyl(side, H * 0.4, 1.4 * k, 0.9); line(cx - (d * k) / 2, H * 0.62, side, H * 0.62); }
+        if (r.kind === 'tool_trap') { hcyl(side, H * 0.5, 1.8 * k, 1.4); cyl(H * 0.36, 0.7, H * 0.28, COLLAR, side + 1.8 * k); }
+        if (r.kind === 'ball_check') circle(cx, H * 0.5, Math.min(H * 0.16, (d * k) / 4), STEEL[1]);
+        if (r.kind === 'chem_sub' || r.kind === 'bleed_sub' || r.kind === 'quick_test_sub') {
+          hcyl(side, H * 0.5, 1.1 * k, 0.7);
+          cyl(H * 0.38, 0.45, H * 0.24, COLLAR, side + 1.1 * k + 0.25 * k);
         }
-        stripe(H * 0.02, bw); break;
+        break;
       }
-      case 'pump_in_sub':
-        rect(cx - body / 2, 0, body, H, BLUE); rect(cx + body / 2, H * 0.4, W * 0.22, H * 0.16, STEEL); rect(cx + body / 2 + W * 0.22, H * 0.3, Math.max(4, W * 0.04), H * 0.36, '#d0312d'); stripe(H * 0.12, body); break;
-      case 'pce_crossover': {
-        const t = Math.min(W * 0.6, (threadOd(r.top_conn) ?? 4.75) * scale * 0.7), b = Math.min(W * 0.6, (threadOd(r.bottom_conn) ?? 4.75) * scale * 0.7);
-        poly([[cx - t / 2, 0], [cx + t / 2, 0], [cx + b / 2, H], [cx - b / 2, H]], BLUE); stripe(H * 0.46, Math.min(t, b)); break;
+      case 'wireline_valve': {
+        const n = Math.max(1, Math.min(4, r.rams ?? 1)), d = body + 1.2;
+        cyl(0, d, H);
+        for (let i = 0; i < n; i++) {
+          const y = (H * (i + 0.5)) / n, rd = Math.min(2.2, (H / n / k) * 0.62), arm = 3 * k;
+          hcyl(cx - (d * k) / 2 - arm, y, arm, rd); hcyl(cx + (d * k) / 2, y, arm, rd);
+          // hydraulic caps at the ends of the ram bonnets
+          hcyl(cx - (d * k) / 2 - arm - 0.5 * k, y, 0.5 * k, rd * 0.7, COLLAR); hcyl(cx + (d * k) / 2 + arm, y, 0.5 * k, rd * 0.7, COLLAR);
+        }
+        collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu); break;
       }
-      case 'wellhead_adapter':
-        rect(cx - body / 2, 0, body, H * 0.68, BLUE); rect(cx - W * 0.38, H * 0.68, W * 0.76, H * 0.32, BROWN); stripe(H * 0.2, body); break;
-      case 'tree':
-        rect(cx - W * 0.12, 0, W * 0.24, H, RED); rect(cx - W * 0.46, H * 0.38, W * 0.92, H * 0.26, RED);
-        for (const x of [cx - W * 0.34, cx + W * 0.34]) g.push({ t: 'circle', cx: x, cy: H * 0.51, r: H * 0.2, fill: null, stroke: '#7a1f1a' });
-        g.push({ t: 'circle', cx, cy: H * 0.2, r: H * 0.14, fill: null, stroke: '#7a1f1a' }); break;
+      case 'pump_in_sub': {
+        cyl(cu, body, H - 2 * cu);
+        const side = cx + (body * k) / 2;
+        hcyl(side, H * 0.5, 2.2 * k, 2.4);
+        // 1502 hammer union on the side outlet
+        hcyl(side + 2.2 * k, H * 0.5, 0.9 * k, 3.4, COLLAR);
+        collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu); break;
+      }
+      case 'pce_crossover':
+        collar(0, top + 0.4, cu); taper(cu, top - 0.2, bot - 0.2, H - 2 * cu); collar(H - cu, bot + 0.4, cu);
+        g.push({ t: 'poly', pts: [[cx - ((top - 0.2) * k) / 2, cu], [cx + ((top - 0.2) * k) / 2, cu], [cx + ((bot - 0.2) * k) / 2, H - cu], [cx - ((bot - 0.2) * k) / 2, H - cu]], fill: STEEL[3] });
+        break;
+      case 'wellhead_adapter': {
+        collar(0, top + 0.4, cu); cyl(cu, top, H * 0.66 - cu);
+        const fw = 9, fh = Math.max(4, H * 0.22);
+        cyl(H * 0.66, fw, fh, COLLAR);
+        for (const s of [-1, 1]) cyl(H * 0.66 - 2, 0.5, fh + 4, STEEL, cx + s * (fw / 2 - 0.9) * k);
+        cyl(H * 0.66 + fh, top - 0.4, H - H * 0.66 - fh); break;
+      }
+      case 'tree': {
+        const d = 5.5;
+        cyl(0, d, H);
+        hcyl(cx - 6.5 * k, H * 0.52, 13 * k, 3.2);
+        cyl(H * 0.52 - 2.6 * k, d + 0.6, 5.2 * k, COLLAR);
+        for (const s of [-1, 1]) { const x = cx + s * 5 * k; circle(x, H * 0.52, Math.min(H * 0.2, 2 * k)); line(x - 1.4 * k, H * 0.52, x + 1.4 * k, H * 0.52); line(x, H * 0.52 - Math.min(H * 0.2, 2 * k), x, H * 0.52 + Math.min(H * 0.2, 2 * k)); }
+        circle(cx, H * 0.18, Math.min(H * 0.15, 1.8 * k)); line(cx - 1.4 * k, H * 0.18, cx + 1.4 * k, H * 0.18);
+        break;
+      }
       default:
-        rect(cx - body * 0.4, 0, body * 0.8, H, BLUE); stripe(H * 0.46, body * 0.8); nut(0, body * 0.6); nut(H * 0.91, body * 0.6);
+        cyl(cu, body, H - 2 * cu); collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu);
     }
     return g;
   }
-  const w = Math.min(W * 0.7, (r.od_in ?? 1.875) * Math.min(W / 6, 22));
+
+  // tool string: one scale, the body from the OD, the fishing neck from F/N
+  const od = Math.min(r.od_in ?? 1.875, 5.5), fn = Math.min(r.fn_in ?? od * 0.75, od);
+  const neckH = Math.max(3, H * 0.1);
+  const neck = () => { cyl(0, fn * 0.75, neckH * 0.6); cyl(neckH * 0.6, fn, neckH * 0.4, COLLAR); };
+  const pin = (h = neckH * 0.7) => cyl(H - h, od * 0.55, h);
   switch (r.kind) {
     case 'rope_socket':
-      g.push({ t: 'line', x1: cx, y1: 0, x2: cx, y2: H * 0.06, stroke: '#555555', width: 2 });
-      poly([[cx - w * 0.2, H * 0.06], [cx + w * 0.2, H * 0.06], [cx + w / 2, H * 0.42], [cx + w / 2, H], [cx - w / 2, H], [cx - w / 2, H * 0.42]], STEEL); break;
-    case 'stem': rect(cx - w * 0.35, 0, w * 0.7, H * 0.12, STEEL_D); rect(cx - w / 2, H * 0.12, w, H * 0.88, STEEL); break;
+      line(cx, 0, cx, H * 0.12, 1, '#2b3138');
+      taper(H * 0.12, od * 0.45, od, H * 0.3); g.push({ t: 'poly', pts: [[cx - (od * 0.45 * k) / 2, H * 0.12], [cx + (od * 0.45 * k) / 2, H * 0.12], [cx + (od * k) / 2, H * 0.42], [cx - (od * k) / 2, H * 0.42]], fill: STEEL[3] });
+      cyl(H * 0.42, od, H * 0.58 - neckH * 0.7); pin(); break;
+    case 'stem':
+      neck(); cyl(neckH, od, H - neckH - neckH * 0.7); pin(); break;
     case 'roller_stem':
-      rect(cx - w / 2, 0, w, H, STEEL);
-      for (let i = 1; i < 4; i++) rect(cx - w * 0.62, H * 0.25 * i - 2, w * 1.24, 4, DARK); break;
-    case 'knuckle': case 'swivel':
-      rect(cx - w * 0.35, 0, w * 0.7, H * 0.32, STEEL); g.push({ t: 'circle', cx, cy: H * 0.5, r: w * 0.5, fill: STEEL, stroke: '#1b2430' }); rect(cx - w * 0.35, H * 0.68, w * 0.7, H * 0.32, STEEL); break;
-    case 'jar_mech':
-      rect(cx - w / 2, 0, w, H * 0.4, STEEL); rect(cx - w / 2, H * 0.4, w * 0.22, H * 0.38, STEEL); rect(cx + w * 0.28, H * 0.4, w * 0.22, H * 0.38, STEEL);
-      rect(cx - w * 0.15, H * 0.3, w * 0.3, H * 0.5, STEEL_D); rect(cx - w / 2, H * 0.78, w, H * 0.22, STEEL); break;
+      neck(); cyl(neckH, od * 0.9, H - neckH - neckH * 0.7);
+      for (let i = 1; i < 4; i++) { const y = neckH + ((H - 2 * neckH) * i) / 4; cyl(y - 2.5, od * 1.25, 5, COLLAR); }
+      pin(); break;
+    case 'knuckle': case 'swivel': {
+      neck(); cyl(neckH, od, H * 0.36 - neckH);
+      const rr = Math.min((od * k) / 2, H * 0.16);
+      circle(cx, H * 0.5, rr, STEEL[2]);
+      cyl(H * 0.62, od, H * 0.38 - neckH * 0.7); pin(); break;
+    }
+    case 'jar_mech': {
+      neck(); cyl(neckH, od, H * 0.22);
+      const lw = od * 0.28;
+      cyl(neckH + H * 0.22, lw, H * 0.44, STEEL, cx - ((od - lw) * k) / 2); cyl(neckH + H * 0.22, lw, H * 0.44, STEEL, cx + ((od - lw) * k) / 2);
+      cyl(neckH + H * 0.12, od * 0.36, H * 0.5, COLLAR);
+      cyl(neckH + H * 0.66, od, H - neckH - H * 0.66 - neckH * 0.7); pin(); break;
+    }
     case 'jar_tubular': case 'jar_hyd': case 'jar_spring': case 'accelerator':
-      rect(cx - w / 2, 0, w, H, STEEL);
-      for (let i = 1; i < 6; i++) g.push({ t: 'line', x1: cx - w / 2, y1: H * i / 6, x2: cx + w / 2, y2: H * i / 6, stroke: STEEL_D, width: 1 }); break;
-    case 'tool_crossover': poly([[cx - w / 2, 0], [cx + w / 2, 0], [cx + w * 0.32, H], [cx - w * 0.32, H]], STEEL); break;
-    case 'gauge_cutter':
-      rect(cx - w * 0.3, 0, w * 0.6, H * 0.6, STEEL); rect(cx - w / 2, H * 0.6, w, H * 0.3, STEEL);
-      for (let i = 0; i < 6; i++) poly([[cx - w / 2 + i * w / 6, H * 0.9], [cx - w / 2 + (i + 0.5) * w / 6, H], [cx - w / 2 + (i + 1) * w / 6, H * 0.9]], STEEL_D); break;
-    case 'impression_block': rect(cx - w * 0.3, 0, w * 0.6, H * 0.4, STEEL); rect(cx - w / 2, H * 0.4, w, H * 0.6, '#b9a27a'); break;
-    case 'blind_box': rect(cx - w * 0.3, 0, w * 0.6, H * 0.4, STEEL); rect(cx - w / 2, H * 0.4, w, H * 0.6, STEEL_D); break;
-    case 'bailer': rect(cx - w / 2, 0, w, H, STEEL); rect(cx - w * 0.3, H * 0.9, w * 0.6, H * 0.1, DARK); break;
-    case 'pulling_tool': case 'plug_prong':
-      rect(cx - w * 0.3, 0, w * 0.6, H * 0.4, STEEL); rect(cx - w / 2, H * 0.4, w, H * 0.45, STEEL);
-      rect(cx - w / 2 - 3, H * 0.55, 4, H * 0.18, DARK); rect(cx + w / 2 - 1, H * 0.55, 4, H * 0.18, DARK); break;
-    case 'wire_finder': rect(cx - w * 0.3, 0, w * 0.6, H * 0.5, STEEL); poly([[cx - w / 2, H * 0.5], [cx + w / 2, H * 0.5], [cx + w * 0.3, H], [cx - w * 0.3, H]], STEEL_D); break;
-    default: rect(cx - w / 2, 0, w, H, STEEL);
+      neck(); cyl(neckH, od * 0.6, H * 0.18);
+      cyl(neckH + H * 0.18, od, H - neckH - H * 0.18 - neckH * 0.7);
+      for (const f of [0.45, 0.7]) line(cx - (od * k) / 2, H * f, cx + (od * k) / 2, H * f, 0.5);
+      pin(); break;
+    case 'tool_crossover': {
+      const a = threadOd(r.top_conn) ?? od, b = threadOd(r.bottom_conn) ?? od * 0.7;
+      cyl(0, Math.min(a, od), H * 0.25); taper(H * 0.25, Math.min(a, od), Math.min(b, od), H * 0.5); cyl(H * 0.75, Math.min(b, od), H * 0.25); break;
+    }
+    case 'gauge_cutter': {
+      neck(); cyl(neckH, fn * 0.9, H * 0.42 - neckH);
+      cyl(H * 0.42, od, H * 0.42);
+      const w = od * k, teeth = 6;
+      for (let i = 0; i < teeth; i++) poly([[cx - w / 2 + (i * w) / teeth, H * 0.84], [cx - w / 2 + ((i + 0.5) * w) / teeth, H], [cx - w / 2 + ((i + 1) * w) / teeth, H * 0.84]], STEEL[1]);
+      break;
+    }
+    case 'impression_block':
+      neck(); cyl(neckH, fn * 0.9, H * 0.3); cyl(neckH + H * 0.3, od, H - neckH - H * 0.3 - 4); rect(cx - (od * k) / 2, H - 4, od * k, 4, '#4d555f', true); break;
+    case 'blind_box':
+      neck(); cyl(neckH, fn * 0.9, H * 0.3); cyl(neckH + H * 0.3, od, H - neckH - H * 0.3, COLLAR); break;
+    case 'bailer':
+      neck(); cyl(neckH, od, H - neckH - H * 0.12); taper(H * 0.88, od, od * 0.6, H * 0.12); break;
+    case 'wire_finder':
+      neck(); cyl(neckH, fn * 0.9, H * 0.4 - neckH);
+      for (const s of [-1, -0.33, 0.33, 1]) line(cx + (s * od * k) / 2.4, H * 0.4, cx + (s * od * k) / 2, H, 1.1);
+      cyl(H * 0.36, od * 0.9, H * 0.1, COLLAR); break;
+    case 'pulling_tool': case 'plug_prong': {
+      neck(); cyl(neckH, od * 0.8, H * 0.3);
+      cyl(neckH + H * 0.3, od, H * 0.34);
+      for (const s of [-1, 1]) rect(cx + (s * (od * k)) / 2 - (s > 0 ? 0 : 3), neckH + H * 0.36, 3, H * 0.16, COLLAR[1], true);
+      if (r.kind === 'plug_prong' && /prong/i.test(r.name)) { cyl(neckH + H * 0.64, od * 0.35, H * 0.26); taper(H * 0.9, od * 0.35, 0.05, H * 0.1); }
+      else cyl(neckH + H * 0.64, od * 0.7, H - neckH - H * 0.64);
+      break;
+    }
+    default:
+      neck(); cyl(neckH, od, H - neckH - neckH * 0.7); pin();
   }
   return g;
 }

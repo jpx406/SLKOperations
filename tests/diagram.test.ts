@@ -159,22 +159,3 @@ describe('catalogue seed', () => {
   });
 });
 
-describe('pictures', () => {
-  it('every picture a part can use exists for the screen and the PDF', async () => {
-    const { existsSync } = await import('node:fs');
-    const { pictureFor, kindsOf } = await import('../src/shared/diagram');
-    const { PICTURE_JPEGS } = await import('../src/shared/diagramPictures');
-    const names = ['Lubricator - Ported 3"', 'GS Pulling Tool', 'B Shifting Tool', 'Camco JD Pulling Tool', 'Otis S Pulling Tool', 'X Running Tool', 'Equalising Prong', 'Otis XX Plug', 'Hydrostatic Bailer', 'Sand Bailer', 'Wireline Grab', 'Knuckle Jar'];
-    for (const kind of [...kindsOf('pce'), ...kindsOf('tool')]) for (const name of ['Part', ...names]) for (const rams of [1, 2]) {
-      const p = pictureFor(row({ kind, name, rams, od_in: 2.5 }));
-      if (!p) continue;
-      expect(existsSync(`public/diagram-parts/${p.key}.png`)).toBe(true);
-      expect(PICTURE_JPEGS[p.key].base64.length).toBeGreaterThan(100);
-      expect(p.width).toBeGreaterThan(0);
-      expect(p.width).toBeLessThanOrEqual(0.98);
-    }
-    expect(pictureFor(row({ kind: 'wireline_valve', rams: 2 }))?.key).toBe('bop_dual');
-    expect(pictureFor(row({ kind: 'lubricator', name: 'Lubricator - Lightweight - Ported 3" x 10 ft' }))?.key).toBe('lubricator_ported');
-    expect(pictureFor(row({ kind: 'tool_catcher' }))).toBeNull();
-  });
-});

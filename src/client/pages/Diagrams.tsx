@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEven
 import { Link, useParams, useSearchParams } from 'react-router';
 import {
   CONNECTIONS, FAMILY_OF, FORM, MAX_ROWS, PART_KINDS, RATINGS, crossoverFor, diagramChecks, drawPart, insertIndex, joints, kindsOf, rigTotals, rowFromPart,
-  pictureFor, stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row,
+  stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row,
 } from '../../shared/diagram';
 import type { ToolPart } from '../../shared/toolstring';
 import { ApiError, api, countryScope, formatDate } from '../api';
@@ -301,24 +301,20 @@ function Catalogue({ family, parts, loading, canEdit, well, onAdd }: {
 
 function Svg({ prims, w, h, className }: { prims: Prim[]; w: number; h: number; className?: string }) {
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className={className} aria-hidden preserveAspectRatio="xMidYMid meet">
-      {prims.map((p, i) => p.t === 'rect' ? <rect key={i} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.fill} stroke="#1b2430" strokeWidth={0.6} />
-        : p.t === 'poly' ? <polygon key={i} points={p.pts.map((x) => x.join(',')).join(' ')} fill={p.fill} stroke="#1b2430" strokeWidth={0.6} />
-        : p.t === 'circle' ? <circle key={i} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill ?? 'none'} stroke={p.stroke} strokeWidth={1.2} />
+    <svg viewBox={`0 0 ${w} ${h}`} className={className} aria-hidden preserveAspectRatio="xMidYMid meet" shapeRendering="geometricPrecision">
+      {prims.map((p, i) => p.t === 'rect' ? <rect key={i} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.fill ?? 'none'} stroke={p.outline ? '#3b434d' : 'none'} strokeWidth={0.6} />
+        : p.t === 'poly' ? <polygon key={i} points={p.pts.map((x) => x.join(',')).join(' ')} fill={p.fill} stroke="#3b434d" strokeWidth={0.6} />
+        : p.t === 'circle' ? <circle key={i} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill ?? 'none'} stroke={p.stroke} strokeWidth={0.8} />
         : <line key={i} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.width} />)}
     </svg>
   );
 }
-/** A row's picture from the workbook, stretched to the row's height so the stack reads as one string; a drawing when there is none. */
-function PartPicture({ row, family, className }: { row: Row; family: Family; className?: string }) {
-  const pic = pictureFor(row);
-  if (!pic) return <Svg prims={drawPart(row, family, 140, 52)} w={140} h={52} className={cx('block h-full w-full', className)} />;
-  return <img src={`/diagram-parts/${pic.key}.png`} alt="" draggable={false} className={cx('mx-auto block h-full object-fill', className)} style={{ width: `${pic.width * 100}%` }} />;
-}
+/** The assembly column's view box: every row is drawn at the same scale, so parts compare truly and join up. */
+const DRAW_W = 110, DRAW_H = 56;
+const PartPicture = ({ row, family, className }: { row: Row; family: Family; className?: string }) =>
+  <Svg prims={drawPart(row, family, DRAW_W, DRAW_H)} w={DRAW_W} h={DRAW_H} className={cx('block h-full w-full', className)} />;
 const PartIcon = ({ row, family }: { row: Row; family: Family }) => (
-  <span className="flex h-10 w-8 items-center justify-center rounded-sm bg-[#ffffff]">{pictureFor(row)
-    ? <img src={`/diagram-parts/${pictureFor(row)!.key}.png`} alt="" className="max-h-9 max-w-7 object-contain" />
-    : <Svg prims={drawPart(row, family, 32, 36)} w={32} h={36} className="h-9 w-8" />}</span>
+  <span className="flex h-10 w-8 items-center justify-center rounded-sm bg-[#ffffff]"><Svg prims={drawPart(row, family, 60, 90)} w={60} h={90} className="h-9 w-8" /></span>
 );
 
 // ---- the sheet ----
