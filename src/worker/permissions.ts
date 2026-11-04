@@ -116,9 +116,13 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   // asking the agent only reads; its tools go through READ_RULES with the asker's own session
   { method: 'POST', re: /^\/api\/ai\/chat$/, menu: 'ai_agent', action: 'view' },
   { method: 'POST', re: /^\/api\/ai\/assistant$/, menu: 'ai_assistant', action: 'view' },
-  { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists)$/, menu: 'database', action: 'edit' },
-  { method: 'PATCH', re: /^\/api\/database\/(pce|grease-panels|lists)\/[^/]+$/, menu: 'database', action: 'edit' },
-  { method: 'DELETE', re: /^\/api\/database\/(pce|grease-panels)\/[^/]+$/, menu: 'database', action: 'delete' },
+  { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists|parts)$/, menu: 'database', action: 'edit' },
+  { method: 'PATCH', re: /^\/api\/database\/(pce|grease-panels|lists|parts)\/[^/]+$/, menu: 'database', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/database\/(pce|grease-panels|parts)\/[^/]+$/, menu: 'database', action: 'delete' },
+  // rig up and tool string diagrams (Preparation); who may edit or review is checked in the route
+  { method: 'PUT', re: /^\/api\/diagrams\/[^/]+\/(rigup|toolstring)\/\d+$/, menu: 'jobs', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/diagrams\/[^/]+\/toolstring\/\d+$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/diagrams\/[^/]+\/(rigup|toolstring)\/\d+\/(pdf|send|review|reopen)$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/database\/service-profiles$/, menu: 'database', action: 'edit' },
   { method: 'POST', re: /^\/api\/emf$/, menu: 'eight_min_facts', action: 'edit' },
   { method: 'PUT', re: /^\/api\/emf\/[^/]+$/, menu: 'eight_min_facts', action: 'edit' },
@@ -168,6 +172,8 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
   { re: /^\/api\/database$/, menus: ['database'] },
+  { re: /^\/api\/diagrams\/parts$/, menus: ['jobs', 'database'] },
+  { re: /^\/api\/diagrams\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/job-log(\/options)?$/, menus: ['job_log'] },
   // only the values that occur in the caller's own jobs, for the filter dropdowns
   { re: /^\/api\/filter-options$/, menus: 'any' },

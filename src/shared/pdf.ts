@@ -93,6 +93,28 @@ export class PdfDoc {
   line(x1: number, y1: number, x2: number, y2: number, gray = 0.75) {
     this.page.push(`${gray} G 0.6 w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
   }
+  /** A line in any colour and width (diagram drawings). */
+  stroke(x1: number, y1: number, x2: number, y2: number, color: [number, number, number], width = 0.6) {
+    this.page.push(`${color.join(' ')} RG ${width} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
+  }
+  /** A rectangle outline (form boxes). */
+  box(x: number, y: number, w: number, h: number, gray = 0, width = 0.6) {
+    this.page.push(`${gray} G ${width} w ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`);
+  }
+  /** A filled polygon with a thin dark edge. */
+  poly(pts: [number, number][], fill: [number, number, number]) {
+    if (pts.length < 3) return;
+    const path = pts.map(([x, y], i) => `${x.toFixed(2)} ${y.toFixed(2)} ${i ? 'l' : 'm'}`).join(' ');
+    this.page.push(`${fill.join(' ')} rg 0.1 G 0.4 w ${path} h B`);
+  }
+  /** A circle from four Bézier arcs; filled, outlined, or both. */
+  circle(cx: number, cy: number, r: number, fill: [number, number, number] | null, stroke: [number, number, number] | null, width = 0.8) {
+    const k = 0.5523 * r, f = (n: number) => n.toFixed(2);
+    const path = `${f(cx + r)} ${f(cy)} m ${f(cx + r)} ${f(cy + k)} ${f(cx + k)} ${f(cy + r)} ${f(cx)} ${f(cy + r)} c ${f(cx - k)} ${f(cy + r)} ${f(cx - r)} ${f(cy + k)} ${f(cx - r)} ${f(cy)} c `
+      + `${f(cx - r)} ${f(cy - k)} ${f(cx - k)} ${f(cy - r)} ${f(cx)} ${f(cy - r)} c ${f(cx + k)} ${f(cy - r)} ${f(cx + r)} ${f(cy - k)} ${f(cx + r)} ${f(cy)} c h`;
+    const op = fill && stroke ? 'B' : fill ? 'f' : 'S';
+    this.page.push(`${fill ? `${fill.join(' ')} rg ` : ''}${stroke ? `${stroke.join(' ')} RG ${width} w ` : ''}${path} ${op}`);
+  }
   /** Writes wrapped text at the cursor and moves it down; returns the height used. */
   para(s: string, o: TextOpts & { x?: number; width?: number; gap?: number } = {}) {
     const size = o.size ?? 10, x = o.x ?? this.margin, width = o.width ?? this.width - this.margin - x;

@@ -367,6 +367,10 @@ A segmented Yes / No (/ N/A) control, 32px tall on a desk and 48px under touch, 
 - **Tones:** info, warning, danger (`role="alert"`) and success.
 - **Known exception:** banners still carry a 3px tone-coloured left edge (`border-l-3`). It predates The Declare Depth Once Rule and the side-stripe ban; replace it with the tinted fill alone when banners are next touched.
 
+### Rig up and tool string sheet
+
+The QAF14009 and QAF14010 sheets are drawn as paper: white, the forms' olive header fills and rules, whatever the theme, because they are the printout. The assembly column has no row rules so the parts read as one continuous string; each part is its workbook picture stretched to the row height (drawn only when no picture exists). Connection faults sit on the line between two rows as a red pill with Add crossover. Catalogue left, sheet centre, row editor and checks right from 1280 px; one column below.
+
 ### Signature Badge (signature component)
 The Signed Record lens in one line:
 - a shield icon, then "Digitally signed by NAME (Role) · date";

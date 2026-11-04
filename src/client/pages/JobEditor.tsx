@@ -17,7 +17,8 @@ import { Attachments } from '../components/Attachments';
 import { JobLogEvents } from '../components/JobLogEvents';
 import { BonusDistribution } from './Bonus';
 import { PreJobNotePanel } from './PreJobNotes';
-import { CrewPanel, DetailsSection, PrepChecks, SectionTitle, ToolstringBuilder, WirePanel, serviceFlags } from '../components/jobParts';
+import { CrewPanel, DetailsSection, PrepChecks, SectionTitle, WirePanel, serviceFlags } from '../components/jobParts';
+import { DiagramsCard } from './Diagrams';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
 
 type SaveState = { kind: 'idle' | 'dirty' | 'saving' | 'saved' } | { kind: 'error'; message: string } | { kind: 'conflict'; message: string };
@@ -397,7 +398,7 @@ export function JobEditor() {
               {select('pce_id', 'Pressure control set', pceOptions.map((p) => ({ value: p.id, label: `${p.label} · ${p.bore_in} in bore${p.active ? '' : ' (switched off)'}` })),
                 !pceOptions.some((p) => p.active) ? 'No equipment listed yet (Database)' : pce ? `${pce.bore_in} in bore${pce.rating_psi ? ` · ${pce.rating_psi.toLocaleString()} psi` : ''}` : undefined, pickPce)}
               {select('pressure_rating_psi', 'Pressure rating', ['5000', '10000', '15000'].map((v) => ({ value: v, label: `${Number(v).toLocaleString()} psi` })))}
-              {text('lubricator_length_ft', 'Lubricator length', { type: 'number', unit: 'ft' })}
+              {text('lubricator_length_ft', 'Lubricator length', { type: 'number', unit: 'ft', hint: 'Filled from the rig up diagram' })}
               {select('stuffing_box_type', 'Stuffing box', list('stuffing_box_type'))}
               {select('grease_panel_id', 'Grease panel', (L?.greasePanels ?? []).filter((g) => g.country === country && (g.active || g.id === values.grease_panel_id)).map((g) => ({ value: g.id, label: g.label })), 'Braided line only')}
               {select('jar_type', 'Jar type', list('jar_type'))}
@@ -405,9 +406,8 @@ export function JobEditor() {
               {values.special_setup === 'yes' && text('special_setup_notes', 'Special setup notes')}
             </div>
 
-            <SectionTitle aside="Rope socket at the top">Toolstring</SectionTitle>
-            <ToolstringBuilder value={json<ToolPart[]>('toolstring', [])} canEdit={editable('toolstring')} onChange={(parts) => changeJson('toolstring', parts)}
-              ctx={{ minRestrictionIn: num('min_restriction_in'), pceBoreIn: pce?.bore_in ?? null, lubricatorFt: num('lubricator_length_ft') }} />
+            <SectionTitle aside="QAF14009 and QAF14010">Rig up and tool string diagrams</SectionTitle>
+            <DiagramsCard jobId={job.id} />
 
             <SectionTitle aside="Head count and named crew">Crew</SectionTitle>
             <CrewPanel job={job} canEdit={editable('well_type')} />

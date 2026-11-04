@@ -19,6 +19,7 @@ import { Inventory } from './pages/Inventory';
 import { PreJobNoteEditor, PreJobNotesList, PreJobNotesPrint } from './pages/PreJobNotes';
 import { JraPage } from './pages/Jra';
 import { JobReport } from './pages/JobReport';
+import { Diagrams } from './pages/Diagrams';
 import { BonusAnalysis, BonusReport, BonusRules } from './pages/Bonus';
 import { SalesDashboard } from './pages/Sales';
 import { AdminData } from './pages/AdminData';
@@ -57,6 +58,7 @@ const router = createBrowserRouter([
       { path: 'operation/jobs', element: <JobBoard /> },
       { path: 'operation/jobs/:id/jra', element: <JraPage /> },
       { path: 'operation/jobs/:id/report', element: <JobReport /> },
+      { path: 'operation/jobs/:id/diagrams', element: <Diagrams /> },
       { path: 'operation/jobs/:id/:stage?', element: <JobEditor /> },
       { path: 'operation/pre-job-notes', element: <PreJobNotesList /> },
       { path: 'operation/pre-job-notes/print', element: <PreJobNotesPrint /> },

@@ -26,7 +26,7 @@ The top row holds the groups (Operation, Service Quality, Attendance, Inventory 
 
 Design holds the ticket, SDM, status, unit, dates, account, area, rig, well and conveyance, plus the Pre-Job Note and the services. Picking services decides which sections open later.
 
-Preparation holds the well data, the wire and drum, the pressure control equipment, the toolstring and the crew. If the job needs a JRA (high-risk services or conditions), a banner says so and Execution stays locked until the JRA is approved.
+Preparation holds the well data, the wire and drum, the pressure control equipment, the rig up and tool string diagrams and the crew. If the job needs a JRA (high-risk services or conditions), a banner says so and Execution stays locked until the JRA is approved.
 
 Execution holds the times (arrival, rig-up, rig-down), NPT, runs, failure, and the sections the services opened: plug, fishing, memory survey, perforation. A job with an explosive service also shows the explosives prompt. The job log (sequence of events) records what happened in order and works offline; entries wait on the device and send when the connection is back.
 
@@ -34,7 +34,9 @@ Closure holds the paperwork checks (job log and ticket signed, job package, well
 
 Every stage has an Attachments section at the bottom: drop photos, the signed ticket, job log scans, permits or reports there (PDF, images, Office, text, email or zip, up to 25 MB each). An uploaded JRA Excel is kept there too. Removing a file hides it; the audit trail keeps a record.
 
-The Full Job Report prints everything on one page; the Job Package downloads a zip with the report, the job data, the sequence of events, the toolstring and the crew.`,
+The Full Job Report prints everything on one page; the Job Package downloads a zip with the report, the job data, the sequence of events, the toolstring and the crew.
+
+Rig up and tool string diagrams (QAF14009 and QAF14010): open them from Preparation. There is one rig up per job and one tool string per run. Pick parts from the catalogue on the left; each one drops into its place in the stack, or drag it to a row. The sheet in the middle is the printout. A red mark between two rows means the connections do not make up; Add crossover fixes it. The checks on the right compare the rig up with SIWHP (1.2 times), H2S service, the widest tool (bore plus 0.25 in) and the longest tool string with jars open (lubricator plus 3 ft), and the tool string with the minimum restriction and the stem weight. Send for review when it is ready; the job's SDM marks it reviewed, which files a PDF with the job. A diagram starts at Rev 0; after a PDF, the next change makes the next revision and sends it back to draft. The parts list is kept in Database, Parts catalogue.`,
   },
   {
     id: 'pjn', title: 'Pre-Job Notes', menus: ['pre_job_notes'],

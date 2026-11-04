@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { LIST_KINDS, SERVICE_FLAGS, cleanListValue, cleanPce } from '../shared/database';
+import { cleanPart } from '../shared/diagram';
 import type { AppBindings, AuthedUser, Env } from './env';
 
 // Equipment Database (S24). WIREGUARD units are shown read-only; PCE, grease panels, local lists and
@@ -223,6 +224,60 @@ database.put('/service-profiles', async (c) => {
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
     ).bind(name, domain, ...flags),
     audit(c.env, user, 'edit', 'service_profiles', name, `${name}: domain ${domain ?? '—'}, ${SERVICE_FLAGS.filter((_, i) => flags[i]).join(', ') || 'no sections'}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+// ---- parts catalogue (rig up and tool string diagrams) ----
+// Not per country: a part is a specification, not an asset. Diagrams copy a part, so edits never change a filed diagram.
+
+const PART_COLUMNS = ['family', 'kind', 'name', 'rating_psi', 'service', 'id_in', 'od_in', 'fn_in', 'top_conn', 'bottom_conn', 'length_ft', 'weight_lb', 'stroke_ft', 'rams', 'source'] as const;
+
+database.post('/parts', async (c) => {
+  const user = c.get('user');
+  const r = cleanPart(await c.req.json<Record<string, unknown>>().catch(() => ({})));
+  if ('error' in r) return c.json({ error: r.error }, 400);
+  const id = crypto.randomUUID(), v = r.values as Record<string, unknown>;
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO parts (id, ${PART_COLUMNS.join(', ')}, updated_by) VALUES (?, ${PART_COLUMNS.map(() => '?').join(', ')}, ?)`)
+        .bind(id, ...PART_COLUMNS.map((k) => v[k] ?? null), user.username),
+      audit(c.env, user, 'create', 'part', id, `Added ${v.name} to the parts catalogue`),
+    ]);
+  } catch (e) {
+    return c.json({ error: duplicate(e) ? `The catalogue already has a part called ${v.name}` : 'Could not save' }, 400);
+  }
+  return c.json({ ok: true, id }, 201);
+});
+
+database.patch('/parts/:id', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const cur = await c.env.DB.prepare('SELECT * FROM parts WHERE id = ?').bind(c.req.param('id')).first<Record<string, unknown>>();
+  if (!cur) return c.json({ error: 'Part not found' }, 404);
+  const r = cleanPart({ ...cur, ...b, family: cur.family });
+  if ('error' in r) return c.json({ error: r.error }, 400);
+  const v = r.values as Record<string, unknown>;
+  const active = 'active' in b ? (b.active ? 1 : 0) : cur.active;
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE parts SET ${PART_COLUMNS.map((k) => `${k} = ?`).join(', ')}, active = ?, updated_by = ?, updated_at = ? WHERE id = ?`)
+        .bind(...PART_COLUMNS.map((k) => v[k] ?? null), active, user.username, new Date().toISOString(), cur.id),
+      audit(c.env, user, 'update', 'part', String(cur.id), `Changed ${v.name} in the parts catalogue${active !== cur.active ? (active ? ', switched on' : ', switched off') : ''}`),
+    ]);
+  } catch (e) {
+    return c.json({ error: duplicate(e) ? `The catalogue already has a part called ${v.name}` : 'Could not save' }, 400);
+  }
+  return c.json({ ok: true });
+});
+
+database.delete('/parts/:id', async (c) => {
+  const user = c.get('user');
+  const cur = await c.env.DB.prepare('SELECT id, name FROM parts WHERE id = ?').bind(c.req.param('id')).first<{ id: string; name: string }>();
+  if (!cur) return c.json({ error: 'Part not found' }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM parts WHERE id = ?').bind(cur.id),
+    audit(c.env, user, 'delete', 'part', cur.id, `Removed ${cur.name} from the parts catalogue (diagrams keep their copy)`),
   ]);
   return c.json({ ok: true });
 });

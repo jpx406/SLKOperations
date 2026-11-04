@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ExternalLink, Pencil, Plus, X } from 'lucide-react'
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { FLAG_LABEL, LIST_KINDS, PCE_KINDS, PCE_RATINGS, SERVICE_FLAGS, pressureTestDue, type ListKind } from '../../shared/database';
+import { CONNECTIONS, PART_KINDS, RATINGS, SERVICES, kindsOf, type Family, type Part } from '../../shared/diagram';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
@@ -18,7 +19,7 @@ interface ListRow { id: string; country: string; kind: ListKind; value: string; 
 interface ProfileRow { job_type_name: string; domain: string | null; is_plug: number; is_fishing: number; is_memory: number; is_perforation: number; is_explosive: number; updated_at: string | null }
 interface Db { units: UnitRow[]; pce: PceRow[]; greasePanels: PanelRow[]; lists: ListRow[]; serviceProfiles: ProfileRow[]; domains: string[] }
 
-const TABS = [['units', 'Units'], ['pce', 'Pressure control'], ['panels', 'Grease panels'], ['lists', 'Lists'], ['profiles', 'Service profiles']] as const;
+const TABS = [['units', 'Units'], ['pce', 'Pressure control'], ['parts', 'Parts catalogue'],['panels', 'Grease panels'], ['lists', 'Lists'], ['profiles', 'Service profiles']] as const;
 type Tab = (typeof TABS)[number][0];
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 
@@ -61,6 +62,7 @@ export function Database() {
         {db.isError && <Banner tone="danger">{db.error.message}</Banner>}
         {db.data && tab === 'units' && <Units rows={inCountry(db.data.units)} />}
         {db.data && tab === 'pce' && <PceTable rows={inCountry(db.data.pce)} rights={rights} country={shown} />}
+        {tab === 'parts' && <PartsTable rights={rights} />}
         {db.data && tab === 'panels' && <Panels rows={inCountry(db.data.greasePanels)} rights={rights} country={shown} types={db.data.lists.filter((l) => l.kind === 'grease_panel_type' && l.active).map((l) => l.value)} />}
         {db.data && tab === 'lists' && <Lists rows={inCountry(db.data.lists)} canEdit={rights.edit} country={shown} />}
         {db.data && tab === 'profiles' && <Profiles rows={db.data.serviceProfiles} domains={db.data.domains} canEdit={rights.edit} />}
@@ -429,5 +431,131 @@ function Profiles({ rows, domains, canEdit }: { rows: ProfileRow[]; domains: str
         </Table>
       )}
     </>
+  );
+}
+
+// ---- parts catalogue (rig up and tool string diagrams) ----
+
+function PartsTable({ rights }: { rights: Rights }) {
+  const qc = useQueryClient();
+  const parts = useQuery({ queryKey: ['parts', 'all'], queryFn: () => api<Part[]>('/diagrams/parts?all=1') });
+  const [family, setFamily] = useState<Family>('pce');
+  const [q, setQ] = useState('');
+  const [editing, setEditing] = useState<Part | 'new' | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const rows = (parts.data ?? []).filter((p) => p.family === family && (!q || `${p.name} ${p.top_conn ?? ''} ${p.bottom_conn ?? ''}`.toLowerCase().includes(q.toLowerCase())));
+  const missing = (p: Part) => [
+    p.length_ft == null && p.kind !== 'tree' && 'length',
+    family === 'pce' && p.id_in == null && !['stuffing_box', 'grease_head', 'tree'].includes(p.kind) && 'ID',
+    family === 'tool' && p.od_in == null && 'OD',
+    family === 'tool' && p.weight_lb == null && 'weight',
+    p.kind !== 'tree' && (!p.top_conn || (!p.bottom_conn && PART_KINDS[p.kind].rank < 7)) && 'connection',
+  ].filter(Boolean) as string[];
+  const gaps = rows.filter((p) => p.active && missing(p).length).length;
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <div role="group" aria-label="Part family" className="flex rounded-md border border-border-strong p-0.5">
+          {([['pce', 'Pressure control (QAF14009)'], ['tool', 'Tool string (QAF14010)']] as const).map(([k, l]) => (
+            <button key={k} aria-pressed={family === k} onClick={() => setFamily(k)} className={cx('h-8 rounded px-3 text-sm font-semibold', family === k ? 'bg-surface-3 text-text' : 'text-text-muted')}>{l}</button>
+          ))}
+        </div>
+        <input type="search" aria-label="Search parts" placeholder="Search parts, connections…" className={inputSized('h-(--layout-control-sm) w-64')} value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="flex-1" />
+        {rights.edit && <Button variant="primary" onClick={() => setEditing('new')}><Plus aria-hidden className="size-4" />Add part</Button>}
+      </div>
+      <p className="mb-3 max-w-3xl text-sm text-text-muted">
+        The parts crews pick for the rig up and tool string diagrams. Seeded from the QAF14009 and QAF14010 pick lists; fill in lengths, weights and
+        connections from the manufacturers’ catalogues. A diagram keeps its own copy, so changes here never alter a filed diagram.
+      </p>
+      {gaps > 0 && <div className="mb-3"><Banner tone="warning">{gaps} active part{gaps === 1 ? ' is' : 's are'} missing sizes the checks use (length, ID or OD, weight, connections).</Banner></div>}
+      {notice && <div className="mb-3"><Banner tone="success">{notice}</Banner></div>}
+      {parts.isPending && <Skeleton className="h-96" />}
+      {parts.isError && <Banner tone="danger">{parts.error.message}</Banner>}
+      {parts.data && (!rows.length ? <EmptyState title="No parts">{q ? 'Nothing matches the search.' : 'Add the first part.'}</EmptyState> : (
+        <Table head={family === 'pce' ? ['Part', 'Type', 'Rating', 'ID', 'Top conn.', 'Bottom conn.', 'Length', 'Status', ''] : ['Part', 'Type', 'OD / F/N', 'Top conn.', 'Bottom conn.', 'Length', 'Weight', 'Status', '']} min="64rem">
+          {rows.map((p) => {
+            const gap = missing(p);
+            return (
+              <tr key={p.id} className={cx('border-t border-border', !p.active && 'text-text-subtle')}>
+                <th scope="row" className="px-3 py-2 text-left font-semibold">{p.name}<span className="block text-xs font-normal text-text-subtle">{p.source ?? ''}{gap.length ? <span className="text-warning"> · no {gap.join(', ')}</span> : null}</span></th>
+                <td className="px-3 py-2 text-xs">{PART_KINDS[p.kind]?.label ?? p.kind}{p.rams ? ` · ${p.rams} ram${p.rams === 1 ? '' : 's'}` : ''}</td>
+                {family === 'pce' ? <>
+                  <td className="px-3 py-2 font-mono text-xs">{p.rating_psi ? `${p.rating_psi.toLocaleString()}${p.service === 'h2s' ? ' H₂S' : ''}` : '—'}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{p.id_in != null ? `${p.id_in} in` : '—'}</td>
+                </> : <td className="px-3 py-2 font-mono text-xs">{p.od_in ?? '—'} / {p.fn_in ?? '—'} in</td>}
+                <td className="px-3 py-2 font-mono text-xs">{p.top_conn ?? '—'}</td>
+                <td className="px-3 py-2 font-mono text-xs">{p.bottom_conn ?? '—'}</td>
+                <td className="px-3 py-2 font-mono text-xs">{p.length_ft != null ? `${p.length_ft} ft` : '—'}{p.stroke_ft ? ` +${p.stroke_ft}` : ''}</td>
+                {family === 'tool' && <td className="px-3 py-2 font-mono text-xs">{p.weight_lb != null ? `${p.weight_lb} lb` : '—'}</td>}
+                <td className="px-3 py-2"><OnOff on={!!p.active} /></td>
+                <td className="px-3 py-2 text-right">{rights.edit && <Button size="sm" onClick={() => setEditing(p)} aria-label={`Edit ${p.name}`}><Pencil aria-hidden className="size-3.5" />Edit</Button>}</td>
+              </tr>
+            );
+          })}
+        </Table>
+      ))}
+      {editing && <PartDialog row={editing === 'new' ? null : editing} family={family} canRemove={rights.remove}
+        onClose={(msg) => { setEditing(null); setNotice(msg ?? null); if (msg) qc.invalidateQueries({ queryKey: ['parts'] }); }} />}
+    </>
+  );
+}
+
+function PartDialog({ row, family, canRemove, onClose }: { row: Part | null; family: Family; canRemove: boolean; onClose: (msg?: string) => void }) {
+  const fam = row?.family ?? family;
+  const s = (v: number | null | undefined) => (v == null ? '' : String(v));
+  const [f, setF] = useState({
+    kind: row?.kind ?? kindsOf(fam)[0], name: row?.name ?? '', rating_psi: s(row?.rating_psi), service: row?.service ?? '', id_in: s(row?.id_in), od_in: s(row?.od_in), fn_in: s(row?.fn_in),
+    top_conn: row?.top_conn ?? '', bottom_conn: row?.bottom_conn ?? '', length_ft: s(row?.length_ft), weight_lb: s(row?.weight_lb), stroke_ft: s(row?.stroke_ft), rams: s(row?.rams),
+    source: row?.source ?? '', active: row ? !!row.active : true,
+  });
+  const set = (k: keyof typeof f, v: string | boolean) => setF((cur) => ({ ...cur, [k]: v }));
+  const { error, save, remove } = useEquipmentSave('parts', row, onClose, () => f.name);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const numField = (k: 'id_in' | 'od_in' | 'fn_in' | 'length_ft' | 'weight_lb' | 'stroke_ft' | 'rams', label: string, unit?: string) => (
+    <Field id={`part-${k}`} label={label} unit={unit}><input id={`part-${k}`} className={cx(inputClass, unit && 'pr-10')} type="number" min={0} step="any" inputMode="decimal" value={f[k]} onChange={(e) => set(k, e.target.value)} /></Field>
+  );
+  return (
+    <Dialog title={row ? `Edit ${row.name}` : `Add a ${fam === 'pce' ? 'pressure control' : 'tool string'} part`} onClose={() => onClose()}>
+      {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+      <datalist id="part-conns">{CONNECTIONS[fam].map((c) => <option key={c} value={c} />)}</datalist>
+      <form className="grid grid-cols-1 gap-4 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate({ ...f, family: fam }); }}>
+        <div className="sm:col-span-2"><Field id="part-name" label="Description" required><input id="part-name" className={inputClass} value={f.name} onChange={(e) => set('name', e.target.value)} placeholder={fam === 'pce' ? 'e.g. Lubricator - Lightweight 3" x 10 ft' : 'e.g. 1 7/8" x 5 ft Stem'} /></Field></div>
+        <Field id="part-kind" label="Type">
+          <Select id="part-kind" className={inputClass} value={f.kind} onChange={(e) => set('kind', e.target.value)}>
+            {kindsOf(fam).map((k) => <option key={k} value={k}>{PART_KINDS[k].label}</option>)}
+          </Select>
+        </Field>
+        {fam === 'pce' ? <>
+          <Field id="part-rating" label="Working pressure">
+            <Select id="part-rating" className={inputClass} value={f.rating_psi} onChange={(e) => set('rating_psi', e.target.value)}>
+              <option value="">Not set</option>{RATINGS.map((r) => <option key={r} value={r}>{r.toLocaleString()} psi</option>)}
+            </Select>
+          </Field>
+          <Field id="part-service" label="Service">
+            <Select id="part-service" className={inputClass} value={f.service} onChange={(e) => set('service', e.target.value)}>
+              <option value="">Not set</option>{Object.entries(SERVICES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </Select>
+          </Field>
+          {numField('id_in', 'ID (bore)', 'in')}
+          {f.kind === 'wireline_valve' && numField('rams', 'Rams')}
+        </> : <>
+          {numField('od_in', 'OD', 'in')}{numField('fn_in', 'Fishing neck', 'in')}{numField('weight_lb', 'Weight', 'lb')}{numField('stroke_ft', 'Jar stroke', 'ft')}
+        </>}
+        <Field id="part-top" label="Top connection"><input id="part-top" list="part-conns" className={inputClass} value={f.top_conn} onChange={(e) => set('top_conn', e.target.value)} /></Field>
+        <Field id="part-bottom" label="Bottom connection"><input id="part-bottom" list="part-conns" className={inputClass} value={f.bottom_conn} onChange={(e) => set('bottom_conn', e.target.value)} /></Field>
+        {numField('length_ft', 'Length', 'ft')}
+        <Field id="part-source" label="Source" hint="Catalogue and page, or drawing number"><input id="part-source" className={inputClass} value={f.source} onChange={(e) => set('source', e.target.value)} /></Field>
+        {row && <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.active} onChange={(e) => set('active', e.target.checked)} />Active (crews can pick it)</label>}
+        <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+          <Button type="submit" variant="primary" loading={save.isPending}>Save</Button>
+          <Button onClick={() => onClose()}>Cancel</Button>
+          {row && canRemove && (confirmRemove
+            ? <Button variant="danger" className="ml-auto" loading={remove.isPending} onClick={() => remove.mutate()}>Confirm remove</Button>
+            : <Button variant="danger" className="ml-auto" onClick={() => setConfirmRemove(true)}>Remove</Button>)}
+        </div>
+        {row && <p className="text-xs text-text-subtle sm:col-span-2">Diagrams that already use this part keep their own copy.</p>}
+      </form>
+    </Dialog>
   );
 }

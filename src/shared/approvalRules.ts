@@ -20,6 +20,7 @@ export const STATIC_RULES: RuleDef[] = [
   { key: 'job.design', group: 'Job', label: 'Design: the request', help: 'Field ticket, DRSS, DMR, run details, dates, account, area, rig, well, conveyance, status', defaults: PLANNERS },
   { key: 'job.design_sdm', group: 'Job', label: 'Design: SDM, unit, end date and program in place', defaults: MANAGERS },
   { key: 'job.prep', group: 'Job', label: 'Preparation: well, wire, pressure control, toolstring', defaults: PREP },
+  { key: 'job.diagram_review', group: 'Job', label: 'Review the rig up and tool string diagrams', help: 'The job’s own SDM always can. Reviewing files the diagram as a PDF.', defaults: ['sdm'] },
   { key: 'job.exec', group: 'Job', label: 'Execution: times, runs, depths, NPT and service details', defaults: FIELD_CREW },
   { key: 'job.op_hours', group: 'Job', label: 'Override the operating hours', defaults: ['sdm', 'operations_manager'] },
   { key: 'jra.decide', group: 'JRA', label: 'Approve or reject any JRA', help: 'On top of the person the JRA was sent to', defaults: ['operations_manager'] },
