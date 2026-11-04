@@ -309,7 +309,8 @@ export type Prim =
   | { t: 'rect'; x: number; y: number; w: number; h: number; fill: string | null; outline?: boolean }
   | { t: 'poly'; pts: [number, number][]; fill: string }
   | { t: 'circle'; cx: number; cy: number; r: number; fill: string | null; stroke: string }
-  | { t: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number };
+  | { t: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number }
+  | { t: 'text'; x: number; y: number; s: string; size: number };
 
 /** Thread OD in inches from a connection like 6.125"-4x2 (4.750"). */
 export const threadOd = (c: string | null) => { const m = /^\s*([\d.]+)"/.exec(c ?? ''); return m ? Number(m[1]) : null; };
@@ -321,7 +322,7 @@ const STEEL = ['#69727d', '#a3abb4', '#d6dbe0', '#f1f3f5', '#c3c9cf', '#8b939c']
 const COLLAR = ['#525a64', '#808892', '#adb4bc', '#cdd2d7', '#9aa1a9', '#6c747e'];
 const BANDS = [0.08, 0.16, 0.18, 0.2, 0.22, 0.16];
 /** Inches across the assembly column: the same for every part of a family, so sizes compare truly. */
-const SPAN: Record<Family, number> = { pce: 15, tool: 8.5 };
+const SPAN: Record<Family, number> = { pce: 15, tool: 4.2 };
 
 export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
   const g: Prim[] = [], cx = W / 2, k = W / SPAN[family];
@@ -505,3 +506,61 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
   }
   return g;
 }
+
+// ---- the assembly as one drawing ----
+
+/**
+ * How tall a part is drawn, in the same inches as its width. Long parts are shortened (a 10 ft lubricator is not
+ * drawn 30 times its width) but keep their order of size; short parts keep room for their features.
+ */
+export function drawnLength(r: Row, family: Family): number {
+  if (family === 'pce') {
+    const len = r.length_ft ?? ({ lubricator: 8, wireline_valve: 3, tree: 4, stuffing_box: 2.5, grease_head: 6 } as Partial<Record<PartKind, number>>)[r.kind] ?? 1.5;
+    const min = r.kind === 'wireline_valve' ? 3 + 3.6 * Math.max(1, Math.min(4, r.rams ?? 1)) : r.kind === 'tree' ? 11 : r.kind === 'stuffing_box' ? 10 : r.kind === 'wellhead_adapter' ? 6 : r.kind === 'pump_in_sub' ? 6 : 4.5;
+    return Math.max(min, 3.5 + len * 2);
+  }
+  const len = r.length_ft ?? (r.kind.startsWith('jar_') ? 5 : r.kind === 'stem' || r.kind === 'roller_stem' ? 3 : 1.5);
+  const min = r.kind === 'jar_mech' ? 10 : r.kind === 'knuckle' || r.kind === 'swivel' ? 5 : 4;
+  return Math.max(min, len * 12 * 0.36);
+}
+
+export type Mark = { index: number; y0: number; y1: number };
+
+/**
+ * The whole stack in a W × H box: one scale for width and length, shrunk until it fits, so no part is stretched
+ * and nothing runs off the page. Each part is tagged with its row number on the left.
+ */
+export function layoutStack(rows: Row[], family: Family, W: number, H: number): { prims: Prim[]; marks: Mark[]; height: number } {
+  if (!rows.length) return { prims: [], marks: [], height: 0 };
+  const tag = 14;
+  const lens = rows.map((r) => drawnLength(r, family));
+  const total = lens.reduce((a, b) => a + b, 0);
+  const s = Math.min((W - tag - 2) / SPAN[family], H / total);
+  const dw = SPAN[family] * s, x0 = tag + (W - tag - dw) / 2;
+  const prims: Prim[] = [], marks: Mark[] = [];
+  let y = 0;
+  rows.forEach((r, i) => {
+    const h = lens[i] * s;
+    for (const p of drawPart(r, family, dw, h)) prims.push(shift(p, x0, y));
+    marks.push({ index: i, y0: y, y1: y + h });
+    y += h;
+  });
+  // row tags: a numbered circle with a leader to the part
+  marks.forEach((m) => {
+    const cy = (m.y0 + m.y1) / 2, rr = Math.min(6, Math.max(4, (m.y1 - m.y0) / 2 - 0.5));
+    prims.push({ t: 'line', x1: rr * 2 + 1, y1: cy, x2: x0 + dw * 0.32, y2: cy, stroke: '#9aa3ad', width: 0.4 });
+    prims.push({ t: 'circle', cx: rr + 1, cy, r: rr, fill: '#ffffff', stroke: '#3b434d' });
+    prims.push({ t: 'text', x: rr + 1, y: cy, s: String(m.index + 1), size: rr * 1.25 });
+  });
+  return { prims, marks, height: y };
+}
+
+const shift = (p: Prim, dx: number, dy: number): Prim => {
+  switch (p.t) {
+    case 'rect': return { ...p, x: p.x + dx, y: p.y + dy };
+    case 'poly': return { ...p, pts: p.pts.map(([x, y]) => [x + dx, y + dy] as [number, number]) };
+    case 'circle': return { ...p, cx: p.cx + dx, cy: p.cy + dy };
+    case 'text': return { ...p, x: p.x + dx, y: p.y + dy };
+    default: return { ...p, x1: p.x1 + dx, y1: p.y1 + dy, x2: p.x2 + dx, y2: p.y2 + dy };
+  }
+};

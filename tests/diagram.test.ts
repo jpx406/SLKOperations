@@ -159,3 +159,20 @@ describe('catalogue seed', () => {
   });
 });
 
+
+describe('assembly layout', () => {
+  it('keeps one scale and fits the box, so nothing is stretched or overflows', async () => {
+    const { layoutStack } = await import('../src/shared/diagram');
+    for (const [list, fam] of [[rig, 'pce'], [string, 'tool'], [[...string, ...string, ...string], 'tool']] as const) {
+      const W = 120, H = 300;
+      const { prims, marks, height } = layoutStack(list as Row[], fam, W, H);
+      expect(height).toBeLessThanOrEqual(H + 0.01);
+      expect(marks).toHaveLength(list.length);
+      for (const p of prims) {
+        const xs = p.t === 'rect' ? [p.x, p.x + p.w] : p.t === 'poly' ? p.pts.map(([x]) => x) : p.t === 'circle' ? [p.cx - p.r, p.cx + p.r] : p.t === 'text' ? [p.x] : [p.x1, p.x2];
+        expect(Math.min(...xs)).toBeGreaterThanOrEqual(-0.5);
+        expect(Math.max(...xs)).toBeLessThanOrEqual(W + 0.5);
+      }
+    }
+  });
+});

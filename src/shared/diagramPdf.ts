@@ -2,9 +2,9 @@
 // title block, job header, one row per part with its drawing, totals, and Prepared / Reviewed boxes.
 
 import { NESR_LOGO_JPEG } from './brandLogo';
-import { FAMILY_OF, FORM, drawPart, rigTotals, stringTotals, type DiagramKind, type Row } from './diagram';
+import { FAMILY_OF, FORM, layoutStack, rigTotals, stringTotals, type DiagramKind, type Row } from './diagram';
 import { stampText } from './formPdf';
-import { PdfDoc, wrap } from './pdf';
+import { PdfDoc, textWidth, wrap } from './pdf';
 
 const LOGO = { width: NESR_LOGO_JPEG.width, height: NESR_LOGO_JPEG.height, data: Uint8Array.from(atob(NESR_LOGO_JPEG.base64), (c) => c.charCodeAt(0)) };
 type RGB = [number, number, number];
@@ -64,7 +64,7 @@ export function diagramPdf(p: DiagramPdfInput): Uint8Array {
   y -= 18;
 
   const footer = 92, avail = y - L - 24 - footer;
-  const rowH = Math.max(16, Math.min(90, avail / Math.max(p.rows.length, 1)));
+  const rowH = Math.max(16, Math.min(60, avail / Math.max(p.rows.length, 1)));
   const cell = (i: number, top: number, lines: string[], o: { bold?: boolean; color?: RGB } = {}) => {
     const size = rowH < 22 ? 6.2 : 7, lead = size * 1.2, shown = lines.slice(0, Math.max(1, Math.floor((rowH - 4) / lead)));
     const start = top - rowH / 2 + (shown.length * lead) / 2 - size;
@@ -80,18 +80,23 @@ export function diagramPdf(p: DiagramPdfInput): Uint8Array {
     if (rig) { cell(2, top, [r.rating_psi ? `${r.rating_psi / 1000}K${r.service === 'h2s' ? ' H2S' : ''}` : '']); cell(3, top, [r.id_in != null ? String(r.id_in) : 'N/A']); }
     else { cell(2, top, [r.od_in != null ? r.od_in.toFixed(3) : '']); cell(3, top, [r.fn_in != null ? r.fn_in.toFixed(3) : '']); }
     cell(4, top, conn(r.top_conn, cols[4][1])); cell(5, top, conn(r.bottom_conn, cols[5][1]));
-    cell(6, top, [ft(r.length_ft), m(r.length_ft), ...(r.stroke_ft ? [`+${r.stroke_ft.toFixed(2)} ft stroke`] : [])]);
-    // same proportions as the screen: a box twice as wide as tall at most, centred in the column
-    const bw = Math.min(drawW, rowH * 2), bx = xs[7] + (drawW - bw) / 2;
-    for (const g of drawPart(r, family, bw, rowH)) {
-      const X = (x: number) => bx + x, Y = (yy: number) => top - yy;
+    cell(6, top, [ft(r.length_ft), m(r.length_ft), ...(r.stroke_ft ? [`stroke +${r.stroke_ft.toFixed(2)}`] : [])]);
+    y -= rowH;
+  });
+  // the assembly: one drawing at one scale down the whole column, fitted inside it (same layout as the screen)
+  if (p.rows.length) {
+    const pad = 6, boxH = tableTop - y - 2 * pad;
+    const st = layoutStack(p.rows, family, drawW - 4, boxH);
+    const ox = xs[7] + 2, oy = tableTop - pad - (boxH - st.height) / 2;
+    const X = (x: number) => ox + x, Y = (yy: number) => oy - yy;
+    for (const g of st.prims) {
       if (g.t === 'rect') { if (g.fill) doc.rect(X(g.x), Y(g.y + g.h), g.w, g.h, rgb(g.fill)); if (g.outline) doc.box(X(g.x), Y(g.y + g.h), g.w, g.h, 0.23, 0.4); }
       else if (g.t === 'poly') doc.poly(g.pts.map(([px, py]) => [X(px), Y(py)]), rgb(g.fill));
       else if (g.t === 'circle') doc.circle(X(g.cx), Y(g.cy), g.r, g.fill ? rgb(g.fill) : null, rgb(g.stroke));
+      else if (g.t === 'text') doc.text(X(g.x) - textWidth(g.s, g.size, true) / 2, Y(g.y) - g.size * 0.35, g.s, { size: g.size, bold: true, color: INK });
       else doc.stroke(X(g.x1), Y(g.y1), X(g.x2), Y(g.y2), rgb(g.stroke), g.width);
     }
-    y -= rowH;
-  });
+  }
   if (!p.rows.length) { doc.text(L + 8, y - 20, 'No parts', { size: 9, color: GREY }); y -= 40; }
   // column rules and frame
   xs.forEach((x, i) => i && doc.line(x, tableTop, x, y, i === 7 ? 0.15 : 0.75));

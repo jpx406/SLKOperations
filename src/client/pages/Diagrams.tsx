@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEven
 import { Link, useParams, useSearchParams } from 'react-router';
 import {
   CONNECTIONS, FAMILY_OF, FORM, MAX_ROWS, PART_KINDS, RATINGS, crossoverFor, diagramChecks, drawPart, insertIndex, joints, kindsOf, rigTotals, rowFromPart,
-  stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row,
+  layoutStack, stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row,
 } from '../../shared/diagram';
 import type { ToolPart } from '../../shared/toolstring';
 import { ApiError, api, countryScope, formatDate } from '../api';
@@ -300,19 +300,33 @@ function Catalogue({ family, parts, loading, canEdit, well, onAdd }: {
 }
 
 function Svg({ prims, w, h, className }: { prims: Prim[]; w: number; h: number; className?: string }) {
+  return <svg viewBox={`0 0 ${w} ${h}`} className={className} aria-hidden preserveAspectRatio="xMidYMid meet"><Shapes prims={prims} /></svg>;
+}
+function Shapes({ prims }: { prims: Prim[] }) {
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className={className} aria-hidden preserveAspectRatio="xMidYMid meet" shapeRendering="geometricPrecision">
+    <g pointerEvents="none" shapeRendering="geometricPrecision">
       {prims.map((p, i) => p.t === 'rect' ? <rect key={i} x={p.x} y={p.y} width={p.w} height={p.h} fill={p.fill ?? 'none'} stroke={p.outline ? '#3b434d' : 'none'} strokeWidth={0.6} />
         : p.t === 'poly' ? <polygon key={i} points={p.pts.map((x) => x.join(',')).join(' ')} fill={p.fill} stroke="#3b434d" strokeWidth={0.6} />
         : p.t === 'circle' ? <circle key={i} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill ?? 'none'} stroke={p.stroke} strokeWidth={0.8} />
+        : p.t === 'text' ? <text key={i} x={p.x} y={p.y} fontSize={p.size} textAnchor="middle" dominantBaseline="central" fontFamily="Inter, sans-serif" fontWeight={700} fill="#1b2430">{p.s}</text>
         : <line key={i} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.stroke} strokeWidth={p.width} />)}
+    </g>
+  );
+}
+/** The assembly: the whole stack as one drawing at one scale, fitted to the rows beside it, with row tags. */
+function Assembly({ rows, family, sel, onSelect }: { rows: Row[]; family: Family; sel: number | null; onSelect: (i: number | null) => void }) {
+  const W = 120, H = Math.max(rows.length * 56 - 12, 60);
+  const { prims, marks, height } = layoutStack(rows, family, W, H);
+  const top = (H - height) / 2;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 m-auto h-[calc(100%-12px)] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Assembly drawing, top of the stack first">
+      <g transform={`translate(0 ${top})`}>
+        {marks.map((m) => <rect key={m.index} x={0} y={m.y0} width={W} height={m.y1 - m.y0} fill={sel === m.index ? '#eef4cf' : 'transparent'} className="cursor-pointer" onClick={() => onSelect(sel === m.index ? null : m.index)} />)}
+        <Shapes prims={prims} />
+      </g>
     </svg>
   );
 }
-/** The assembly column's view box: every row is drawn at the same scale, so parts compare truly and join up. */
-const DRAW_W = 110, DRAW_H = 56;
-const PartPicture = ({ row, family, className }: { row: Row; family: Family; className?: string }) =>
-  <Svg prims={drawPart(row, family, DRAW_W, DRAW_H)} w={DRAW_W} h={DRAW_H} className={cx('block h-full w-full', className)} />;
 const PartIcon = ({ row, family }: { row: Row; family: Family }) => (
   <span className="flex h-10 w-8 items-center justify-center rounded-sm bg-[#ffffff]"><Svg prims={drawPart(row, family, 60, 90)} w={60} h={90} className="h-9 w-8" /></span>
 );
@@ -397,7 +411,17 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
                   onDragOver={(e) => { e.preventDefault(); setOver(i); }} onDragLeave={() => setOver(null)} onDrop={(e) => drop(e, i)}
                   className={cx('group h-14 cursor-pointer outline-offset-[-2px] hover:bg-[#f4f7ec]', sel === i && 'bg-[#eef4cf] shadow-[inset_3px_0_#9aa800]', over === i && '[&>td]:border-t-[3px] [&>td]:border-t-[#9aa800]')}>
                   <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{i + 1}</td>
-                  <td className={cx(cell, 'text-left leading-tight font-bold')}>{r.name}{r.part_id == null && <span className="block font-normal text-[0.625rem] text-[#5b6673]">not from the catalogue</span>}</td>
+                  <td className={cx(cell, 'relative text-left leading-tight font-bold')}>{r.name}{r.part_id == null && <span className="block font-normal text-[0.625rem] text-[#5b6673]">not from the catalogue</span>}
+                    {canEdit && (
+                      <span className="absolute top-0.5 right-0.5 flex gap-0.5 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-aria-selected:opacity-100">
+                        {([[ArrowUp, 'Move up', () => onMove(i, -1)], [ArrowDown, 'Move down', () => onMove(i, 1)], [Copy, 'Duplicate', () => onChange([...rows.slice(0, i + 1), { ...r }, ...rows.slice(i + 1)], i + 1)],
+                          [X, 'Remove', () => onChange(rows.filter((_, k) => k !== i), null)]] as const).map(([Icon, label, fn]) => (
+                          <button key={label} type="button" aria-label={`${label}: row ${i + 1}`} onClick={(e) => { e.stopPropagation(); fn(); }}
+                            className="grid size-6 place-items-center rounded border border-[#c9d0d8] bg-[#ffffff] text-[#45505c] hover:bg-[#eef4cf]"><Icon aria-hidden className="size-3.5" /></button>
+                        ))}
+                      </span>
+                    )}
+                  </td>
                   {rig ? <>
                     <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{r.rating_psi ? `${r.rating_psi / 1000}K` : '—'}{r.service === 'h2s' && <span className="block">H₂S</span>}</td>
                     <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{r.id_in ?? 'N/A'}</td>
@@ -411,22 +435,15 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
                     {r.length_ft == null ? <span className="text-[#b4232a]">no length</span> : <><span className="block">{L(r.length_ft)}</span><span className="block text-[#5b6673]">{L2(r.length_ft)}</span></>}
                     {r.stroke_ft ? <span className="block text-[0.625rem] text-[#5b6673]">+{r.stroke_ft} ft stroke</span> : null}
                   </td>
-                  <td className="relative h-14 border-l-2 border-l-[#2d3b1f] bg-[#ffffff] p-0">
-                    <PartPicture row={r} family={family} className="h-14" />
-                    {canEdit && (
-                      <span className="absolute top-1 right-1 flex gap-0.5 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-aria-selected:opacity-100">
-                        {([[ArrowUp, 'Move up', () => onMove(i, -1)], [ArrowDown, 'Move down', () => onMove(i, 1)], [Copy, 'Duplicate', () => onChange([...rows.slice(0, i + 1), { ...r }, ...rows.slice(i + 1)], i + 1)],
-                          [X, 'Remove', () => onChange(rows.filter((_, k) => k !== i), null)]] as const).map(([Icon, label, fn]) => (
-                          <button key={label} type="button" aria-label={`${label}: row ${i + 1}`} onClick={(e) => { e.stopPropagation(); fn(); }}
-                            className="grid size-6 place-items-center rounded border border-[#c9d0d8] bg-[#ffffff] text-[#45505c] hover:bg-[#eef4cf]"><Icon aria-hidden className="size-3.5" /></button>
-                        ))}
-                      </span>
-                    )}
-                  </td>
+                  {i === 0 && (
+                    <td rowSpan={rows.length + J.filter((j) => j.ok === false).length} className="relative border-l-2 border-l-[#2d3b1f] bg-[#ffffff] p-0 align-top">
+                      <Assembly rows={rows} family={family} sel={sel} onSelect={onSelect} />
+                    </td>
+                  )}
                 </tr>,
                 botBad && (
                   <tr key={`j${i}`} aria-hidden={false}>
-                    <td colSpan={8} className="relative h-0 p-0">
+                    <td colSpan={7} className="relative h-0 p-0">
                       <span className="absolute -top-3 right-2 z-10 flex items-center gap-2 rounded-pill border border-[#e5a3a6] bg-[#fde8e8] py-0.5 pr-1 pl-2.5 text-[0.6875rem] font-semibold text-[#9c1c22]">
                         {J[i].above} ≠ {J[i].below}
                         {canEdit && <button type="button" onClick={() => onChange([...rows.slice(0, i + 1), crossoverFor(rows[i], rows[i + 1], family), ...rows.slice(i + 1)], i + 1)}
