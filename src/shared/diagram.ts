@@ -318,11 +318,12 @@ export const threadOd = (c: string | null) => { const m = /^\s*([\d.]+)"/.exec(c
 // Owner request 2026-11-04 (after WirelineMaster): plain steel, no colours, every part at one scale so none looks
 // oversized. Bodies are shaded cylinders (vertical bands), so they read as round in SVG and in the PDF alike.
 const EDGE = '#3b434d';
-const STEEL = ['#69727d', '#a3abb4', '#d6dbe0', '#f1f3f5', '#c3c9cf', '#8b939c'];
-const COLLAR = ['#525a64', '#808892', '#adb4bc', '#cdd2d7', '#9aa1a9', '#6c747e'];
-const BANDS = [0.08, 0.16, 0.18, 0.2, 0.22, 0.16];
+// chrome, lit from the front-left like the Elmar renderings: dark rim, bright narrow highlight, soft falloff
+const STEEL = ['#4f5761', '#8f98a2', '#dfe4e9', '#ffffff', '#aeb6be', '#68707a'];
+const COLLAR = ['#3e454e', '#666e78', '#9aa2ab', '#c4cad0', '#7d858f', '#525a63'];
+const BANDS = [0.07, 0.18, 0.12, 0.1, 0.33, 0.2];
 /** Inches across the assembly column: the same for every part of a family, so sizes compare truly. */
-const SPAN: Record<Family, number> = { pce: 15, tool: 4.2 };
+const SPAN: Record<Family, number> = { pce: 16.5, tool: 4.2 };
 
 export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
   const g: Prim[] = [], cx = W / 2, k = W / SPAN[family];
@@ -353,12 +354,13 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
     // nut at the bottom, so the nut of one part sits over the pin of the next and the string reads continuous.
     const thread = (c: string | null, fallback: number) => threadOd(c) ?? fallback;
     const top = thread(r.top_conn, thread(r.bottom_conn, 4.75)), bot = thread(r.bottom_conn, top);
-    const pinH = Math.min(H * 0.14, 1.8 * k), nutH = Math.min(H * 0.18, 2.4 * k);
+    const pinH = Math.min(H * 0.14, 1.8 * k), nutH = Math.min(H * 0.22, 3 * k);
     /** A square block: flat lit face with darker edges. */
     const block = (y: number, d: number, h: number, x = cx) => {
       const w = d * k, x0 = x - w / 2;
-      rect(x0, y, w * 0.1, h, STEEL[0]); rect(x0 + w * 0.1, y, w * 0.8, h, STEEL[3]); rect(x0 + w * 0.9, y, w * 0.1, h, STEEL[5]);
-      line(x0 + w * 0.1, y, x0 + w * 0.1, y + h, 0.3, STEEL[1]); line(x0 + w * 0.9, y, x0 + w * 0.9, y + h, 0.3, STEEL[1]);
+      // flat faces: a lit front face between two darker side faces, with a soft sheen
+      rect(x0, y, w * 0.12, h, STEEL[0]); rect(x0 + w * 0.12, y, w * 0.76, h, STEEL[2]); rect(x0 + w * 0.3, y, w * 0.16, h, '#eef1f4'); rect(x0 + w * 0.88, y, w * 0.12, h, STEEL[5]);
+      line(x0 + w * 0.12, y, x0 + w * 0.12, y + h, 0.4, STEEL[0]); line(x0 + w * 0.88, y, x0 + w * 0.88, y + h, 0.4, STEEL[0]);
       rect(x0, y, w, h, null, true);
     };
     /** The male quick-union pin with its thread. */
@@ -366,12 +368,12 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
       cyl(0, d - 0.35, pinH);
       for (let yy = 1.2; yy < pinH - 0.5; yy += Math.max(1.1, pinH / 6)) line(cx - ((d - 0.35) * k) / 2, yy, cx + ((d - 0.35) * k) / 2, yy, 0.3, STEEL[0]);
     };
-    /** The union nut (collar) at the bottom, knurled. */
+    /** The union nut (collar) at the bottom: a chamfered shoulder and the ringed nut, as on the Elmar collars. */
     const nut = (d: number) => {
-      const y = H - nutH, w = (d + 1) * k;
-      cyl(y, d + 1, nutH, COLLAR);
-      for (let i = 1; i < 6; i++) line(cx - w / 2 + (w * i) / 6, y + 0.8, cx - w / 2 + (w * i) / 6, y + nutH - 0.8, 0.35, COLLAR[0]);
-      line(cx - w / 2, y + nutH * 0.5, cx + w / 2, y + nutH * 0.5, 0.35, COLLAR[0]);
+      const y = H - nutH, w = (d + 1.4) * k, lip = Math.min(nutH * 0.18, 0.5 * k);
+      cyl(y, d + 0.6, lip, COLLAR);
+      cyl(y + lip, d + 1.4, nutH - lip, COLLAR);
+      for (const f of [0.3, 0.5, 0.7, 0.88]) line(cx - w / 2, y + lip + (nutH - lip) * f, cx + w / 2, y + lip + (nutH - lip) * f, 0.4, COLLAR[0]);
     };
     /** A side port: a short stub with a needle valve and T handle. */
     const needle = (y: number, from: number, side = 1) => {
@@ -385,15 +387,19 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
     const mid0 = pinH, mid1 = H - nutH, midH = mid1 - mid0;
     switch (r.kind) {
       case 'stuffing_box': {
-        // packing nut, body and hydraulic port; the sheave on its bracket to the right, the line running down its left side
-        const rr = Math.min(3.2 * k, H * 0.26), scx = cx + rr, scy = rr + 0.5;
-        const bodyTop = scy + rr * 0.55;
-        cyl(bodyTop, 2.2, (H - nutH - bodyTop) * 0.3, COLLAR);
-        cyl(bodyTop + (H - nutH - bodyTop) * 0.3, 3.4, (H - nutH - bodyTop) * 0.7);
-        hcyl(cx - 3.4 * k / 2 - 0.9 * k, bodyTop + (H - nutH - bodyTop) * 0.6, 0.9 * k, 0.55);
-        poly([[cx + 0.6 * k, bodyTop + 1], [cx + 1.6 * k, bodyTop + 1], [scx + 0.4 * k, scy + 0.3 * k], [scx - 0.4 * k, scy - 0.2 * k]], STEEL[1]);
-        circle(scx, scy, rr, STEEL[3]); circle(scx, scy, rr * 0.82, null); circle(scx, scy, rr * 0.18, STEEL[1]);
-        for (let a = 0; a < 6; a++) { const t = (a * Math.PI) / 3; line(scx + Math.cos(t) * rr * 0.2, scy + Math.sin(t) * rr * 0.2, scx + Math.cos(t) * rr * 0.8, scy + Math.sin(t) * rr * 0.8, 0.5, STEEL[0]); }
+        // after the Elmar lightweight stuffing box: a large spoked sheave on a curved bracket, the line coming off its
+        // left side into the packing housing, packing nut ring, body and hydraulic port, union nut below
+        const rr = Math.min(3.6 * k, H * 0.3), scx = cx + rr * 0.95, scy = rr + 0.5;
+        const bodyTop = scy + rr * 0.35, bodyH = H - nutH - bodyTop;
+        cyl(bodyTop, 1.9, bodyH * 0.38);
+        cyl(bodyTop + bodyH * 0.38, 3.2, bodyH * 0.14, COLLAR);
+        cyl(bodyTop + bodyH * 0.52, 2.8, bodyH * 0.48);
+        hcyl(cx - 1.9 * k / 2 - 0.8 * k, bodyTop + bodyH * 0.2, 0.8 * k, 0.45, COLLAR);
+        // bracket: from the packing nut ring up and over to the sheave hub
+        poly([[cx + 1.2 * k, bodyTop + bodyH * 0.4], [cx + 1.9 * k, bodyTop + bodyH * 0.4], [scx + 0.5 * k, scy + 0.3 * k], [scx - 0.4 * k, scy + 0.3 * k]], STEEL[2]);
+        circle(scx, scy, rr, STEEL[1]); circle(scx, scy, rr * 0.86, STEEL[3]);
+        for (let a = 0; a < 8; a++) { const t = (a * Math.PI) / 4; line(scx + Math.cos(t) * rr * 0.22, scy + Math.sin(t) * rr * 0.22, scx + Math.cos(t) * rr * 0.84, scy + Math.sin(t) * rr * 0.84, 0.7, STEEL[0]); }
+        circle(scx, scy, rr * 0.22, STEEL[2]); circle(scx, scy, rr * 0.08, STEEL[0]);
         line(cx, scy, cx, bodyTop, 0.9, '#2b3138');
         nut(bot); break;
       }
@@ -406,8 +412,8 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
       }
       case 'lubricator': {
         pin(top);
-        cyl(mid0, (r.id_in ?? 3) + 0.7, midH);
-        if (/ported/i.test(r.name)) needle(mid0 + midH * 0.8, cx + (((r.id_in ?? 3) + 0.7) * k) / 2);
+        cyl(mid0, (r.id_in ?? 3) + 0.45, midH);
+        if (/ported/i.test(r.name)) needle(mid0 + midH * 0.8, cx + (((r.id_in ?? 3) + 0.45) * k) / 2);
         nut(bot); break;
       }
       case 'tool_catcher': {
@@ -439,20 +445,24 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
         nut(bot); break;
       }
       case 'wireline_valve': {
-        const n = Math.max(1, Math.min(4, r.rams ?? 1)), bw = top + 1;
+        // after the Elmar lightweight wireline valve: round body, a ram housing ring per ram with bonnets out to
+        // both sides, big end caps and indicator rods, manifold block on the face
+        const n = Math.max(1, Math.min(4, r.rams ?? 1)), bd = top + 0.6, hd = top + 1.4;
         pin(top);
-        block(mid0, bw, midH);
+        cyl(mid0, bd, midH);
         for (let i = 0; i < n; i++) {
-          const y = mid0 + (midH * (i + 0.5)) / n, rd = Math.min(2.6, (midH / n / k) * 0.75);
-          const x0 = cx - (bw * k) / 2, x1 = cx + (bw * k) / 2, arm = 2.7 * k, cap = 0.7 * k;
+          const y = mid0 + (midH * (i + 0.5)) / n, rd = Math.min(2.3, (midH / n / k) * 0.72);
+          cyl(y - (rd * k) / 2 - 0.3 * k, hd, rd * k + 0.6 * k);
+          const x0 = cx - (hd * k) / 2, x1 = cx + (hd * k) / 2, neck = 0.4 * k, arm = 2.7 * k, cap = 0.8 * k;
           for (const [xa, dir] of [[x0, -1], [x1, 1]] as const) {
-            hcyl(dir < 0 ? xa - arm : xa, y, arm, rd);
-            hcyl(dir < 0 ? xa - arm - cap : xa + arm, y, cap, rd + 0.3, COLLAR);
-            line(dir < 0 ? xa - arm - cap : xa + arm + cap, y, dir < 0 ? xa - arm - cap - 0.5 * k : xa + arm + cap + 0.5 * k, y, 0.8);
+            const at = (off: number, len: number) => (dir < 0 ? xa - off - len : xa + off);
+            hcyl(at(0, neck), y, neck, rd * 0.7);
+            hcyl(at(neck, arm), y, arm, rd);
+            hcyl(at(neck + arm, cap), y, cap, rd + 0.4, COLLAR);
+            line(dir < 0 ? xa - neck - arm - cap : xa + neck + arm + cap, y, dir < 0 ? xa - neck - arm - cap - 0.3 * k : xa + neck + arm + cap + 0.3 * k, y, 0.9);
           }
         }
-        // manifold block (equalising and grease) on the face, across the rams
-        if (n > 1) block(mid0 + midH * 0.12, 1.4, midH * 0.76);
+        if (n > 1) block(mid0 + midH * 0.1, 1.2, midH * 0.8);
         nut(bot); break;
       }
       case 'pump_in_sub': {
@@ -475,16 +485,15 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
         nut(bot); break;
       }
       case 'wellhead_adapter': {
-        pin(top);
-        cyl(mid0, top - 0.2, midH * 0.45 + nutH * 0.2);
-        const fy = mid0 + midH * 0.45, fh = H - fy - 1, fw = 10;
+        // after the Elmar adapter flange: long threaded neck, smooth neck, fillet into a thick flange with bolt holes
+        const fy = mid0 + midH * 0.5, fh = H - fy, fw = 10;
+        const neckH = midH * 0.32 + mid0;
+        cyl(0, top - 0.3, neckH);
+        for (let yy = 1.2; yy < neckH - 0.5; yy += Math.max(1.1, neckH / 9)) line(cx - ((top - 0.3) * k) / 2, yy, cx + ((top - 0.3) * k) / 2, yy, 0.3, STEEL[0]);
+        cyl(neckH, top + 0.2, fy - neckH - 0.6 * k);
+        taper(fy - 0.6 * k, top + 0.2, top + 2, 0.6 * k);
         cyl(fy, fw, fh, COLLAR);
-        // studs and nuts through the flange
-        for (const s of [-1, 1]) for (const off of [3.8, 2.6]) {
-          const x = cx + s * off * k;
-          cyl(fy - 0.7 * k, 0.45, fh + 1.4 * k, STEEL, x);
-          cyl(fy - 0.7 * k, 0.9, 0.7 * k, COLLAR, x); cyl(fy + fh, 0.9, 0.7 * k > H - fy - fh ? H - fy - fh : 0.7 * k, COLLAR, x);
-        }
+        for (const s of [-1, 1]) for (const off of [2.7, 4.1]) rect(cx + s * off * k - 0.3 * k, fy + fh * 0.2, 0.6 * k, fh * 0.6, '#2b3138');
         break;
       }
       case 'tree': {
