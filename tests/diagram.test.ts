@@ -191,6 +191,7 @@ describe('Elmar pictures', () => {
       expect(PICTURE_SIZES[k].pt[0]).toBeGreaterThan(0);
     }
     expect(pictureFor(row({ kind: 'wireline_valve', rams: 3 }))).toBe('bop_triple');
-    expect(pictureFor(row({ kind: 'chem_sub' }))).toBeNull();
+    expect(pictureFor(row({ kind: 'chem_sub' }))).toBe('quick_test_sub');
+    expect(pictureFor(row({ kind: 'pce_crossover' }))).toBeNull();
   });
 });

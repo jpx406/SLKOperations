@@ -15,6 +15,7 @@ export const PICTURE_SIZES = {
   pump_in_sub: { pt: [25.0, 32.0], axis: 0.274 },
   wellhead_adapter: { pt: [19.2, 15.4], axis: 0.490 },
   grease_head: { pt: [15.8, 141.8], axis: 0.415 },
+  tree: { pt: [96.0, 102.2], axis: 0.500 },
 } as const;
 
 export type PictureKey = keyof typeof PICTURE_SIZES;

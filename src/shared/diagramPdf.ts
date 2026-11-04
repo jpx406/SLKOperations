@@ -62,8 +62,8 @@ export function diagramPdf(p: DiagramPdfInput): Uint8Array {
 
   // table
   const cols = rig
-    ? [['No.', 18], ['Description', 112], ['Rating', 46], ['ID in', 28], ['Top conn.', 62], ['Bottom conn.', 62], ['Length', 44]] as [string, number][]
-    : [['No.', 18], ['Description', 136], ['OD in', 34], ['F/N in', 34], ['Top conn.', 66], ['Bottom conn.', 66], ['Length', 46]] as [string, number][];
+    ? [['No.', 18], ['Description', 108], ['Rating', 44], ['OD / ID', 34], ['Top conn.', 62], ['Bottom conn.', 62], ['Length', 44]] as [string, number][]
+    : [['No.', 18], ['Description', 136], ['OD / ID', 38], ['F/N in', 34], ['Top conn.', 66], ['Bottom conn.', 66], ['Length', 46]] as [string, number][];
   const drawW = W - cols.reduce((a, [, w]) => a + w, 0);
   const all = [...cols, ['Assembly', drawW] as [string, number]];
   const xs = all.reduce<number[]>((a, _, i) => [...a, i ? a[i - 1] + all[i - 1][1] : L], []);
@@ -86,8 +86,8 @@ export function diagramPdf(p: DiagramPdfInput): Uint8Array {
     doc.line(L, top - rowH, xs[7], top - rowH, 0.75);
     cell(0, top, [String(i + 1)]);
     cell(1, top, wrap(r.name, cols[1][1] - 6, 7, true), { bold: true });
-    if (rig) { cell(2, top, [r.rating_psi ? `${r.rating_psi / 1000}K${r.service === 'h2s' ? ' H2S' : ''}` : '']); cell(3, top, [r.id_in != null ? String(r.id_in) : 'N/A']); }
-    else { cell(2, top, [r.od_in != null ? r.od_in.toFixed(3) : '']); cell(3, top, [r.fn_in != null ? r.fn_in.toFixed(3) : '']); }
+    if (rig) { cell(2, top, [r.rating_psi ? `${r.rating_psi / 1000}K${r.service === 'h2s' ? ' H2S' : ''}` : '']); cell(3, top, [...(r.od_in != null ? [`OD ${r.od_in}`] : []), `ID ${r.id_in ?? 'N/A'}`]); }
+    else { cell(2, top, [r.od_in != null ? r.od_in.toFixed(3) : '', ...(r.id_in != null ? [`ID ${r.id_in.toFixed(3)}`] : [])]); cell(3, top, [r.fn_in != null ? r.fn_in.toFixed(3) : '']); }
     cell(4, top, conn(r.top_conn, cols[4][1])); cell(5, top, conn(r.bottom_conn, cols[5][1]));
     cell(6, top, [ft(r.length_ft), m(r.length_ft), ...(r.stroke_ft ? [`stroke +${r.stroke_ft.toFixed(2)}`] : [])]);
     y -= rowH;

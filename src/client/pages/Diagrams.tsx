@@ -177,7 +177,7 @@ export function Diagrams() {
           {canEdit && nextRun <= 20 && <Button size="sm" variant="ghost" onClick={() => setParams({ d: `run-${nextRun}` }, { replace: true })}><Plus aria-hidden className="size-3.5" />Run {nextRun}</Button>}
         </div>
         <span className="flex-1" />
-        {canEdit && <StartFrom kind={kind} run={run} parts={parts.data ?? []} others={others} legacy={data.data!.legacy_toolstring} onPick={(r) => change(r, null)} />}
+        {canEdit && <StartFrom jobId={id} kind={kind} run={run} rows={rows} parts={parts.data ?? []} others={others} legacy={data.data!.legacy_toolstring} onPick={(r) => change(r, null)} />}
         <Button size="sm" variant="ghost" onClick={undo} disabled={!history.length || !canEdit} aria-label="Undo (Ctrl+Z)"><Undo2 aria-hidden className="size-3.5" />Undo</Button>
         <div role="group" aria-label="Units" className="flex rounded-md border border-border-strong p-0.5">
           {(['ft', 'm'] as const).map((u) => (
@@ -392,12 +392,12 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
         <table className="w-full table-fixed border-collapse border-2 border-t-0 border-[#2d3b1f]">
           <caption className="sr-only">{FORM[kind].title}, top of the stack first. Arrow keys move between rows, Alt and an arrow moves a part, Delete removes it.</caption>
           <colgroup>
-            <col className="w-6" /><col className="w-[8rem]" /><col className={rig ? 'w-11' : 'w-10'} /><col className={rig ? 'w-8' : 'w-10'} />
+            <col className="w-6" /><col className="w-[8rem]" /><col className={rig ? 'w-11' : 'w-12'} /><col className={rig ? 'w-12' : 'w-10'} />
             <col className="w-[4.75rem]" /><col className="w-[4.75rem]" /><col className="w-[4.25rem]" /><col className="min-w-24" />
           </colgroup>
           <thead>
             <tr className="bg-[#e9f0d4] text-[0.6875rem] leading-tight">
-              {['No.', 'Description', rig ? 'Rating' : 'OD in', rig ? 'ID in' : 'F/N in', 'Top conn.', 'Bottom conn.', 'Length', 'Assembly'].map((h) => <th key={h} scope="col" className="border border-[#9aa58a] px-1 py-1.5 font-bold">{h}</th>)}
+              {['No.', 'Description', rig ? 'Rating' : 'OD / ID in', rig ? 'OD / ID in' : 'F/N in', 'Top conn.', 'Bottom conn.', 'Length', 'Assembly'].map((h) => <th key={h} scope="col" className="border border-[#9aa58a] px-1 py-1.5 font-bold">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -430,9 +430,9 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
                   </td>
                   {rig ? <>
                     <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{r.rating_psi ? `${r.rating_psi / 1000}K` : '—'}{r.service === 'h2s' && <span className="block">H₂S</span>}</td>
-                    <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{r.id_in ?? 'N/A'}</td>
+                    <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}>{r.od_in != null && <span className="block">{r.od_in}</span>}<span className={cx('block', r.od_in != null && 'text-[#5b6673]')}>{r.id_in ?? 'N/A'}</span></td>
                   </> : <>
-                    <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{fmt(r.od_in, 3)}</td>
+                    <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}><span className="block">{fmt(r.od_in, 3)}</span>{r.id_in != null && <span className="block text-[#5b6673]">{fmt(r.id_in, 3)}</span>}</td>
                     <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{fmt(r.fn_in, 3)}</td>
                   </>}
                   <td className={cx(cell, 'font-mono text-[0.65rem] leading-tight', topBad && 'bg-[#fde8e8] font-bold text-[#b4232a]')}>{conn(r.top_conn)}</td>
@@ -540,10 +540,10 @@ function RowEditor({ family, row, index, canEdit, onChange, onClose }: { family:
               <option value="">Not set</option><option value="h2s">H₂S</option><option value="std">Standard</option>
             </Select>
           </label>
-          {num('id_in', 'ID (bore)', 'in')}
+          {num('od_in', 'OD', 'in')}{num('id_in', 'ID (bore)', 'in')}
           {row.kind === 'wireline_valve' ? num('rams', 'Rams', undefined, '1') : <span />}
         </> : <>
-          {num('od_in', 'OD', 'in')}{num('fn_in', 'Fishing neck', 'in')}
+          {num('od_in', 'OD', 'in')}{num('id_in', 'ID', 'in')}{num('fn_in', 'Fishing neck', 'in')}
           {num('weight_lb', 'Weight', 'lb')}{num('stroke_ft', 'Jar stroke', 'ft')}
         </>}
         {connField('top_conn', 'Top connection')}{connField('bottom_conn', 'Bottom connection')}
@@ -554,30 +554,85 @@ function RowEditor({ family, row, index, canEdit, onChange, onClose }: { family:
   );
 }
 
-function StartFrom({ kind, run, parts, others, legacy, onPick }: { kind: DiagramKind; run: number; parts: Part[]; others: Diagram[]; legacy: ToolPart[]; onPick: (rows: Row[]) => void }) {
+interface Sample { id: string; name: string; items: Row[]; created_at: string; created_by_name: string }
+interface Previous { id: string; run_no: number; items: Row[]; rev: number; updated_at: string; job_id: string; ticket_no: string | null; well: string | null; start_date: string | null; same_well: number }
+
+/**
+ * Start from: saved samples, the same kind of diagram on previous jobs (this well first), this job's other runs and
+ * the built-in templates. Save as sample keeps the rows here under a name, to pull into any job and reconfigure.
+ */
+function StartFrom({ jobId, kind, run, rows, parts, others, legacy, onPick }: {
+  jobId: string; kind: DiagramKind; run: number; rows: Row[]; parts: Part[]; others: Diagram[]; legacy: ToolPart[]; onPick: (rows: Row[]) => void;
+}) {
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const samples = useQuery({ queryKey: ['diagram-samples', kind, jobId], queryFn: () => api<{ saved: Sample[]; previous: Previous[] }>(`/diagrams/samples?kind=${kind}&job=${jobId}`), enabled: open });
+  const save = useMutation({
+    mutationFn: () => api('/diagrams/samples', { method: 'POST', json: { kind, name, items: rows, job: jobId } }),
+    onSuccess: () => { setMsg({ tone: 'success', text: `Saved “${name.trim()}”` }); setName(''); qc.invalidateQueries({ queryKey: ['diagram-samples'] }); },
+    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/diagrams/samples/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['diagram-samples'] }),
+    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
+  });
   const byName = (names: string[]) => names.map((n) => parts.find((p) => p.name === n)).filter((p): p is Part => !!p).map(rowFromPart);
-  const options: { label: string; sub: string; rows: () => Row[] }[] = kind === 'rigup'
+  const copy = (items: Row[]) => items.map((r) => ({ ...r }));
+  const builtIn: { label: string; sub: string; rows: () => Row[] }[] = kind === 'rigup'
     ? [{ label: 'Standard 10K H₂S slickline rig up', sub: 'Stuffing box, catcher, 3" lubricators, crossover, dual ram, adapter, tree',
       rows: () => byName(['Stuffing Box 10K H2S', 'Tool Catcher 10K H2S 3"', 'Lubricator - Lightweight 3" x 10 ft', 'Lubricator - Lightweight 3" x 10 ft', 'WHE Crossover 4.75"-4x2 x 6.125"-4x2', 'Bleed-off Sub 10K H2S 4"', 'Dual Ram BOP 10K H2S 4"', 'Well Head Adapter 10K H2S 4"', 'X-Mas Tree (client)']) }]
     : [
-      ...others.filter((t) => t.run_no !== run && t.items.length).map((t) => ({ label: `Copy Run ${t.run_no}`, sub: `${t.items.length} parts`, rows: () => t.items.map((r) => ({ ...r })) })),
+      ...others.filter((t) => t.run_no !== run && t.items.length).map((t) => ({ label: `Copy Run ${t.run_no}`, sub: `${t.items.length} parts`, rows: () => copy(t.items) })),
       ...(legacy.length ? [{ label: 'From the Preparation toolstring', sub: legacy.map((p) => p.component).join(' → '), rows: () => legacy.map(fromLegacy) }] : []),
       { label: 'Basic 1 7/8" string', sub: 'Rope socket, stem, knuckle joint, spang jar (SOP-01 §7.16.9)',
         rows: () => byName(['1 7/8" Rope Socket (0.125")', '1 7/8" x 5\' Stem', '1 7/8" x 3\' Stem', '1 7/8" Knuckle Joint', '1 7/8" Spang Jars (20" Stroke)']) },
     ];
+  const pick = (items: Row[]) => { setOpen(false); setMsg(null); onPick(copy(items)); };
+  const item = 'block w-full rounded-md px-2.5 py-1.5 text-left hover:bg-surface-3';
+  const head = 'label-caps px-2.5 pt-2 pb-1 text-text-subtle';
   return (
     <div className="relative">
       <Button size="sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>Start from ▾</Button>
       {open && (
-        <div role="menu" className="absolute top-9 left-0 z-30 w-80 rounded-lg border border-border-strong bg-surface-2 p-1.5 shadow-pop" onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
-          {options.map((o) => (
-            <button key={o.label} role="menuitem" type="button" className="block w-full rounded-md px-2.5 py-2 text-left hover:bg-surface-3"
-              onClick={() => { setOpen(false); onPick(o.rows()); }}>
+        <div role="menu" className="absolute top-9 left-0 z-30 max-h-[70vh] w-96 overflow-y-auto rounded-lg border border-border-strong bg-surface-2 p-1.5 shadow-pop" onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
+          <form className="flex gap-1.5 px-1 pt-1" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+            <input aria-label="Sample name" className={cx(inputClass, 'h-8')} placeholder="Save these rows as a sample…" value={name} onChange={(e) => setName(e.target.value)} />
+            <Button size="sm" type="submit" disabled={!name.trim() || !rows.length} loading={save.isPending}>Save</Button>
+          </form>
+          {msg && <p className={cx('px-2.5 pt-1 text-xs', msg.tone === 'success' ? 'text-success' : 'text-danger')}>{msg.text}</p>}
+
+          <p className={head}>Saved samples</p>
+          {samples.isPending && <p className="px-2.5 py-1 text-xs text-text-muted">Loading…</p>}
+          {samples.data && !samples.data.saved.length && <p className="px-2.5 py-1 text-xs text-text-muted">None yet. Save the rows above to keep one.</p>}
+          {samples.data?.saved.map((s) => (
+            <div key={s.id} className="flex items-center gap-1">
+              <button role="menuitem" type="button" className={cx(item, 'flex-1')} onClick={() => pick(s.items)}>
+                <span className="block text-sm font-semibold">{s.name}</span>
+                <span className="block truncate text-xs text-text-muted">{s.items.length} parts · {s.created_by_name} · {formatDate(s.created_at.slice(0, 10))}</span>
+              </button>
+              <Button size="sm" variant="ghost" aria-label={`Remove the sample ${s.name}`} loading={remove.isPending && remove.variables === s.id} onClick={() => remove.mutate(s.id)}><X aria-hidden className="size-3.5" /></Button>
+            </div>
+          ))}
+
+          <p className={head}>Previous jobs</p>
+          {samples.data && !samples.data.previous.length && <p className="px-2.5 py-1 text-xs text-text-muted">No other job has one yet.</p>}
+          {samples.data?.previous.map((d) => (
+            <button key={d.id} role="menuitem" type="button" className={item} onClick={() => pick(d.items)}>
+              <span className="block text-sm font-semibold">{[d.ticket_no, d.well].filter(Boolean).join(' · ') || 'Job'}{kind === 'toolstring' ? ` · Run ${d.run_no}` : ''}{d.same_well ? <span className="ml-1.5 text-xs font-normal text-accent-text">same well</span> : null}</span>
+              <span className="block truncate text-xs text-text-muted">{d.items.length} parts · Rev {d.rev} · {d.start_date ? formatDate(d.start_date) : formatDate(d.updated_at.slice(0, 10))}</span>
+            </button>
+          ))}
+
+          <p className={head}>{kind === 'rigup' ? 'Templates' : 'This job and templates'}</p>
+          {builtIn.map((o) => (
+            <button key={o.label} role="menuitem" type="button" className={item} onClick={() => pick(o.rows())}>
               <span className="block text-sm font-semibold">{o.label}</span><span className="block truncate text-xs text-text-muted">{o.sub}</span>
             </button>
           ))}
-          <p className="px-2.5 pt-1 pb-1 text-xs text-text-subtle">Replaces the rows here. Undo puts them back.</p>
+          <p className="px-2.5 pt-2 pb-1 text-xs text-text-subtle">Picking one replaces the rows here; change any part afterwards. Undo puts them back.</p>
         </div>
       )}
     </div>

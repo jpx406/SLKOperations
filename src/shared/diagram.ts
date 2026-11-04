@@ -616,7 +616,7 @@ export type Mark = { index: number; y0: number; y1: number };
  */
 /**
  * The Elmar catalogue picture for a pressure-control part (owner decision 2026-11-04: the catalogue artwork, in grey).
- * Parts the catalogue does not draw (chemical injection and bleed-off subs, crossovers, the client's tree) are drawn.
+ * The client's tree is the QAF14009 workbook picture, treated the same way. Crossovers are drawn.
  */
 export function pictureFor(r: Row): PictureKey | null {
   switch (r.kind) {
@@ -625,7 +625,9 @@ export function pictureFor(r: Row): PictureKey | null {
     case 'tool_catcher': case 'ball_check': return 'tool_catcher';
     case 'lubricator': return /integral/i.test(r.name) ? 'lubricator_int' : 'lubricator';
     case 'tool_trap': return 'tool_trap';
-    case 'quick_test_sub': return 'quick_test_sub';
+    // a sub with a side port and needle valve: the chemical injection and bleed-off subs are built the same way
+    case 'quick_test_sub': case 'chem_sub': case 'bleed_sub': return 'quick_test_sub';
+    case 'tree': return 'tree';
     case 'wireline_valve': { const n = r.rams ?? 1; return n >= 3 ? 'bop_triple' : n === 2 ? 'bop_dual' : 'bop_single'; }
     case 'pump_in_sub': return 'pump_in_sub';
     case 'wellhead_adapter': return 'wellhead_adapter';

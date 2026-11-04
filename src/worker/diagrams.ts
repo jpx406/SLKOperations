@@ -52,6 +52,70 @@ diagrams.get('/parts', async (c) => {
   return c.json(results);
 });
 
+// ---- samples: saved diagrams and previous jobs' diagrams to start from ----
+
+/** Saved samples of one kind, and that kind's diagrams on other jobs (this job's well first, then the newest). */
+diagrams.get('/samples', async (c) => {
+  const user = c.get('user');
+  const kind = c.req.query('kind') === 'toolstring' ? 'toolstring' : 'rigup';
+  const jobId = c.req.query('job') ?? '';
+  const countries = JSON.stringify(user.countries);
+  const [saved, previous] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT s.id, s.name, s.items, s.created_at, s.created_by, coalesce(u.full_name, s.created_by) AS created_by_name
+       FROM diagram_samples s LEFT JOIN user_roles u ON u.username = s.created_by
+       WHERE s.kind = ? AND s.country IN (SELECT value FROM json_each(?)) ORDER BY s.name`,
+    ).bind(kind, countries),
+    c.env.DB.prepare(
+      `SELECT d.id, d.run_no, d.items, d.rev, d.updated_at, j.id AS job_id, j.ticket_no, j.well, j.start_date,
+              (j.well IS NOT NULL AND j.well = (SELECT well FROM jobs WHERE id = ?3)) AS same_well
+       FROM job_diagrams d JOIN jobs j ON j.id = d.job_id
+       WHERE d.kind = ?1 AND d.job_id <> ?3 AND j.deleted_at IS NULL AND j.country IN (SELECT value FROM json_each(?2)) AND d.items <> '[]'
+       ORDER BY same_well DESC, d.updated_at DESC LIMIT 25`,
+    ).bind(kind, countries, jobId),
+  ]);
+  const parse = <T extends { items: string }>(rows: T[]) => rows.map((r) => ({ ...r, items: JSON.parse(r.items) as Row[] }));
+  return c.json({ saved: parse(saved.results as { items: string }[]), previous: parse(previous.results as { items: string }[]) });
+});
+
+/** Saves the rows as a named sample for the job's country. */
+diagrams.post('/samples', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json<{ kind?: string; name?: string; items?: unknown; job?: string }>().catch(() => ({} as { kind?: string; name?: string; items?: unknown; job?: string }));
+  const kind: DiagramKind = b.kind === 'toolstring' ? 'toolstring' : 'rigup';
+  const name = String(b.name ?? '').trim().slice(0, 80);
+  if (!name) return c.json({ error: 'Give the sample a name' }, 400);
+  const job = b.job ? await getJob(c.env, user, b.job) : null;
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  if (!(await rights(c.env, user, job)).canEdit) return c.json({ error: 'Your role does not edit Preparation' }, 403);
+  const r = cleanRows(b.items, FAMILY_OF[kind]);
+  if ('error' in r) return c.json({ error: r.error }, 400);
+  if (!r.rows.length) return c.json({ error: 'Add parts before saving a sample' }, 400);
+  const id = crypto.randomUUID();
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO diagram_samples (id, country, kind, name, items, from_job_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, job.country, kind, name, JSON.stringify(r.rows), job.id, user.username),
+      audit(c.env, user, 'create', job.id, `Saved the ${kind === 'rigup' ? 'rig up' : 'tool string'} as the sample “${name}”`),
+    ]);
+  } catch (e) {
+    if (/UNIQUE/.test((e as Error).message)) return c.json({ error: `There is already a ${kind === 'rigup' ? 'rig up' : 'tool string'} sample called “${name}”` }, 409);
+    throw e;
+  }
+  return c.json({ ok: true, id }, 201);
+});
+
+/** Removes a sample: whoever saved it, or an admin. */
+diagrams.delete('/samples/:id', async (c) => {
+  const user = c.get('user');
+  const s = await c.env.DB.prepare(`SELECT id, name, created_by FROM diagram_samples WHERE id = ? AND country IN (SELECT value FROM json_each(?))`)
+    .bind(c.req.param('id'), JSON.stringify(user.countries)).first<{ id: string; name: string; created_by: string }>();
+  if (!s) return c.json({ error: 'Sample not found' }, 404);
+  if (user.role !== 'admin' && !same(s.created_by, user.username)) return c.json({ error: 'Only the person who saved it, or an admin, removes a sample' }, 403);
+  await c.env.DB.prepare('DELETE FROM diagram_samples WHERE id = ?').bind(s.id).run();
+  return c.json({ ok: true });
+});
+
 const names = (env: Env, users: (string | null)[]) => {
   const list = [...new Set(users.filter((u): u is string => !!u))];
   return env.DB.prepare(`SELECT username, full_name FROM user_roles WHERE username IN (SELECT value FROM json_each(?))`).bind(JSON.stringify(list)).all<{ username: string; full_name: string }>()

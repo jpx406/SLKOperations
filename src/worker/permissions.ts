@@ -122,6 +122,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   // rig up and tool string diagrams (Preparation); who may edit or review is checked in the route
   { method: 'PUT', re: /^\/api\/diagrams\/[^/]+\/(rigup|toolstring)\/\d+$/, menu: 'jobs', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/diagrams\/[^/]+\/toolstring\/\d+$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/diagrams\/samples$/, menu: 'jobs', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/diagrams\/samples\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/diagrams\/[^/]+\/(rigup|toolstring)\/\d+\/(pdf|send|review|reopen)$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/database\/service-profiles$/, menu: 'database', action: 'edit' },
   { method: 'POST', re: /^\/api\/emf$/, menu: 'eight_min_facts', action: 'edit' },

@@ -537,10 +537,10 @@ function PartDialog({ row, family, canRemove, onClose }: { row: Part | null; fam
               <option value="">Not set</option>{Object.entries(SERVICES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </Select>
           </Field>
-          {numField('id_in', 'ID (bore)', 'in')}
+          {numField('od_in', 'OD', 'in')}{numField('id_in', 'ID (bore)', 'in')}
           {f.kind === 'wireline_valve' && numField('rams', 'Rams')}
         </> : <>
-          {numField('od_in', 'OD', 'in')}{numField('fn_in', 'Fishing neck', 'in')}{numField('weight_lb', 'Weight', 'lb')}{numField('stroke_ft', 'Jar stroke', 'ft')}
+          {numField('od_in', 'OD', 'in')}{numField('id_in', 'ID', 'in')}{numField('fn_in', 'Fishing neck', 'in')}{numField('weight_lb', 'Weight', 'lb')}{numField('stroke_ft', 'Jar stroke', 'ft')}
         </>}
         <Field id="part-top" label="Top connection"><input id="part-top" list="part-conns" className={inputClass} value={f.top_conn} onChange={(e) => set('top_conn', e.target.value)} /></Field>
         <Field id="part-bottom" label="Bottom connection"><input id="part-bottom" list="part-conns" className={inputClass} value={f.bottom_conn} onChange={(e) => set('bottom_conn', e.target.value)} /></Field>
