@@ -343,97 +343,170 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
     BANDS.forEach((f, i) => { rect(x, at, len, h * f + 0.3, tone[i]); at += h * f; });
     rect(x, y0, len, h, null, true);
   };
-  /** A quick-union collar with grip lines. */
-  const collar = (y: number, d: number, h: number) => {
-    cyl(y, d, h, COLLAR);
-    const w = Math.min(d * k, W);
-    for (let i = 1; i < 4; i++) line(cx - w / 2 + (w * i) / 4, y + 1, cx - w / 2 + (w * i) / 4, y + h - 1, 0.4);
-  };
   const taper = (y: number, d1: number, d2: number, h: number) => {
     const a = (d1 * k) / 2, b = (d2 * k) / 2;
     poly([[cx - a, y], [cx + a, y], [cx + b, y + h], [cx - b, y + h]]);
   };
 
   if (family === 'pce') {
+    // After the Elmar WPCE string (catalogue section 3): each part has a threaded male pin on top and a knurled union
+    // nut at the bottom, so the nut of one part sits over the pin of the next and the string reads continuous.
     const thread = (c: string | null, fallback: number) => threadOd(c) ?? fallback;
     const top = thread(r.top_conn, thread(r.bottom_conn, 4.75)), bot = thread(r.bottom_conn, top);
-    const body = Math.max(top, bot) + 0.3;
-    const cu = Math.max(3, H * 0.1);
-    const tube = (r.id_in ?? 3) + 1;
+    const pinH = Math.min(H * 0.14, 1.8 * k), nutH = Math.min(H * 0.18, 2.4 * k);
+    /** A square block: flat lit face with darker edges. */
+    const block = (y: number, d: number, h: number, x = cx) => {
+      const w = d * k, x0 = x - w / 2;
+      rect(x0, y, w * 0.1, h, STEEL[0]); rect(x0 + w * 0.1, y, w * 0.8, h, STEEL[3]); rect(x0 + w * 0.9, y, w * 0.1, h, STEEL[5]);
+      line(x0 + w * 0.1, y, x0 + w * 0.1, y + h, 0.3, STEEL[1]); line(x0 + w * 0.9, y, x0 + w * 0.9, y + h, 0.3, STEEL[1]);
+      rect(x0, y, w, h, null, true);
+    };
+    /** The male quick-union pin with its thread. */
+    const pin = (d: number) => {
+      cyl(0, d - 0.35, pinH);
+      for (let yy = 1.2; yy < pinH - 0.5; yy += Math.max(1.1, pinH / 6)) line(cx - ((d - 0.35) * k) / 2, yy, cx + ((d - 0.35) * k) / 2, yy, 0.3, STEEL[0]);
+    };
+    /** The union nut (collar) at the bottom, knurled. */
+    const nut = (d: number) => {
+      const y = H - nutH, w = (d + 1) * k;
+      cyl(y, d + 1, nutH, COLLAR);
+      for (let i = 1; i < 6; i++) line(cx - w / 2 + (w * i) / 6, y + 0.8, cx - w / 2 + (w * i) / 6, y + nutH - 0.8, 0.35, COLLAR[0]);
+      line(cx - w / 2, y + nutH * 0.5, cx + w / 2, y + nutH * 0.5, 0.35, COLLAR[0]);
+    };
+    /** A side port: a short stub with a needle valve and T handle. */
+    const needle = (y: number, from: number, side = 1) => {
+      const x = from, len = 1.4 * k;
+      hcyl(side > 0 ? x : x - len, y, len, 0.7);
+      const vx = side > 0 ? x + len : x - len - 0.9 * k;
+      block(y - 0.55 * k, 0.9, 1.1 * k, vx + 0.45 * k);
+      line(vx + 0.45 * k, y - 0.55 * k, vx + 0.45 * k, y - 1.5 * k, 0.8);
+      line(vx - 0.2 * k, y - 1.5 * k, vx + 1.1 * k, y - 1.5 * k, 1);
+    };
+    const mid0 = pinH, mid1 = H - nutH, midH = mid1 - mid0;
     switch (r.kind) {
       case 'stuffing_box': {
-        cyl(H * 0.36, body - 0.6, H * 0.64 - cu);
-        cyl(H * 0.3, body + 0.2, H * 0.12, COLLAR);
-        // sheave on top, with the line running over it
-        const rr = Math.min(H * 0.18, 3.2 * k);
-        circle(cx, H * 0.15, rr, STEEL[3]); circle(cx, H * 0.15, rr * 0.35, STEEL[1]);
-        line(cx, H * 0.15 + rr * 0.35, cx, H * 0.3, 1.2, STEEL[0]);
-        collar(H - cu, bot + 0.4, cu); break;
+        // packing nut, body and hydraulic port; the sheave on its bracket to the right, the line running down its left side
+        const rr = Math.min(3.2 * k, H * 0.26), scx = cx + rr, scy = rr + 0.5;
+        const bodyTop = scy + rr * 0.55;
+        cyl(bodyTop, 2.2, (H - nutH - bodyTop) * 0.3, COLLAR);
+        cyl(bodyTop + (H - nutH - bodyTop) * 0.3, 3.4, (H - nutH - bodyTop) * 0.7);
+        hcyl(cx - 3.4 * k / 2 - 0.9 * k, bodyTop + (H - nutH - bodyTop) * 0.6, 0.9 * k, 0.55);
+        poly([[cx + 0.6 * k, bodyTop + 1], [cx + 1.6 * k, bodyTop + 1], [scx + 0.4 * k, scy + 0.3 * k], [scx - 0.4 * k, scy - 0.2 * k]], STEEL[1]);
+        circle(scx, scy, rr, STEEL[3]); circle(scx, scy, rr * 0.82, null); circle(scx, scy, rr * 0.18, STEEL[1]);
+        for (let a = 0; a < 6; a++) { const t = (a * Math.PI) / 3; line(scx + Math.cos(t) * rr * 0.2, scy + Math.sin(t) * rr * 0.2, scx + Math.cos(t) * rr * 0.8, scy + Math.sin(t) * rr * 0.8, 0.5, STEEL[0]); }
+        line(cx, scy, cx, bodyTop, 0.9, '#2b3138');
+        nut(bot); break;
       }
-      case 'grease_head':
-        cyl(0, 2.6, H - cu);
-        for (let i = 1; i < 6; i++) line(cx - 1.3 * k, (H - cu) * i / 6, cx + 1.3 * k, (H - cu) * i / 6, 0.4);
-        cyl(H * 0.72, body, H * 0.16, COLLAR); collar(H - cu, bot + 0.4, cu); break;
-      case 'lubricator':
-        cyl(0, tube, H);
-        collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu);
-        if (/ported/i.test(r.name)) { hcyl(cx + (tube * k) / 2, H * 0.7, 1.2 * k, 0.8); cyl(H * 0.62, 0.5, H * 0.16, COLLAR, cx + (tube / 2 + 1.4) * k); }
-        break;
-      case 'tool_catcher': case 'tool_trap': case 'ball_check': case 'chem_sub': case 'bleed_sub': case 'quick_test_sub': {
-        const d = r.kind === 'tool_catcher' || r.kind === 'tool_trap' ? body + 0.4 : body - 0.4;
-        cyl(cu, d, H - 2 * cu);
-        collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu);
-        const side = cx + (d * k) / 2;
-        if (r.kind === 'tool_catcher') { hcyl(side, H * 0.4, 1.4 * k, 0.9); line(cx - (d * k) / 2, H * 0.62, side, H * 0.62); }
-        if (r.kind === 'tool_trap') { hcyl(side, H * 0.5, 1.8 * k, 1.4); cyl(H * 0.36, 0.7, H * 0.28, COLLAR, side + 1.8 * k); }
-        if (r.kind === 'ball_check') circle(cx, H * 0.5, Math.min(H * 0.16, (d * k) / 4), STEEL[1]);
-        if (r.kind === 'chem_sub' || r.kind === 'bleed_sub' || r.kind === 'quick_test_sub') {
-          hcyl(side, H * 0.5, 1.1 * k, 0.7);
-          cyl(H * 0.38, 0.45, H * 0.24, COLLAR, side + 1.1 * k + 0.25 * k);
-        }
-        break;
+      case 'grease_head': {
+        cyl(0, 1.6, midH * 0.55 + mid0);
+        for (let i = 1; i < 6; i++) line(cx - 0.8 * k, (mid0 + midH * 0.55) * i / 6, cx + 0.8 * k, (mid0 + midH * 0.55) * i / 6, 0.4, STEEL[0]);
+        block(mid0 + midH * 0.55, top + 0.4, midH * 0.45);
+        needle(mid0 + midH * 0.75, cx + ((top + 0.4) * k) / 2);
+        nut(bot); break;
+      }
+      case 'lubricator': {
+        pin(top);
+        cyl(mid0, (r.id_in ?? 3) + 0.7, midH);
+        if (/ported/i.test(r.name)) needle(mid0 + midH * 0.8, cx + (((r.id_in ?? 3) + 0.7) * k) / 2);
+        nut(bot); break;
+      }
+      case 'tool_catcher': {
+        pin(top);
+        cyl(mid0, top + 0.4, midH * 0.4);
+        block(mid0 + midH * 0.4, top + 1, midH * 0.6);
+        // hydraulic release piston on the side
+        hcyl(cx + ((top + 1) * k) / 2, mid0 + midH * 0.7, 1.6 * k, 1.1);
+        cyl(mid0 + midH * 0.7 - 0.8 * k, 0.4, 1.6 * k, COLLAR, cx + ((top + 1) * k) / 2 + 1.8 * k);
+        nut(bot); break;
+      }
+      case 'tool_trap': {
+        pin(top);
+        cyl(mid0, top + 0.2, midH * 0.2);
+        block(mid0 + midH * 0.2, top + 1.6, midH * 0.6);
+        // hydraulic actuator on the left, external flapper handle on the right
+        block(mid0 + midH * 0.3, 1.6, midH * 0.3, cx - ((top + 1.6) * k) / 2 - 0.8 * k);
+        line(cx + ((top + 1.6) * k) / 2, mid0 + midH * 0.5, cx + ((top + 1.6) * k) / 2 + 2.6 * k, mid0 + midH * 0.5, 1.4);
+        line(cx + ((top + 1.6) * k) / 2 + 2.6 * k, mid0 + midH * 0.5, cx + ((top + 1.6) * k) / 2 + 2.6 * k, mid0 + midH * 0.95, 1.4);
+        cyl(mid0 + midH * 0.8, top + 0.2, midH * 0.2);
+        nut(bot); break;
+      }
+      case 'ball_check': case 'chem_sub': case 'bleed_sub': case 'quick_test_sub': {
+        pin(top);
+        const d = r.kind === 'ball_check' ? top + 0.8 : top + 0.3;
+        cyl(mid0, d, midH);
+        if (r.kind === 'ball_check') { line(cx - (d * k) / 2, mid0 + midH * 0.5, cx + (d * k) / 2, mid0 + midH * 0.5, 0.4, STEEL[0]); }
+        else needle(mid0 + midH * 0.55, cx + (d * k) / 2);
+        nut(bot); break;
       }
       case 'wireline_valve': {
-        const n = Math.max(1, Math.min(4, r.rams ?? 1)), d = body + 1.2;
-        cyl(0, d, H);
+        const n = Math.max(1, Math.min(4, r.rams ?? 1)), bw = top + 1;
+        pin(top);
+        block(mid0, bw, midH);
         for (let i = 0; i < n; i++) {
-          const y = (H * (i + 0.5)) / n, rd = Math.min(2.2, (H / n / k) * 0.62), arm = 3 * k;
-          hcyl(cx - (d * k) / 2 - arm, y, arm, rd); hcyl(cx + (d * k) / 2, y, arm, rd);
-          // hydraulic caps at the ends of the ram bonnets
-          hcyl(cx - (d * k) / 2 - arm - 0.5 * k, y, 0.5 * k, rd * 0.7, COLLAR); hcyl(cx + (d * k) / 2 + arm, y, 0.5 * k, rd * 0.7, COLLAR);
+          const y = mid0 + (midH * (i + 0.5)) / n, rd = Math.min(2.6, (midH / n / k) * 0.75);
+          const x0 = cx - (bw * k) / 2, x1 = cx + (bw * k) / 2, arm = 2.7 * k, cap = 0.7 * k;
+          for (const [xa, dir] of [[x0, -1], [x1, 1]] as const) {
+            hcyl(dir < 0 ? xa - arm : xa, y, arm, rd);
+            hcyl(dir < 0 ? xa - arm - cap : xa + arm, y, cap, rd + 0.3, COLLAR);
+            line(dir < 0 ? xa - arm - cap : xa + arm + cap, y, dir < 0 ? xa - arm - cap - 0.5 * k : xa + arm + cap + 0.5 * k, y, 0.8);
+          }
         }
-        collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu); break;
+        // manifold block (equalising and grease) on the face, across the rams
+        if (n > 1) block(mid0 + midH * 0.12, 1.4, midH * 0.76);
+        nut(bot); break;
       }
       case 'pump_in_sub': {
-        cyl(cu, body, H - 2 * cu);
-        const side = cx + (body * k) / 2;
-        hcyl(side, H * 0.5, 2.2 * k, 2.4);
-        // 1502 hammer union on the side outlet
-        hcyl(side + 2.2 * k, H * 0.5, 0.9 * k, 3.4, COLLAR);
-        collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu); break;
+        pin(top);
+        block(mid0, top + 1.2, midH);
+        const sx = cx + ((top + 1.2) * k) / 2, sy = mid0 + midH * 0.5;
+        cyl(sy - 1.7 * k, 0.6, 3.4 * k, COLLAR, sx + 0.3 * k);
+        hcyl(sx + 0.6 * k, sy, 1.6 * k, 2.4);
+        // 1502 hammer union with lugs
+        hcyl(sx + 2.2 * k, sy, 1.1 * k, 3.6, COLLAR);
+        for (const s of [-1, 1]) rect(sx + 2.45 * k, sy + s * 1.8 * k - (s < 0 ? 0.9 * k : 0), 0.6 * k, 0.9 * k, COLLAR[2], true);
+        nut(bot); break;
       }
-      case 'pce_crossover':
-        collar(0, top + 0.4, cu); taper(cu, top - 0.2, bot - 0.2, H - 2 * cu); collar(H - cu, bot + 0.4, cu);
-        g.push({ t: 'poly', pts: [[cx - ((top - 0.2) * k) / 2, cu], [cx + ((top - 0.2) * k) / 2, cu], [cx + ((bot - 0.2) * k) / 2, H - cu], [cx - ((bot - 0.2) * k) / 2, H - cu]], fill: STEEL[3] });
-        break;
+      case 'pce_crossover': {
+        pin(top);
+        cyl(mid0, top + 0.2, midH * 0.35);
+        taper(mid0 + midH * 0.35, top + 0.2, bot + 0.4, midH * 0.3);
+        g.push({ t: 'poly', pts: [[cx - ((top + 0.2) * k) / 2, mid0 + midH * 0.35], [cx + ((top + 0.2) * k) / 2, mid0 + midH * 0.35], [cx + ((bot + 0.4) * k) / 2, mid0 + midH * 0.65], [cx - ((bot + 0.4) * k) / 2, mid0 + midH * 0.65]], fill: STEEL[3] });
+        cyl(mid0 + midH * 0.65, bot + 0.4, midH * 0.35);
+        nut(bot); break;
+      }
       case 'wellhead_adapter': {
-        collar(0, top + 0.4, cu); cyl(cu, top, H * 0.66 - cu);
-        const fw = 9, fh = Math.max(4, H * 0.22);
-        cyl(H * 0.66, fw, fh, COLLAR);
-        for (const s of [-1, 1]) cyl(H * 0.66 - 2, 0.5, fh + 4, STEEL, cx + s * (fw / 2 - 0.9) * k);
-        cyl(H * 0.66 + fh, top - 0.4, H - H * 0.66 - fh); break;
+        pin(top);
+        cyl(mid0, top - 0.2, midH * 0.45 + nutH * 0.2);
+        const fy = mid0 + midH * 0.45, fh = H - fy - 1, fw = 10;
+        cyl(fy, fw, fh, COLLAR);
+        // studs and nuts through the flange
+        for (const s of [-1, 1]) for (const off of [3.8, 2.6]) {
+          const x = cx + s * off * k;
+          cyl(fy - 0.7 * k, 0.45, fh + 1.4 * k, STEEL, x);
+          cyl(fy - 0.7 * k, 0.9, 0.7 * k, COLLAR, x); cyl(fy + fh, 0.9, 0.7 * k > H - fy - fh ? H - fy - fh : 0.7 * k, COLLAR, x);
+        }
+        break;
       }
       case 'tree': {
-        const d = 5.5;
-        cyl(0, d, H);
-        hcyl(cx - 6.5 * k, H * 0.52, 13 * k, 3.2);
-        cyl(H * 0.52 - 2.6 * k, d + 0.6, 5.2 * k, COLLAR);
-        for (const s of [-1, 1]) { const x = cx + s * 5 * k; circle(x, H * 0.52, Math.min(H * 0.2, 2 * k)); line(x - 1.4 * k, H * 0.52, x + 1.4 * k, H * 0.52); line(x, H * 0.52 - Math.min(H * 0.2, 2 * k), x, H * 0.52 + Math.min(H * 0.2, 2 * k)); }
-        circle(cx, H * 0.18, Math.min(H * 0.15, 1.8 * k)); line(cx - 1.4 * k, H * 0.18, cx + 1.4 * k, H * 0.18);
+        // swab valve, flow cross with wing valves, master valve; handwheels drawn edge-on
+        const valve = (y: number, h: number) => { block(y, 5, h); line(cx - 2.5 * k, y + h / 2, cx - 4.2 * k, y + h / 2, 1.2); rect(cx - 4.6 * k, y + h / 2 - 1.8 * k, 0.45 * k, 3.6 * k, COLLAR[1], true); };
+        const f = Math.min(1.2 * k, H * 0.05), ch = H * 0.26, v = (H - 4 * f - ch) / 2;
+        const fl = (y: number) => cyl(y, 7, f, COLLAR);
+        fl(0); valve(f, v); fl(f + v);
+        const cy = 2 * f + v;
+        block(cy, 5.5, ch);
+        for (const s of [-1, 1]) {
+          const x0 = s < 0 ? cx - 2.75 * k - 4.4 * k : cx + 2.75 * k;
+          hcyl(x0, cy + ch / 2, 4.4 * k, 2.6);
+          const wx = s < 0 ? cx - 2.75 * k - 4.4 * k + 1.2 * k : cx + 2.75 * k + 3.2 * k;
+          line(wx - 0.05 * k, cy + ch / 2 - 1.3 * k, wx - 0.05 * k, cy + ch / 2 - 2.6 * k, 1.2);
+          rect(wx - 1.6 * k, cy + ch / 2 - 3 * k, 3.2 * k, 0.45 * k, COLLAR[1], true);
+        }
+        fl(cy + ch); valve(cy + ch + f, v); fl(H - f);
         break;
       }
       default:
-        cyl(cu, body, H - 2 * cu); collar(0, top + 0.4, cu); collar(H - cu, bot + 0.4, cu);
+        pin(top); cyl(mid0, top + 0.3, midH); nut(bot);
     }
     return g;
   }
@@ -516,7 +589,7 @@ export function drawPart(r: Row, family: Family, W: number, H: number): Prim[] {
 export function drawnLength(r: Row, family: Family): number {
   if (family === 'pce') {
     const len = r.length_ft ?? ({ lubricator: 8, wireline_valve: 3, tree: 4, stuffing_box: 2.5, grease_head: 6 } as Partial<Record<PartKind, number>>)[r.kind] ?? 1.5;
-    const min = r.kind === 'wireline_valve' ? 3 + 3.6 * Math.max(1, Math.min(4, r.rams ?? 1)) : r.kind === 'tree' ? 11 : r.kind === 'stuffing_box' ? 10 : r.kind === 'wellhead_adapter' ? 6 : r.kind === 'pump_in_sub' ? 6 : 4.5;
+    const min = r.kind === 'wireline_valve' ? 4 + 4 * Math.max(1, Math.min(4, r.rams ?? 1)) : r.kind === 'tree' ? 26 : r.kind === 'stuffing_box' ? 15 : r.kind === 'wellhead_adapter' ? 7 : r.kind === 'pump_in_sub' ? 8 : r.kind === 'tool_trap' ? 8 : 5.5;
     return Math.max(min, 3.5 + len * 2);
   }
   const len = r.length_ft ?? (r.kind.startsWith('jar_') ? 5 : r.kind === 'stem' || r.kind === 'roller_stem' ? 3 : 1.5);
