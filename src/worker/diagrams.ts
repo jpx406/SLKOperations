@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { allowed } from '../shared/approvalRules';
-import { FAMILY_OF, FORM, afterChange, cleanRows, legacyToolstring, rigTotals, stringTotals, type DiagramKind, type DiagramStatus, type Row } from '../shared/diagram';
+import { FAMILY_OF, FORM, SHEET_STYLES, afterChange, cleanRows, diagramChecks, legacyToolstring, rigTotals, stringTotals, type DiagramKind, type DiagramStatus, type Row, type SheetStyle } from '../shared/diagram';
 import { diagramPdf } from '../shared/diagramPdf';
 import { canEditField } from '../shared/fieldPolicy';
 import { emptyNote } from '../shared/pjn';
@@ -19,7 +19,8 @@ export const diagrams = new Hono<AppBindings>();
 
 interface DiagramRow {
   id: string; job_id: string; kind: DiagramKind; run_no: number; items: string; rev: number; pdf_rev: number | null; pdf_at: string | null; pdf_by: string | null;
-  status: DiagramStatus; sent_by: string | null; sent_at: string | null; reviewed_by: string | null; reviewed_at: string | null; updated_by: string | null; updated_at: string;
+  status: DiagramStatus; sent_by: string | null; sent_at: string | null; verified_by: string | null; verified_at: string | null; reviewed_by: string | null; reviewed_at: string | null;
+  updated_by: string | null; updated_at: string;
 }
 
 const audit = (env: Env, user: AuthedUser, action: string, jobId: string, summary: string) =>
@@ -123,7 +124,8 @@ const names = (env: Env, users: (string | null)[]) => {
 };
 
 const shape = (d: DiagramRow, who: (u: string | null) => string | null) => ({
-  ...d, items: JSON.parse(d.items) as Row[], pdf_by_name: who(d.pdf_by), sent_by_name: who(d.sent_by), reviewed_by_name: who(d.reviewed_by), updated_by_name: who(d.updated_by),
+  ...d, items: JSON.parse(d.items) as Row[], pdf_by_name: who(d.pdf_by), sent_by_name: who(d.sent_by), verified_by_name: who(d.verified_by), reviewed_by_name: who(d.reviewed_by),
+  updated_by_name: who(d.updated_by),
 });
 
 async function wireSize(env: Env, serial: string | null) {
@@ -139,7 +141,7 @@ diagrams.get('/:jobId', async (c) => {
   if ('error' in ctx) return ctx.error;
   const { job } = ctx;
   const { results } = await c.env.DB.prepare('SELECT * FROM job_diagrams WHERE job_id = ? ORDER BY kind, run_no').bind(job.id).all<DiagramRow>();
-  const who = await names(c.env, [job.sdm_username, ...results.flatMap((d) => [d.pdf_by, d.sent_by, d.reviewed_by, d.updated_by])]);
+  const who = await names(c.env, [job.sdm_username, ...results.flatMap((d) => [d.pdf_by, d.sent_by, d.verified_by, d.reviewed_by, d.updated_by])]);
   const list = results.map((d) => shape(d, who));
   return c.json({
     job: {
@@ -191,7 +193,9 @@ diagrams.put('/:jobId/:kind/:run', async (c) => {
   const at = new Date().toISOString();
   const stmts = [
     cur
-      ? c.env.DB.prepare('UPDATE job_diagrams SET items = ?, rev = ?, status = ?, updated_by = ?, updated_at = ? WHERE id = ?').bind(items, next.rev, next.status, user.username, at, cur.id)
+      ? // a change undoes the verification as well as the review
+      c.env.DB.prepare(`UPDATE job_diagrams SET items = ?, rev = ?, status = ?, updated_by = ?, updated_at = ?${changed ? ', verified_by = NULL, verified_at = NULL' : ''} WHERE id = ?`)
+        .bind(items, next.rev, next.status, user.username, at, cur.id)
       : c.env.DB.prepare('INSERT INTO job_diagrams (id, job_id, kind, run_no, items, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), job.id, t.kind, t.run, items, user.username, at),
   ];
   if (changed) {
@@ -209,7 +213,7 @@ diagrams.put('/:jobId/:kind/:run', async (c) => {
   }
   await c.env.DB.batch(stmts);
   const saved = (await current(c.env, job.id, t.kind, t.run))!;
-  return c.json({ diagram: shape(saved, await names(c.env, [saved.pdf_by, saved.sent_by, saved.reviewed_by, saved.updated_by])) });
+  return c.json({ diagram: shape(saved, await names(c.env, [saved.pdf_by, saved.sent_by, saved.verified_by, saved.reviewed_by, saved.updated_by])) });
 });
 
 /** Removes a run's tool string that never had a PDF (the last run only, so runs stay numbered 1, 2, 3…). */
@@ -229,28 +233,40 @@ diagrams.delete('/:jobId/toolstring/:run', async (c) => {
   return c.json({ ok: true });
 });
 
-/** Builds the PDF. The first PDF of a revision is filed with the job's attachments and fixes that revision. */
-async function makePdf(env: Env, user: AuthedUser, job: Job, d: DiagramRow) {
+/** Builds the PDF in the chosen layout. The first PDF of a revision is filed with the job's attachments and fixes that revision. */
+async function makePdf(env: Env, user: AuthedUser, job: Job, d: DiagramRow, style: SheetStyle) {
   const rows = JSON.parse(d.items) as Row[];
-  const who = await names(env, [d.sent_by, d.updated_by, d.reviewed_by]);
-  const reviewed = d.status === 'reviewed' && d.reviewed_by && d.reviewed_at ? { by: who(d.reviewed_by)!, at: d.reviewed_at } : null;
-  const prepBy = d.sent_by ?? d.updated_by;
+  const who = await names(env, [d.sent_by, d.updated_by, d.verified_by, d.reviewed_by]);
+  const signed = (by: string | null, at: string | null) => (by && at ? { by: who(by)!, at } : null);
+  const reviewed = d.status === 'reviewed' ? signed(d.reviewed_by, d.reviewed_at) : null;
+  // the checks printed on the sheet are the editor's: this diagram against the job's other diagrams
+  const { results } = await env.DB.prepare('SELECT kind, run_no, items FROM job_diagrams WHERE job_id = ?').bind(job.id).all<{ kind: DiagramKind; run_no: number; items: string }>();
+  const others = (k: DiagramKind) => results.filter((x) => x.kind === k && !(x.kind === d.kind && x.run_no === d.run_no)).map((x) => JSON.parse(x.items) as Row[]);
+  const rig = d.kind === 'rigup' ? rows : others('rigup')[0] ?? null;
+  const strings = d.kind === 'toolstring' ? [rows, ...others('toolstring')] : others('toolstring');
+  const wire_in = await wireSize(env, job.wire_serial_number);
+  const checks = diagramChecks(d.kind, rig, strings, { mpwhp_psi: job.siwhp_psi, h2s_ppm: job.h2s_ppm, min_id_in: job.min_restriction_in, wire_in });
   const bytes = diagramPdf({
-    kind: d.kind, run_no: d.run_no, rev: d.rev, rows,
+    style, kind: d.kind, run_no: d.run_no, rev: d.rev, status: d.status, rows, checks,
     job: { client: emptyNote().client, well: job.well, field: job.field, rig: job.rig, unit_number: job.unit_number, date: job.start_date, ticket_no: job.ticket_no, drss_no: job.drss_no },
-    prepared: prepBy ? { by: who(prepBy)!, at: d.sent_at ?? d.updated_at } : null,
+    facts: { siwhp_psi: job.siwhp_psi, h2s_ppm: job.h2s_ppm, min_restriction_in: job.min_restriction_in, wire_in, md_ft: job.target_depth_ft, tvd_ft: null },
+    prepared: signed(d.sent_by ?? d.updated_by, d.sent_at ?? d.updated_at),
+    verified: signed(d.verified_by, d.verified_at),
     reviewed,
-    totalDepth: d.kind === 'toolstring' ? { md: job.target_depth_ft, tvd: null } : undefined,
   });
   const form = FORM[d.kind];
-  const name = `${form.code} ${d.kind === 'rigup' ? 'Rig Up' : `Run ${d.run_no} String`} ${job.ticket_no ?? job.id.slice(0, 8)} Rev ${d.rev}${reviewed ? ' reviewed' : ''}.pdf`.replace(/[\\/:*?"<>|]/g, '-');
+  const name = `${form.code} ${d.kind === 'rigup' ? 'Rig Up' : `Run ${d.run_no} String`} ${job.ticket_no ?? job.id.slice(0, 8)} Rev ${d.rev}${reviewed ? ' approved' : ''}.pdf`.replace(/[\\/:*?"<>|]/g, '-');
   let filed: string | null = null, fileError: string | undefined;
   if (d.pdf_rev !== d.rev || reviewed) {
-    const stored = await storeAttachment(env, user, { country: job.country, entity: 'job', entityId: job.id, category: 'report', name, bytes, note: `${form.title} ${form.code} Rev ${d.rev}${reviewed ? ', reviewed by the SDM' : ''}` });
+    const note = `${form.title} ${form.code} Rev ${d.rev}, ${SHEET_STYLES[style].toLowerCase()}${reviewed ? ', approved by the SDM' : ''}`;
+    const stored = await storeAttachment(env, user, { country: job.country, entity: 'job', entityId: job.id, category: 'report', name, bytes, note });
     if ('error' in stored) fileError = stored.error; else filed = name;
   }
   return { bytes, name, filed, fileError };
 }
+
+/** The PDF layout the person picked: ?style=sheet (engineering sheet, the default) or ?style=data (data sheet). */
+const styleOf = (c: Context<AppBindings>): SheetStyle => (c.req.query('style') === 'data' ? 'data' : 'sheet');
 
 diagrams.post('/:jobId/:kind/:run/:action', async (c) => {
   const ctx = await context(c);
@@ -264,7 +280,7 @@ diagrams.post('/:jobId/:kind/:run/:action', async (c) => {
   const at = new Date().toISOString();
 
   if (action === 'pdf') {
-    const pdf = await makePdf(c.env, user, job, cur);
+    const pdf = await makePdf(c.env, user, job, cur, styleOf(c));
     await c.env.DB.batch([
       c.env.DB.prepare('UPDATE job_diagrams SET pdf_rev = ?, pdf_at = ?, pdf_by = ? WHERE id = ?').bind(cur.rev, at, user.username, cur.id),
       ...(pdf.filed ? [audit(c.env, user, 'pdf', job.id, `Made the PDF of the ${label(t.kind, t.run)}, Rev ${cur.rev}`)] : []),
@@ -283,12 +299,24 @@ diagrams.post('/:jobId/:kind/:run/:action', async (c) => {
     ]);
     return c.json({ ok: true });
   }
+  if (action === 'verify') {
+    // Verified by (QAF14010 Rev 2): someone other than whoever prepared it confirms the diagram before the SDM approves
+    if (!ctx.canEdit) return c.json({ error: 'Your role does not edit Preparation' }, 403);
+    if (!(JSON.parse(cur.items) as Row[]).length) return c.json({ error: 'The diagram has no parts' }, 409);
+    if (user.role !== 'admin' && [cur.updated_by, cur.sent_by].some((u) => same(u, user.username))) return c.json({ error: 'Someone other than whoever prepared the diagram verifies it' }, 409);
+    if (cur.verified_by) return c.json({ ok: true });
+    await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE job_diagrams SET verified_by = ?, verified_at = ? WHERE id = ?').bind(user.username, at, cur.id),
+      audit(c.env, user, 'verify', job.id, `Verified the ${label(t.kind, t.run)} Rev ${cur.rev}`),
+    ]);
+    return c.json({ ok: true });
+  }
   if (action === 'review') {
     if (!ctx.canReview) return c.json({ error: 'The job’s SDM reviews diagrams (Users & Roles → Approvals → Job)' }, 403);
     if (!(JSON.parse(cur.items) as Row[]).length) return c.json({ error: 'The diagram has no parts' }, 409);
     if (cur.status === 'reviewed') return c.json({ ok: true });
     const done: DiagramRow = { ...cur, status: 'reviewed', reviewed_by: user.username, reviewed_at: at, sent_by: cur.sent_by ?? cur.updated_by, sent_at: cur.sent_at ?? cur.updated_at };
-    const pdf = await makePdf(c.env, user, job, done);
+    const pdf = await makePdf(c.env, user, job, done, styleOf(c));
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE job_diagrams SET status = 'reviewed', reviewed_by = ?, reviewed_at = ?, sent_by = ?, sent_at = ?, pdf_rev = ?, pdf_at = ?, pdf_by = ? WHERE id = ?`)
         .bind(user.username, at, done.sent_by, done.sent_at, cur.rev, at, user.username, cur.id),
@@ -299,7 +327,7 @@ diagrams.post('/:jobId/:kind/:run/:action', async (c) => {
   if (action === 'reopen') {
     if (!ctx.canReview) return c.json({ error: 'Only the SDM reopens a reviewed diagram' }, 403);
     await c.env.DB.batch([
-      c.env.DB.prepare(`UPDATE job_diagrams SET status = 'draft' WHERE id = ?`).bind(cur.id),
+      c.env.DB.prepare(`UPDATE job_diagrams SET status = 'draft', verified_by = NULL, verified_at = NULL WHERE id = ?`).bind(cur.id),
       audit(c.env, user, 'reopen', job.id, `Sent the ${label(t.kind, t.run)} Rev ${cur.rev} back to draft`),
     ]);
     return c.json({ ok: true });

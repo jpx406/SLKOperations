@@ -3,20 +3,20 @@ import { ArrowDown, ArrowLeft, ArrowUp, Copy, FileDown, Plus, Search, Send, Shie
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import {
-  CONNECTIONS, FAMILY_OF, FORM, MAX_ROWS, PART_KINDS, RATINGS, crossoverFor, diagramChecks, drawPart, insertIndex, joints, kindsOf, rigTotals, rowFromPart,
-  layoutStack, pictureFor, stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row,
+  CONNECTIONS, FAMILY_OF, FORM, SHEET_STYLES, MAX_ROWS, PART_KINDS, RATINGS, crossoverFor, diagramChecks, drawPart, insertIndex, joints, kindsOf, rigTotals, rowFromPart,
+  layoutStack, pictureFor, stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row, type SheetStyle,
 } from '../../shared/diagram';
 import type { ToolPart } from '../../shared/toolstring';
 import { ApiError, api, countryScope, formatDate } from '../api';
 import { Select } from '../components/Select';
-import { Banner, Button, Card, Skeleton, cx, inputClass } from '../components/ui';
+import { Banner, Button, Card, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 
 // Rig Up (QAF14009) and tool string (QAF14010) diagrams of a job, opened from Preparation. The sheet in the middle is
 // the printout; the catalogue adds parts where they belong in the stack; the right side edits a row and shows the checks.
 
 interface Diagram {
   id: string; kind: DiagramKind; run_no: number; items: Row[]; rev: number; pdf_rev: number | null; pdf_at: string | null; pdf_by_name: string | null;
-  status: DiagramStatus; sent_by_name: string | null; sent_at: string | null; reviewed_by_name: string | null; reviewed_at: string | null;
+  status: DiagramStatus; sent_by_name: string | null; sent_at: string | null; verified_by_name: string | null; verified_at: string | null; reviewed_by_name: string | null; reviewed_at: string | null;
   updated_by_name: string | null; updated_at: string;
 }
 interface JobFacts {
@@ -29,11 +29,12 @@ interface Data { job: JobFacts; rigup: Diagram | null; toolstrings: Diagram[]; l
 const STATUS: Record<DiagramStatus, { label: string; cls: string }> = {
   draft: { label: 'Draft', cls: 'bg-neutral-subtle text-neutral' },
   sent: { label: 'Waiting for SDM review', cls: 'bg-warning-subtle text-warning' },
-  reviewed: { label: 'Reviewed', cls: 'bg-success-subtle text-success' },
+  reviewed: { label: 'Approved by the SDM', cls: 'bg-success-subtle text-success' },
 };
 const stamp = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const fmt = (n: number | null | undefined, d = 2) => (n == null ? '—' : n.toFixed(d));
 const readUnit = () => { try { return localStorage.getItem('slk-diagram-unit') === 'm' ? 'm' : 'ft'; } catch { return 'ft'; } };
+const readStyle = (): SheetStyle => { try { return localStorage.getItem('slk-diagram-style') === 'data' ? 'data' : 'sheet'; } catch { return 'sheet'; } };
 
 /** The old Preparation toolstring components, mapped to part types, for "Start from the Preparation toolstring". */
 const LEGACY_KIND: Record<string, PartKind> = {
@@ -42,7 +43,7 @@ const LEGACY_KIND: Record<string, PartKind> = {
 };
 const fromLegacy = (p: ToolPart): Row => ({
   part_id: null, kind: LEGACY_KIND[p.component.toLowerCase()] ?? 'service_tool', name: p.component, rating_psi: null, service: null, id_in: null,
-  od_in: p.od_in ?? null, fn_in: null, top_conn: null, bottom_conn: null, length_ft: p.length_ft ?? null, weight_lb: p.weight_lb ?? null, stroke_ft: null, rams: null,
+  od_in: p.od_in ?? null, fn_in: null, fn_lower_in: null, top_conn: null, bottom_conn: null, length_ft: p.length_ft ?? null, weight_lb: p.weight_lb ?? null, stroke_ft: null, rams: null,
 });
 
 export function Diagrams() {
@@ -62,6 +63,7 @@ export function Diagrams() {
   const [sel, setSel] = useState<number | null>(null);
   const [history, setHistory] = useState<Row[][]>([]);
   const [unit, setUnit] = useState<'ft' | 'm'>(readUnit);
+  const [style, setStyle] = useState<SheetStyle>(readStyle);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -105,9 +107,10 @@ export function Diagrams() {
   const undo = () => { const prev = history[history.length - 1]; if (!prev) return; setHistory((h) => h.slice(0, -1)); setRows(prev); setSel(null); setDirty(true); window.clearTimeout(timer.current); timer.current = window.setTimeout(() => save.mutate(prev), 300); };
 
   const act = useMutation({
-    mutationFn: (action: 'send' | 'review' | 'reopen') => api<{ ok: boolean; pdf?: string | null; pdf_error?: string }>(`/diagrams/${id}/${kind}/${run}/${action}`, { method: 'POST' }),
+    mutationFn: (action: 'send' | 'verify' | 'review' | 'reopen') =>
+      api<{ ok: boolean; pdf?: string | null; pdf_error?: string }>(`/diagrams/${id}/${kind}/${run}/${action}${action === 'review' ? `?style=${style}` : ''}`, { method: 'POST' }),
     onSuccess: (r, action) => {
-      setNotice(action === 'send' ? `Sent to ${data.data?.job.sdm_name ?? 'the SDM'} for review.` : action === 'review' ? `Reviewed.${r.pdf ? ` The PDF is filed with the job: ${r.pdf}` : ''}${r.pdf_error ? ` The PDF could not be filed: ${r.pdf_error}` : ''}` : 'Back to draft.');
+      setNotice(action === 'send' ? `Sent to ${data.data?.job.sdm_name ?? 'the SDM'} for review.` : action === 'verify' ? 'Verified. The SDM can approve it now.' : action === 'review' ? `Approved.${r.pdf ? ` The PDF is filed with the job: ${r.pdf}` : ''}${r.pdf_error ? ` The PDF could not be filed: ${r.pdf_error}` : ''}` : 'Back to draft.');
       qc.invalidateQueries({ queryKey: ['diagrams', id] });
     },
     onError: (e: ApiError) => setError(e.message),
@@ -123,7 +126,7 @@ export function Diagrams() {
     setPdfBusy(true); setError(null);
     const w = window.open('', '_blank');
     try {
-      const res = await fetch(`/api/diagrams/${id}/${kind}/${run}/pdf`, { method: 'POST', credentials: 'same-origin', headers: countryScope() ? { 'X-SLK-Country': countryScope()! } : {} });
+      const res = await fetch(`/api/diagrams/${id}/${kind}/${run}/pdf?style=${style}`, { method: 'POST', credentials: 'same-origin', headers: countryScope() ? { 'X-SLK-Country': countryScope()! } : {} });
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `PDF failed (${res.status})`);
       const url = URL.createObjectURL(await res.blob());
       if (w) w.location.href = url; else window.location.href = url;
@@ -186,6 +189,11 @@ export function Diagrams() {
           ))}
         </div>
         <span aria-live="polite" className="min-w-24 text-right text-xs text-text-muted">{save.isPending ? 'Saving…' : dirty ? 'Unsaved' : saved ? `Saved · Rev ${saved.rev}` : 'Not started'}</span>
+        <label className="sr-only" htmlFor="dg-style">PDF layout</label>
+        <Select id="dg-style" className={inputSized('h-(--layout-control-sm) w-40 text-xs')} value={style}
+          onChange={(e) => { const v = e.target.value as SheetStyle; setStyle(v); try { localStorage.setItem('slk-diagram-style', v); } catch { /* not kept */ } }}>
+          {(Object.keys(SHEET_STYLES) as SheetStyle[]).map((k) => <option key={k} value={k}>{SHEET_STYLES[k]}</option>)}
+        </Select>
         <Button size="sm" onClick={makePdf} loading={pdfBusy} disabled={!rows.length}><FileDown aria-hidden className="size-3.5" />PDF</Button>
       </div>
 
@@ -229,13 +237,15 @@ export function Diagrams() {
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
               <dt className="text-text-muted">SDM</dt><dd>{job?.sdm_name ?? <span className="text-warning">Not set on Design</span>}</dd>
               {saved?.sent_at && <><dt className="text-text-muted">Sent</dt><dd>{saved.sent_by_name} · {stamp(saved.sent_at)}</dd></>}
-              {saved?.reviewed_at && st === 'reviewed' && <><dt className="text-text-muted">Reviewed</dt><dd>{saved.reviewed_by_name} · {stamp(saved.reviewed_at)}</dd></>}
+              {saved?.verified_at && <><dt className="text-text-muted">Verified</dt><dd>{saved.verified_by_name} · {stamp(saved.verified_at)}</dd></>}
+              {saved?.reviewed_at && st === 'reviewed' && <><dt className="text-text-muted">Approved</dt><dd>{saved.reviewed_by_name} · {stamp(saved.reviewed_at)}</dd></>}
               {saved?.pdf_at && <><dt className="text-text-muted">Last PDF</dt><dd>Rev {saved.pdf_rev} · {stamp(saved.pdf_at)}</dd></>}
             </dl>
             <p className="mt-2 text-xs text-text-subtle">Starts at Rev 0. After a PDF, the next change makes a new revision and sends it back to draft.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {canEdit && st === 'draft' && <Button size="sm" variant="primary" disabled={!rows.length || dirty} loading={act.isPending} onClick={() => act.mutate('send')}><Send aria-hidden className="size-3.5" />Send for review</Button>}
-              {data.data?.canReview && st !== 'reviewed' && <Button size="sm" variant={st === 'sent' ? 'primary' : 'secondary'} disabled={!rows.length || dirty} loading={act.isPending} onClick={() => act.mutate('review')}><ShieldCheck aria-hidden className="size-3.5" />Mark reviewed</Button>}
+              {data.data?.canReview && st !== 'reviewed' && <Button size="sm" variant={st === 'sent' ? 'primary' : 'secondary'} disabled={!rows.length || dirty} loading={act.isPending} onClick={() => act.mutate('review')}><ShieldCheck aria-hidden className="size-3.5" />Approve (SDM)</Button>}
+              {canEdit && st !== 'reviewed' && saved && !saved.verified_at && <Button size="sm" disabled={!rows.length || dirty} loading={act.isPending} onClick={() => act.mutate('verify')}>Verify</Button>}
               {data.data?.canReview && st !== 'draft' && <Button size="sm" variant="ghost" loading={act.isPending} onClick={() => act.mutate('reopen')}>Back to draft</Button>}
               {canEdit && kind === 'toolstring' && saved && saved.pdf_rev == null && run === Math.max(...others.map((t) => t.run_no)) && (
                 <Button size="sm" variant="ghost" className="ml-auto text-danger" loading={removeRun.isPending} onClick={() => removeRun.mutate()}><Trash2 aria-hidden className="size-3.5" />Remove Run {run}</Button>
@@ -381,7 +391,7 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
         <div className="grid grid-cols-[6rem_1fr_6rem] items-center border-2 border-b-0 border-[#2d3b1f] px-3 py-2">
           <img src="/brand/nesr-dark-160.png" alt="NESR" className="h-7 w-auto" />
           <h2 className="text-center font-display text-lg font-extrabold">{FORM[kind].title}{rig ? '' : ` · Run ${run}`}</h2>
-          <span className="text-right font-mono text-[0.6875rem] text-[#5b6673]">{FORM[kind].code}<br />Rev {rev}</span>
+          <span className="text-right font-mono text-[0.6875rem] text-[#5b6673]">{FORM[kind].code}{rig ? '' : ' Rev 2'}<br />Diagram rev {rev}</span>
         </div>
         <table className="w-full table-fixed border-collapse">
           <tbody>
@@ -397,7 +407,7 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
           </colgroup>
           <thead>
             <tr className="bg-[#e9f0d4] text-[0.6875rem] leading-tight">
-              {['No.', 'Description', rig ? 'Rating' : 'OD / ID in', rig ? 'OD / ID in' : 'F/N in', 'Top conn.', 'Bottom conn.', 'Length', 'Assembly'].map((h) => <th key={h} scope="col" className="border border-[#9aa58a] px-1 py-1.5 font-bold">{h}</th>)}
+              {['No.', 'Description', rig ? 'Rating' : 'OD / ID in', rig ? 'OD / ID in' : 'F/N up / low', 'Top conn.', 'Bottom conn.', 'Length', 'Assembly'].map((h) => <th key={h} scope="col" className="border border-[#9aa58a] px-1 py-1.5 font-bold">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -433,13 +443,14 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
                     <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}>{r.od_in != null && <span className="block">{r.od_in}</span>}<span className={cx('block', r.od_in != null && 'text-[#5b6673]')}>{r.id_in ?? 'N/A'}</span></td>
                   </> : <>
                     <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}><span className="block">{fmt(r.od_in, 3)}</span>{r.id_in != null && <span className="block text-[#5b6673]">{fmt(r.id_in, 3)}</span>}</td>
-                    <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{fmt(r.fn_in, 3)}</td>
+                    <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}><span className="block">{fmt(r.fn_in, 3)}</span>{r.fn_lower_in != null && <span className="block text-[#5b6673]">{fmt(r.fn_lower_in, 3)}</span>}</td>
                   </>}
                   <td className={cx(cell, 'font-mono text-[0.65rem] leading-tight', topBad && 'bg-[#fde8e8] font-bold text-[#b4232a]')}>{conn(r.top_conn)}</td>
                   <td className={cx(cell, 'font-mono text-[0.65rem] leading-tight', botBad && 'bg-[#fde8e8] font-bold text-[#b4232a]')}>{conn(r.bottom_conn)}</td>
                   <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}>
                     {r.length_ft == null ? <span className="text-[#b4232a]">no length</span> : <><span className="block">{L(r.length_ft)}</span><span className="block text-[#5b6673]">{L2(r.length_ft)}</span></>}
                     {r.stroke_ft ? <span className="block text-[0.625rem] text-[#5b6673]">+{r.stroke_ft} ft stroke</span> : null}
+                    {!rig && r.weight_lb != null ? <span className="block text-[0.625rem] text-[#5b6673]">{r.weight_lb} lb</span> : null}
                   </td>
                   {i === 0 && (
                     <td rowSpan={rows.length + J.filter((j) => j.ok === false).length} className="relative border-l-2 border-l-[#2d3b1f] bg-[#ffffff] p-0 align-top">
@@ -478,7 +489,7 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
           </tfoot>
         </table>
         <div className="grid grid-cols-3 border-2 border-t-0 border-[#2d3b1f] text-center text-[0.6875rem]">
-          {[['Prepared by', diagram?.sent_by_name ?? diagram?.updated_by_name ?? '—'], ['Reviewed by (SDM)', diagram?.status === 'reviewed' ? `${diagram.reviewed_by_name} · ${stamp(diagram.reviewed_at)}` : 'Not reviewed'], ['Status', `${diagram ? STATUS[diagram.status].label : 'Draft'} · Rev ${rev}`]].map(([k, v]) => (
+          {[['Prepared by', diagram?.sent_by_name ?? diagram?.updated_by_name ?? '—'], ['Verified by', diagram?.verified_at ? `${diagram.verified_by_name} · ${stamp(diagram.verified_at)}` : 'Not verified'], ['Approved by (SDM)', diagram?.status === 'reviewed' ? `${diagram.reviewed_by_name} · ${stamp(diagram.reviewed_at)}` : 'Not approved']].map(([k, v]) => (
             <div key={k} className="border-r border-[#2d3b1f] last:border-r-0"><b className="block bg-[#e9f0d4] py-0.5 font-semibold">{k}</b><span className="block py-1">{v}</span></div>
           ))}
         </div>
@@ -505,7 +516,7 @@ function Totals({ kind, rows, unit }: { kind: DiagramKind; rows: Row[]; unit: 'f
 
 function RowEditor({ family, row, index, canEdit, onChange, onClose }: { family: Family; row: Row; index: number; canEdit: boolean; onChange: (r: Row) => void; onClose: () => void }) {
   const set = <K extends keyof Row>(k: K, v: Row[K]) => onChange({ ...row, [k]: v });
-  const num = (k: 'rating_psi' | 'id_in' | 'od_in' | 'fn_in' | 'length_ft' | 'weight_lb' | 'stroke_ft' | 'rams', label: string, unit?: string, step = 'any') => (
+  const num = (k: 'rating_psi' | 'id_in' | 'od_in' | 'fn_in' | 'fn_lower_in' | 'length_ft' | 'weight_lb' | 'stroke_ft' | 'rams', label: string, unit?: string, step = 'any') => (
     <label className="grid gap-1 text-xs text-text-muted">{label}{unit && <span className="sr-only"> in {unit}</span>}
       <span className="relative"><input type="number" min={0} step={step} inputMode="decimal" disabled={!canEdit} className={cx(inputClass, unit && 'pr-9')} value={row[k] ?? ''}
         onChange={(e) => set(k, e.target.value === '' ? null : Number(e.target.value))} />{unit && <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[0.6875rem] text-text-subtle">{unit}</span>}</span>
@@ -543,7 +554,7 @@ function RowEditor({ family, row, index, canEdit, onChange, onClose }: { family:
           {num('od_in', 'OD', 'in')}{num('id_in', 'ID (bore)', 'in')}
           {row.kind === 'wireline_valve' ? num('rams', 'Rams', undefined, '1') : <span />}
         </> : <>
-          {num('od_in', 'OD', 'in')}{num('id_in', 'ID', 'in')}{num('fn_in', 'Fishing neck', 'in')}
+          {num('od_in', 'Max OD', 'in')}{num('id_in', 'ID', 'in')}{num('fn_in', 'Upper fishing neck', 'in')}{num('fn_lower_in', 'Lower fishing neck', 'in')}
           {num('weight_lb', 'Weight', 'lb')}{num('stroke_ft', 'Jar stroke', 'ft')}
         </>}
         {connField('top_conn', 'Top connection')}{connField('bottom_conn', 'Bottom connection')}

@@ -231,7 +231,7 @@ database.put('/service-profiles', async (c) => {
 // ---- parts catalogue (rig up and tool string diagrams) ----
 // Not per country: a part is a specification, not an asset. Diagrams copy a part, so edits never change a filed diagram.
 
-const PART_COLUMNS = ['family', 'kind', 'name', 'rating_psi', 'service', 'id_in', 'od_in', 'fn_in', 'top_conn', 'bottom_conn', 'length_ft', 'weight_lb', 'stroke_ft', 'rams', 'source'] as const;
+const PART_COLUMNS = ['family', 'kind', 'name', 'rating_psi', 'service', 'id_in', 'od_in', 'fn_in', 'fn_lower_in', 'top_conn', 'bottom_conn', 'length_ft', 'weight_lb', 'stroke_ft', 'rams', 'source'] as const;
 
 database.post('/parts', async (c) => {
   const user = c.get('user');

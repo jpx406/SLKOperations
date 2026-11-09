@@ -8,7 +8,7 @@ import { diagramPdf } from '../src/shared/diagramPdf';
 
 const A = '4.75"-4x2 (3.750")', B = '6.125"-4x2 (4.750")';
 const row = (o: Partial<Row>): Row => ({
-  part_id: null, kind: 'lubricator', name: 'Part', rating_psi: 10000, service: 'h2s', id_in: 3, od_in: null, fn_in: null,
+  part_id: null, kind: 'lubricator', name: 'Part', rating_psi: 10000, service: 'h2s', id_in: 3, od_in: null, fn_in: null, fn_lower_in: null,
   top_conn: A, bottom_conn: A, length_ft: 10, weight_lb: null, stroke_ft: null, rams: null, ...o,
 });
 const tool = (o: Partial<Row>): Row => row({ kind: 'stem', rating_psi: null, service: null, id_in: null, od_in: 1.875, fn_in: 1.75, top_conn: '1.875" QLS', bottom_conn: '1.875" QLS', length_ft: 5, weight_lb: 47, ...o });
@@ -136,17 +136,24 @@ describe('drawing and PDF', () => {
       }
     }
   });
-  it('writes a one-page QAF PDF with the revision', () => {
-    const bytes = diagramPdf({
-      kind: 'rigup', run_no: 0, rev: 2, rows: rig,
-      job: { client: 'Saudi Aramco', well: 'HRDH-1234', field: 'Haradh', rig: 'SL-07', unit_number: 'SL-07', date: '2026-11-04', ticket_no: 'T-1', drss_no: null },
-      prepared: { by: 'Juan Lopez', at: '2026-11-04T08:00:00Z' }, reviewed: null,
-    });
-    const s = new TextDecoder('latin1').decode(bytes);
-    expect(s.startsWith('%PDF-1.4')).toBe(true);
-    expect(s).toMatch(/\/Count 1/);
-    expect(s).toMatch(/QAF14009 Rev 2/);
-    expect(s).toMatch(/Not reviewed/);
+  it('writes a one-page PDF in both layouts, for the rig up and the BHA (QAF14010 Rev 2)', () => {
+    const job = { client: 'Saudi Aramco', well: 'HRDH-1234', field: 'Haradh', rig: 'SL-07', unit_number: 'SL-07', date: '2026-11-04', ticket_no: 'T-1', drss_no: null };
+    const facts = { siwhp_psi: 6000, h2s_ppm: 120, min_restriction_in: 2.313, wire_in: 0.125, md_ft: 9850, tvd_ft: null };
+    for (const style of ['sheet', 'data'] as const) {
+      for (const [kind, rows] of [['rigup', rig], ['toolstring', string]] as const) {
+        const bytes = diagramPdf({
+          style, kind, run_no: kind === 'rigup' ? 0 : 1, rev: 2, status: 'sent', rows, facts, job,
+          checks: diagramChecks(kind, rig, [string], well),
+          prepared: { by: 'Juan Lopez', at: '2026-11-04T08:00:00Z' }, verified: { by: 'A. Rahman', at: '2026-11-04T09:00:00Z' }, reviewed: null,
+        });
+        const s = new TextDecoder('latin1').decode(bytes);
+        expect(s.startsWith('%PDF-1.4')).toBe(true);
+        expect(s).toMatch(/\/Count 1/);
+        expect(s).toMatch(kind === 'rigup' ? /QAF14009/ : /QAF14010 Rev 2/);
+        expect(s).toMatch(/Not approved/);
+        expect(s).toMatch(/A\. Rahman/);
+      }
+    }
   });
 });
 

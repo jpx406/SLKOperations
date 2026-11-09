@@ -124,7 +124,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'DELETE', re: /^\/api\/diagrams\/[^/]+\/toolstring\/\d+$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/diagrams\/samples$/, menu: 'jobs', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/diagrams\/samples\/[^/]+$/, menu: 'jobs', action: 'edit' },
-  { method: 'POST', re: /^\/api\/diagrams\/[^/]+\/(rigup|toolstring)\/\d+\/(pdf|send|review|reopen)$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/diagrams\/[^/]+\/(rigup|toolstring)\/\d+\/(pdf|send|verify|review|reopen)$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/database\/service-profiles$/, menu: 'database', action: 'edit' },
   { method: 'POST', re: /^\/api\/emf$/, menu: 'eight_min_facts', action: 'edit' },
   { method: 'PUT', re: /^\/api\/emf\/[^/]+$/, menu: 'eight_min_facts', action: 'edit' },

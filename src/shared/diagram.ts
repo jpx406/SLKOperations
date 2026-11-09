@@ -67,7 +67,8 @@ export const CONNECTIONS: Record<Family, string[]> = {
 export interface Part {
   id: string; family: Family; kind: PartKind; name: string;
   rating_psi: number | null; service: Service | null; id_in: number | null;
-  od_in: number | null; fn_in: number | null; top_conn: string | null; bottom_conn: string | null;
+  /** fn_in is the upper (top) fishing neck; fn_lower_in the lower one where a tool has two (QAF14010 Rev 2). */
+  od_in: number | null; fn_in: number | null; fn_lower_in: number | null; top_conn: string | null; bottom_conn: string | null;
   length_ft: number | null; weight_lb: number | null; stroke_ft: number | null; rams: number | null;
   source: string | null; active: number;
 }
@@ -75,12 +76,13 @@ export interface Part {
 export interface Row {
   part_id: string | null; kind: PartKind; name: string;
   rating_psi: number | null; service: Service | null; id_in: number | null;
-  od_in: number | null; fn_in: number | null; top_conn: string | null; bottom_conn: string | null;
+  /** fn_in is the upper (top) fishing neck; fn_lower_in the lower one where a tool has two (QAF14010 Rev 2). */
+  od_in: number | null; fn_in: number | null; fn_lower_in: number | null; top_conn: string | null; bottom_conn: string | null;
   length_ft: number | null; weight_lb: number | null; stroke_ft: number | null; rams: number | null;
 }
 
 export const MAX_ROWS = 30;
-const NUM_FIELDS = ['rating_psi', 'id_in', 'od_in', 'fn_in', 'length_ft', 'weight_lb', 'stroke_ft', 'rams'] as const;
+const NUM_FIELDS = ['rating_psi', 'id_in', 'od_in', 'fn_in', 'fn_lower_in', 'length_ft', 'weight_lb', 'stroke_ft', 'rams'] as const;
 const num = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 const str = (v: unknown, max = 60) => { const s = String(v ?? '').trim().slice(0, max); return s || null; };
 const round = (v: number, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
@@ -127,7 +129,7 @@ export function cleanRows(input: unknown, family: Family): { rows: Row[] } | { e
 
 /** A diagram row from a catalogue part. */
 export const rowFromPart = (p: Part): Row => ({
-  part_id: p.id, kind: p.kind, name: p.name, rating_psi: p.rating_psi, service: p.service, id_in: p.id_in, od_in: p.od_in, fn_in: p.fn_in,
+  part_id: p.id, kind: p.kind, name: p.name, rating_psi: p.rating_psi, service: p.service, id_in: p.id_in, od_in: p.od_in, fn_in: p.fn_in, fn_lower_in: p.fn_lower_in ?? null,
   top_conn: p.top_conn, bottom_conn: p.bottom_conn, length_ft: p.length_ft, weight_lb: p.weight_lb, stroke_ft: p.stroke_ft, rams: p.rams,
 });
 
@@ -157,7 +159,7 @@ export function crossoverFor(above: Row, below: Row, family: Family): Row {
     part_id: null, kind: family === 'pce' ? 'pce_crossover' : 'tool_crossover',
     name: `Crossover ${above.bottom_conn ?? '?'} × ${below.top_conn ?? '?'}`,
     rating_psi: family === 'pce' ? rating : null, service: family === 'pce' ? (above.service === 'h2s' && below.service === 'h2s' ? 'h2s' : above.service ?? below.service) : null,
-    id_in: family === 'pce' ? minOf([above.id_in, below.id_in]) : null, od_in: family === 'tool' ? maxOf([above.od_in, below.od_in]) : null, fn_in: null,
+    id_in: family === 'pce' ? minOf([above.id_in, below.id_in]) : null, od_in: family === 'tool' ? maxOf([above.od_in, below.od_in]) : null, fn_in: null, fn_lower_in: null,
     top_conn: above.bottom_conn, bottom_conn: below.top_conn, length_ft: null, weight_lb: null, stroke_ft: null, rams: null,
   };
 }
@@ -294,6 +296,10 @@ export function afterChange(cur: DiagramState, changed: boolean): DiagramState {
   if (!changed) return cur;
   return { rev: cur.pdf_rev != null && cur.pdf_rev >= cur.rev ? cur.rev + 1 : cur.rev, pdf_rev: cur.pdf_rev, status: 'draft' };
 }
+
+/** The two PDF layouts the owner approved on 2026-11-09 (design/diagram-mockups). */
+export type SheetStyle = 'sheet' | 'data';
+export const SHEET_STYLES: Record<SheetStyle, string> = { sheet: 'Engineering sheet', data: 'Data sheet' };
 
 export const FORM = {
   rigup: { code: 'QAF14009', title: 'Rig Up Diagram' },

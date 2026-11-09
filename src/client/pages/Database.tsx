@@ -505,14 +505,14 @@ function PartDialog({ row, family, canRemove, onClose }: { row: Part | null; fam
   const fam = row?.family ?? family;
   const s = (v: number | null | undefined) => (v == null ? '' : String(v));
   const [f, setF] = useState({
-    kind: row?.kind ?? kindsOf(fam)[0], name: row?.name ?? '', rating_psi: s(row?.rating_psi), service: row?.service ?? '', id_in: s(row?.id_in), od_in: s(row?.od_in), fn_in: s(row?.fn_in),
+    kind: row?.kind ?? kindsOf(fam)[0], name: row?.name ?? '', rating_psi: s(row?.rating_psi), service: row?.service ?? '', id_in: s(row?.id_in), od_in: s(row?.od_in), fn_in: s(row?.fn_in), fn_lower_in: s(row?.fn_lower_in),
     top_conn: row?.top_conn ?? '', bottom_conn: row?.bottom_conn ?? '', length_ft: s(row?.length_ft), weight_lb: s(row?.weight_lb), stroke_ft: s(row?.stroke_ft), rams: s(row?.rams),
     source: row?.source ?? '', active: row ? !!row.active : true,
   });
   const set = (k: keyof typeof f, v: string | boolean) => setF((cur) => ({ ...cur, [k]: v }));
   const { error, save, remove } = useEquipmentSave('parts', row, onClose, () => f.name);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const numField = (k: 'id_in' | 'od_in' | 'fn_in' | 'length_ft' | 'weight_lb' | 'stroke_ft' | 'rams', label: string, unit?: string) => (
+  const numField = (k: 'id_in' | 'od_in' | 'fn_in' | 'fn_lower_in' | 'length_ft' | 'weight_lb' | 'stroke_ft' | 'rams', label: string, unit?: string) => (
     <Field id={`part-${k}`} label={label} unit={unit}><input id={`part-${k}`} className={cx(inputClass, unit && 'pr-10')} type="number" min={0} step="any" inputMode="decimal" value={f[k]} onChange={(e) => set(k, e.target.value)} /></Field>
   );
   return (
@@ -540,7 +540,7 @@ function PartDialog({ row, family, canRemove, onClose }: { row: Part | null; fam
           {numField('od_in', 'OD', 'in')}{numField('id_in', 'ID (bore)', 'in')}
           {f.kind === 'wireline_valve' && numField('rams', 'Rams')}
         </> : <>
-          {numField('od_in', 'OD', 'in')}{numField('id_in', 'ID', 'in')}{numField('fn_in', 'Fishing neck', 'in')}{numField('weight_lb', 'Weight', 'lb')}{numField('stroke_ft', 'Jar stroke', 'ft')}
+          {numField('od_in', 'OD', 'in')}{numField('id_in', 'ID', 'in')}{numField('fn_in', 'Upper fishing neck', 'in')}{numField('fn_lower_in', 'Lower fishing neck', 'in')}{numField('weight_lb', 'Weight', 'lb')}{numField('stroke_ft', 'Jar stroke', 'ft')}
         </>}
         <Field id="part-top" label="Top connection"><input id="part-top" list="part-conns" className={inputClass} value={f.top_conn} onChange={(e) => set('top_conn', e.target.value)} /></Field>
         <Field id="part-bottom" label="Bottom connection"><input id="part-bottom" list="part-conns" className={inputClass} value={f.bottom_conn} onChange={(e) => set('bottom_conn', e.target.value)} /></Field>

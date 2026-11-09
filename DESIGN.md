@@ -371,6 +371,13 @@ A segmented Yes / No (/ N/A) control, 32px tall on a desk and 48px under touch, 
 
 The QAF14009 and QAF14010 sheets are drawn as paper: white, the forms' olive header fills and rules, whatever the theme, because they are the printout. The assembly column has no row rules so the parts read as one continuous string; pressure-control parts are the Elmar catalogue artwork in grey at the catalogue's own scale, the rest NESR's steel drawings at the same scale, as one stack on the string's axis down the whole column, shrunk to fit, with numbered tags to the rows. No colour in the drawings: the sheet's only colour is the red connection fault. Connection faults sit on the line between two rows as a red pill with Add crossover. Catalogue left, sheet centre, row editor and checks right from 1280 px; one column below.
 
+The PDF comes in two layouts, chosen beside the PDF button and remembered per browser (owner approval 2026-11-09,
+`design/diagram-mockups`). **Engineering sheet:** double frame with zone marks, title block along the bottom (logo,
+title, form, diagram rev, sheet, job, Prepared / Verified / Approved), parts list with hairline rules, key data and
+checks boxes, revision line, and the schematic with a running-length scale at each joint and numbered balloons.
+**Data sheet:** header band with a status stamp, six key figures, the schematic in a white panel beside a numbered
+table, the checks that need attention, and a sign-off strip. Both are monochrome; the checks' marks are the only colour.
+
 ### Signature Badge (signature component)
 The Signed Record lens in one line:
 - a shield icon, then "Digitally signed by NAME (Role) · date";
