@@ -1402,3 +1402,9 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **PDF:** one A4 page in the QAF layout, filed with the job's attachments the first time per revision and on review. The lubricator length and the Preparation toolstring (Run 1) stay in step, so the report, package, pre-job note and checks keep working.
 - **Workbook bugs left behind:** the Rig Up total skipped the Bleed-off Sub (39 ft instead of 41 ft); the String total in feet was labelled metres.
 - **Verified:** tests 300; flow on the dev job: template, bad joint and Undo, send, review, PDF (filed), change after PDF → Rev 1 draft; no console errors; no sideways scroll at 390 px; both PDFs rendered and checked.
+
+### 6z.11 — Diagrams pack for other apps
+
+- **`design/diagrams-pack/`** (also zipped as `design/whe-bha-diagrams-pack.zip`): the Diagrams section packed so Claude can add it to a similar app. `SKILL.md` gives the steps and the host adapter, `README.md` the summary, `NOTICE.md` the artwork and brand rights (Elmar © NOV 2014, NESR mark and form numbers).
+- `core/` is the app's `src/shared` diagram code unchanged, except `stamp.ts` (PDF date stamp, split from `formPdf`) and a trimmed `toolstring.ts` (only the `ToolPart` type). `server/diagrams.ts` is `createDiagramsRouter(host)`: database, user, job, rights, names, PDF filing, audit and the Preparation field sync come through a `DiagramsHost`. `client/` is the page with shims for the UI kit and API base; one migration (`0001_diagrams.sql`) holds parts, job diagrams and samples.
+- **Verified:** the pack type-checks on its own (`tsc`, strict) and its 16 tests pass from the pack folder; the zip matches the folder file for file.

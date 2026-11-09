@@ -1,0 +1,14 @@
+/* Diagrams theme: SLK Operations Hub tokens (dark "Control Room" default, data-theme="light" for Sunlight).
+   In your app CSS:  @import "tailwindcss"; @import "./theme/diagrams.css";  (or map the token names onto your own) */
+@import "./tokens.css";
+@import "./tailwind.theme.css";
+
+@utility label-caps {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: var(--text-label--line-height);
+  font-weight: 600;
+  letter-spacing: var(--text-label--letter-spacing);
+  text-transform: uppercase;
+}
+

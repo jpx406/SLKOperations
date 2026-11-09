@@ -1,0 +1,154 @@
+-- Rig Up (QAF14009) and tool string (QAF14010) diagrams: parts catalogue, job diagrams and saved samples.
+-- Combines SLK Operations Hub migrations 0019 and 0020. Needs a jobs table with an id column (job_diagrams references it).
+
+-- Owner request 2026-11-04: Rig Up Diagram (QAF14009) and Slickline String Diagram (QAF14010) built in the job.
+-- parts is the catalogue crews pick from, kept in SLK Operations Hub (not WIREGUARD), seeded from the two forms'
+-- pick lists. A diagram row copies a part, so later catalogue edits never change a filed diagram.
+-- job_diagrams holds one rig up per job (run_no 0) and one tool string per run (run_no 1 and up). The revision
+-- starts at 0 and goes up with the first change after a PDF of the current revision. The job's SDM reviews.
+
+CREATE TABLE parts (
+  id          TEXT PRIMARY KEY,
+  family      TEXT NOT NULL CHECK (family IN ('pce','tool')),
+  kind        TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  rating_psi  INTEGER CHECK (rating_psi IS NULL OR rating_psi IN (3000,5000,10000,15000,20000)),
+  service     TEXT CHECK (service IS NULL OR service IN ('std','h2s')),
+  id_in       REAL CHECK (id_in IS NULL OR id_in > 0),
+  od_in       REAL CHECK (od_in IS NULL OR od_in > 0),
+  fn_in       REAL CHECK (fn_in IS NULL OR fn_in > 0),
+  top_conn    TEXT,
+  bottom_conn TEXT,
+  length_ft   REAL CHECK (length_ft IS NULL OR length_ft >= 0),
+  weight_lb   REAL CHECK (weight_lb IS NULL OR weight_lb >= 0),
+  stroke_ft   REAL CHECK (stroke_ft IS NULL OR stroke_ft >= 0),
+  rams        INTEGER CHECK (rams IS NULL OR rams BETWEEN 1 AND 4),
+  source      TEXT,
+  active      INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+  updated_by  TEXT,
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (family, name)
+);
+CREATE INDEX parts_family ON parts (family, active, kind);
+
+CREATE TABLE job_diagrams (
+  id          TEXT PRIMARY KEY,
+  job_id      TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL CHECK (kind IN ('rigup','toolstring')),
+  run_no      INTEGER NOT NULL DEFAULT 0,
+  items       TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(items)),
+  rev         INTEGER NOT NULL DEFAULT 0 CHECK (rev >= 0),
+  pdf_rev     INTEGER,
+  pdf_at      TEXT,
+  pdf_by      TEXT,
+  status      TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','sent','reviewed')),
+  sent_by     TEXT,
+  sent_at     TEXT,
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  updated_by  TEXT,
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (job_id, kind, run_no),
+  CHECK ((kind = 'rigup' AND run_no = 0) OR (kind = 'toolstring' AND run_no >= 1))
+);
+
+INSERT INTO parts (id, family, kind, name, rating_psi, service, id_in, od_in, fn_in, top_conn, bottom_conn, length_ft, weight_lb, stroke_ft, rams, source) VALUES
+  ('part-pce-001', 'pce', 'stuffing_box', 'Stuffing Box 10K H2S', 10000, 'h2s', NULL, NULL, NULL, 'Sheave', '4.75"-4x2 (3.750")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-002', 'pce', 'stuffing_box', 'Liquid Seal 5K H2S', 5000, 'h2s', NULL, NULL, NULL, 'Sheave', '4.75"-4x2 (3.750")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-003', 'pce', 'grease_head', 'Grease Injection Head 10K H2S', 10000, 'h2s', NULL, NULL, NULL, 'Sheave', '4.75"-4x2 (3.750")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-004', 'pce', 'ball_check', 'Ball Check Valve 10K H2S 3"', 10000, 'h2s', 3, NULL, NULL, '4.75"-4x2 (3.750")', '4.75"-4x2 (3.750")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-005', 'pce', 'chem_sub', 'Chemical Injection Sub 10K H2S 3"', 10000, 'h2s', 3, NULL, NULL, '4.75"-4x2 (3.750")', '4.75"-4x2 (3.750")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-006', 'pce', 'tool_catcher', 'Tool Catcher 10K H2S 3"', 10000, 'h2s', 3, NULL, NULL, '4.75"-4x2 (3.750")', '4.75"-4x2 (3.750")', 1.5, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-007', 'pce', 'lubricator', 'Lubricator - Lightweight 3" x 10 ft', 10000, 'h2s', 3, NULL, NULL, '4.75"-4x2 (3.750")', '4.75"-4x2 (3.750")', 10, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-008', 'pce', 'lubricator', 'Lubricator - Lightweight 4" x 10 ft', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', 10, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-009', 'pce', 'lubricator', 'Lubricator - Integral 3" x 10 ft', 10000, 'h2s', 3, NULL, NULL, '4.75"-4x2 (3.750")', '4.75"-4x2 (3.750")', 10, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-010', 'pce', 'lubricator', 'Lubricator - Integral 4" x 10 ft', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', 10, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-011', 'pce', 'lubricator', 'Lubricator - Threaded 3" x 10 ft', 10000, 'h2s', 3, NULL, NULL, '4.75"-4x2 (3.750")', '4.75"-4x2 (3.750")', 10, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-012', 'pce', 'lubricator', 'Lubricator - Lightweight - Ported 3" x 10 ft', 10000, 'h2s', 3, NULL, NULL, '4.75"-4x2 (3.750")', '4.75"-4x2 (3.750")', 10, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-013', 'pce', 'tool_trap', 'Tool Trap 10K H2S 4"', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-014', 'pce', 'quick_test_sub', 'Quick Test Sub 10K H2S 4"', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-015', 'pce', 'bleed_sub', 'Bleed-off Sub 10K H2S 4"', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', 2, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-016', 'pce', 'wireline_valve', 'Single Ram BOP 10K H2S 4"', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', 4, NULL, NULL, 1, 'QAF14009 pick list'),
+  ('part-pce-017', 'pce', 'wireline_valve', 'Dual Ram BOP 10K H2S 4"', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', NULL, NULL, NULL, 2, 'QAF14009 pick list'),
+  ('part-pce-018', 'pce', 'wireline_valve', 'Triple Ram BOP 10K H2S 4"', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', NULL, NULL, NULL, 3, 'QAF14009 pick list'),
+  ('part-pce-019', 'pce', 'pump_in_sub', 'Pump In Sub 2" 1502 WECO 10K H2S 4"', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.125"-4x2 (4.750")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-020', 'pce', 'pce_crossover', 'WHE Crossover 4.75"-4x2 x 6.125"-4x2', 10000, 'h2s', 3, NULL, NULL, '4.75"-4x2 (3.750")', '6.125"-4x2 (4.750")', 2, NULL, NULL, NULL, 'QAF14009 pick list');
+INSERT INTO parts (id, family, kind, name, rating_psi, service, id_in, od_in, fn_in, top_conn, bottom_conn, length_ft, weight_lb, stroke_ft, rams, source) VALUES
+  ('part-pce-021', 'pce', 'pce_crossover', 'WHE Crossover 6.125"-4x2 x 6.5"-4', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '6.5"-4 (5.188")', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-022', 'pce', 'wellhead_adapter', 'Well Head Adapter 10K H2S 4"', 10000, 'h2s', 4, NULL, NULL, '6.125"-4x2 (4.750")', '2 9/16" (RBX153) 10K', NULL, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-pce-023', 'pce', 'tree', 'X-Mas Tree (client)', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1.5, NULL, NULL, NULL, 'QAF14009 pick list'),
+  ('part-tool-024', 'tool', 'rope_socket', '1 1/2" Rope Socket (0.108")', NULL, NULL, NULL, 1.5, 1.375, 'Wire', '1.5" QLS', 0.5, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-025', 'tool', 'rope_socket', '1 1/2" Rope Socket (0.125")', NULL, NULL, NULL, 1.5, 1.375, 'Wire', '1.5" QLS', 0.5, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-026', 'tool', 'rope_socket', '1 7/8" Rope Socket (0.108")', NULL, NULL, NULL, 1.875, 1.75, 'Wire', '1.875" QLS', 0.5, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-027', 'tool', 'rope_socket', '1 7/8" Rope Socket (0.125")', NULL, NULL, NULL, 1.875, 1.75, 'Wire', '1.875" QLS', 0.5, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-028', 'tool', 'rope_socket', '1 7/8" Rope Socket (7/32")', NULL, NULL, NULL, 1.875, 1.75, 'Wire', '1.875" QLS', 0.5, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-029', 'tool', 'tool_crossover', 'Wireline Crossover', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0.33, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-030', 'tool', 'stem', '1 1/2" x 2'' Stem', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', 2, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-031', 'tool', 'stem', '1 1/2" x 3'' Stem', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', 3, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-032', 'tool', 'stem', '1 1/2" x 5'' Stem', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', 5, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-033', 'tool', 'stem', '1 7/8" x 2'' Stem', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', 2, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-034', 'tool', 'stem', '1 7/8" x 3'' Stem', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', 3, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-035', 'tool', 'stem', '1 7/8" x 5'' Stem', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', 5, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-036', 'tool', 'knuckle', '1 1/2" Knuckle Joint', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-037', 'tool', 'knuckle', '1 7/8" Knuckle Joint', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-038', 'tool', 'roller_stem', '1 1/2" x 2'' Roller Stem', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', 2, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-039', 'tool', 'roller_stem', '1 1/2" x 3'' Roller Stem', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', 3, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-040', 'tool', 'roller_stem', '1 1/2" x 5'' Roller Stem', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', 5, NULL, NULL, NULL, 'QAF14010 pick list');
+INSERT INTO parts (id, family, kind, name, rating_psi, service, id_in, od_in, fn_in, top_conn, bottom_conn, length_ft, weight_lb, stroke_ft, rams, source) VALUES
+  ('part-tool-041', 'tool', 'roller_stem', '1 7/8" x 2'' Roller Stem', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', 2, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-042', 'tool', 'roller_stem', '1 7/8" x 3'' Roller Stem', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', 3, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-043', 'tool', 'roller_stem', '1 7/8" x 5'' Roller Stem', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', 5, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-044', 'tool', 'jar_mech', '1 1/2" Spang Jars (20" Stroke)', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', NULL, NULL, 1.67, NULL, 'QAF14010 pick list'),
+  ('part-tool-045', 'tool', 'jar_mech', '1 1/2" Spang Jars (30" Stroke)', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', NULL, NULL, 2.5, NULL, 'QAF14010 pick list'),
+  ('part-tool-046', 'tool', 'jar_mech', '1 7/8" Spang Jars (20" Stroke)', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', NULL, NULL, 1.67, NULL, 'QAF14010 pick list'),
+  ('part-tool-047', 'tool', 'jar_mech', '1 7/8" Spang Jars (30" Stroke)', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', NULL, NULL, 2.5, NULL, 'QAF14010 pick list'),
+  ('part-tool-048', 'tool', 'jar_tubular', '1 1/2" Tubular Jar', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-049', 'tool', 'jar_tubular', '1 7/8" Tubular Jar', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-050', 'tool', 'jar_hyd', '1 1/2" Hydraulic Jar', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-051', 'tool', 'jar_hyd', '1 3/4" Hydraulic Jar', NULL, NULL, NULL, 1.75, 1.75, '1.875" QLS', '1.875" QLS', NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-052', 'tool', 'jar_spring', '1 1/2" Spring Jar', NULL, NULL, NULL, 1.5, 1.375, '1.5" QLS', '1.5" QLS', NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-053', 'tool', 'jar_spring', '1 7/8" Spring Jar', NULL, NULL, NULL, 1.875, 1.75, '1.875" QLS', '1.875" QLS', NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-054', 'tool', 'pulling_tool', '2" UPT Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-055', 'tool', 'pulling_tool', '2 1/2" UPT Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-056', 'tool', 'pulling_tool', '2" GR Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-057', 'tool', 'pulling_tool', '2 1/2" GR Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-058', 'tool', 'pulling_tool', '2" GS Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-059', 'tool', 'pulling_tool', '2 1/2" GS Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-060', 'tool', 'pulling_tool', '2" Otis S Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list');
+INSERT INTO parts (id, family, kind, name, rating_psi, service, id_in, od_in, fn_in, top_conn, bottom_conn, length_ft, weight_lb, stroke_ft, rams, source) VALUES
+  ('part-tool-061', 'tool', 'pulling_tool', '2 1/2" Otis S Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-062', 'tool', 'pulling_tool', '2" Otis R Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-063', 'tool', 'pulling_tool', '2 1/2" Otis R Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-064', 'tool', 'pulling_tool', '2" Camco JU Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-065', 'tool', 'pulling_tool', '2 1/2" Camco JD Pulling Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-066', 'tool', 'pulling_tool', '2" B Shifting Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-067', 'tool', 'pulling_tool', '2 1/2" B Shifting Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-068', 'tool', 'impression_block', 'Impression Block', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-069', 'tool', 'gauge_cutter', 'Gauge Cutter', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-070', 'tool', 'blind_box', 'Blind Box', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-071', 'tool', 'wire_finder', 'Wireline Finder', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-072', 'tool', 'wire_finder', 'Wireline Grab', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-073', 'tool', 'plug_prong', '2.313" Otis PX Plug', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-074', 'tool', 'plug_prong', '2.313" Otis XX Plug', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-075', 'tool', 'pulling_tool', '2 1/2" Otis X Running Tool', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-076', 'tool', 'plug_prong', 'Equalising Prong', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-077', 'tool', 'bailer', 'Sample Bailer', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-078', 'tool', 'bailer', 'Sand Bailer', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list'),
+  ('part-tool-079', 'tool', 'bailer', 'Hydrostatic Bailer', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'QAF14010 pick list');
+
+-- Owner request 2026-11-04: keep rig ups and tool strings as named samples to pull into a job and reconfigure.
+-- Previous jobs' diagrams are offered too (read from job_diagrams): a sample is a saved copy, so later edits to the
+-- job it came from don't change it. Per country, like the rest of the job data.
+
+CREATE TABLE diagram_samples (
+  id          TEXT PRIMARY KEY,
+  country     TEXT NOT NULL,
+  kind        TEXT NOT NULL CHECK (kind IN ('rigup','toolstring')),
+  name        TEXT NOT NULL,
+  items       TEXT NOT NULL CHECK (json_valid(items)),
+  from_job_id TEXT,
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (country, kind, name)
+);
+CREATE INDEX diagram_samples_kind ON diagram_samples (country, kind);
