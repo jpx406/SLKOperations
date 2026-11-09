@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rig Up and Tool String Diagram (mock)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Mock only. Tokens copied from replica/design/tokens.css so it reads like SLK Operations Hub. */
+:root{
+  --bg:#0b121a;--surface:#111820;--surface-2:#161d27;--surface-3:#1e2630;--input:#0e131a;--border:#232c37;--border-strong:#323d4a;
+  --text:#e8ecf1;--muted:#9aa4b1;--subtle:#8591a0;--accent:#c8d400;--on-accent:#0b121a;--accent-text:#d4e000;--focus:#8ab4f8;
+  --danger:#ff7b7b;--danger-subtle:#3a1b1f;--success:#3ecf8e;--success-subtle:#0f2e22;--warning:#f5c542;--warning-subtle:#352a0c;--info:#6aa8ff;
+  --paper:#ffffff;--ink:#111820;--ink-muted:#5b6673;--rule:#c9d0d8;--head:#e9f0d4;
+  --display:Manrope,Inter,system-ui,sans-serif;--sans:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:13px/1.4 var(--sans)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* shell */
+.app{display:flex;min-height:100%}
+.side{width:216px;flex:none;border-right:1px solid var(--border);background:var(--surface);padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+.side .grp{display:flex;align-items:center;gap:8px;padding:6px 10px;color:var(--muted);font-weight:600;font-size:12px}
+.side a{display:block;padding:6px 10px 6px 34px;border-radius:6px;color:var(--muted);text-decoration:none}
+.side a.on{background:var(--surface-3);color:var(--text);font-weight:600;box-shadow:inset 3px 0 var(--accent)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+header.top{height:64px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;padding:0 20px}
+.wm{font:800 18px var(--display);letter-spacing:.04em;text-transform:uppercase}.wm b{color:var(--accent-text)}
+.crumb{color:var(--muted);font-size:12px}.crumb b{color:var(--text)}
+.jobbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:12px 20px;border-bottom:1px solid var(--border)}
+.jobbar h1{font:700 18px var(--display);margin:0}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-strong);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--muted)}
+.chip b{color:var(--text);font-family:var(--mono);font-weight:600}
+.stages{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--border);overflow-x:auto}
+.stages a{padding:10px 12px;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap}
+.stages a.on{color:var(--text);border-color:var(--accent);font-weight:600}
+
+/* toolbar */
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface)}
+.seg{display:inline-flex;background:var(--input);border:1px solid var(--border-strong);border-radius:8px;padding:2px}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:6px;cursor:pointer;color:var(--muted);font-weight:600}
+.seg button[aria-pressed=true]{background:var(--surface-3);color:var(--text);box-shadow:inset 0 -2px var(--accent)}
+.seg button small{font:500 11px var(--mono);color:var(--subtle);margin-left:6px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface-2);cursor:pointer;font-weight:600}
+.btn:hover{background:var(--surface-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted)}
+.btn.sm{height:26px;padding:0 8px;font-size:12px}
+.spacer{flex:1}
+.menu{position:relative}
+.menu .pop{position:absolute;top:36px;left:0;z-index:20;min-width:280px;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:10px;padding:6px;box-shadow:0 12px 32px #0008;display:none}
+.menu.open .pop{display:block}
+.pop button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:6px;cursor:pointer}
+.pop button:hover{background:var(--surface-3)}
+.pop small{display:block;color:var(--muted)}
+.saved{font-size:12px;color:var(--muted)}
+
+/* three panes */
+.work{flex:1;display:grid;grid-template-columns:248px minmax(0,1fr) 300px;min-height:0}
+.pane{border-right:1px solid var(--border);overflow:auto;max-height:calc(100vh - 220px)}
+.pane:last-child{border-right:0}
+.pane h2{font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+
+/* catalogue */
+.cat{padding:14px}
+.search{width:100%;height:34px;border-radius:8px;border:1px solid var(--border-strong);background:var(--input);padding:0 10px}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 12px}
+.toggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border-strong);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;background:none}
+.toggle[aria-pressed=true]{border-color:var(--accent);color:var(--accent-text)}
+.cgroup{margin-bottom:14px}
+.item{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;width:100%;text-align:left;padding:6px;border-radius:8px;border:1px solid transparent;background:none;cursor:grab}
+.item:hover{background:var(--surface-2);border-color:var(--border)}
+.item svg{width:34px;height:40px}
+.item .n{font-weight:600}
+.item .m{font:500 11px var(--mono);color:var(--muted)}
+.item .add{opacity:0;color:var(--accent-text);font-weight:700;font-size:16px}
+.item:hover .add,.item:focus-visible .add{opacity:1}
+.item.off{opacity:.45}
+.hint{font-size:12px;color:var(--subtle);margin:4px 0 0}
+
+/* sheet */
+.stage{background:var(--surface-3);padding:20px 16px;overflow:auto}
+.paper{background:var(--paper);color:var(--ink);width:100%;max-width:760px;min-width:600px;margin:0 auto;border-radius:4px;box-shadow:0 2px 0 #0003,0 18px 40px #0006;padding:18px 20px 16px;font-size:11.5px}
+.ph{display:grid;grid-template-columns:90px 1fr 90px;align-items:center;border:2px solid #2d3b1f;border-bottom:0;padding:8px 10px}
+.ph .logo{font:800 20px var(--display);letter-spacing:.08em;color:#1b2430}
+.ph h3{margin:0;text-align:center;font:800 19px var(--display)}
+.ph .rev{text-align:right;font:500 10px var(--mono);color:var(--ink-muted)}
+table.meta,table.rows{width:100%;border-collapse:collapse;table-layout:fixed}
+table.meta td,table.meta th{border:1px solid #2d3b1f;padding:3px 6px;text-align:center}
+table.meta th{background:var(--head);font-weight:600}
+table.meta td{font-family:var(--mono);font-size:11px}
+table.rows{border:2px solid #2d3b1f;border-top:0}
+table.rows th{background:var(--head);border:1px solid #9aa58a;padding:5px 4px;font-weight:700;font-size:10.5px;line-height:1.15}
+table.rows td{border-left:1px solid var(--rule);border-right:1px solid var(--rule);padding:0 6px;text-align:center;vertical-align:middle}
+table.rows tr.r td{border-top:1px solid var(--rule);height:58px}
+table.rows tr.r{cursor:pointer}
+table.rows tr.r:hover td:not(.draw){background:#f4f7ec}
+table.rows tr.r.sel td:not(.draw){background:#eef4cf}
+table.rows tr.r.sel td:first-child{box-shadow:inset 3px 0 #9aa800}
+table.rows tr.r.drop td{border-top:3px solid #9aa800}
+td.desc{text-align:left!important;font-weight:700;font-size:11.5px}
+td.desc small{display:block;font:500 10px var(--mono);color:var(--ink-muted)}
+td.num{font-family:var(--mono);font-size:10.5px;line-height:1.25;overflow-wrap:anywhere}
+td.num i{display:block;font-style:normal;color:var(--ink-muted)}
+td.len{font-family:var(--mono);font-size:11px;line-height:1.5}
+td.len span{display:block}
+td.len span+span{border-top:1px solid var(--rule);color:var(--ink-muted)}
+td.draw{padding:0!important;background:#fafbfc;border-left:2px solid #2d3b1f!important;position:relative}
+td.draw svg{display:block;width:100%;height:58px}
+td.bad{color:#b4232a;font-weight:700;background:#fde8e8}
+.rowtools{position:absolute;right:3px;top:3px;display:flex;gap:2px;opacity:0}
+tr.r:hover .rowtools,tr.r.sel .rowtools,tr.r:focus-within .rowtools{opacity:1}
+.rowtools button{width:22px;height:22px;border-radius:5px;border:1px solid #c9d0d8;background:#fff;color:#45505c;cursor:pointer;font-size:12px;line-height:1;padding:0}
+.rowtools button:hover{background:#eef4cf}
+tr.joint td{height:0;padding:0;border:0}
+.jbad{position:relative}
+.jbad .flag{position:absolute;right:6px;top:-11px;z-index:2;display:flex;align-items:center;gap:6px;background:#fde8e8;border:1px solid #e5a3a6;color:#9c1c22;border-radius:999px;padding:1px 4px 1px 8px;font-size:10.5px;font-weight:600;white-space:nowrap}
+.jbad .flag button{border:0;background:#b4232a;color:#fff;border-radius:999px;padding:2px 8px;font-size:10.5px;font-weight:700;cursor:pointer}
+tr.empty td{height:180px;color:var(--ink-muted);font-size:13px}
+tr.foot td{border-top:2px solid #2d3b1f;padding:6px;font-weight:700}
+.sign{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border:2px solid #2d3b1f;border-top:0}
+.sign div{padding:4px 8px;border-right:1px solid #2d3b1f;font-size:10.5px;text-align:center}
+.sign div:last-child{border:0}
+.sign div b{display:block;background:var(--head);margin:-4px -8px 4px;padding:2px;font-weight:600}
+.zoomnote{font-size:11px;color:var(--muted);text-align:center;margin-top:8px}
+
+/* inspector */
+.insp{padding:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px}
+.card h2{display:flex;justify-content:space-between;align-items:center}
+.field{display:grid;gap:4px;margin-bottom:9px}
+.field label{font-size:12px;color:var(--muted)}
+.field input,.field select{height:32px;border-radius:7px;border:1px solid #5f6c7c;background:var(--input);padding:0 8px;width:100%}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ro{font:500 11px var(--mono);color:var(--muted)}
+.tot{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:12px}
+.tot dt{color:var(--muted)}.tot dd{margin:0;font:600 12px var(--mono);text-align:right}
+.checks{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.checks li{display:grid;grid-template-columns:18px 1fr;gap:8px;padding:7px 8px;border-radius:8px;font-size:12px}
+.checks li.ok{background:var(--success-subtle)}
+.checks li.warn{background:var(--warning-subtle)}
+.checks li.bad{background:var(--danger-subtle)}
+.checks .i{font-weight:800;text-align:center}
+.checks li.ok .i{color:var(--success)}.checks li.warn .i{color:var(--warning)}.checks li.bad .i{color:var(--danger)}
+.checks cite{display:block;font-style:normal;color:var(--subtle);font-size:11px;margin-top:2px}
+.ctx .field{margin-bottom:6px}
+.badge{font:600 11px var(--mono);padding:1px 8px;border-radius:999px}
+.badge.ok{background:var(--success-subtle);color:var(--success)}.badge.bad{background:var(--danger-subtle);color:var(--danger)}.badge.warn{background:var(--warning-subtle);color:var(--warning)}
+.mocknote{margin:12px 20px;padding:8px 12px;border:1px dashed var(--border-strong);border-radius:8px;color:var(--muted);font-size:12px}
+
+@media (max-width:1280px){.side{display:none}}
+@media (max-width:1100px){.work{grid-template-columns:1fr}.pane{max-height:none;border-right:0;border-bottom:1px solid var(--border)}.stage{order:-1}}
+@media print{
+  body{background:#fff}.side,header.top,.jobbar,.stages,.toolbar,.cat,.insp,.mocknote,.zoomnote,.rowtools,.flag{display:none!important}
+  .work{display:block}.stage{background:#fff;padding:0}.pane{max-height:none;overflow:visible}.paper{box-shadow:none;width:100%}
+  table.rows tr.r.sel td{background:none!important;box-shadow:none!important}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="side" aria-label="Main">
+    <div class="wm" style="padding:6px 10px 14px;font-size:15px"><b>SLK</b> Operations Hub</div>
+    <div class="grp">▤ Operation</div>
+    <a href="#">Schedule</a><a href="#" class="on" aria-current="page">Jobs</a><a href="#">Pre-job notes</a>
+    <div class="grp">◔ Service Quality</div><div class="grp">◇ Inventory</div><div class="grp">≋ Wires</div><div class="grp">▢ Knowledge Hub</div>
+  </nav>
+  <div class="main">
+    <header class="top"><span class="crumb">Operation › Jobs › <b>DEV-039</b></span><span class="spacer"></span><span class="chip">Mock · not wired to data</span></header>
+    <div class="jobbar">
+      <h1>DEV-039 · HRDH-1234</h1>
+      <span class="chip">Client <b>Saudi Aramco</b></span><span class="chip">Field / Rig <b>Haradh · Unit SL-07</b></span><span class="chip">D.O.S. <b>4471-22</b></span><span class="chip">Run <b>2</b></span>
+    </div>
+    <nav class="stages" aria-label="Job stages"><a href="#">01 Design</a><a href="#" class="on" aria-current="page">02 Preparation</a><a href="#">03 Execution</a><a href="#">04 Closure</a></nav>
+
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Diagram">
+        <button id="tab-rig" aria-pressed="true">Rig up<small>QAF14009</small></button>
+        <button id="tab-ts" aria-pressed="false">Tool string<small>QAF14010</small></button>
+      </div>
+      <div class="menu" id="tplMenu">
+        <button class="btn" aria-haspopup="true" aria-expanded="false" id="tplBtn">Start from ▾</button>
+        <div class="pop" role="menu" id="tplPop"></div>
+      </div>
+      <button class="btn ghost" id="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+      <div class="seg" role="group" aria-label="Units"><button id="u-ft" aria-pressed="true">ft</button><button id="u-m" aria-pressed="false">m</button></div>
+      <span class="spacer"></span>
+      <span class="saved" id="saved" aria-live="polite">Saved to the job</span>
+      <button class="btn" onclick="window.print()">⎙ Print / PDF</button>
+      <button class="btn primary" id="sendRev">Send for review</button>
+    </div>
+
+    <div class="work">
+      <!-- catalogue -->
+      <aside class="pane cat" aria-label="Catalogue">
+        <h2 id="catTitle">PCE catalogue</h2>
+        <input class="search" id="q" type="search" placeholder="Search parts, connections…" aria-label="Search the catalogue">
+        <div class="filters">
+          <button class="toggle" id="fFit" aria-pressed="true">✓ Fits this job</button>
+          <button class="toggle" id="fStock" aria-pressed="false">In stock at base</button>
+        </div>
+        <div id="cat"></div>
+        <p class="hint">Click a part to add it where it belongs in the stack, or drag it onto the sheet. Parts that don't fit this job's pressure or H₂S are greyed out.</p>
+      </aside>
+
+      <!-- sheet -->
+      <section class="pane stage" aria-label="Diagram sheet">
+        <div>
+          <div class="paper" id="paper"></div>
+          <p class="zoomnote">The sheet is the printout: what you see here is the PDF. Top of the stack is the first row.</p>
+        </div>
+      </section>
+
+      <!-- inspector -->
+      <aside class="pane insp" aria-label="Details and checks">
+        <div class="card" id="selCard"></div>
+        <div class="card"><h2>Checks <span id="chkBadge" class="badge ok">—</span></h2><ul class="checks" id="checks"></ul></div>
+        <div class="card ctx"><h2>Well and job values</h2>
+          <p class="ro" style="margin:0 0 8px">From the job's Design and Preparation fields. Change them here to see the checks react.</p>
+          <div class="two">
+            <div class="field"><label for="c-mpwhp">MPWHP, psi</label><input id="c-mpwhp" type="number" value="6000"></div>
+            <div class="field"><label for="c-h2s">H₂S, ppm</label><input id="c-h2s" type="number" value="120"></div>
+            <div class="field"><label for="c-tid">Min tubing ID, in</label><input id="c-tid" type="number" step="0.001" value="2.313"></div>
+            <div class="field"><label for="c-wire">Wire, in</label><select id="c-wire"><option>0.092</option><option>0.108</option><option selected>0.125</option><option>0.160</option></select></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <p class="mocknote">Mock for review. Parts, sizes, weights and lengths are sample values, not the NESR catalogue. Checks follow SOP-01 §7.16 and the Pressure Standard §8.2, §9.1, §9.2.1–9.2.7.</p>
+  </div>
+</div>
+
+<script>
+/* ---------- catalogue (sample values) ---------- */
+const QU = { a:'4.75"-4x2 (3.750")', b:'6.125"-4x2 (4.750")', c:'6.5"-4 (5.188")', f:'2 9/16" RBX153 10K', s:'Sheave' };
+const PCE = [
+  // rank = where it goes in the stack, top (1) to bottom
+  {id:'sb10',  rank:1, kind:'stuffing',  name:'Stuffing Box, hydraulic', rating:10000, h2s:true, id_in:null, top:QU.s, bot:QU.a, len:2.5, grp:'Top of stack'},
+  {id:'gih10', rank:1, kind:'gih',       name:'Grease Injection Head, 4 flow tubes', rating:10000, h2s:true, id_in:null, top:QU.s, bot:QU.a, len:6.0, grp:'Top of stack'},
+  {id:'ls5',   rank:1, kind:'stuffing',  name:'Liquid Seal', rating:5000, h2s:true, id_in:null, top:QU.s, bot:QU.a, len:2.0, grp:'Top of stack'},
+  {id:'bcv10', rank:2, kind:'sub',       name:'Ball Check Valve', rating:10000, h2s:true, id_in:3, top:QU.a, bot:QU.a, len:1.0, grp:'Top of stack'},
+  {id:'cis10', rank:3, kind:'sub',       name:'Chemical Injection Sub', rating:10000, h2s:true, id_in:3, top:QU.a, bot:QU.a, len:1.0, grp:'Top of stack'},
+  {id:'tc10',  rank:4, kind:'catcher',   name:'Tool Catcher', rating:10000, h2s:true, id_in:3, top:QU.a, bot:QU.a, len:1.5, grp:'Top of stack'},
+  {id:'lub3-10',rank:5,kind:'lub',       name:'Lubricator, lightweight 3" × 10 ft', rating:10000, h2s:true, id_in:3, top:QU.a, bot:QU.a, len:10, grp:'Lubricators'},
+  {id:'lub3-8', rank:5,kind:'lub',       name:'Lubricator, lightweight 3" × 8 ft', rating:10000, h2s:true, id_in:3, top:QU.a, bot:QU.a, len:8, grp:'Lubricators'},
+  {id:'lub4-10',rank:5,kind:'lub',       name:'Lubricator, lightweight 4" × 10 ft', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.b, len:10, grp:'Lubricators'},
+  {id:'lub3-5k',rank:5,kind:'lub',       name:'Lubricator, std 3" × 10 ft', rating:5000, h2s:false, id_in:3, top:QU.a, bot:QU.a, len:10, grp:'Lubricators'},
+  {id:'tt10',  rank:6, kind:'sub',       name:'Tool Trap, hydraulic', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.b, len:1.8, grp:'Valves and subs'},
+  {id:'qts10', rank:7, kind:'sub',       name:'Quick Test Sub', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.b, len:1.0, grp:'Valves and subs'},
+  {id:'bos10', rank:8, kind:'sub',       name:'Bleed-off Sub', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.b, len:2.0, grp:'Valves and subs'},
+  {id:'bop1',  rank:9, kind:'bop', rams:1, name:'Wireline Valve, single ram', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.b, len:4.0, grp:'Valves and subs'},
+  {id:'bop2',  rank:9, kind:'bop', rams:2, name:'Wireline Valve, dual ram hydraulic', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.b, len:4.5, grp:'Valves and subs'},
+  {id:'bop3',  rank:9, kind:'bop', rams:3, name:'Wireline Valve, triple ram hydraulic', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.b, len:5.5, grp:'Valves and subs'},
+  {id:'pis10', rank:10,kind:'pumpin',    name:'Pump-in Sub, 2" 1502 WECO', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.b, len:1.5, grp:'Valves and subs'},
+  {id:'xo-ab', rank:11,kind:'xover',     name:'WHE Crossover', rating:10000, h2s:true, id_in:3, top:QU.a, bot:QU.b, len:1.0, grp:'Crossovers and wellhead'},
+  {id:'wha10', rank:12,kind:'wha',       name:'Wellhead Adapter Flange', rating:10000, h2s:true, id_in:4, top:QU.b, bot:QU.f, len:1.5, grp:'Crossovers and wellhead'},
+  {id:'tree',  rank:13,kind:'tree',      name:'X-mas Tree (client)', rating:10000, h2s:true, id_in:4, top:QU.f, bot:'—', len:1.5, grp:'Crossovers and wellhead', client:true},
+];
+const C = { q:'1.875" QLS', p:'1 1/16"-10', w:'Wire' };
+const TOOLS = [
+  {id:'rs',   rank:1, kind:'rope',   name:'Rope Socket 1 7/8" (0.125")', od:1.875, fn:1.75, top:C.w, bot:C.q, len:0.9, wt:8, grp:'Top tools'},
+  {id:'sw',   rank:2, kind:'knuckle',name:'Swivel Joint 1 7/8"', od:1.875, fn:1.75, top:C.q, bot:C.q, len:1.0, wt:7, grp:'Top tools'},
+  {id:'st5',  rank:3, kind:'stem',   name:'Stem 1 7/8" × 5 ft', od:1.875, fn:1.75, top:C.q, bot:C.q, len:5, wt:47, grp:'Weight'},
+  {id:'st3',  rank:3, kind:'stem',   name:'Stem 1 7/8" × 3 ft', od:1.875, fn:1.75, top:C.q, bot:C.q, len:3, wt:28, grp:'Weight'},
+  {id:'rst5', rank:3, kind:'roller', name:'Roller Stem 1 7/8" × 5 ft', od:1.875, fn:1.75, top:C.q, bot:C.q, len:5, wt:44, grp:'Weight'},
+  {id:'kj',   rank:4, kind:'knuckle',name:'Knuckle Joint 1 7/8"', od:1.875, fn:1.75, top:C.q, bot:C.q, len:1.2, wt:7, grp:'Jars and joints'},
+  {id:'sj20', rank:5, kind:'spang',  name:'Spang Jar 1 7/8" (20" stroke)', od:1.875, fn:1.75, top:C.q, bot:C.q, len:5.0, stroke:1.67, wt:30, grp:'Jars and joints'},
+  {id:'hj',   rank:5, kind:'hydjar', name:'Hydraulic Jar 1 7/8"', od:1.875, fn:1.75, top:C.q, bot:C.q, len:5.5, stroke:1.0, wt:34, grp:'Jars and joints'},
+  {id:'tj',   rank:5, kind:'hydjar', name:'Tubular Jar 1 7/8"', od:1.875, fn:1.75, top:C.q, bot:C.q, len:4.0, stroke:1.5, wt:26, grp:'Jars and joints'},
+  {id:'xo',   rank:6, kind:'xover',  name:'Crossover 1 7/8" QLS × 1 1/16"-10', od:1.875, fn:null, top:C.q, bot:C.p, len:0.33, wt:2, grp:'Crossovers'},
+  {id:'gc',   rank:7, kind:'gauge',  name:'Gauge Cutter 2.312"', od:2.312, fn:1.375, top:C.p, bot:'—', len:1.5, wt:6, grp:'Service tools'},
+  {id:'gs',   rank:7, kind:'pull',   name:'GS Pulling Tool 2"', od:1.81, fn:null, top:C.p, bot:'—', len:1.6, wt:9, grp:'Service tools'},
+  {id:'ib',   rank:7, kind:'block',  name:'Impression Block 2.25"', od:2.25, fn:1.375, top:C.p, bot:'—', len:0.8, wt:6, grp:'Service tools'},
+  {id:'bb',   rank:7, kind:'block',  name:'Blind Box 2.25"', od:2.25, fn:1.375, top:C.p, bot:'—', len:0.9, wt:9, grp:'Service tools'},
+  {id:'sbl',  rank:7, kind:'bailer', name:'Sample Bailer 1 1/2"', od:1.5, fn:1.375, top:C.p, bot:'—', len:3.0, wt:12, grp:'Service tools'},
+  {id:'xrt',  rank:7, kind:'pull',   name:'X Running Tool 2 1/2"', od:2.3, fn:null, top:C.p, bot:'—', len:1.8, wt:10, grp:'Service tools'},
+];
+const BAND = {3000:'#f2c94c',5000:'#d0312d',10000:'#111111',15000:'#f5f5f5',20000:'#7b4a26'};
+
+/* ---------- state ---------- */
+const S = {
+  tab:'rig', unit:'ft', sel:null, history:[],
+  rig: ['sb10','tc10','lub3-10','lub3-10','lub4-10','bos10','bop2','wha10','tree'].map(id=>({...PCE.find(p=>p.id===id)})),
+  ts:  ['rs','st5','st3','kj','sj20','xo','gc'].map(id=>({...TOOLS.find(p=>p.id===id)})),
+};
+// the sample rig up has one deliberate fault to show the joint check: the 3" lubricators meet the 4" lubricator with no crossover
+const rows = () => S[S.tab];
+const lib = () => (S.tab==='rig'?PCE:TOOLS);
+const ctx = () => ({ mpwhp:+v('c-mpwhp')||0, h2s:+v('c-h2s')||0, tid:+v('c-tid')||null, wire:+v('c-wire') });
+function v(id){return document.getElementById(id).value}
+const fmt = (n,d=2)=> n==null?'—':(+n).toFixed(d);
+const L = ft => S.unit==='ft' ? `${fmt(ft)} ft` : `${fmt(ft*0.3048)} m`;
+const L2 = ft => S.unit==='ft' ? `${fmt(ft*0.3048)} m` : `${fmt(ft)} ft`;
+// a connection on two lines: the thread, then the seal bore or ring gasket
+const cn = c => String(c).replace(/ \((.+)\)$/, '<i>($1)</i>').replace(/ ((?:RBX|R)\d+ .*)$/, '<i>$1</i>');
+const qod = conn => { const m=/^([\d.]+)"/.exec(conn||''); return m?+m[1]:null; };
+const snap = () => { S.history.push(JSON.stringify({rig:S.rig,ts:S.ts})); if(S.history.length>50)S.history.shift(); flashSaved(); };
+
+/* ---------- drawings: generated from the part's own sizes, coloured by pressure rating (Pressure Standard §8.2) ---------- */
+function drawPart(p, W=170, H=58, mini=false){
+  const cx=W/2, steel='url(#steel)', blue='#2f6db0', band=BAND[p.rating]||'#999';
+  const g=[]; const R=(x,y,w,h,f,extra='')=>g.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" stroke="#1b2430" stroke-width=".8" ${extra}/>`);
+  const nut=(y,w)=>R(cx-w/2-3,y,w+6,mini?3:6,'#5b6673','rx="1"');
+  if(S.tab==='rig'||p.rating){
+    const bodyW=Math.min(W-30,(qod(p.bot)||qod(p.top)||4.75)*(mini?5:13));
+    switch(p.kind){
+      case 'stuffing': R(cx-bodyW*0.35,H*0.28,bodyW*0.7,H*0.62,blue); g.push(`<circle cx="${cx}" cy="${H*0.17}" r="${H*0.15}" fill="#dfe4ea" stroke="#1b2430"/>`); R(cx-bodyW*0.35,H*0.45,bodyW*0.7,H*0.07,band); nut(H*0.86,bodyW*0.6); break;
+      case 'gih': R(cx-bodyW*0.18,H*0.02,bodyW*0.36,H*0.9,blue); for(let i=1;i<5;i++)g.push(`<line x1="${cx-bodyW*.18}" x2="${cx+bodyW*.18}" y1="${H*0.18*i}" y2="${H*0.18*i}" stroke="#9fc3ea"/>`); R(cx-bodyW*0.18,H*0.5,bodyW*0.36,H*0.06,band); nut(H*0.88,bodyW*0.5); break;
+      case 'lub': { const w=(p.id_in+1.2)*(mini?5:13); R(cx-w/2,0,w,H,'#c7ced6'); R(cx-w/2,H*0.4,w,H*0.08,band); nut(0,w); nut(H-6,w); break; }
+      case 'catcher': R(cx-bodyW*0.32,H*0.1,bodyW*0.64,H*0.8,blue); R(cx+bodyW*0.32,H*0.35,10,H*0.2,'#5b6673'); R(cx-bodyW*0.32,H*0.42,bodyW*0.64,H*0.07,band); nut(0,bodyW*0.5); nut(H-6,bodyW*0.5); break;
+      case 'bop': { const bw=bodyW*0.7; R(cx-bw/2,0,bw,H,blue); const n=p.rams||1; for(let i=0;i<n;i++){const y=H*(0.15+i*(0.7/n)); R(cx-W*0.46,y,W*0.92,H*0.6/n,'#3d7fc6','rx="2"'); g.push(`<line x1="${cx-W*0.46-4}" x2="${cx-W*0.46}" y1="${y+H*0.3/n}" y2="${y+H*0.3/n}" stroke="#d0312d" stroke-width="3"/><line x1="${cx+W*0.46}" x2="${cx+W*0.46+4}" y1="${y+H*0.3/n}" y2="${y+H*0.3/n}" stroke="#d0312d" stroke-width="3"/>`);} R(cx-bw/2,H*0.04,bw,H*0.06,band); break; }
+      case 'pumpin': R(cx-bodyW*0.3,0,bodyW*0.6,H,blue); R(cx+bodyW*0.3,H*0.4,W*0.25,H*0.16,'#c7ced6'); R(cx+bodyW*0.3+W*0.25,H*0.3,6,H*0.36,'#d0312d'); R(cx-bodyW*0.3,H*0.12,bodyW*0.6,H*0.07,band); break;
+      case 'xover': { const t=(qod(p.top)||4)*(mini?5:13), b=(qod(p.bot)||4)*(mini?5:13); g.push(`<path d="M${cx-t/2} 0 H${cx+t/2} L${cx+b/2} ${H} H${cx-b/2}Z" fill="${blue}" stroke="#1b2430" stroke-width=".8"/>`); R(cx-Math.min(t,b)/2,H*0.45,Math.min(t,b),H*0.08,band); break; }
+      case 'wha': R(cx-bodyW*0.3,0,bodyW*0.6,H*0.7,blue); R(cx-W*0.38,H*0.7,W*0.76,H*0.3,'#8a5a2b'); R(cx-bodyW*0.3,H*0.2,bodyW*0.6,H*0.08,band); break;
+      case 'tree': R(cx-W*0.12,0,W*0.24,H,'#c0392b'); R(cx-W*0.46,H*0.38,W*0.92,H*0.26,'#c0392b'); [cx-W*0.34,cx+W*0.34].forEach(x=>g.push(`<circle cx="${x}" cy="${H*0.51}" r="${H*0.2}" fill="none" stroke="#7a1f1a" stroke-width="2"/>`)); g.push(`<circle cx="${cx}" cy="${H*0.2}" r="${H*0.14}" fill="none" stroke="#7a1f1a" stroke-width="2"/>`); break;
+      default: R(cx-bodyW*0.3,0,bodyW*0.6,H,blue); R(cx-bodyW*0.3,H*0.45,bodyW*0.6,H*0.08,band); nut(0,bodyW*0.45); nut(H-6,bodyW*0.45);
+    }
+  } else {
+    const w=p.od*(mini?9:22);
+    switch(p.kind){
+      case 'rope': g.push(`<path d="M${cx-w*0.2} ${H*0.05} L${cx+w*0.2} ${H*0.05} L${cx+w/2} ${H*0.4} V${H} H${cx-w/2} V${H*0.4}Z" fill="${steel}" stroke="#1b2430" stroke-width=".8"/>`); g.push(`<line x1="${cx}" x2="${cx}" y1="0" y2="${H*0.05}" stroke="#555" stroke-width="2"/>`); break;
+      case 'stem': R(cx-w*0.35,0,w*0.7,H*0.12,steel); R(cx-w/2,H*0.12,w,H*0.88,steel); break;
+      case 'roller': R(cx-w/2,0,w,H,steel); for(let i=1;i<4;i++)g.push(`<ellipse cx="${cx}" cy="${H*0.25*i}" rx="${w*0.62}" ry="3" fill="#8b949e" stroke="#1b2430" stroke-width=".6"/>`); break;
+      case 'knuckle': R(cx-w*0.35,0,w*0.7,H*0.3,steel); g.push(`<circle cx="${cx}" cy="${H*0.5}" r="${w*0.5}" fill="${steel}" stroke="#1b2430" stroke-width=".8"/>`); R(cx-w*0.35,H*0.68,w*0.7,H*0.32,steel); break;
+      case 'spang': R(cx-w/2,0,w,H*0.42,steel); R(cx-w/2,H*0.42,w*0.22,H*0.36,steel); R(cx+w*0.28,H*0.42,w*0.22,H*0.36,steel); R(cx-w*0.15,H*0.3,w*0.3,H*0.5,'#9aa4b1'); R(cx-w/2,H*0.78,w,H*0.22,steel); break;
+      case 'hydjar': R(cx-w/2,0,w,H,steel); for(let i=1;i<6;i++)g.push(`<line x1="${cx-w/2}" x2="${cx+w/2}" y1="${H*i/6}" y2="${H*i/6}" stroke="#6b7480"/>`); break;
+      case 'xover': g.push(`<path d="M${cx-w/2} 0 H${cx+w/2} L${cx+w*0.32} ${H} H${cx-w*0.32}Z" fill="${steel}" stroke="#1b2430" stroke-width=".8"/>`); break;
+      case 'gauge': R(cx-w*0.3,0,w*0.6,H*0.6,steel); R(cx-w/2,H*0.6,w,H*0.3,steel); for(let i=0;i<6;i++)g.push(`<path d="M${cx-w/2+i*w/6} ${H*0.9} l${w/12} ${H*0.08} l${w/12} -${H*0.08}" fill="#8b949e" stroke="#1b2430" stroke-width=".5"/>`); break;
+      case 'block': R(cx-w*0.3,0,w*0.6,H*0.4,steel); R(cx-w/2,H*0.4,w,H*0.6,p.name.startsWith('Imp')?'#b9a27a':steel); break;
+      case 'bailer': R(cx-w/2,0,w,H,steel); R(cx-w*0.3,H*0.9,w*0.6,H*0.1,'#6b7480'); break;
+      case 'pull': R(cx-w*0.3,0,w*0.6,H*0.4,steel); R(cx-w/2,H*0.4,w,H*0.45,steel); [cx-w/2-3,cx+w/2-1].forEach(x=>R(x,H*0.55,4,H*0.18,'#6b7480')); break;
+      default: R(cx-w/2,0,w,H,steel);
+    }
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="steel" x1="0" x2="1"><stop offset="0" stop-color="#8b949e"/><stop offset=".45" stop-color="#e6eaee"/><stop offset="1" stop-color="#7d8792"/></linearGradient></defs>${g.join('')}</svg>`;
+}
+
+/* ---------- totals and checks ---------- */
+function totals(){
+  const r=S.rig, t=S.ts;
+  const lubLen = r.filter(p=>p.kind==='lub').reduce((a,p)=>a+p.len,0);
+  const rigLen = r.filter(p=>!p.client).reduce((a,p)=>a+p.len,0);
+  const minId = r.filter(p=>p.id_in).reduce((a,p)=>Math.min(a,p.id_in),Infinity);
+  const sysWp = r.filter(p=>!p.client).reduce((a,p)=>Math.min(a,p.rating),Infinity);
+  const tsLen = t.reduce((a,p)=>a+p.len,0), tsOpen = t.reduce((a,p)=>a+p.len+(p.stroke||0),0);
+  const maxOd = t.reduce((a,p)=>Math.max(a,p.od||0),0);
+  const wt = t.reduce((a,p)=>a+(p.wt||0),0), stemWt = t.filter(p=>/stem|rope|jar|knuckle|swivel/i.test(p.name)).reduce((a,p)=>a+(p.wt||0),0);
+  return {lubLen,rigLen,minId:isFinite(minId)?minId:null,sysWp:isFinite(sysWp)?sysWp:null,tsLen,tsOpen,maxOd,wt,stemWt};
+}
+const joints = list => list.slice(0,-1).map((p,i)=>({i, ok: p.bot===list[i+1].top || list[i+1].top==='—' || p.bot==='—', a:p.bot, b:list[i+1].top}));
+function checks(){
+  const c=ctx(), T=totals(), out=[];
+  const need = c.mpwhp*1.2;
+  const add=(lvl,txt,cite)=>out.push({lvl,txt,cite});
+  // pressure
+  if(T.sysWp!=null) T.sysWp>=need ? add('ok',`Stack rated ${T.sysWp.toLocaleString()} psi ≥ 1.2 × MPWHP (${Math.round(need).toLocaleString()} psi). Wellsite test to ${Math.round(need).toLocaleString()} psi.`,'Pressure Standard §9.2.1, §9.2.3')
+    : add('bad',`Stack is only ${T.sysWp.toLocaleString()} psi (lowest part). Needs ${Math.round(need).toLocaleString()} psi: 1.2 × MPWHP.`,'Pressure Standard §9.1, §9.2.1');
+  // service
+  const sour = c.h2s>0, notH2s = S.rig.filter(p=>!p.client && !p.h2s);
+  if(sour) notH2s.length ? add('bad',`Sour well (${c.h2s} ppm H₂S): ${notH2s.map(p=>p.name).join(', ')} is not H₂S service.`,'Pressure Standard §6.2.2, NACE MR0175') : add('ok','All parts are H₂S service for a sour well.','Pressure Standard §6.2.2');
+  // connections
+  const bj=[...joints(S.rig).filter(j=>!j.ok).map(j=>['Rig up',j]),...joints(S.ts).filter(j=>!j.ok).map(j=>['Tool string',j])];
+  bj.length ? bj.forEach(([w,j])=>add('bad',`${w}, rows ${j.i+1}–${j.i+2}: ${j.a} does not make up to ${j.b}. Add a crossover.`,'Pressure Standard §7.5, §7.6'))
+    : add('ok','Every connection makes up to the next part.','Pressure Standard §7.5');
+  // ID
+  if(T.minId!=null && T.maxOd) T.minId >= T.maxOd+0.25 ? add('ok',`Smallest bore ${fmt(T.minId,3)} in clears the largest tool ${fmt(T.maxOd,3)} in + 0.25 in.`,'Pressure Standard §9.2.4')
+    : add('bad',`Smallest bore ${fmt(T.minId,3)} in is less than largest tool ${fmt(T.maxOd,3)} in + 0.25 in.`,'Pressure Standard §9.2.4');
+  // lubricator length
+  if(T.lubLen) T.lubLen >= T.tsOpen+3 ? add('ok',`Lubricator ${L(T.lubLen)} ≥ tool string (jar open) ${L(T.tsOpen)} + 3 ft.`,'Pressure Standard §9.2.5')
+    : add('bad',`Lubricator ${L(T.lubLen)} is short: tool string (jar open) ${L(T.tsOpen)} + 3 ft is ${L(T.tsOpen+3)}.`,'Pressure Standard §9.2.5');
+  // tubing fit
+  if(c.tid && T.maxOd) T.maxOd < c.tid ? add('ok',`Largest tool ${fmt(T.maxOd,3)} in passes the ${fmt(c.tid,3)} in minimum ID.`,'SOP-01 §7.16.2')
+    : add('bad',`Largest tool ${fmt(T.maxOd,3)} in does not pass the ${fmt(c.tid,3)} in minimum ID.`,'SOP-01 §7.16.2');
+  // weight
+  const area=Math.PI/4*c.wire**2, bal=area*c.mpwhp, needWt=bal+40;
+  T.stemWt>=needWt ? add('ok',`Weight above the jar ${Math.round(T.stemWt)} lb ≥ balance ${Math.round(bal)} lb + 40 lb.`,'SOP-01 §7.6, §7.16.6')
+    : add('warn',`Weight above the jar ${Math.round(T.stemWt)} lb is under balance ${Math.round(bal)} lb + 40 lb = ${Math.round(needWt)} lb. Add stem.`,'SOP-01 §7.6, §7.16.6');
+  // barriers and required items
+  const has=k=>S.rig.some(p=>p.kind===k), bop=S.rig.find(p=>p.kind==='bop');
+  const missing=[!has('stuffing')&&!has('gih')&&'stuffing box',!has('catcher')&&'tool catcher',!bop&&'wireline valve'].filter(Boolean);
+  missing.length ? add('bad',`Missing: ${missing.join(', ')}.`,'Pressure Standard §9.2.7, §9.2.10') : add('ok','Stuffing box, tool catcher and wireline valve are in the stack.','Pressure Standard §9.2.10');
+  if(bop){ const dual = need>1500; (dual && bop.rams<2) ? add('warn',`High pressure (${Math.round(need)} psi): slickline needs a dual-ram wireline valve.`,'Pressure Standard §9.2.7, §9.2.8') : add('ok',`${bop.rams===1?'Single':bop.rams===2?'Dual':'Triple'} ram valve gives ${bop.rams>=2?'two barriers':'one barrier'} with the stuffing box.`,'Pressure Standard §9.2.7'); }
+  return out;
+}
+
+/* ---------- render ---------- */
+function render(){
+  document.getElementById('tab-rig').setAttribute('aria-pressed',S.tab==='rig');
+  document.getElementById('tab-ts').setAttribute('aria-pressed',S.tab==='ts');
+  document.getElementById('u-ft').setAttribute('aria-pressed',S.unit==='ft');
+  document.getElementById('u-m').setAttribute('aria-pressed',S.unit==='m');
+  renderCat(); renderPaper(); renderInspector();
+}
+function fits(p){ const c=ctx(); if(S.tab!=='rig') return !c.tid || p.od < c.tid; if(p.client) return true; return p.rating>=c.mpwhp*1.2 && (!(c.h2s>0)||p.h2s); }
+function renderCat(){
+  document.getElementById('catTitle').textContent = S.tab==='rig'?'PCE catalogue':'Tool catalogue';
+  const q=document.getElementById('q').value.toLowerCase(), onlyFit=document.getElementById('fFit').getAttribute('aria-pressed')==='true';
+  const groups={};
+  lib().filter(p=>!q || (p.name+p.top+p.bot).toLowerCase().includes(q)).forEach(p=>(groups[p.grp]??=[]).push(p));
+  document.getElementById('cat').innerHTML = Object.entries(groups).map(([g,list])=>`<div class="cgroup"><h2>${g}</h2>${list.map(p=>{
+    const ok=fits(p);
+    const meta = S.tab==='rig' ? `${p.rating/1000}K${p.h2s?' H₂S':''}${p.id_in?` · ${p.id_in}" ID`:''} · ${p.len} ft` : `OD ${p.od}" · ${p.len} ft · ${p.wt} lb`;
+    return `<button class="item${onlyFit&&!ok?' off':''}" draggable="true" data-add="${p.id}" title="${ok?'Add to the stack':'Does not fit this job'}">${drawPart(p,34,40,true)}<span><span class="n">${p.name}</span><br><span class="m">${meta}</span></span><span class="add" aria-hidden="true">+</span></button>`;}).join('')}</div>`).join('');
+}
+function renderPaper(){
+  const list=rows(), rig=S.tab==='rig', T=totals(), J=joints(list);
+  const head = rig
+    ? `<table class="meta"><tr><th>Client</th><th>Well</th><th colspan="2">Field / Rig</th><th>Date</th><th>D.O.S. No.</th></tr><tr><td>Saudi Aramco</td><td>HRDH-1234</td><td colspan="2">Haradh · SL-07</td><td>04-Nov-2026</td><td>4471-22</td></tr></table>`
+    : `<table class="meta"><tr><th>Client</th><th>Well</th><th>Field</th><th>Rig / Site</th><th>Date</th><th>Job Ref.</th><th>Run</th></tr><tr><td>Saudi Aramco</td><td>HRDH-1234</td><td>Haradh</td><td>SL-07</td><td>04-Nov-2026</td><td>DEV-039</td><td>2</td></tr></table>`;
+  const cols = rig
+    ? `<colgroup><col style="width:28px"><col style="width:140px"><col style="width:50px"><col style="width:38px"><col style="width:84px"><col style="width:84px"><col style="width:76px"><col></colgroup><tr><th>No.</th><th>Description</th><th>Rating</th><th>ID in</th><th>Top conn.</th><th>Bottom conn.</th><th>Length</th><th>Assembly</th></tr>`
+    : `<colgroup><col style="width:28px"><col style="width:140px"><col style="width:46px"><col style="width:46px"><col style="width:80px"><col style="width:80px"><col style="width:76px"><col></colgroup><tr><th>No.</th><th>Description</th><th>OD in</th><th>F/N in</th><th>Top conn.</th><th>Bottom conn.</th><th>Length</th><th>Assembly</th></tr>`;
+  const body = list.length ? list.map((p,i)=>{
+    const jPrev=J[i-1], jNext=J[i];
+    const topBad = jPrev && !jPrev.ok, botBad = jNext && !jNext.ok;
+    const c3 = rig ? `<td class="num">${p.rating/1000}K${p.h2s?' H₂S':''}</td><td class="num">${p.id_in??'N/A'}</td>` : `<td class="num">${fmt(p.od,3)}</td><td class="num">${p.fn?fmt(p.fn,3):'—'}</td>`;
+    const jflag = botBad ? `<tr class="joint"><td colspan="8" class="jbad"><span class="flag">${jNext.a} ≠ ${jNext.b} <button data-fix="${i}">Add crossover</button></span></td></tr>` : '';
+    return `<tr class="r${S.sel===i?' sel':''}" data-row="${i}" draggable="true" tabindex="0" aria-label="Row ${i+1}, ${p.name}">
+      <td class="num">${i+1}</td>
+      <td class="desc">${p.name}${p.serial?`<small>S/N ${p.serial}</small>`:''}</td>${c3}
+      <td class="num${topBad?' bad':''}">${cn(p.top)}</td><td class="num${botBad?' bad':''}">${cn(p.bot)}</td>
+      <td class="len"><span>${L(p.len)}</span><span>${L2(p.len)}</span>${p.stroke?`<span>+${fmt(p.stroke)} ft stroke</span>`:''}</td>
+      <td class="draw">${drawPart(p)}<span class="rowtools"><button data-up="${i}" aria-label="Move row ${i+1} up">↑</button><button data-down="${i}" aria-label="Move row ${i+1} down">↓</button><button data-dup="${i}" aria-label="Duplicate row ${i+1}">⧉</button><button data-del="${i}" aria-label="Remove row ${i+1}">✕</button></span></td></tr>${jflag}`;}).join('')
+    : `<tr class="empty"><td colspan="8">Pick a template from <b>Start from</b>, or add parts from the catalogue.</td></tr>`;
+  const foot = rig
+    ? `<tr class="foot"><td colspan="6" style="text-align:right">Total length above the tree · lubricator ${L(T.lubLen)} · smallest bore ${T.minId??'—'} in · system WP ${T.sysWp?.toLocaleString()??'—'} psi</td><td class="len"><span>${L(T.rigLen)}</span><span>${L2(T.rigLen)}</span></td><td></td></tr>`
+    : `<tr class="foot"><td colspan="6" style="text-align:right">Total length (jar open) · weight ${Math.round(T.wt)} lb · max OD ${fmt(T.maxOd,3)} in</td><td class="len"><span>${L(T.tsOpen)}</span><span>${L2(T.tsOpen)}</span></td><td></td></tr>`;
+  document.getElementById('paper').innerHTML = `
+    <div class="ph"><span class="logo">NESR</span><h3>${rig?'Rig Up Diagram':'Slickline String Diagram'}</h3><span class="rev">${rig?'QAF14009 Rev 1':'QAF14010 Rev 1'}</span></div>
+    ${head}
+    <table class="rows">${cols}<tbody id="tb">${body}</tbody>${foot}</table>
+    <div class="sign"><div><b>Prepared by</b>J. Lopez · 04-Nov</div><div><b>Reviewed by</b><span style="color:#8591a0">pending</span></div><div><b>Page</b>1 of 1</div><div><b>Status</b>Draft</div></div>`;
+}
+function renderInspector(){
+  const el=document.getElementById('selCard'), list=rows(), p=list[S.sel], T=totals();
+  if(!p){
+    el.innerHTML = `<h2>${S.tab==='rig'?'Rig up':'Tool string'}</h2><dl class="tot">${S.tab==='rig'
+      ? `<dt>Parts</dt><dd>${list.length}</dd><dt>Length above tree</dt><dd>${L(T.rigLen)}</dd><dt>Lubricator</dt><dd>${L(T.lubLen)}</dd><dt>Smallest bore</dt><dd>${T.minId??'—'} in</dd><dt>System WP</dt><dd>${T.sysWp?.toLocaleString()??'—'} psi</dd>`
+      : `<dt>Parts</dt><dd>${list.length}</dd><dt>Length closed</dt><dd>${L(T.tsLen)}</dd><dt>Length, jar open</dt><dd>${L(T.tsOpen)}</dd><dt>Max OD</dt><dd>${fmt(T.maxOd,3)} in</dd><dt>Weight</dt><dd>${Math.round(T.wt)} lb</dd>`}</dl>
+      <p class="ro" style="margin:10px 0 0">Select a row to edit it. Keyboard: ↑ ↓ to move between rows, Alt+↑ ↓ to move a part, Delete to remove.</p>`;
+    return;
+  }
+  const conns = S.tab==='rig' ? Object.values(QU) : Object.values(C).concat('—');
+  const sel=(k,opts)=>`<select data-f="${k}">${[...new Set([...opts,p[k]])].map(o=>`<option${o===p[k]?' selected':''}>${o}</option>`).join('')}</select>`;
+  el.innerHTML = `<h2>Row ${S.sel+1} <button class="btn sm ghost" id="desel">Done</button></h2>
+    <div class="field"><label>Description</label><input data-f="name" value="${p.name.replace(/"/g,'&quot;')}"></div>
+    ${S.tab==='rig'
+      ? `<div class="two"><div class="field"><label>Rating, psi</label>${sel('rating',[5000,10000,15000])}</div><div class="field"><label>ID, in</label><input data-f="id_in" type="number" step="0.001" value="${p.id_in??''}"></div></div>
+         <div class="field"><label>Service</label><select data-f="h2s"><option value="true"${p.h2s?' selected':''}>H₂S (NACE MR0175)</option><option value="false"${!p.h2s?' selected':''}>Standard</option></select></div>
+         <div class="field"><label>Asset (serial no.)</label><select data-f="serial"><option value="">Not picked yet</option><option${p.serial==='LUB-3-0142'?' selected':''}>LUB-3-0142 · cert to 12-2026</option><option${p.serial==='LUB-3-0157'?' selected':''}>LUB-3-0157 · cert to 03-2027</option></select></div>`
+      : `<div class="two"><div class="field"><label>OD, in</label><input data-f="od" type="number" step="0.001" value="${p.od}"></div><div class="field"><label>Fishing neck, in</label><input data-f="fn" type="number" step="0.001" value="${p.fn??''}"></div></div>
+         <div class="two"><div class="field"><label>Weight, lb</label><input data-f="wt" type="number" value="${p.wt??''}"></div><div class="field"><label>Jar stroke, ft</label><input data-f="stroke" type="number" step="0.01" value="${p.stroke??''}"></div></div>`}
+    <div class="two"><div class="field"><label>Top connection</label>${sel('top',conns)}</div><div class="field"><label>Bottom connection</label>${sel('bot',conns)}</div></div>
+    <div class="field"><label>Length, ft</label><input data-f="len" type="number" step="0.01" value="${p.len}"></div>`;
+}
+function renderChecks(){
+  const list=checks(), bad=list.filter(c=>c.lvl==='bad').length, warn=list.filter(c=>c.lvl==='warn').length;
+  const b=document.getElementById('chkBadge'); b.className='badge '+(bad?'bad':warn?'warn':'ok'); b.textContent = bad?`${bad} to fix`:warn?`${warn} to review`:'All clear';
+  document.getElementById('checks').innerHTML = list.sort((a,b)=>({bad:0,warn:1,ok:2}[a.lvl]-{bad:0,warn:1,ok:2}[b.lvl])).map(c=>`<li class="${c.lvl}"><span class="i" aria-hidden="true">${c.lvl==='ok'?'✓':c.lvl==='warn'?'!':'✕'}</span><span><span class="sr">${c.lvl==='ok'?'Pass':c.lvl==='warn'?'Review':'Fix'}: </span>${c.txt}<cite>${c.cite}</cite></span></li>`).join('');
+}
+const all=()=>{render();renderChecks();};
+
+/* ---------- actions ---------- */
+function addPart(id, at){
+  snap(); const p={...lib().find(x=>x.id===id)}, list=rows();
+  // smart placement: below the last part of the same or earlier stage of the stack, unless dropped at a row
+  let i = at ?? (()=>{ let k=list.length; for(let j=list.length-1;j>=0;j--){ if(list[j].rank<=p.rank){k=j+1;break;} if(j===0)k=0; } return k; })();
+  list.splice(i,0,p); S.sel=i; all();
+}
+function fixJoint(i){
+  snap(); const list=rows(), a=list[i], b=list[i+1];
+  const xo = S.tab==='rig' ? {id:'xo-gen',rank:a.rank,kind:'xover',name:'WHE Crossover',rating:Math.min(a.rating,b.rating),h2s:a.h2s&&b.h2s,id_in:Math.min(a.id_in||9,b.id_in||9),top:a.bot,bot:b.top,len:1.0}
+                           : {id:'xo-gen',rank:a.rank,kind:'xover',name:'Crossover',od:Math.max(a.od,b.od),fn:null,top:a.bot,bot:b.top,len:0.33,wt:2};
+  list.splice(i+1,0,xo); S.sel=i+1; all();
+}
+function move(i,d){ const list=rows(), j=i+d; if(j<0||j>=list.length) return; snap(); [list[i],list[j]]=[list[j],list[i]]; S.sel=j; all(); focusRow(j); }
+function focusRow(i){ requestAnimationFrame(()=>document.querySelector(`tr.r[data-row="${i}"]`)?.focus()); }
+let flashT; function flashSaved(){ const s=document.getElementById('saved'); s.textContent='Saving…'; clearTimeout(flashT); flashT=setTimeout(()=>s.textContent='Saved to the job',500); }
+
+const TPL = {
+  rig: [
+    {n:'10K H₂S slickline, 4" valve', d:'Stuffing box, catcher, 30 ft lubricator, dual ram, crossover, adapter', ids:['sb10','bcv10','tc10','lub3-10','lub3-10','lub3-10','xo-ab','qts10','bop2','pis10','wha10','tree']},
+    {n:'5K standard, light rig up', d:'Liquid seal, 10 ft lubricator, single ram', ids:['ls5','lub3-5k','bop1','wha10','tree']},
+    {n:'Copy from HRDH-1234, run 1', d:'Last run on this well, 02-Nov', ids:['sb10','tc10','lub3-10','lub3-10','xo-ab','lub4-10','bos10','bop2','wha10','tree']},
+  ],
+  ts: [
+    {n:'Basic 1 7/8" with gauge cutter', d:'Rope socket, stem, knuckle, spang jar, crossover, gauge cutter', ids:['rs','st5','st3','kj','sj20','xo','gc']},
+    {n:'Deviated well, roller stem', d:'Roller stem and an extra knuckle joint (SOP-01 §7.9)', ids:['rs','sw','rst5','rst5','kj','hj','sj20','kj','xo','gs']},
+    {n:'Copy from HRDH-1234, run 1', d:'Last run on this well', ids:['rs','st5','st3','kj','sj20','xo','gc']},
+  ],
+};
+function renderTpl(){ document.getElementById('tplPop').innerHTML = TPL[S.tab].map((t,i)=>`<button role="menuitem" data-tpl="${i}">${t.n}<small>${t.d}</small></button>`).join(''); }
+
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button,tr.r'); const menu=document.getElementById('tplMenu');
+  if(!e.target.closest('#tplMenu')) { menu.classList.remove('open'); document.getElementById('tplBtn').setAttribute('aria-expanded','false'); }
+  if(!t) return;
+  const d=t.dataset;
+  if(t.id==='tab-rig'||t.id==='tab-ts'){ S.tab=t.id==='tab-rig'?'rig':'ts'; S.sel=null; renderTpl(); all(); }
+  else if(t.id==='u-ft'||t.id==='u-m'){ S.unit=t.id==='u-ft'?'ft':'m'; all(); }
+  else if(t.id==='tplBtn'){ menu.classList.toggle('open'); t.setAttribute('aria-expanded',menu.classList.contains('open')); }
+  else if(d.tpl!=null){ snap(); S[S.tab]=TPL[S.tab][+d.tpl].ids.map(id=>({...lib().find(p=>p.id===id)})); S.sel=null; menu.classList.remove('open'); all(); }
+  else if(d.add){ addPart(d.add); }
+  else if(d.fix!=null){ e.stopPropagation(); fixJoint(+d.fix); }
+  else if(d.up!=null){ e.stopPropagation(); move(+d.up,-1); }
+  else if(d.down!=null){ e.stopPropagation(); move(+d.down,1); }
+  else if(d.dup!=null){ e.stopPropagation(); snap(); rows().splice(+d.dup+1,0,{...rows()[+d.dup]}); S.sel=+d.dup+1; all(); }
+  else if(d.del!=null){ e.stopPropagation(); snap(); rows().splice(+d.del,1); S.sel=null; all(); }
+  else if(t.id==='desel'){ S.sel=null; all(); }
+  else if(t.id==='undo'){ const h=S.history.pop(); if(h){ const o=JSON.parse(h); S.rig=o.rig; S.ts=o.ts; S.sel=null; all(); } }
+  else if(t.id==='fFit'||t.id==='fStock'){ t.setAttribute('aria-pressed', t.getAttribute('aria-pressed')!=='true'); renderCat(); }
+  else if(t.id==='sendRev'){ alert('Mock: sends the diagram to the reviewer (Reviewed by on the form). Fails while any check says "to fix".'); }
+  else if(t.matches('tr.r')){ S.sel=+d.row; renderPaper(); renderInspector(); }
+});
+document.addEventListener('input',e=>{
+  const f=e.target.dataset.f;
+  if(f){ const p=rows()[S.sel]; const num=['rating','id_in','len','od','fn','wt','stroke'].includes(f); p[f] = f==='h2s' ? e.target.value==='true' : num ? (e.target.value===''?null:+e.target.value) : e.target.value; flashSaved(); renderPaper(); renderChecks(); }
+  else if(e.target.id==='q') renderCat();
+  else if(e.target.id?.startsWith('c-')){ renderCat(); renderChecks(); }
+});
+document.addEventListener('keydown',e=>{
+  const tr=e.target.closest?.('tr.r'); if((e.ctrlKey||e.metaKey)&&e.key==='z'){ e.preventDefault(); document.getElementById('undo').click(); return; }
+  if(!tr) return; const i=+tr.dataset.row;
+  if(e.altKey&&(e.key==='ArrowUp'||e.key==='ArrowDown')){ e.preventDefault(); move(i,e.key==='ArrowUp'?-1:1); }
+  else if(e.key==='ArrowUp'||e.key==='ArrowDown'){ e.preventDefault(); const j=i+(e.key==='ArrowUp'?-1:1); if(rows()[j]){ S.sel=j; renderPaper(); renderInspector(); focusRow(j);} }
+  else if(e.key==='Enter'){ S.sel=i; renderPaper(); renderInspector(); }
+  else if(e.key==='Delete'){ snap(); rows().splice(i,1); S.sel=null; all(); }
+});
+/* drag: from the catalogue onto a row, or a row onto another row */
+let drag=null;
+document.addEventListener('dragstart',e=>{ const a=e.target.closest('[data-add]'), r=e.target.closest('tr.r'); drag = a?{add:a.dataset.add}: r?{row:+r.dataset.row}:null; e.dataTransfer.effectAllowed='move'; });
+document.addEventListener('dragover',e=>{ const r=e.target.closest('tr.r, tr.empty'); if(!drag||!r) return; e.preventDefault(); document.querySelectorAll('tr.drop').forEach(x=>x.classList.remove('drop')); r.classList.add('drop'); });
+document.addEventListener('drop',e=>{ const r=e.target.closest('tr.r, tr.empty'); if(!drag||!r) return; e.preventDefault(); const to=r.dataset.row!=null?+r.dataset.row:0;
+  if(drag.add) addPart(drag.add,to); else if(drag.row!==to){ snap(); const list=rows(); const [m]=list.splice(drag.row,1); list.splice(to,0,m); S.sel=to; all(); } drag=null; });
+document.addEventListener('dragend',()=>{ drag=null; document.querySelectorAll('tr.drop').forEach(x=>x.classList.remove('drop')); });
+
+renderTpl(); all();
+</script>
+</body>
+</html>
