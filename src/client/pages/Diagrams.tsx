@@ -324,17 +324,56 @@ function Shapes({ prims }: { prims: Prim[] }) {
     </g>
   );
 }
-/** The assembly: the whole stack as one drawing at one scale, fitted to the rows beside it, with row tags. */
+/**
+ * The assembly, as on the engineering sheet: the whole stack at one scale, the running length at each joint on the
+ * left (the drawing is not to length scale, so the scale labels the joints) and numbered balloons on the right.
+ * Clicking a part or its balloon selects the row.
+ */
 function Assembly({ rows, family, sel, onSelect }: { rows: Row[]; family: Family; sel: number | null; onSelect: (i: number | null) => void }) {
-  const W = 120, H = Math.max(rows.length * 56 - 12, 60);
-  const { prims, marks, height } = layoutStack(rows, family, W, H);
-  const top = (H - height) / 2;
+  // drawn at the column's real size, so the stack fills the height beside the parts list
+  const box = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState({ w: 150, h: 520 });
+  useEffect(() => {
+    const el = box.current?.parentElement;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => { const { width, height } = e.contentRect; if (width > 0 && height > 0) setSize({ w: Math.round(width), h: Math.round(height) }); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const W = size.w, H = size.h, rulerW = 34, balloonW = 30, top = 18;
+  const dw = W - rulerW - balloonW;
+  const { prims, marks, height } = layoutStack(rows, family, dw, H - top - 8);
+  const body = prims.slice(0, prims.length - marks.length * 3); // the sheet draws its own balloons
+  const ys: number[] = [];
+  marks.forEach((m) => { let y = top + (m.y0 + m.y1) / 2; if (ys.length && y - ys[ys.length - 1] < 15) y = ys[ys.length - 1] + 15; ys.push(y); });
+  const axis = rulerW + dw / 2, bx = W - 12, rx = rulerW - 6;
+  let run = 0;
+  const joints = marks.map((m, i) => { const at = run; run += rows[i].length_ft ?? 0; return { y: top + m.y0, at }; });
+  const pick = (i: number) => onSelect(sel === i ? null : i);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 m-auto h-[calc(100%-12px)] w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Assembly drawing, top of the stack first">
-      <g transform={`translate(0 ${top})`}>
-        {marks.map((m) => <rect key={m.index} x={0} y={m.y0} width={W} height={m.y1 - m.y0} fill={sel === m.index ? '#eef4cf' : 'transparent'} className="cursor-pointer" onClick={() => onSelect(sel === m.index ? null : m.index)} />)}
-        <Shapes prims={prims} />
+    <svg ref={box} viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Assembly drawing, top of the stack first">
+      <g transform={`translate(${rulerW} ${top})`}>
+        {marks.map((m) => <rect key={m.index} x={-rulerW} y={m.y0} width={W} height={m.y1 - m.y0} fill={sel === m.index ? '#e8eef5' : 'transparent'} className="cursor-pointer" onClick={() => pick(m.index)} />)}
+        <Shapes prims={body} />
       </g>
+      {marks.length > 0 && <>
+        <text x={2} y={9} fontSize={7} fontStyle="italic" fill="#6b7480">ft from top · not to scale</text>
+        <line x1={rx} y1={top} x2={rx} y2={top + height} stroke="#15191e" strokeWidth={0.7} />
+        {[...joints, { y: top + height, at: run }].map((j, i) => (
+          <g key={i}><line x1={rx - 4} y1={j.y} x2={rx + 4} y2={j.y} stroke="#15191e" strokeWidth={0.5} />
+            <text x={rx - 6} y={j.y + 2.5} fontSize={7} textAnchor="end" fill="#4f5761" fontFamily="Inter, sans-serif">{j.at.toFixed(1)}</text></g>
+        ))}
+      </>}
+      {marks.map((m, i) => {
+        const py = top + (m.y0 + m.y1) / 2, by = ys[i];
+        return (
+          <g key={m.index} className="cursor-pointer" onClick={() => pick(m.index)}>
+            <polyline points={`${axis + 5},${py} ${bx - 14},${py} ${bx - 8},${by}`} fill="none" stroke="#15191e" strokeWidth={0.45} />
+            <circle cx={bx} cy={by} r={7} fill={sel === m.index ? '#15191e' : '#ffffff'} stroke="#15191e" strokeWidth={0.8} />
+            <text x={bx} y={by + 2.6} fontSize={7.5} fontWeight={700} textAnchor="middle" fill={sel === m.index ? '#ffffff' : '#15191e'} fontFamily="Inter, sans-serif">{i + 1}</text>
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -347,7 +386,7 @@ const PartIcon = ({ row, family }: { row: Row; family: Family }) => {
   );
 };
 
-// ---- the sheet ----
+// ---- the sheet: the engineering drawing sheet the PDF prints (owner request 2026-11-09) ----
 
 function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelect, onMove, onChange, onDropPart }: {
   kind: DiagramKind; run: number; rows: Row[]; sel: number | null; unit: 'ft' | 'm'; job: JobFacts; rev: number; diagram: Diagram | null; canEdit: boolean;
@@ -359,7 +398,11 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
   const drag = useRef<number | null>(null);
   const L = (n: number | null) => (n == null ? '' : unit === 'ft' ? `${n.toFixed(2)} ft` : `${(n * 0.3048).toFixed(2)} m`);
   const L2 = (n: number | null) => (n == null ? '' : unit === 'ft' ? `${(n * 0.3048).toFixed(2)} m` : `${n.toFixed(2)} ft`);
-  const conn = (c: string | null) => { if (!c) return <span className="text-[#9aa4b1]">—</span>; const m = /^(.*?)\s*(\(.+\).*)$/.exec(c); return m ? <>{m[1]}<span className="block text-[#5b6673]">{m[2]}</span></> : c; };
+  const conn = (c: string | null, bad: boolean) => {
+    if (!c) return <span className="block text-[#9aa4b1]">—</span>;
+    const m = /^(.*?)\s*(\(.+\).*)$/.exec(c);
+    return <span className={cx('block rounded-xs px-0.5', bad && 'bg-[#fde8e8] font-bold text-[#b4232a]')}>{m ? <>{m[1]} <span className={bad ? '' : 'text-[#6b7480]'}>{m[2]}</span></> : c}</span>;
+  };
   const t = rig ? rigTotals(rows) : null, s = rig ? null : stringTotals(rows);
   const drop = (e: DragEvent, at: number) => {
     e.preventDefault(); setOver(null);
@@ -381,118 +424,136 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(i); }
     if ((e.key === 'Delete' || e.key === 'Backspace') && canEdit) { e.preventDefault(); onChange(rows.filter((_, k) => k !== i), null); }
   };
-  const head = rig
-    ? [['Client', 'Saudi Aramco'], ['Well', job.well], ['Field / Rig', [job.field, job.rig].filter(Boolean).join(' / ')], ['Date', job.start_date ? formatDate(job.start_date) : ''], ['Ticket / DRSS', [job.ticket_no, job.drss_no].filter(Boolean).join(' / ')]]
-    : [['Client', 'Saudi Aramco'], ['Well', job.well], ['Field', job.field], ['Rig / Site', job.rig], ['Date', job.start_date ? formatDate(job.start_date) : ''], ['Job ref.', job.ticket_no], ['Run', String(run)]];
-  const cell = 'border-x border-t border-[#c9d0d8] px-1.5 text-center align-middle';
+  const cell = 'border-b border-[#d5dae0] px-1.5 py-1.5 align-middle';
+  const num = 'font-mono text-[0.6875rem] leading-snug text-center';
+  const dim = 'block text-[0.625rem] text-[#6b7480]';
+  const heads = rig ? ['#', 'Description', 'WP', 'OD / ID in', 'Top / bottom conn.', 'Length / wt'] : ['#', 'Description', 'OD / ID in', 'F/N up / low', 'Top / bottom conn.', 'Length / wt'];
+  const wt = rig ? rows.filter((r) => r.kind !== 'tree').reduce((a, r) => a + (r.weight_lb ?? 0), 0) : s!.weight_lb;
+  const label = 'block text-[0.5625rem] font-semibold tracking-[0.08em] text-[#4f5761] uppercase';
+  const sign = (k: string, who: string | null | undefined, at: string | null | undefined, none: string) => (
+    <div className="border-r border-[#15191e] px-2 py-1.5 last:border-r-0"><span className={label}>{k}</span>
+      <b className={cx('block text-[0.75rem]', !who && 'font-normal text-[#9aa4b1]')}>{who ?? none}</b>{at && <span className="block text-[0.625rem] text-[#6b7480]">{stamp(at)}</span>}</div>
+  );
+  const fact = (k: string, v: string | null | undefined, strong = false) => (
+    <div className="border-t border-l border-[#15191e] px-2 py-1"><span className={label}>{k}</span><span className={cx('block truncate', strong && 'font-bold')}>{v || '—'}</span></div>
+  );
   return (
     <div className="overflow-x-auto rounded-lg bg-surface-3 p-2 sm:p-3" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'z') e.preventDefault(); }}>
-      <div className="mx-auto min-w-[36rem] max-w-[52rem] rounded bg-[#ffffff] p-3 text-[0.75rem] text-[#111820] shadow-pop" style={{ colorScheme: 'light' }}>
-        <div className="grid grid-cols-[6rem_1fr_6rem] items-center border-2 border-b-0 border-[#2d3b1f] px-3 py-2">
-          <img src="/brand/nesr-dark-160.png" alt="NESR" className="h-7 w-auto" />
-          <h2 className="text-center font-display text-lg font-extrabold">{FORM[kind].title}{rig ? '' : ` · Run ${run}`}</h2>
-          <span className="text-right font-mono text-[0.6875rem] text-[#5b6673]">{FORM[kind].code}{rig ? '' : ' Rev 2'}<br />Diagram rev {rev}</span>
-        </div>
-        <table className="w-full table-fixed border-collapse">
-          <tbody>
-            <tr>{head.map(([k]) => <th key={k} className="border border-[#2d3b1f] bg-[#e9f0d4] px-1 py-0.5 text-[0.6875rem] font-semibold">{k}</th>)}</tr>
-            <tr>{head.map(([k, v]) => <td key={k} className="border border-[#2d3b1f] px-1 py-0.5 text-center font-mono text-[0.6875rem]">{v || '—'}</td>)}</tr>
-          </tbody>
-        </table>
-        <table className="w-full table-fixed border-collapse border-2 border-t-0 border-[#2d3b1f]">
-          <caption className="sr-only">{FORM[kind].title}, top of the stack first. Arrow keys move between rows, Alt and an arrow moves a part, Delete removes it.</caption>
-          <colgroup>
-            <col className="w-6" /><col className="w-[8rem]" /><col className={rig ? 'w-11' : 'w-12'} /><col className={rig ? 'w-12' : 'w-10'} />
-            <col className="w-[4.75rem]" /><col className="w-[4.75rem]" /><col className="w-[4.25rem]" /><col className="min-w-24" />
-          </colgroup>
-          <thead>
-            <tr className="bg-[#e9f0d4] text-[0.6875rem] leading-tight">
-              {['No.', 'Description', rig ? 'Rating' : 'OD / ID in', rig ? 'OD / ID in' : 'F/N up / low', 'Top conn.', 'Bottom conn.', 'Length', 'Assembly'].map((h) => <th key={h} scope="col" className="border border-[#9aa58a] px-1 py-1.5 font-bold">{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {!rows.length && (
-              <tr onDragOver={(e) => { e.preventDefault(); setOver(0); }} onDrop={(e) => drop(e, 0)}>
-                <td colSpan={8} className={cx('h-40 text-center text-sm text-[#5b6673]', over === 0 && 'bg-[#eef4cf]')}>
-                  {canEdit ? <>Add parts from the catalogue, or use <b>Start from</b>.</> : 'No parts yet.'}
-                </td>
-              </tr>
-            )}
-            {rows.map((r, i) => {
-              const topBad = J[i - 1]?.ok === false, botBad = J[i]?.ok === false;
-              return [
-                <tr key={`r${i}`} data-row={i} tabIndex={0} aria-selected={sel === i} draggable={canEdit}
-                  onClick={() => onSelect(sel === i ? null : i)} onKeyDown={(e) => key(e, i)}
-                  onDragStart={(e) => { drag.current = i; e.dataTransfer.effectAllowed = 'move'; }}
-                  onDragOver={(e) => { e.preventDefault(); setOver(i); }} onDragLeave={() => setOver(null)} onDrop={(e) => drop(e, i)}
-                  className={cx('group h-14 cursor-pointer outline-offset-[-2px] hover:bg-[#f4f7ec]', sel === i && 'bg-[#eef4cf] shadow-[inset_3px_0_#9aa800]', over === i && '[&>td]:border-t-[3px] [&>td]:border-t-[#9aa800]')}>
-                  <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{i + 1}</td>
-                  <td className={cx(cell, 'relative text-left leading-tight font-bold')}>{r.name}{r.part_id == null && <span className="block font-normal text-[0.625rem] text-[#5b6673]">not from the catalogue</span>}
-                    {canEdit && (
-                      <span className="absolute top-0.5 right-0.5 flex gap-0.5 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-aria-selected:opacity-100">
-                        {([[ArrowUp, 'Move up', () => onMove(i, -1)], [ArrowDown, 'Move down', () => onMove(i, 1)], [Copy, 'Duplicate', () => onChange([...rows.slice(0, i + 1), { ...r }, ...rows.slice(i + 1)], i + 1)],
-                          [X, 'Remove', () => onChange(rows.filter((_, k) => k !== i), null)]] as const).map(([Icon, label, fn]) => (
-                          <button key={label} type="button" aria-label={`${label}: row ${i + 1}`} onClick={(e) => { e.stopPropagation(); fn(); }}
-                            className="grid size-6 place-items-center rounded border border-[#c9d0d8] bg-[#ffffff] text-[#45505c] hover:bg-[#eef4cf]"><Icon aria-hidden className="size-3.5" /></button>
-                        ))}
-                      </span>
-                    )}
-                  </td>
-                  {rig ? <>
-                    <td className={cx(cell, 'font-mono text-[0.6875rem]')}>{r.rating_psi ? `${r.rating_psi / 1000}K` : '—'}{r.service === 'h2s' && <span className="block">H₂S</span>}</td>
-                    <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}>{r.od_in != null && <span className="block">{r.od_in}</span>}<span className={cx('block', r.od_in != null && 'text-[#5b6673]')}>{r.id_in ?? 'N/A'}</span></td>
-                  </> : <>
-                    <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}><span className="block">{fmt(r.od_in, 3)}</span>{r.id_in != null && <span className="block text-[#5b6673]">{fmt(r.id_in, 3)}</span>}</td>
-                    <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}><span className="block">{fmt(r.fn_in, 3)}</span>{r.fn_lower_in != null && <span className="block text-[#5b6673]">{fmt(r.fn_lower_in, 3)}</span>}</td>
-                  </>}
-                  <td className={cx(cell, 'font-mono text-[0.65rem] leading-tight', topBad && 'bg-[#fde8e8] font-bold text-[#b4232a]')}>{conn(r.top_conn)}</td>
-                  <td className={cx(cell, 'font-mono text-[0.65rem] leading-tight', botBad && 'bg-[#fde8e8] font-bold text-[#b4232a]')}>{conn(r.bottom_conn)}</td>
-                  <td className={cx(cell, 'font-mono text-[0.6875rem] leading-snug')}>
-                    {r.length_ft == null ? <span className="text-[#b4232a]">no length</span> : <><span className="block">{L(r.length_ft)}</span><span className="block text-[#5b6673]">{L2(r.length_ft)}</span></>}
-                    {r.stroke_ft ? <span className="block text-[0.625rem] text-[#5b6673]">+{r.stroke_ft} ft stroke</span> : null}
-                    {!rig && r.weight_lb != null ? <span className="block text-[0.625rem] text-[#5b6673]">{r.weight_lb} lb</span> : null}
-                  </td>
-                  {i === 0 && (
-                    <td rowSpan={rows.length + J.filter((j) => j.ok === false).length} className="relative border-l-2 border-l-[#2d3b1f] bg-[#ffffff] p-0 align-top">
-                      <Assembly rows={rows} family={family} sel={sel} onSelect={onSelect} />
-                    </td>
+      <div className="mx-auto min-w-[38rem] max-w-[60rem] rounded bg-[#ffffff] p-3 text-[0.75rem] text-[#15191e] shadow-pop" style={{ colorScheme: 'light' }}>
+        <div className="border-[1.5px] border-[#15191e] p-[3px]"><div className="flex flex-col gap-3 border-[0.5px] border-[#15191e] p-3">
+          <div className={cx('grid gap-3', rig ? 'grid-cols-[9.5rem_minmax(0,1fr)]' : 'grid-cols-[7.5rem_minmax(0,1fr)]')}>
+            <div className="flex flex-col border-r border-[#9aa3ad] pr-2">
+              <p className="mb-1 text-[0.625rem] font-bold tracking-[0.12em] text-[#3b434d]">{rig ? 'ASSEMBLY' : 'SCHEMATIC'}</p>
+              <div className="relative min-h-[30rem] flex-1">{rows.length > 0 && <Assembly rows={rows} family={family} sel={sel} onSelect={onSelect} />}</div>
+            </div>
+            <div className="min-w-0">
+              <p className="mb-1 text-[0.625rem] font-bold tracking-[0.12em] text-[#3b434d]">{rig ? 'PARTS LIST' : `TOOL STRING · RUN ${run}`}</p>
+              <table className="w-full table-fixed border-collapse">
+                <caption className="sr-only">{FORM[kind].title}, top of the stack first. Arrow keys move between rows, Alt and an arrow moves a part, Delete removes it.</caption>
+                <colgroup><col className="w-7" /><col /><col className="w-[3.25rem]" /><col className="w-[3.5rem]" /><col className="w-[6rem]" /><col className="w-[4.25rem]" /></colgroup>
+                <thead>
+                  <tr className="text-[0.625rem] leading-tight">{heads.map((h) => <th key={h} scope="col" className="border-t-[1.5px] border-b border-[#15191e] px-1 py-1.5 font-bold">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {!rows.length && (
+                    <tr onDragOver={(e) => { e.preventDefault(); setOver(0); }} onDrop={(e) => drop(e, 0)}>
+                      <td colSpan={6} className={cx('h-40 text-center text-sm text-[#5b6673]', over === 0 && 'bg-[#e8eef5]')}>
+                        {canEdit ? <>Add parts from the catalogue, or use <b>Start from</b>.</> : 'No parts yet.'}
+                      </td>
+                    </tr>
                   )}
-                </tr>,
-                botBad && (
-                  <tr key={`j${i}`} aria-hidden={false}>
-                    <td colSpan={7} className="relative h-0 p-0">
-                      <span className="absolute -top-3 right-2 z-10 flex items-center gap-2 rounded-pill border border-[#e5a3a6] bg-[#fde8e8] py-0.5 pr-1 pl-2.5 text-[0.6875rem] font-semibold text-[#9c1c22]">
-                        {J[i].above} ≠ {J[i].below}
-                        {canEdit && <button type="button" onClick={() => onChange([...rows.slice(0, i + 1), crossoverFor(rows[i], rows[i + 1], family), ...rows.slice(i + 1)], i + 1)}
-                          className="rounded-pill bg-[#b4232a] px-2 py-0.5 text-[0.6875rem] font-bold text-[#ffffff]">Add crossover</button>}
+                  {rows.map((r, i) => {
+                    const topBad = J[i - 1]?.ok === false, botBad = J[i]?.ok === false;
+                    return [
+                      <tr key={`r${i}`} data-row={i} tabIndex={0} aria-selected={sel === i} draggable={canEdit}
+                        onClick={() => onSelect(sel === i ? null : i)} onKeyDown={(e) => key(e, i)}
+                        onDragStart={(e) => { drag.current = i; e.dataTransfer.effectAllowed = 'move'; }}
+                        onDragOver={(e) => { e.preventDefault(); setOver(i); }} onDragLeave={() => setOver(null)} onDrop={(e) => drop(e, i)}
+                        className={cx('group cursor-pointer outline-offset-[-2px] hover:bg-[#f3f5f8]', sel === i && 'bg-[#e8eef5] shadow-[inset_3px_0_#15191e]', over === i && '[&>td]:border-t-[3px] [&>td]:border-t-[#15191e]')}>
+                        <td className={cx(cell, 'text-center')}><span className={cx('inline-grid size-5 place-items-center rounded-full border border-[#15191e] text-[0.625rem] font-bold', sel === i && 'bg-[#15191e] text-[#ffffff]')}>{i + 1}</span></td>
+                        <td className={cx(cell, 'relative leading-tight font-bold')}>{r.name}{r.part_id == null && <span className="ml-1 rounded-xs border border-[#c9d0d8] px-1 text-[0.5625rem] font-normal text-[#6b7480]" title="Not from the catalogue">custom</span>}
+                          {canEdit && (
+                            <span className="absolute top-0.5 right-0.5 flex gap-0.5 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-aria-selected:opacity-100">
+                              {([[ArrowUp, 'Move up', () => onMove(i, -1)], [ArrowDown, 'Move down', () => onMove(i, 1)], [Copy, 'Duplicate', () => onChange([...rows.slice(0, i + 1), { ...r }, ...rows.slice(i + 1)], i + 1)],
+                                [X, 'Remove', () => onChange(rows.filter((_, k) => k !== i), null)]] as const).map(([Icon, label_, fn]) => (
+                                <button key={label_} type="button" aria-label={`${label_}: row ${i + 1}`} onClick={(e) => { e.stopPropagation(); fn(); }}
+                                  className="grid size-6 place-items-center rounded border border-[#c9d0d8] bg-[#ffffff] text-[#45505c] hover:bg-[#e8eef5]"><Icon aria-hidden className="size-3.5" /></button>
+                              ))}
+                            </span>
+                          )}
+                        </td>
+                        {rig ? <>
+                          <td className={cx(cell, num)}>{r.rating_psi ? `${r.rating_psi / 1000}K` : '—'}{r.service === 'h2s' && <span className={dim}>H₂S</span>}</td>
+                          <td className={cx(cell, num)}><span className="block">{r.od_in != null ? fmt(r.od_in, 2) : '—'}</span><span className={dim}>{r.id_in != null ? fmt(r.id_in, 3) : 'N/A'}</span></td>
+                        </> : <>
+                          <td className={cx(cell, num)}><span className="block">{fmt(r.od_in, 3)}</span><span className={dim}>{r.id_in != null ? fmt(r.id_in, 3) : '—'}</span></td>
+                          <td className={cx(cell, num)}><span className="block">{fmt(r.fn_in, 3)}</span><span className={dim}>{r.fn_lower_in != null ? fmt(r.fn_lower_in, 3) : '—'}</span></td>
+                        </>}
+                        <td className={cx(cell, 'font-mono text-[0.625rem] leading-snug')}>{conn(r.top_conn, topBad)}{conn(r.bottom_conn, botBad)}</td>
+                        <td className={cx(cell, 'text-right font-mono text-[0.6875rem] leading-snug')}>
+                          {r.length_ft == null ? <span className="block text-[#b4232a]">no length</span> : <><span className="block">{L(r.length_ft)}</span><span className={dim}>{L2(r.length_ft)}</span></>}
+                          {r.stroke_ft ? <span className={dim}>+{r.stroke_ft} ft open</span> : null}
+                          {r.weight_lb != null ? <span className={dim}>{r.weight_lb} lb{rig ? '' : ` · ${(r.weight_lb * 0.4536).toFixed(1)} kg`}</span> : null}
+                        </td>
+                      </tr>,
+                      botBad && (
+                        <tr key={`j${i}`}>
+                          <td colSpan={6} className="relative h-0 p-0">
+                            <span className="absolute -top-3 right-2 z-10 flex items-center gap-2 rounded-pill border border-[#e5a3a6] bg-[#fde8e8] py-0.5 pr-1 pl-2.5 text-[0.6875rem] font-semibold text-[#9c1c22]">
+                              {J[i].above} ≠ {J[i].below}
+                              {canEdit && <button type="button" onClick={() => onChange([...rows.slice(0, i + 1), crossoverFor(rows[i], rows[i + 1], family), ...rows.slice(i + 1)], i + 1)}
+                                className="rounded-pill bg-[#b4232a] px-2 py-0.5 text-[0.6875rem] font-bold text-[#ffffff]">Add crossover</button>}
+                            </span>
+                          </td>
+                        </tr>
+                      ),
+                    ];
+                  })}
+                  {rows.length > 0 && canEdit && (
+                    <tr onDragOver={(e) => { e.preventDefault(); setOver(rows.length); }} onDragLeave={() => setOver(null)} onDrop={(e) => drop(e, rows.length)}>
+                      <td colSpan={6} className={cx('h-5', over === rows.length && 'border-t-[3px] border-t-[#15191e]')} />
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-[1.5px] border-[#15191e] font-bold">
+                    <td />
+                    <td colSpan={3} className="px-1.5 py-1.5 text-[0.6875rem]">
+                      {rig ? 'Totals above the tree' : 'Totals · jars open'}
+                      <span className="block text-[0.625rem] font-normal text-[#6b7480]">
+                        {rig ? `Lubricator ${L(t!.lubricator_ft)} · smallest bore ${t!.min_id_in ?? '—'} in · system WP ${t!.system_wp?.toLocaleString() ?? '—'} psi`
+                          : `Closed ${L(s!.length_ft)} · max OD ${fmt(s!.max_od_in, 3)} in${job.target_depth_ft ? ` · total depth MD ${job.target_depth_ft.toLocaleString()} ft` : ''}`}
                       </span>
+                    </td>
+                    <td />
+                    <td className="px-1.5 py-1.5 text-right font-mono text-[0.6875rem]">
+                      <span className="block">{L(rig ? t!.length_ft : s!.length_open_ft)}</span><span className={dim}>{L2(rig ? t!.length_ft : s!.length_open_ft)}</span>
+                      {wt ? <span className={dim}>{wt} lb{rig ? '' : ` · ${(wt * 0.4536).toFixed(1)} kg`}</span> : null}
                     </td>
                   </tr>
-                ),
-              ];
-            })}
-            {rows.length > 0 && canEdit && (
-              <tr onDragOver={(e) => { e.preventDefault(); setOver(rows.length); }} onDragLeave={() => setOver(null)} onDrop={(e) => drop(e, rows.length)}>
-                <td colSpan={8} className={cx('h-5 border-t border-[#c9d0d8]', over === rows.length && 'border-t-[3px] border-t-[#9aa800]')} />
-              </tr>
-            )}
-          </tbody>
-          <tfoot>
-            <tr className="border-t-2 border-[#2d3b1f] font-bold">
-              <td colSpan={6} className="px-2 py-1.5 text-right text-[0.6875rem]">
-                {rig ? `Total length above the tree · lubricator ${L(t!.lubricator_ft)} · smallest bore ${t!.min_id_in ?? '—'} in · system WP ${t!.system_wp?.toLocaleString() ?? '—'} psi`
-                  : `Total length, jars open · closed ${L(s!.length_ft)} · max OD ${fmt(s!.max_od_in, 3)} in${job.target_depth_ft ? ` · target depth ${job.target_depth_ft.toLocaleString()} ft` : ''}`}
-              </td>
-              <td className="px-1.5 py-1.5 text-center font-mono text-[0.6875rem]"><span className="block">{L(rig ? t!.length_ft : s!.length_open_ft)}</span><span className="block font-normal text-[#5b6673]">{L2(rig ? t!.length_ft : s!.length_open_ft)}</span></td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
-        <div className="grid grid-cols-3 border-2 border-t-0 border-[#2d3b1f] text-center text-[0.6875rem]">
-          {[['Prepared by', diagram?.sent_by_name ?? diagram?.updated_by_name ?? '—'], ['Verified by', diagram?.verified_at ? `${diagram.verified_by_name} · ${stamp(diagram.verified_at)}` : 'Not verified'], ['Approved by (SDM)', diagram?.status === 'reviewed' ? `${diagram.reviewed_by_name} · ${stamp(diagram.reviewed_at)}` : 'Not approved']].map(([k, v]) => (
-            <div key={k} className="border-r border-[#2d3b1f] last:border-r-0"><b className="block bg-[#e9f0d4] py-0.5 font-semibold">{k}</b><span className="block py-1">{v}</span></div>
-          ))}
-        </div>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          {/* title block */}
+          <div className="border-[1.2px] border-[#15191e] text-[0.6875rem]">
+            <div className="grid grid-cols-[6rem_repeat(3,minmax(0,1fr))]">
+              <div className="row-span-3 grid place-items-center border-[#15191e] p-1.5"><img src="/brand/nesr-dark-160.png" alt="NESR" className="h-9 w-auto" /></div>
+              <div className="col-span-2 flex items-center border-l border-[#15191e] px-2 py-1.5 font-display text-[0.95rem] font-extrabold tracking-wide uppercase">
+                {rig ? 'Rig up diagram · pressure control' : `Slickline string diagram · BHA · Run ${run}`}
+              </div>
+              {fact('Form', `${FORM[kind].code}${rig ? '' : ' Rev 2'}`, true)}
+              {fact('Client', 'Saudi Aramco')}{fact('Well', job.well)}{fact('Diagram rev', String(rev), true)}
+              {fact('Field / Rig', [job.field, job.rig].filter(Boolean).join(' / '))}{fact('Job ref.', [job.ticket_no, job.drss_no].filter(Boolean).join(' / '))}{fact('Date', job.start_date ? formatDate(job.start_date) : null)}
+            </div>
+            <div className="grid grid-cols-3 border-t border-[#15191e]">
+              {sign('Prepared', diagram?.sent_by_name ?? diagram?.updated_by_name, diagram?.sent_at ?? diagram?.updated_at, '—')}
+              {sign('Verified', diagram?.verified_at ? diagram.verified_by_name : null, diagram?.verified_at, 'Not verified')}
+              {sign('Approved (SDM)', diagram?.status === 'reviewed' ? diagram.reviewed_by_name : null, diagram?.status === 'reviewed' ? diagram.reviewed_at : null, 'Not approved')}
+            </div>
+          </div>
+        </div></div>
       </div>
     </div>
   );
