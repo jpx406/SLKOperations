@@ -33,6 +33,11 @@ export interface KnowledgeDoc {
   doc_type: DocType | null; category: string | null; title: string; summary: string | null; key_action: string | null;
   failure_types: string[]; published_on: string | null; rilr_ref: string | null; source_ref: string | null; duplicate_of: string | null; lesson_of_week_from: string | null;
   doc_no: string | null; revision: number; review_due: string | null; retired_at: string | null;
+  /** Document control (6z.14): internal or external origin, author, expiry, a fillable form, when the live revision was published. */
+  origin?: 'internal' | 'external'; author?: string | null; expires_on?: string | null; is_form?: number; published_at?: string | null; approved_by?: string | null;
+  approved_by_name?: string | null; retire_reason?: string | null;
+  /** The revision being worked on, if any (staff only). */
+  open?: { id: string; revision: number; status: 'draft' | 'review' | 'approval'; reviewer: string | null; approver: string | null; sent_back_reason: string | null } | null;
   /** The current document file, if one was uploaded. */
   file?: KbFile | null;
   /** The current editable version (admins only). */
@@ -42,10 +47,11 @@ export interface KnowledgeDoc {
 export interface DocInput {
   type?: unknown; country?: unknown; company?: unknown; client?: unknown; doc_type?: unknown; category?: unknown; title?: unknown; summary?: unknown; key_action?: unknown;
   failure_types?: unknown; published_on?: unknown; rilr_ref?: unknown; source_ref?: unknown; duplicate_of?: unknown; doc_no?: unknown; review_due?: unknown;
+  origin?: unknown; author?: unknown; is_form?: unknown;
 }
 
 export type CleanDoc = Pick<KnowledgeDoc, 'section' | 'country' | 'company' | 'client' | 'doc_type' | 'category' | 'title' | 'summary' | 'key_action' | 'failure_types'
-  | 'published_on' | 'rilr_ref' | 'source_ref' | 'duplicate_of' | 'doc_no' | 'review_due'>;
+  | 'published_on' | 'rilr_ref' | 'source_ref' | 'duplicate_of' | 'doc_no' | 'review_due'> & { origin: 'internal' | 'external'; author: string | null; is_form: number };
 
 const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -87,6 +93,7 @@ export function checkDoc(b: DocInput, countries: string[]): { error: string } | 
       summary: text(b.summary, 4000) || null, key_action: lesson ? text(b.key_action, 1000) || null : null, failure_types: types, published_on: published || null,
       rilr_ref: lesson ? text(b.rilr_ref, 120) || null : null, source_ref: link || null, duplicate_of: lesson ? text(b.duplicate_of, 64) || null : null,
       doc_no: docNo || null, review_due: review || null,
+      origin: b.origin === 'external' ? 'external' : 'internal', author: text(b.author, 120) || null, is_form: section !== 'lesson' && (b.is_form === true || b.is_form === 1 || b.is_form === '1') ? 1 : 0,
     },
   };
 }
@@ -97,7 +104,7 @@ export function placeCode(country: string): string {
   const words = country.toUpperCase().replace(/[^A-Z ]/g, '').split(/\s+/).filter(Boolean);
   return words.length > 1 ? words.map((w) => w[0]).join('') : (words[0] ?? 'XX').slice(0, 3);
 }
-const COMPANY_CODE: Record<string, string> = { NESR: 'NESR', SAPESCO: 'SAP', 'Gulf Energy': 'GE' };
+export const COMPANY_CODE: Record<string, string> = { NESR: 'NESR', SAPESCO: 'SAP', 'Gulf Energy': 'GE' };
 
 /** The prefix a new document number counts from: LL-SA, SOP-GL-NESR, CP-BAH. */
 export function docPrefix(d: Pick<CleanDoc, 'section' | 'country' | 'company'>): string {

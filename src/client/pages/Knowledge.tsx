@@ -1,78 +1,89 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, BookOpen, ChevronLeft, ChevronRight, Download, ExternalLink, Eye, FileText, History, Pencil, Play, Plus, RotateCcw, Search, Star, Upload, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Archive as ArchiveIcon, BookOpen, ChevronLeft, ChevronRight, Download, ExternalLink, FileText, Files, Pencil, Play, Plus, QrCode, RotateCcw, Search, Star, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { INLINE, TYPES, checkUpload, sizeText } from '../../shared/attachments';
+import { renderSVG } from 'uqr';
 import {
-  ADD_TYPES, DOC_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, addTypeOf, docPrefix, filterLibrary, groupByPlace, isSection, lessonOfWeek, matches, proceduresForJob, reviewState,
-  type AddType, type DocType, type KbFile, type KnowledgeDoc, type Section,
+  ADD_TYPES, DOC_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, addTypeOf, filterLibrary, groupByPlace, isSection, lessonOfWeek, matches, proceduresForJob, reviewState,
+  type AddType, type DocType, type KnowledgeDoc, type Section,
 } from '../../shared/knowledge';
+import { expiryState, formatNumber, numberPrefix } from '../../shared/knowledgeControl';
 import { ApiError, api, formatDate } from '../api';
 import { Attachments } from '../components/Attachments';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { ACCEPT, DocState, Dialog, EDITABLE_ACCEPT, fileUrl, linkBtn, today, uploadFile, type Library } from './knowledge/common';
+import { Archive, BatchAdd, ManualsView, Queue, Register, Settings } from './knowledge/Control';
+import { Revisions } from './knowledge/Revisions';
 
-// Knowledge Hub in three sections (6z.13): lessons and best practices (with the reader / toolbox-talk mode, S43),
-// SLK SOPs grouped Global first then by country, and client procedures by country and client. Each entry keeps its
-// document file for everyone to download and, for admins, the editable version and the older revisions.
+// Knowledge Hub (S21, S43, 6z.13, 6z.14): lessons and best practices, SLK SOPs and client procedures, each under
+// document control (draft, review, approval, published revision, history, stamped downloads), plus the reference
+// manuals library, and for staff the approval queue, the register, the archive and the settings.
 
-interface Library { docs: KnowledgeDoc[]; canEdit: boolean; isAdmin: boolean; places: string[]; clients: string[] }
-interface FileRow extends KbFile { kind: 'published' | 'source'; superseded_at: string | null; change_note: string | null }
-
-const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
-const fileUrl = (docId: string, f: { id: string }, inline = false) => `/api/knowledge/${docId}/files/${f.id}${inline ? '?inline=1' : ''}`;
-const ACCEPT = Object.keys(TYPES).map((e) => `.${e}`).join(',');
-const EDITABLE_ACCEPT = '.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.txt,.csv,.zip';
-const linkBtn = 'inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-semibold text-text hover:bg-surface-2';
-
-async function uploadFile(docId: string, file: File, kind: 'published' | 'source', note?: string) {
-  const ok = checkUpload(file.name, file.size);
-  if ('error' in ok) throw new ApiError(400, ok.error, {});
-  const qs = new URLSearchParams({ kind, ...(note ? { note } : {}) });
-  return api<{ revision: number }>(`/knowledge/${docId}/files?${qs}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
-}
+type View = Section | 'manuals' | 'queue' | 'register' | 'archive' | 'settings';
+const VIEWS: Record<View, string> = {
+  lesson: SECTIONS.lesson, sop: SECTIONS.sop, client: SECTIONS.client, manuals: 'Reference manuals', queue: 'Queue', register: 'Register', archive: 'Archive', settings: 'Settings',
+};
 
 export function KnowledgeHub() {
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['knowledge'], queryFn: () => api<Library>('/knowledge') });
   const set = (k: string, v: string) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); setParams(n, { replace: true }); };
-  const s: Section = isSection(params.get('s')) ? (params.get('s') as Section) : 'lesson';
-  const showRetired = params.get('retired') === '1';
-  const all = useMemo(() => (q.data?.docs ?? []).filter((d) => showRetired || !d.retired_at), [q.data, showRetired]);
-  const [reading, setReading] = useState<KnowledgeDoc | null>(null);
+  const lib = q.data;
+  const me = lib?.me;
+  const staff = !!me && (me.admin || me.editor || me.reviewer || me.approver);
+  const views: View[] = ['lesson', 'sop', 'client', 'manuals', ...(staff ? (['queue', 'register'] as View[]) : []), ...(me && (me.admin || me.approver) ? (['archive'] as View[]) : []), ...(staff ? (['settings'] as View[]) : [])];
+  const raw = params.get('s') ?? params.get('view') ?? 'lesson';
+  const view: View = (views as string[]).includes(raw) ? (raw as View) : 'lesson';
+  const section: Section = isSection(view) ? view : 'lesson';
+  const all = lib?.docs ?? [];
+  const reading = params.get('doc');
   const [editing, setEditing] = useState<KnowledgeDoc | 'new' | null>(null);
-  const canEdit = !!q.data?.canEdit;
-  const refresh = () => qc.invalidateQueries({ queryKey: ['knowledge'] });
-  const counts = (sec: Section) => all.filter((d) => d.section === sec && !d.duplicate_of && !d.retired_at).length;
-  // keep the open reader in step with the list after a change
-  const open = reading ? all.find((d) => d.id === reading.id) ?? reading : null;
+  const [batch, setBatch] = useState(false);
+  const canEdit = !!lib?.canEdit;
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['knowledge'] }); qc.invalidateQueries({ queryKey: ['knowledge-queue'] }); qc.invalidateQueries({ queryKey: ['knowledge-register'] }); };
+  const counts = (sec: Section) => all.filter((d) => d.section === sec && !d.duplicate_of && d.published_at).length;
+  const open = (id: string) => set('doc', id);
+  const pick = (v: View) => { const n = new URLSearchParams(); if (v !== 'lesson') n.set('s', v); setParams(n, { replace: true }); };
 
   return (
     <section aria-labelledby="kh-title">
-      <PageTitle aside={canEdit && <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus aria-hidden className="size-4" />Add document</Button>}>
+      <PageTitle aside={canEdit && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => setBatch(true)}><Files aria-hidden className="size-4" />Add several</Button>
+          <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus aria-hidden className="size-4" />Add document</Button>
+        </div>
+      )}>
         <span id="kh-title">Knowledge Hub</span>
       </PageTitle>
       <div role="tablist" aria-label="Knowledge Hub sections" className="mb-4 flex flex-wrap gap-2">
-        {(Object.keys(SECTIONS) as Section[]).map((k) => (
-          <button key={k} role="tab" aria-selected={s === k} onClick={() => setParams(k === 'lesson' ? {} : { s: k }, { replace: true })}
-            className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', s === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>
-            {SECTIONS[k]} <span className="font-mono font-normal opacity-80">{q.data ? counts(k) : ''}</span>
+        {views.map((k) => (
+          <button key={k} role="tab" aria-selected={view === k} onClick={() => pick(k)}
+            className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', view === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text',
+              k === 'queue' && 'ml-0 sm:ml-2')}>
+            {VIEWS[k]}
+            {isSection(k) && lib && <span className="ml-1 font-mono font-normal opacity-80">{counts(k)}</span>}
+            {k === 'queue' && !!lib?.queueCount && <span className="ml-1 rounded-pill bg-warning px-1.5 font-mono text-xs text-on-accent">{lib.queueCount}</span>}
           </button>
         ))}
-        {q.data?.isAdmin && <label className="ml-auto flex items-center gap-2 text-sm text-text-muted"><input type="checkbox" checked={showRetired} onChange={(e) => set('retired', e.target.checked ? '1' : '')} />Show retired</label>}
       </div>
       {q.isLoading && <Skeleton className="h-64" />}
       {q.isError && <Banner tone="danger">{q.error.message}</Banner>}
-      {q.data && (
-        <div role="tabpanel" aria-label={SECTIONS[s]}>
-          {s === 'lesson'
-            ? <Lessons all={all.filter((d) => d.section === 'lesson')} canEdit={canEdit} params={params} set={set} onRead={setReading} onEdit={setEditing} refresh={refresh} />
-            : <Controlled section={s} all={all.filter((d) => d.section === s)} canEdit={canEdit} params={params} set={set} onRead={setReading} />}
+      {lib && (
+        <div role="tabpanel" aria-label={VIEWS[view]}>
+          {view === 'lesson' && <Lessons all={all.filter((d) => d.section === 'lesson')} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onEdit={setEditing} refresh={refresh} />}
+          {(view === 'sop' || view === 'client') && <Controlled section={view} all={all.filter((d) => d.section === view)} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} />}
+          {view === 'manuals' && <ManualsView />}
+          {view === 'queue' && <Queue onOpen={open} />}
+          {view === 'register' && <Register onOpen={open} />}
+          {view === 'archive' && <Archive onOpen={open} onChange={refresh} />}
+          {view === 'settings' && <Settings />}
         </div>
       )}
-      {open && q.data && <Reader doc={open} lib={q.data} onClose={() => setReading(null)} onEdit={() => setEditing(open)} refresh={refresh} />}
-      {editing && q.data && <Editor doc={editing === 'new' ? null : editing} lib={q.data} section={s} onClose={(changed) => { setEditing(null); if (changed) refresh(); }} />}
+      {reading && lib && <Reader id={reading} lib={lib} onClose={() => set('doc', '')} onEdit={(d) => setEditing(d)} refresh={refresh} />}
+      {editing && lib && <Editor doc={editing === 'new' ? null : editing} lib={lib} section={section} onClose={(changed, id) => { setEditing(null); if (changed) refresh(); if (id) open(id); }} />}
+      {batch && lib && <BatchAdd lib={lib} section={section} onClose={(changed) => { setBatch(false); if (changed) refresh(); }} />}
     </section>
   );
 }
@@ -86,12 +97,14 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, refresh }: {
   const f = { q: params.get('q') ?? '', type: params.get('type') ?? '', category: params.get('category') ?? '', failure: params.get('failure') ?? '', place: params.get('place') ?? '',
     sort: (params.get('sort') === 'az' ? 'az' : 'newest') as 'az' | 'newest', duplicates: params.get('dups') === '1' };
   const lib = useMemo(() => filterLibrary(all, f), [all, f.q, f.type, f.category, f.failure, f.place, f.sort, f.duplicates]); // eslint-disable-line react-hooks/exhaustive-deps
-  const hero = useMemo(() => lessonOfWeek(all, today()), [all]);
+  const published = useMemo(() => all.filter((d) => d.published_at), [all]);
+  const hero = useMemo(() => lessonOfWeek(published, today()), [published]);
   const [present, setPresent] = useState<KnowledgeDoc[] | null>(null);
   const pick = async (d: KnowledgeDoc) => { await api(`/knowledge/${d.id}/lesson-of-week`, { method: 'POST' }); refresh(); };
   const chip = (on: boolean) => cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
+  const presentable = lib.docs.filter((d) => d.published_at);
 
-  if (!all.length) return <EmptyState title="No lessons yet">{canEdit ? 'Add lessons learnt, best practices and learnings from incidents with Add document. File each one under a country or Global.' : 'Nothing has been added yet.'}</EmptyState>;
+  if (!all.length) return <EmptyState title="No lessons yet">{canEdit ? 'Add lessons learnt, best practices and learnings from incidents with Add document. Each one is reviewed and approved before readers see it.' : 'Nothing has been published yet.'}</EmptyState>;
   return (
     <>
       {hero && (
@@ -117,7 +130,7 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, refresh }: {
         </Select>
         <Select aria-label="Sort" className={inputSized('w-32')} value={f.sort} onChange={(e) => set('sort', e.target.value === 'az' ? 'az' : '')}><option value="newest">Newest</option><option value="az">A → Z</option></Select>
         <label className="flex h-(--layout-control-md) items-center gap-2 text-sm"><input type="checkbox" checked={f.duplicates} onChange={(e) => set('dups', e.target.checked ? '1' : '')} />Show duplicates</label>
-        {lib.docs.length > 0 && <Button className="ml-auto" onClick={() => setPresent(lib.docs)}><Play aria-hidden className="size-4" />Present these {lib.docs.length} as a toolbox talk</Button>}
+        {presentable.length > 0 && <Button className="ml-auto" onClick={() => setPresent(presentable)}><Play aria-hidden className="size-4" />Present these {presentable.length} as a toolbox talk</Button>}
       </div>
       <div role="group" aria-label="Document type" className="mb-2 flex flex-wrap gap-1.5">
         <button type="button" className={chip(!f.type)} onClick={() => set('type', '')}>All types</button>
@@ -131,21 +144,21 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, refresh }: {
       <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {lib.docs.map((d) => (
           <li key={d.id}>
-            <Card className={cx('flex h-full flex-col', (d.duplicate_of || d.retired_at) && 'opacity-70')}>
-              <p className="label-caps text-text-muted">{d.doc_type && DOC_TYPES[d.doc_type]} · {d.country}{d.duplicate_of && ' · duplicate'}{d.retired_at && ' · retired'}</p>
+            <Card className={cx('flex h-full flex-col', (d.duplicate_of || !d.published_at) && 'opacity-80')}>
+              <p className="label-caps flex flex-wrap items-center gap-1.5 text-text-muted">{d.doc_type && DOC_TYPES[d.doc_type]} · {d.country}{d.duplicate_of && ' · duplicate'} <DocState d={d} /></p>
               <h3 className="mt-1 font-display text-base font-bold">{d.title}</h3>
               {d.summary && <p className="mt-1 line-clamp-3 text-sm text-text-muted">{d.summary}</p>}
               {d.failure_types.length > 0 && <p className="mt-2 flex flex-wrap gap-1">{d.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
               <p className="mt-2 text-xs text-text-subtle">
                 {d.category}{d.category && ' · '}{d.published_on ? formatDate(d.published_on) : 'no date'}
-                {d.doc_no && <> · <span className="font-mono">{d.doc_no}</span></>}{d.rilr_ref && <> · <span className="font-mono">{d.rilr_ref}</span></>}
+                {d.doc_no && <> · <span className="font-mono">{d.doc_no}</span></>}{d.published_at && ` · Rev ${d.revision}`}{d.rilr_ref && <> · <span className="font-mono">{d.rilr_ref}</span></>}
               </p>
               <div className="mt-auto flex flex-wrap gap-1 pt-3">
                 <Button size="sm" onClick={() => onRead(d)}><BookOpen aria-hidden className="size-3.5" />Read</Button>
                 {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name}><Download aria-hidden className="size-3.5" />Download</a>}
-                <Button size="sm" variant="ghost" onClick={() => setPresent([d])}><Play aria-hidden className="size-3.5" />Present</Button>
+                {d.published_at && <Button size="sm" variant="ghost" onClick={() => setPresent([d])}><Play aria-hidden className="size-3.5" />Present</Button>}
                 {canEdit && <Button size="sm" variant="ghost" aria-label={`Edit ${d.title}`} onClick={() => onEdit(d)}><Pencil aria-hidden className="size-3.5" /></Button>}
-                {canEdit && !d.duplicate_of && !d.retired_at && hero?.id !== d.id && <Button size="sm" variant="ghost" aria-label={`Make ${d.title} the lesson of the week`} title="Make this the lesson of the week" onClick={() => pick(d)}><Star aria-hidden className="size-3.5" /></Button>}
+                {canEdit && d.published_at && !d.duplicate_of && hero?.id !== d.id && <Button size="sm" variant="ghost" aria-label={`Make ${d.title} the lesson of the week`} title="Make this the lesson of the week" onClick={() => pick(d)}><Star aria-hidden className="size-3.5" /></Button>}
               </div>
             </Card>
           </li>
@@ -182,8 +195,8 @@ function Controlled({ section, all, canEdit, params, set, onRead }: {
 
   if (!all.length) {
     return <EmptyState title={`No ${what} yet`}>{canEdit
-      ? section === 'sop' ? 'Add an SOP with Add document: pick SLK Standard Operating Procedure, then Global or a country, and the company.' : 'Add a client procedure with Add document: pick Client procedure, the country and the client. It shows on every job in that country.'
-      : 'Nothing has been added yet.'}</EmptyState>;
+      ? section === 'sop' ? 'Add an SOP with Add document: pick SLK Standard Operating Procedure, then Global or a country, and the company. It is reviewed and approved before readers see it.' : 'Add a client procedure with Add document: pick Client procedure, the country and the client. Once approved it shows on every job in that country.'
+      : 'Nothing has been published yet.'}</EmptyState>;
   }
   return (
     <>
@@ -227,158 +240,113 @@ const groupClients = (docs: KnowledgeDoc[]) => {
   return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([c, list]) => [c, list.sort((a, b) => a.title.localeCompare(b.title))] as const);
 };
 
-function DocList({ docs, onRead }: { docs: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void }) {
+function Flags({ d }: { d: KnowledgeDoc }) {
   const now = today();
+  const review = d.published_at ? reviewState(d.review_due, now) : null;
+  const expiry = d.published_at ? expiryState(d.expires_on ?? null, now) : null;
+  return (
+    <>
+      {review && <span className={cx('ml-1.5 font-semibold', review === 'overdue' ? 'text-danger' : 'text-warning')}>· review {review === 'overdue' ? 'overdue' : 'due'} {formatDate(d.review_due!)}</span>}
+      {expiry && <span className={cx('ml-1.5 font-semibold', expiry === 'expired' ? 'text-danger' : 'text-warning')}>· {expiry === 'expired' ? 'expired' : 'expires'} {formatDate(d.expires_on!)}</span>}
+      {d.origin === 'external' && <span className="ml-1.5">· external</span>}
+    </>
+  );
+}
+
+function DocList({ docs, onRead }: { docs: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void }) {
   return (
     <ul className="divide-y divide-border">
-      {docs.map((d) => {
-        const review = reviewState(d.review_due, now);
-        return (
-          <li key={d.id} className={cx('flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5', d.retired_at && 'opacity-60')}>
-            <FileText aria-hidden className="size-4 shrink-0 text-text-subtle" />
-            <div className="min-w-0 flex-1 basis-56">
-              <button type="button" className="text-left font-semibold hover:underline" onClick={() => onRead(d)}>{d.title}</button>
-              <p className="text-xs text-text-muted">
-                {d.doc_no && <span className="font-mono">{d.doc_no}</span>}{d.doc_no && ' · '}Rev {d.revision}
-                {d.company && ` · ${d.company}`}{d.published_on && ` · ${formatDate(d.published_on)}`}
-                {review && <span className={cx('ml-1.5 font-semibold', review === 'overdue' ? 'text-danger' : 'text-warning')}>· review {review === 'overdue' ? 'overdue' : 'due'} {formatDate(d.review_due!)}</span>}
-                {d.retired_at && ' · retired'}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {d.file
-                ? <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title}`}><Download aria-hidden className="size-3.5" />Download</a>
-                : <span className="px-2 text-xs text-text-subtle">no file yet</span>}
-              <Button size="sm" variant="ghost" onClick={() => onRead(d)}><BookOpen aria-hidden className="size-3.5" />Open</Button>
-            </div>
-          </li>
-        );
-      })}
+      {docs.map((d) => (
+        <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+          <FileText aria-hidden className="size-4 shrink-0 text-text-subtle" />
+          <div className="min-w-0 flex-1 basis-56">
+            <button type="button" className="text-left font-semibold hover:underline" onClick={() => onRead(d)}>{d.title}</button>
+            <p className="text-xs text-text-muted">
+              {d.doc_no && <span className="font-mono">{d.doc_no}</span>}{d.doc_no && ' · '}{d.published_at ? `Rev ${d.revision}` : 'not published'}
+              {d.company && ` · ${d.company}`}{d.is_form ? ' · form' : ''}{d.published_on && ` · ${formatDate(d.published_on)}`}
+              <Flags d={d} />
+            </p>
+          </div>
+          <DocState d={d} />
+          <div className="flex flex-wrap gap-1">
+            {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title}`}><Download aria-hidden className="size-3.5" />Download</a>}
+            {d.is_form && d.source ? <a className={linkBtn} href={fileUrl(d.id, d.source)} download={d.source.file_name} aria-label={`Download the form ${d.title}`}><Download aria-hidden className="size-3.5" />Form</a> : null}
+            <Button size="sm" variant="ghost" onClick={() => onRead(d)}><BookOpen aria-hidden className="size-3.5" />Open</Button>
+          </div>
+        </li>
+      ))}
     </ul>
   );
 }
 
-// ---- reader: details, files, revisions ---------------------------------------------------------------------------
+// ---- reader -------------------------------------------------------------------------------------------------------
 
-function Dialog({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
-  return (
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4">
-      <Card className={cx('max-h-[90vh] w-full overflow-y-auto', wide ? 'max-w-3xl' : 'max-w-xl')}>
-        <div className="mb-3 flex items-start gap-3"><h2 className="min-w-0 flex-1 font-display text-lg font-bold">{title}</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
-        {children}
-      </Card>
-    </div>
-  );
-}
-
-function Reader({ doc, lib, onClose, onEdit, refresh }: { doc: KnowledgeDoc; lib: Library; onClose: () => void; onEdit: () => void; refresh: () => void }) {
+function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Library; onClose: () => void; onEdit: (d: KnowledgeDoc) => void; refresh: () => void }) {
+  const inList = lib.docs.find((d) => d.id === id);
+  // retired entries (from the archive) aren't in the list: fetch them
+  const one = useQuery({ queryKey: ['knowledge-doc', id], queryFn: () => api<KnowledgeDoc>(`/knowledge/${id}`), enabled: !inList });
+  const doc = inList ?? one.data;
   const [present, setPresent] = useState(false);
+  const [qr, setQr] = useState(false);
+  const [retiring, setRetiring] = useState(false);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  if (!doc) {
+    return <Dialog title="Document" onClose={onClose}>{one.isError ? <Banner tone="danger">{one.error.message}</Banner> : <Skeleton className="h-24" />}</Dialog>;
+  }
   const original = lib.docs.find((x) => x.id === doc.duplicate_of);
   const lesson = doc.section === 'lesson';
-  const review = reviewState(doc.review_due, today());
-  const retire = async () => { await api(`/knowledge/${doc.id}/${doc.retired_at ? 'restore' : 'retire'}`, { method: 'POST' }); refresh(); };
-  const meta = [ADD_TYPES[addTypeOf(doc)].label, doc.country, doc.company, doc.client, doc.category, doc.published_on && formatDate(doc.published_on), doc.rilr_ref].filter(Boolean).join(' · ');
+  const review = doc.published_at ? reviewState(doc.review_due, today()) : null;
+  const expiry = doc.published_at ? expiryState(doc.expires_on ?? null, today()) : null;
+  const mayRetire = lib.me.admin || lib.me.approver;
+  const retire = async (on: boolean) => {
+    setError(null);
+    try {
+      await api(`/knowledge/${doc.id}/${on ? 'retire' : 'restore'}`, { method: 'POST', json: { reason } });
+      setRetiring(false); refresh(); qc.invalidateQueries({ queryKey: ['knowledge-archive'] }); qc.invalidateQueries({ queryKey: ['knowledge-doc', id] });
+      if (on) onClose();
+    } catch (e) { setError((e as ApiError).message); }
+  };
+  const meta = [ADD_TYPES[addTypeOf(doc)].label, doc.country, doc.company, doc.client, doc.category, doc.author && `Author ${doc.author}`, doc.published_on && formatDate(doc.published_on), doc.rilr_ref].filter(Boolean).join(' · ');
+  const link = `${window.location.origin}/knowledge?doc=${doc.id}`;
   if (present) return <Present docs={[doc]} onClose={() => setPresent(false)} />;
   return (
     <Dialog title={doc.title} onClose={onClose} wide>
-      <p className="text-xs text-text-muted">{doc.doc_no && <span className="font-mono">{doc.doc_no} · </span>}Rev {doc.revision} · {meta}</p>
-      {doc.retired_at && <div className="mt-2"><Banner tone="warning">Retired. Only admins see this document.</Banner></div>}
+      <p className="text-xs text-text-muted">{doc.doc_no && <span className="font-mono">{doc.doc_no} · </span>}{doc.published_at ? `Rev ${doc.revision}` : 'Not published'} · {meta}</p>
+      {error && <div className="mt-2"><Banner tone="danger">{error}</Banner></div>}
+      {doc.retired_at && <div className="mt-2"><Banner tone="warning">Retired {formatDate(doc.retired_at.slice(0, 10))}{doc.retire_reason && `: ${doc.retire_reason}`}. Only admins and approvers see it.</Banner></div>}
+      {doc.origin === 'external' && <div className="mt-2"><Banner tone="info">External document: controlled distribution. Check with its owner before sharing it outside NESR.</Banner></div>}
       {original && <div className="mt-2"><Banner tone="info">This repeats “{original.title}”.</Banner></div>}
-      {review && <div className="mt-2"><Banner tone={review === 'overdue' ? 'danger' : 'warning'}>Review {review === 'overdue' ? 'was due' : 'is due'} on {formatDate(doc.review_due!)}.</Banner></div>}
+      {review && <div className="mt-2"><Banner tone={review === 'overdue' ? 'danger' : 'warning'}>Periodic review {review === 'overdue' ? 'was due' : 'is due'} on {formatDate(doc.review_due!)}.</Banner></div>}
+      {expiry && <div className="mt-2"><Banner tone={expiry === 'expired' ? 'danger' : 'warning'}>{expiry === 'expired' ? 'Expired' : 'Expires'} on {formatDate(doc.expires_on!)}.</Banner></div>}
       {doc.summary && <p className="mt-3 whitespace-pre-wrap text-sm">{doc.summary}</p>}
       {doc.key_action && <div className="mt-3 rounded-md bg-warning-subtle p-3 text-sm"><span className="font-semibold">Key action: </span>{doc.key_action}</div>}
       {doc.failure_types.length > 0 && <p className="mt-3 flex flex-wrap gap-1">{doc.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
-      <Files doc={doc} onChange={refresh} />
+      <Revisions doc={doc} people={lib.people} onChange={() => { refresh(); qc.invalidateQueries({ queryKey: ['knowledge-doc', id] }); }} />
       {lesson && <div className="mt-4 rounded-md border border-border p-3"><Attachments entity="knowledge" id={doc.id} title="Supporting files" /></div>}
+      {qr && (
+        <div className="mt-4 flex flex-wrap items-center gap-4 rounded-md border border-border p-3">
+          <div className="size-36 shrink-0 rounded-sm bg-white p-1" dangerouslySetInnerHTML={{ __html: renderSVG(link, { border: 1, ecc: 'M', whiteColor: '#ffffff', blackColor: '#0b121a' }) }} />
+          <p className="min-w-0 flex-1 basis-48 text-sm">Scanning opens this document in SLK Operations Hub, always at the published revision. Print it on toolboxes or in the unit. <span className="block break-all font-mono text-xs text-text-muted">{link}</span></p>
+        </div>
+      )}
+      {retiring && (
+        <div className="mt-4 rounded-md bg-surface-2 p-3">
+          <Field id="kr-retire" label="Why is it retired?"><input id="kr-retire" className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Replaced by SOP-GL-NESR-014" /></Field>
+          <Button className="mt-2" variant="danger" disabled={!reason.trim()} onClick={() => retire(true)}>Retire and move to the archive</Button>
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap gap-2">
-        {lesson && <Button variant="primary" onClick={() => setPresent(true)}><Play aria-hidden className="size-4" />Present to the crew</Button>}
+        {lesson && doc.published_at && <Button variant="primary" onClick={() => setPresent(true)}><Play aria-hidden className="size-4" />Present to the crew</Button>}
         {doc.source_ref && <a href={doc.source_ref} target="_blank" rel="noreferrer noopener" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><ExternalLink aria-hidden className="size-4" />Open the source link</a>}
-        {lib.canEdit && <Button onClick={onEdit}><Pencil aria-hidden className="size-4" />Edit details</Button>}
-        {lib.isAdmin && <Button variant={doc.retired_at ? 'secondary' : 'danger'} className="ml-auto" onClick={retire}>{doc.retired_at ? <><RotateCcw aria-hidden className="size-4" />Restore</> : <><Archive aria-hidden className="size-4" />Retire</>}</Button>}
+        {doc.published_at && <Button onClick={() => setQr(!qr)}><QrCode aria-hidden className="size-4" />QR code</Button>}
+        {lib.canEdit && !doc.retired_at && <Button onClick={() => onEdit(doc)}><Pencil aria-hidden className="size-4" />Edit details</Button>}
+        {mayRetire && (doc.retired_at
+          ? <Button className="ml-auto" onClick={() => retire(false)}><RotateCcw aria-hidden className="size-4" />Restore</Button>
+          : <Button variant="danger" className="ml-auto" onClick={() => setRetiring(!retiring)}><ArchiveIcon aria-hidden className="size-4" />Retire</Button>)}
       </div>
     </Dialog>
-  );
-}
-
-/** The document file (everyone), the editable version and the revision history (admins), and uploads. */
-function Files({ doc, onChange }: { doc: KnowledgeDoc; onChange: () => void }) {
-  const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['knowledge-files', doc.id], queryFn: () => api<{ files: FileRow[]; revision: number; isAdmin: boolean; canUpload: boolean; storage: boolean }>(`/knowledge/${doc.id}/files`) });
-  const [mode, setMode] = useState<'replace' | 'source' | null>(null);
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
-  const pick = useRef<HTMLInputElement>(null);
-  const files = q.data?.files ?? [];
-  const current = files.find((f) => f.kind === 'published' && !f.superseded_at);
-  const source = files.find((f) => f.kind === 'source' && !f.superseded_at);
-  const history = files.filter((f) => f.superseded_at);
-  const admin = !!q.data?.isAdmin;
-  const send = async (file: File | undefined, kind: 'published' | 'source') => {
-    if (!file) return;
-    setBusy(true); setError(null);
-    try {
-      await uploadFile(doc.id, file, kind, mode === 'replace' ? note.trim() : undefined);
-      setMode(null); setNote('');
-      qc.invalidateQueries({ queryKey: ['knowledge-files', doc.id] }); onChange();
-    } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); if (pick.current) pick.current.value = ''; }
-  };
-  const row = (f: FileRow, label: string) => (
-    <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-      <div className="min-w-0 flex-1 basis-48">
-        <p className="label-caps text-text-muted">{label}</p>
-        <p className="truncate text-sm font-semibold">{f.file_name}</p>
-        <p className="text-xs text-text-subtle">Rev {f.revision} · {sizeText(f.size_bytes)} · {f.uploaded_by_name} · {formatDate(f.uploaded_at.slice(0, 10))}{f.change_note && ` · ${f.change_note}`}</p>
-      </div>
-      <div className="flex gap-1">
-        {INLINE.has(f.content_type) && <a className={linkBtn} href={fileUrl(doc.id, f, true)} target="_blank" rel="noreferrer"><Eye aria-hidden className="size-3.5" />View</a>}
-        <a className={linkBtn} href={fileUrl(doc.id, f)} download={f.file_name}><Download aria-hidden className="size-3.5" />Download</a>
-      </div>
-    </li>
-  );
-  if (q.isLoading) return <Skeleton className="mt-4 h-16" />;
-  if (q.isError) return <div className="mt-4"><Banner tone="danger">{q.error.message}</Banner></div>;
-  const canFirst = !!q.data?.canUpload && !current;
-  return (
-    <div className="mt-4 rounded-md border border-border p-3">
-      <h3 className="font-display text-sm font-bold">Document</h3>
-      {error && <div className="mt-2"><Banner tone="danger">{error}</Banner></div>}
-      {!q.data?.storage && <p className="mt-1 text-xs text-text-muted">File storage isn’t set up on the server yet.</p>}
-      <ul className="divide-y divide-border">
-        {current && row(current, `Current document · Rev ${current.revision}`)}
-        {admin && source && row(source, 'Editable version (admins only)')}
-      </ul>
-      {!current && <p className="mt-1 text-sm text-text-muted">No file yet.{canFirst ? ' Add the document file below.' : ''}</p>}
-      {canFirst && (
-        <label className={cx(linkBtn, 'mt-2 cursor-pointer')}>
-          <Upload aria-hidden className="size-3.5" />{busy ? 'Uploading…' : 'Add the document file'}
-          <input ref={pick} type="file" accept={ACCEPT} className="sr-only" disabled={busy} onChange={(e) => send(e.target.files?.[0], 'published')} />
-        </label>
-      )}
-      {admin && q.data?.storage && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {current && <Button size="sm" variant={mode === 'replace' ? 'primary' : 'secondary'} onClick={() => setMode(mode === 'replace' ? null : 'replace')}><Upload aria-hidden className="size-3.5" />Replace with a new revision</Button>}
-          <label className={cx(linkBtn, 'cursor-pointer')}>
-            <Upload aria-hidden className="size-3.5" />{source ? 'Replace the editable version' : 'Add the editable version'}
-            <input type="file" accept={EDITABLE_ACCEPT} className="sr-only" disabled={busy} onChange={(e) => send(e.target.files?.[0], 'source')} />
-          </label>
-          {history.length > 0 && <Button size="sm" variant="ghost" onClick={() => setShowHistory(!showHistory)}><History aria-hidden className="size-3.5" />{showHistory ? 'Hide' : 'Show'} older revisions ({history.length})</Button>}
-        </div>
-      )}
-      {mode === 'replace' && (
-        <div className="mt-3 rounded-md bg-surface-2 p-3">
-          <p className="text-sm">The new file becomes <strong>Rev {(q.data?.revision ?? 0) + 1}</strong>. Rev {q.data?.revision} is kept and only admins can open it.</p>
-          <Field id="kf-note" label="What changed"><input id="kf-note" className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Updated the pressure test steps" /></Field>
-          <label className={cx(linkBtn, 'mt-2', note.trim() ? 'cursor-pointer' : 'pointer-events-none opacity-50')}>
-            <Upload aria-hidden className="size-3.5" />{busy ? 'Uploading…' : 'Pick the new file'}
-            <input type="file" accept={ACCEPT} className="sr-only" disabled={busy || !note.trim()} onChange={(e) => send(e.target.files?.[0], 'published')} />
-          </label>
-        </div>
-      )}
-      {showHistory && history.length > 0 && <ul className="mt-2 divide-y divide-border border-t border-border">{history.map((f) => row(f, f.kind === 'source' ? `Editable version · Rev ${f.revision}` : `Rev ${f.revision}, replaced`))}</ul>}
-    </div>
   );
 }
 
@@ -419,13 +387,15 @@ function Present({ docs, onClose }: { docs: KnowledgeDoc[]; onClose: () => void 
 
 // ---- add / edit ------------------------------------------------------------------------------------------------
 
-function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib: Library; section: Section; onClose: (changed: boolean) => void }) {
+function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib: Library; section: Section; onClose: (changed: boolean, openId?: string) => void }) {
   const startType: AddType = doc ? addTypeOf(doc) : section === 'lesson' ? 'lesson_learnt' : section;
   const [f, setF] = useState({
     type: startType, country: doc?.country ?? (section === 'client' ? lib.places[0] ?? '' : GLOBAL), company: doc?.company ?? 'NESR', client: doc?.client ?? '',
     category: doc?.category ?? '', title: doc?.title ?? '', doc_no: doc?.doc_no ?? '', summary: doc?.summary ?? '', key_action: doc?.key_action ?? '',
     failure_types: (doc?.failure_types ?? []).join(', '), published_on: doc?.published_on ?? '', review_due: doc?.review_due ?? '',
     rilr_ref: doc?.rilr_ref ?? '', source_ref: doc?.source_ref ?? '', duplicate_of: doc?.duplicate_of ?? '',
+    origin: doc?.origin ?? 'internal', author: doc?.author ?? '', is_form: !!doc?.is_form,
+    revision: '0', revision_date: today(), expires_on: '', change_note: 'First issue',
   });
   const [file, setFile] = useState<File | null>(null);
   const [source, setSource] = useState<File | null>(null);
@@ -434,9 +404,9 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
   const sec = ADD_TYPES[f.type].section;
   const lesson = sec === 'lesson';
   const places = sec === 'client' ? lib.places : [GLOBAL, ...lib.places];
-  // an entry filed under a country the person doesn't cover keeps that country when it is corrected
   const placeOptions = doc && !places.includes(doc.country) ? [doc.country, ...places] : places;
   const categories = [...new Set(lib.docs.filter((d) => d.section === sec).map((d) => d.category).filter((c): c is string => !!c))].sort();
+  const manual = lib.numbering.mode === 'manual';
   const setType = (type: AddType) => {
     const next = ADD_TYPES[type].section;
     setF({ ...f, type, country: next === 'client' && f.country === GLOBAL ? lib.places[0] ?? '' : f.country });
@@ -445,21 +415,21 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
     setBusy(true); setError(null);
     const body = { ...f, failure_types: f.failure_types.split(',').map((x) => x.trim()).filter(Boolean) };
     try {
-      let id = doc?.id;
-      if (doc) await api(`/knowledge/${doc.id}`, { method: 'PUT', json: body });
-      else id = (await api<{ id: string }>('/knowledge', { method: 'POST', json: body })).id;
-      if (id && file) await uploadFile(id, file, 'published');
-      if (id && source) await uploadFile(id, source, 'source');
-      onClose(true);
+      if (doc) { await api(`/knowledge/${doc.id}`, { method: 'PUT', json: body }); onClose(true); return; }
+      const { id } = await api<{ id: string }>('/knowledge', { method: 'POST', json: body });
+      if (file) await uploadFile(id, file, 'published');
+      if (source) await uploadFile(id, source, 'source');
+      onClose(true, id);
     } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   const input = (k: keyof typeof f, label: string, props: Record<string, unknown> = {}, hint?: string) => (
-    <Field id={`kd-${k}`} label={label} hint={hint}><input id={`kd-${k}`} className={inputClass} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} {...props} /></Field>
+    <Field id={`kd-${k}`} label={label} hint={hint}><input id={`kd-${k}`} className={inputClass} value={String(f[k])} onChange={(e) => setF({ ...f, [k]: e.target.value })} {...props} /></Field>
   );
-  const nextNo = `${docPrefix({ section: sec, country: f.country || GLOBAL, company: f.company })}-001`;
+  const nextNo = formatNumber(numberPrefix({ section: sec, country: f.country || GLOBAL, company: f.company }, lib.numbering), 1, lib.numbering.digits).replace(/\d+$/, (m) => 'N'.repeat(m.length));
   return (
-    <Dialog title={doc ? 'Edit document' : 'Add document'} onClose={() => onClose(false)} wide>
+    <Dialog title={doc ? 'Edit document details' : 'Add document'} onClose={() => onClose(false)} wide>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+      {!doc && <p className="mb-3 text-sm text-text-muted">It starts as a draft. Add its files, then send it for review; readers see it once it is approved.</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field id="kd-type" label="Type" hint={`Filed under ${SECTIONS[sec]}`}>
           <Select id="kd-type" className={inputClass} value={f.type} onChange={(e) => setType(e.target.value as AddType)}>
@@ -477,16 +447,21 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
         )}
         {sec === 'client' && <>{input('client', 'Client', { list: 'kd-clients', placeholder: 'e.g. Saudi Aramco' }, 'Shown on jobs in this country, this client first')}<datalist id="kd-clients">{lib.clients.map((c) => <option key={c} value={c} />)}</datalist></>}
         <div className="sm:col-span-2">{input('title', 'Title')}</div>
-        {input('doc_no', 'Document number', { placeholder: doc ? '' : `Leave blank for ${nextNo.replace(/001$/, 'NNN')}` }, doc ? undefined : 'Type the official number, or leave blank and the next one is given')}
+        {input('doc_no', manual ? 'Document number' : 'Document number (optional)', { placeholder: doc ? '' : manual ? 'Numbering is manual: type it' : `Leave blank for ${nextNo}` }, doc || manual ? undefined : 'Type the official number, or leave blank and the next one is given')}
         {input('category', lesson ? 'Category' : 'Category (optional)', { list: 'kd-cats', placeholder: 'e.g. Wireline, Pressure control' })}
         <datalist id="kd-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist>
+        {input('author', 'Author')}
+        <Field id="kd-origin" label="Origin" hint="External: a client's or a manufacturer's document">
+          <Select id="kd-origin" className={inputClass} value={f.origin} onChange={(e) => setF({ ...f, origin: e.target.value as 'internal' | 'external' })}><option value="internal">Internal (NESR)</option><option value="external">External</option></Select>
+        </Field>
+        {!lesson && <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.is_form} onChange={(e) => setF({ ...f, is_form: e.target.checked })} />This is a form people fill in: everyone can download the Word or Excel file</label>}
         <div className="sm:col-span-2"><Field id="kd-summary" label={lesson ? 'Summary' : 'Scope / summary'}><textarea id="kd-summary" rows={3} className={cx(inputClass, 'h-auto py-2')} value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} /></Field></div>
         {lesson && <div className="sm:col-span-2">{input('key_action', 'Key action')}</div>}
         {lesson && input('failure_types', 'Failure types', { placeholder: 'Comma separated, e.g. Wire parted, Stuck tool' })}
         {input('published_on', lesson ? 'Published' : 'Issued', { type: 'date' })}
-        {!lesson && input('review_due', 'Next review', { type: 'date' })}
         {lesson && input('rilr_ref', 'RILR / reference')}
         {input('source_ref', 'Link to the source (optional)', { type: 'url', placeholder: 'https://…sharepoint.com/…' })}
+        {doc && !lesson && lib.isAdmin && input('review_due', 'Next periodic review', { type: 'date' }, 'Set by approval; admins may move it')}
         {lesson && (
           <Field id="kd-dup" label="Duplicate of" hint="Hidden from the library unless Show duplicates is on">
             <Select id="kd-dup" className={inputClass} value={f.duplicate_of} onChange={(e) => setF({ ...f, duplicate_of: e.target.value })}>
@@ -495,30 +470,33 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
           </Field>
         )}
         {!doc && (
-          <div className="sm:col-span-2 grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-2">
-            <Field id="kd-file" label="Document file" hint="PDF preferred. Everyone can download it">
-              <input id="kd-file" type="file" accept={ACCEPT} className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <div className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:col-span-2 sm:grid-cols-2">
+            <p className="text-sm font-semibold sm:col-span-2">First revision</p>
+            {input('revision', 'Revision', { type: 'number', min: 0 }, 'Rev 0 for a new document; the current number when bringing one in')}
+            {input('change_note', 'Comment')}
+            {input('revision_date', 'Revision date', { type: 'date' })}
+            {input('expires_on', 'Expires (blank: the usual period)', { type: 'date' })}
+            <Field id="kd-file" label="Document file" hint={f.is_form ? 'PDF or the form itself' : 'PDF. Everyone downloads it once approved'}>
+              <input id="kd-file" type="file" accept={f.is_form ? ACCEPT : '.pdf'} className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </Field>
-            {lib.isAdmin && (
-              <Field id="kd-source" label="Editable version" hint="Word or Excel. Only admins see it">
-                <input id="kd-source" type="file" accept={EDITABLE_ACCEPT} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
-              </Field>
-            )}
+            <Field id="kd-source" label={f.is_form ? 'Fillable form' : 'Editable version'} hint={f.is_form ? 'Word or Excel, for everyone' : 'Word or Excel, for editors, reviewers and approvers'}>
+              <input id="kd-source" type="file" accept={EDITABLE_ACCEPT} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
+            </Field>
           </div>
         )}
       </div>
-      <Button className="mt-4" variant="primary" loading={busy} disabled={!f.title.trim() || (lesson && !f.category.trim()) || (sec === 'client' && !f.client.trim())} onClick={save}>{doc ? 'Save changes' : 'Add document'}</Button>
+      <Button className="mt-4" variant="primary" loading={busy} disabled={!f.title.trim() || (lesson && !f.category.trim()) || (sec === 'client' && !f.client.trim()) || (!doc && manual && !f.doc_no.trim())} onClick={save}>{doc ? 'Save changes' : 'Add as a draft'}</Button>
     </Dialog>
   );
 }
 
 // ---- on the job: client procedures for the job's country ---------------------------------------------------------
 
-/** Client procedures to read before the job: the job's country, its client first. Hidden without the Knowledge Hub tab. */
+/** Published client procedures to read before the job: the job's country, its client first. Hidden without the tab. */
 export function ClientProcedures({ country, client }: { country: string; client?: string | null }) {
   const q = useQuery({ queryKey: ['knowledge'], queryFn: () => api<Library>('/knowledge'), retry: false });
   if (!q.data) return null;
-  const docs = proceduresForJob(q.data.docs, country, client);
+  const docs = proceduresForJob(q.data.docs.filter((d) => d.published_at), country, client);
   if (!docs.length) return <p className="text-sm text-text-muted">No client procedures for {country} yet. They are added in the <Link className="underline" to="/knowledge?s=client">Knowledge Hub</Link>.</p>;
   return (
     <ul className="divide-y divide-border rounded-md border border-border">
@@ -530,7 +508,7 @@ export function ClientProcedures({ country, client }: { country: string; client?
           </div>
           {d.file
             ? <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name}><Download aria-hidden className="size-3.5" />Download</a>
-            : <Link className={linkBtn} to="/knowledge?s=client">Open in the Knowledge Hub</Link>}
+            : <Link className={linkBtn} to={`/knowledge?s=client&doc=${d.id}`}>Open in the Knowledge Hub</Link>}
         </li>
       ))}
     </ul>

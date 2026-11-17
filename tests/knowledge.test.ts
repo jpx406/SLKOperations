@@ -96,7 +96,7 @@ describe('knowledge hub', () => {
     expect(ruleFor('PUT', '/api/knowledge/abc')).toMatchObject({ menu: 'knowledge_hub', action: 'edit' });
     expect(ruleFor('POST', '/api/knowledge/abc/lesson-of-week')).toMatchObject({ menu: 'knowledge_hub', action: 'edit' });
     expect(ruleFor('POST', '/api/knowledge/abc/files')).toMatchObject({ menu: 'knowledge_hub', action: 'edit' });
-    expect(ruleFor('POST', '/api/knowledge/abc/retire')).toMatchObject({ menu: 'knowledge_hub', action: 'edit' });
+    expect(ruleFor('POST', '/api/knowledge/abc/retire')).toMatchObject({ menu: 'knowledge_hub', action: 'view' });
     expect(ruleFor('DELETE', '/api/knowledge/abc')).toBeUndefined();
   });
 });

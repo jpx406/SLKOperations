@@ -1,66 +1,291 @@
 import { Hono, type Context } from 'hono';
 import { checkUpload } from '../shared/attachments';
-import { GLOBAL, checkDoc, docPrefix, fileKey, mayDownload, type CleanDoc, type KbFile, type KnowledgeDoc } from '../shared/knowledge';
+import { GLOBAL, checkDoc, fileKey, folderName, type KbFile, type KnowledgeDoc } from '../shared/knowledge';
+import {
+  DEFAULT_NUMBERING, DEFAULT_PERIODS, REV_STATUS, addMonths, checkNumbering, checkPeriods, isStaff, mayAct, mayOpen, mayRetire, nextRevision, numberPrefix,
+  submitProblems, type Controller, type FlowAction, type Numbering, type Periods, type RevStatus, type Revision,
+} from '../shared/knowledgeControl';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { copyId, stampPdf, stampText } from './stamp';
 
-// Knowledge Hub (S21, 6z.13). Everyone with the tab reads the whole library (Global and every country) and downloads
-// the current document file. People with its edit right add entries, correct them and upload the first file.
-// Admins replace a file (the revision goes up and the old file is kept), keep the editable version, download old
-// revisions, and retire an entry. Nothing is hard-deleted; every upload, replacement and download is in the audit log.
+// Knowledge Hub with document control (S21, 6z.13, 6z.14), after the NESR Document Control app.
+// Readers see published revisions only and download the current file, stamped with a copy number. Editors (the
+// tab's edit right) add documents and prepare revisions; reviewers and approvers (Knowledge Hub → Settings, or any
+// admin) move them through review and approval. The published revision stays live until the next one is approved.
+// Admins and approvers retire with a reason. Nothing is deleted; every step and every download is in the audit log.
 
-const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
+type C = Context<AppBindings>;
+const now = () => new Date().toISOString();
+const riyadhToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+
+const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string, type = 'knowledge_docs') =>
   env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'knowledge_docs', id, summary.slice(0, 1000));
+    .bind(crypto.randomUUID(), user.username, action, type, id, summary.slice(0, 1000));
 
-const isAdmin = (u: AuthedUser) => u.role === 'admin';
-const canEdit = (u: AuthedUser) => !!u.menus.knowledge_hub?.edit;
+async function controller(env: Env, user: AuthedUser): Promise<Controller> {
+  const row = await env.DB.prepare('SELECT can_review, can_approve FROM knowledge_people WHERE username = ?').bind(user.username).first<{ can_review: number; can_approve: number }>();
+  return { username: user.username, admin: user.role === 'admin', editor: !!user.menus.knowledge_hub?.edit, reviewer: !!row?.can_review, approver: !!row?.can_approve };
+}
 
-const COLS = `id, section, country, company, client, doc_type, category, title, summary, key_action, failure_types, published_on, rilr_ref, source_ref,
-  duplicate_of, lesson_of_week_from, doc_no, revision, review_due, retired_at`;
-const FILE_COLS = 'f.id, f.doc_id, f.kind, f.revision, f.file_name, f.content_type, f.size_bytes, f.uploaded_at, f.superseded_at, f.change_note, coalesce(r.full_name, f.uploaded_by) AS uploaded_by_name';
-const toDoc = (r: Record<string, unknown>) => ({ ...r, failure_types: JSON.parse(String(r.failure_types ?? '[]')) }) as KnowledgeDoc;
+async function setting<T>(env: Env, key: string, fallback: T): Promise<T> {
+  const r = await env.DB.prepare('SELECT value FROM knowledge_settings WHERE key = ?').bind(key).first<{ value: string }>();
+  return r ? { ...fallback, ...(JSON.parse(r.value) as T) } : fallback;
+}
 
 /** Countries an entry may be filed under: every active country for admins, the person's own for everyone else. */
 async function placesFor(env: Env, user: AuthedUser): Promise<string[]> {
-  if (!isAdmin(user)) return [...new Set([...(user.allCountries ?? user.countries)])];
+  if (user.role !== 'admin') return [...new Set([...(user.allCountries ?? user.countries)])];
   const { results } = await env.DB.prepare('SELECT DISTINCT country FROM wg_units WHERE wg_active = 1 ORDER BY country').all<{ country: string }>();
   return [...new Set([...results.map((r) => r.country), ...(user.allCountries ?? user.countries)])].sort();
 }
 
+const COLS = `d.id, d.section, d.country, d.company, d.client, d.doc_type, d.category, d.title, d.summary, d.key_action, d.failure_types, d.published_on, d.rilr_ref, d.source_ref,
+  d.duplicate_of, d.lesson_of_week_from, d.doc_no, d.revision, d.review_due, d.retired_at, d.retire_reason, d.origin, d.author, d.expires_on, d.is_form, d.published_at, d.approved_by,
+  coalesce(ra.full_name, d.approved_by) AS approved_by_name`;
+const FROM = 'FROM knowledge_docs d LEFT JOIN user_roles ra ON ra.username = d.approved_by';
+const FILE_COLS = 'f.id, f.doc_id, f.kind, f.revision, f.file_name, f.content_type, f.size_bytes, f.uploaded_at, f.superseded_at, f.change_note, coalesce(r.full_name, f.uploaded_by) AS uploaded_by_name';
+const REV_COLS = `v.*, coalesce(r1.full_name, v.reviewer) AS reviewer_name, coalesce(r2.full_name, v.approver) AS approver_name,
+  coalesce(r3.full_name, v.submitted_by) AS submitted_by_name, coalesce(r4.full_name, v.created_by) AS created_by_name`;
+const REV_FROM = `FROM knowledge_revisions v LEFT JOIN user_roles r1 ON r1.username = v.reviewer LEFT JOIN user_roles r2 ON r2.username = v.approver
+  LEFT JOIN user_roles r3 ON r3.username = v.submitted_by LEFT JOIN user_roles r4 ON r4.username = v.created_by`;
+const toDoc = (r: Record<string, unknown>) => ({ ...r, failure_types: JSON.parse(String(r.failure_types ?? '[]')) }) as KnowledgeDoc;
+
+async function find(env: Env, id: string) {
+  const r = await env.DB.prepare(`SELECT ${COLS} ${FROM} WHERE d.id = ?`).bind(id).first<Record<string, unknown>>();
+  return r ? toDoc(r) : null;
+}
+const openRev = (env: Env, docId: string) =>
+  env.DB.prepare(`SELECT * FROM knowledge_revisions WHERE doc_id = ? AND status IN ('draft','review','approval')`).bind(docId).first<Revision>();
+
+/** May this person see the entry at all? Readers: published and not retired. Staff: everything not retired. */
+const visible = (p: Controller, d: KnowledgeDoc) => (d.retired_at ? p.admin || p.approver : isStaff(p) || !!d.published_at);
+
+/** Email to whoever must act next. Silent when email isn't set up or the person has no address. */
+async function notify(c: C, username: string | null, subject: string, text: string) {
+  if (!username || !c.env.EMAIL) return;
+  const r = await c.env.DB.prepare(`SELECT coalesce(u.email, e.contact_email) AS email FROM user_roles u LEFT JOIN employees e ON lower(e.wg_username) = lower(u.username) AND e.active = 1
+    WHERE u.username = ? AND u.active = 1`).bind(username).first<{ email: string | null }>();
+  if (!r?.email) return;
+  const link = `${c.env.APP_URL ?? 'https://slkops.nesrapp.com'}/knowledge?view=queue`;
+  const send = c.env.EMAIL.send({ to: r.email, from: { email: c.env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations Hub' }, subject,
+    text: `${text}\n\nOpen the Knowledge Hub queue: ${link}`, html: `<p>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p><p><a href="${link}">Open the Knowledge Hub queue</a></p>` })
+    .catch((e: Error) => console.error('knowledge email not sent', e.message));
+  try { c.executionCtx.waitUntil(send); } catch { await send; }
+}
+
 export const knowledge = new Hono<AppBindings>();
+
+// ---- the library ------------------------------------------------------------------------------------------------
 
 knowledge.get('/', async (c) => {
   const user = c.get('user');
-  const admin = isAdmin(user);
-  const [docs, files, places, clients] = await Promise.all([
-    c.env.DB.prepare(`SELECT ${COLS} FROM knowledge_docs ${admin ? '' : 'WHERE retired_at IS NULL'} ORDER BY published_on DESC, title LIMIT 5000`).all<Record<string, unknown>>(),
-    c.env.DB.prepare(`SELECT ${FILE_COLS} FROM knowledge_files f LEFT JOIN user_roles r ON r.username = f.uploaded_by WHERE f.superseded_at IS NULL ${admin ? '' : "AND f.kind = 'published'"}`).all<KbFile & { doc_id: string; kind: string }>(),
+  const p = await controller(c.env, user);
+  const staff = isStaff(p);
+  const [docs, files, opens, places, clients, numbering, people, queue] = await Promise.all([
+    c.env.DB.prepare(`SELECT ${COLS} ${FROM} WHERE d.retired_at IS NULL ${staff ? '' : 'AND d.published_at IS NOT NULL'} ORDER BY d.published_on DESC, d.title LIMIT 5000`).all<Record<string, unknown>>(),
+    // the live revision's files
+    c.env.DB.prepare(`SELECT ${FILE_COLS} FROM knowledge_files f JOIN knowledge_docs d ON d.id = f.doc_id AND f.revision = d.revision AND d.published_at IS NOT NULL
+      LEFT JOIN user_roles r ON r.username = f.uploaded_by WHERE f.superseded_at IS NULL`).all<KbFile & { doc_id: string; kind: 'published' | 'source' }>(),
+    staff ? c.env.DB.prepare(`SELECT id, doc_id, revision, status, reviewer, approver, sent_back_reason FROM knowledge_revisions WHERE status IN ('draft','review','approval')`).all<{ id: string; doc_id: string; revision: number; status: 'draft' | 'review' | 'approval'; reviewer: string | null; approver: string | null; sent_back_reason: string | null }>() : null,
     placesFor(c.env, user),
     c.env.DB.prepare(`SELECT DISTINCT client FROM knowledge_docs WHERE client IS NOT NULL UNION SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND deleted_at IS NULL ORDER BY 1 LIMIT 500`).all<{ client: string }>(),
+    setting<Numbering>(c.env, 'numbering', DEFAULT_NUMBERING),
+    staff ? c.env.DB.prepare(`SELECT u.username, u.full_name, coalesce(k.can_review, 0) OR u.role = 'admin' AS can_review, coalesce(k.can_approve, 0) OR u.role = 'admin' AS can_approve
+      FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1 AND (u.role = 'admin' OR k.can_review = 1 OR k.can_approve = 1) ORDER BY u.full_name`).all<{ username: string; full_name: string; can_review: number; can_approve: number }>() : null,
+    staff ? c.env.DB.prepare(`SELECT count(*) AS n FROM knowledge_revisions WHERE (status = 'review' AND reviewer = ?1) OR (status = 'approval' AND approver = ?1)
+      OR (status = 'draft' AND sent_back_reason IS NOT NULL AND (submitted_by = ?1 OR created_by = ?1))`).bind(user.username).first<{ n: number }>() : null,
   ]);
-  const byDoc = new Map<string, { file?: KbFile; source?: KbFile }>();
+  const live = new Map<string, { file?: KbFile; source?: KbFile }>();
   for (const f of files.results) {
-    const e = byDoc.get(f.doc_id) ?? {};
+    const e = live.get(f.doc_id) ?? {};
     if (f.kind === 'published') e.file = f; else e.source = f;
-    byDoc.set(f.doc_id, e);
+    live.set(f.doc_id, e);
   }
+  const open = new Map((opens?.results ?? []).map((o) => [o.doc_id, o]));
   return c.json({
-    docs: docs.results.map((r) => ({ ...toDoc(r), file: byDoc.get(String(r.id))?.file ?? null, source: admin ? byDoc.get(String(r.id))?.source ?? null : undefined })),
-    canEdit: canEdit(user), isAdmin: admin, places, clients: clients.results.map((r) => r.client),
+    docs: docs.results.map((r) => {
+      const d = toDoc(r);
+      const l = live.get(d.id);
+      const showSource = !!l?.source && mayOpen(p, { kind: 'source', revision: d.revision }, { revision: d.revision, published_at: d.published_at ?? null, is_form: d.is_form }, 'approved');
+      const o = open.get(d.id);
+      return { ...d, file: l?.file ?? null, source: showSource ? l!.source : null, open: o ? { id: o.id, revision: o.revision, status: o.status, reviewer: o.reviewer, approver: o.approver, sent_back_reason: o.sent_back_reason } : null };
+    }),
+    canEdit: p.editor || p.admin, isAdmin: p.admin, me: p, places, clients: clients.results.map((r) => r.client), numbering,
+    people: people?.results ?? [], queueCount: queue?.n ?? 0,
   });
 });
 
-async function find(env: Env, id: string) {
-  const r = await env.DB.prepare(`SELECT ${COLS} FROM knowledge_docs WHERE id = ?`).bind(id).first<Record<string, unknown>>();
-  return r ? toDoc(r) : null;
-}
+/** Revisions waiting on someone: mine to review or approve, mine sent back, and (admins, editors) everything open. */
+knowledge.get('/queue', async (c) => {
+  const user = c.get('user');
+  const p = await controller(c.env, user);
+  if (!isStaff(p)) return c.json({ error: 'The queue is for editors, reviewers and approvers' }, 403);
+  const { results } = await c.env.DB.prepare(`SELECT ${REV_COLS}, d.title, d.doc_no, d.section, d.country, d.company, d.client, d.revision AS live_revision, d.published_at
+    ${REV_FROM} JOIN knowledge_docs d ON d.id = v.doc_id WHERE v.status IN ('draft','review','approval') AND d.retired_at IS NULL ORDER BY coalesce(v.submitted_at, v.created_at) DESC`).all<Revision & Record<string, unknown>>();
+  const mine = (u: unknown) => typeof u === 'string' && u.toLowerCase() === user.username.toLowerCase();
+  const rows = results.filter((r) => p.admin || p.editor || mine(r.reviewer) || mine(r.approver) || mine(r.submitted_by) || mine(r.created_by))
+    .map((r) => ({ ...r, mayReview: mayAct(p, r, 'review'), mayApprove: mayAct(p, r, 'approve'), maySendBack: mayAct(p, r, 'send_back'), maySubmit: mayAct(p, r, 'submit'),
+      waitingOnMe: (r.status === 'review' && mine(r.reviewer)) || (r.status === 'approval' && mine(r.approver)) || (r.status === 'draft' && !!r.sent_back_reason && (mine(r.submitted_by) || mine(r.created_by))) }));
+  return c.json({ rows });
+});
 
-/** May this person file under that place? Global or one of their countries; admins anywhere. */
-const mayFile = async (env: Env, user: AuthedUser, country: string) => country === GLOBAL || (await placesFor(env, user)).includes(country);
+/** The document register (API Q2 style): every entry with its status, revision, dates and prior revisions. */
+knowledge.get('/register', async (c) => {
+  const p = await controller(c.env, c.get('user'));
+  if (!isStaff(p)) return c.json({ error: 'The register is for editors, reviewers and approvers' }, 403);
+  const [docs, opens, prior] = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT ${COLS} ${FROM} ${p.admin || p.approver ? '' : 'WHERE d.retired_at IS NULL'} ORDER BY d.section, d.country, d.doc_no`),
+    c.env.DB.prepare(`SELECT doc_id, revision, status FROM knowledge_revisions WHERE status IN ('draft','review','approval')`),
+    c.env.DB.prepare(`SELECT doc_id, count(*) AS n FROM knowledge_revisions WHERE status = 'superseded' GROUP BY doc_id`),
+  ]);
+  const open = new Map((opens.results as { doc_id: string; revision: number; status: RevStatus }[]).map((o) => [o.doc_id, o]));
+  const n = new Map((prior.results as { doc_id: string; n: number }[]).map((o) => [o.doc_id, o.n]));
+  return c.json({ rows: (docs.results as Record<string, unknown>[]).map((r) => { const d = toDoc(r); return { doc: d, open: open.get(d.id) ?? null, priorRevisions: n.get(d.id) ?? 0 }; }) });
+});
+
+/** Retired entries (the archive), for admins and approvers. */
+knowledge.get('/archive', async (c) => {
+  const p = await controller(c.env, c.get('user'));
+  if (!mayRetire(p)) return c.json({ error: 'The archive is for admins and approvers' }, 403);
+  const { results } = await c.env.DB.prepare(`SELECT ${COLS}, d.retired_by, coalesce(rr.full_name, d.retired_by) AS retired_by_name ${FROM} LEFT JOIN user_roles rr ON rr.username = d.retired_by
+    WHERE d.retired_at IS NOT NULL ORDER BY d.retired_at DESC`).all<Record<string, unknown>>();
+  return c.json({ docs: results.map(toDoc) });
+});
+
+// ---- settings: numbering, periods, reviewers and approvers (admins) -----------------------------------------------
+
+knowledge.get('/settings', async (c) => {
+  const p = await controller(c.env, c.get('user'));
+  if (!isStaff(p)) return c.json({ error: 'Settings are for editors, reviewers and approvers' }, 403);
+  const [numbering, periods, people] = await Promise.all([
+    setting<Numbering>(c.env, 'numbering', DEFAULT_NUMBERING), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS),
+    c.env.DB.prepare(`SELECT u.username, u.full_name, u.role, coalesce(k.can_review, 0) AS can_review, coalesce(k.can_approve, 0) AS can_approve
+      FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1 ORDER BY u.full_name`).all(),
+  ]);
+  return c.json({ numbering, periods, people: people.results, isAdmin: p.admin });
+});
+
+knowledge.put('/settings', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only an admin changes document control settings' }, 403);
+  const b = await c.req.json().catch(() => ({}));
+  const n = checkNumbering(b.numbering);
+  if ('error' in n) return c.json({ error: n.error }, 400);
+  const per = checkPeriods(b.periods);
+  if ('error' in per) return c.json({ error: per.error }, 400);
+  const put = (key: string, v: unknown) => c.env.DB.prepare(`INSERT INTO knowledge_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`).bind(key, JSON.stringify(v), user.username, now());
+  await c.env.DB.batch([put('numbering', n.value), put('periods', per.value),
+    audit(c.env, user, 'settings', 'knowledge', `Numbering ${n.value.mode}, ${Object.values(n.value.prefix).join('/')} ${n.value.digits} digits; review ${per.value.reviewMonths} months, expiry ${per.value.expiryMonths} months`, 'knowledge_settings')]);
+  return c.json({ ok: true });
+});
+
+knowledge.put('/people/:username', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only an admin chooses reviewers and approvers' }, 403);
+  const who = c.req.param('username');
+  const b = await c.req.json().catch(() => ({}));
+  const exists = await c.env.DB.prepare('SELECT full_name FROM user_roles WHERE username = ?').bind(who).first<{ full_name: string }>();
+  if (!exists) return c.json({ error: 'Person not found' }, 404);
+  const review = b.can_review ? 1 : 0, approve = b.can_approve ? 1 : 0;
+  await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO knowledge_people (username, can_review, can_approve, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (username) DO UPDATE SET can_review = excluded.can_review, can_approve = excluded.can_approve, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+      .bind(who, review, approve, user.username, now()),
+    audit(c.env, user, 'roles', who, `${exists.full_name}: ${review ? 'reviewer' : 'not a reviewer'}, ${approve ? 'approver' : 'not an approver'}`, 'knowledge_people'),
+  ]);
+  return c.json({ ok: true });
+});
+
+// ---- reference manuals: an uncontrolled folder library ------------------------------------------------------------
+
+knowledge.get('/manuals', async (c) => {
+  const [folders, files] = await c.env.DB.batch([
+    c.env.DB.prepare('SELECT id, name FROM knowledge_manual_folders ORDER BY name'),
+    c.env.DB.prepare(`SELECT f.id, f.folder_id, f.file_name, f.content_type, f.size_bytes, f.uploaded_at, coalesce(r.full_name, f.uploaded_by) AS uploaded_by_name
+      FROM knowledge_manual_files f LEFT JOIN user_roles r ON r.username = f.uploaded_by WHERE f.removed_at IS NULL ORDER BY f.file_name`),
+  ]);
+  return c.json({ folders: folders.results, files: files.results, canManage: c.get('user').role === 'admin', storage: !!c.env.FILES });
+});
+
+knowledge.post('/manuals/folders', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only an admin manages the manuals' }, 403);
+  const b = await c.req.json().catch(() => ({}));
+  const name = folderName(String(b.name ?? ''));
+  if (!String(b.name ?? '').trim()) return c.json({ error: 'Name the folder' }, 400);
+  const id = typeof b.id === 'string' ? b.id : null;
+  try {
+    if (id) await c.env.DB.batch([c.env.DB.prepare('UPDATE knowledge_manual_folders SET name = ? WHERE id = ?').bind(name, id), audit(c.env, user, 'rename', id, `Manuals folder renamed ${name}`, 'knowledge_manual_folders')]);
+    else {
+      const nid = crypto.randomUUID();
+      await c.env.DB.batch([c.env.DB.prepare('INSERT INTO knowledge_manual_folders (id, name, created_by) VALUES (?, ?, ?)').bind(nid, name, user.username), audit(c.env, user, 'create', nid, `Manuals folder ${name}`, 'knowledge_manual_folders')]);
+    }
+  } catch (e) {
+    if (/UNIQUE/.test((e as Error).message)) return c.json({ error: 'A folder already has that name' }, 400);
+    throw e;
+  }
+  return c.json({ ok: true });
+});
+
+knowledge.post('/manuals/folders/:id/remove', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only an admin manages the manuals' }, 403);
+  const n = await c.env.DB.prepare('SELECT count(*) AS n FROM knowledge_manual_files WHERE folder_id = ? AND removed_at IS NULL').bind(c.req.param('id')).first<{ n: number }>();
+  if (n?.n) return c.json({ error: 'Remove the files in the folder first' }, 400);
+  await c.env.DB.batch([c.env.DB.prepare('DELETE FROM knowledge_manual_folders WHERE id = ?').bind(c.req.param('id')), audit(c.env, user, 'remove', c.req.param('id'), 'Manuals folder removed', 'knowledge_manual_folders')]);
+  return c.json({ ok: true });
+});
+
+knowledge.post('/manuals/folders/:id/files', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only an admin manages the manuals' }, 403);
+  if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
+  const folder = await c.env.DB.prepare('SELECT id, name FROM knowledge_manual_folders WHERE id = ?').bind(c.req.param('id')).first<{ id: string; name: string }>();
+  if (!folder) return c.json({ error: 'Folder not found' }, 404);
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  const ok = checkUpload(decodeURIComponent(c.req.header('x-file-name') ?? ''), bytes.length);
+  if ('error' in ok) return c.json({ error: ok.error }, 400);
+  const id = crypto.randomUUID();
+  const key = `knowledge/Reference manuals/${folderName(folder.name)}/${id.slice(0, 8)} ${ok.name}`;
+  const sha = hex(await crypto.subtle.digest('SHA-256', bytes));
+  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username, sha256: sha } });
+  await c.env.DB.batch([
+    c.env.DB.prepare('INSERT INTO knowledge_manual_files (id, folder_id, file_name, content_type, size_bytes, sha256, r2_key, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, folder.id, ok.name, ok.type, bytes.length, sha, key, user.username),
+    audit(c.env, user, 'upload', id, `Manual “${ok.name}” in ${folder.name}`, 'knowledge_manual_files'),
+  ]);
+  return c.json({ id }, 201);
+});
+
+knowledge.post('/manuals/files/:id/remove', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only an admin manages the manuals' }, 403);
+  const f = await c.env.DB.prepare('SELECT file_name FROM knowledge_manual_files WHERE id = ? AND removed_at IS NULL').bind(c.req.param('id')).first<{ file_name: string }>();
+  if (!f) return c.json({ error: 'File not found' }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE knowledge_manual_files SET removed_at = ?, removed_by = ? WHERE id = ?').bind(now(), user.username, c.req.param('id')),
+    audit(c.env, user, 'remove', c.req.param('id'), `Manual “${f.file_name}” removed`, 'knowledge_manual_files'),
+  ]);
+  return c.json({ ok: true });
+});
+
+knowledge.get('/manuals/files/:id', async (c) => {
+  const f = await c.env.DB.prepare('SELECT * FROM knowledge_manual_files WHERE id = ? AND removed_at IS NULL').bind(c.req.param('id')).first<{ id: string; file_name: string; content_type: string; r2_key: string }>();
+  if (!f) return c.json({ error: 'File not found' }, 404);
+  if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet' }, 503);
+  const obj = await c.env.FILES.get(f.r2_key);
+  if (!obj) return c.json({ error: 'The file is missing from storage' }, 404);
+  await audit(c.env, c.get('user'), 'download', f.id, `Manual “${f.file_name}” (reference only, uncontrolled)`, 'knowledge_manual_files').run();
+  return fileResponse(obj.body, f.content_type, f.file_name, c.req.query('inline') === '1');
+});
+
+// ---- one entry ----------------------------------------------------------------------------------------------------
 
 knowledge.get('/:id', async (c) => {
+  const p = await controller(c.env, c.get('user'));
   const d = await find(c.env, c.req.param('id'));
-  return d && (!d.retired_at || isAdmin(c.get('user'))) ? c.json(d) : c.json({ error: 'Document not found' }, 404);
+  return d && visible(p, d) ? c.json(d) : c.json({ error: 'Document not found' }, 404);
 });
 
 const uniqueError = (e: unknown) => {
@@ -69,50 +294,73 @@ const uniqueError = (e: unknown) => {
   return /doc_no/.test(m) ? 'Another document already has that number' : 'Another document already uses that link';
 };
 
+/** Revision details a person types: what changed, author, revision date, expiry. */
+function revisionFields(b: Record<string, unknown>, periods: Periods) {
+  const t = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+  const date = t(b.revision_date, 10) || riyadhToday();
+  const expires = t(b.expires_on, 10) || addMonths(date, periods.expiryMonths);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(expires)) return { error: 'Dates must be dates' } as const;
+  if (expires <= date) return { error: 'The expiry must be after the revision date' } as const;
+  return { change_note: t(b.change_note, 500) || null, author: t(b.author, 120) || null, revision_date: date, expires_on: expires } as const;
+}
+
+/** A new entry starts as a draft revision (Rev 0, or the number typed when an existing document is brought in). */
 knowledge.post('/', async (c) => {
   const user = c.get('user');
-  const r = checkDoc(await c.req.json().catch(() => ({})), [...(await placesFor(c.env, user))]);
+  const b = await c.req.json().catch(() => ({}));
+  const r = checkDoc(b, [...(await placesFor(c.env, user))]);
   if ('error' in r) return c.json({ error: r.error }, 400);
   const d = r.doc;
+  const [numbering, periods] = await Promise.all([setting<Numbering>(c.env, 'numbering', DEFAULT_NUMBERING), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS)]);
+  if (numbering.mode === 'manual' && !d.doc_no) return c.json({ error: 'Numbering is manual: type the document number' }, 400);
   if (d.duplicate_of && !(await find(c.env, d.duplicate_of))) return c.json({ error: 'The original document was not found' }, 400);
+  const rev = nextRevision(0, false, b.revision);
+  if ('error' in rev) return c.json({ error: rev.error }, 400);
+  const rf = revisionFields(b, periods);
+  if ('error' in rf) return c.json({ error: rf.error }, 400);
   const id = crypto.randomUUID();
-  // a blank number is counted from the documents already filed under the same prefix, in the same statement
-  const prefix = docPrefix(d);
+  const prefix = numberPrefix(d, numbering);
+  const fmt = `%s-%0${numbering.digits}d`;
   try {
     await c.env.DB.batch([
       c.env.DB.prepare(`INSERT INTO knowledge_docs (id, section, country, company, client, doc_type, category, title, summary, key_action, failure_types, published_on, rilr_ref, source_ref,
-          duplicate_of, doc_no, review_due, created_by)
+          duplicate_of, doc_no, review_due, created_by, revision, origin, author, is_form, expires_on)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          coalesce(?, printf('%s-%03d', ?, 1 + (SELECT coalesce(max(CAST(substr(doc_no, length(?) + 2) AS INTEGER)), 0) FROM knowledge_docs WHERE doc_no LIKE ? || '-%' AND substr(doc_no, length(?) + 2) GLOB '[0-9][0-9][0-9]*'))), ?, ?)`)
+          coalesce(?, printf(?, ?, 1 + (SELECT coalesce(max(CAST(substr(doc_no, length(?) + 2) AS INTEGER)), 0) FROM knowledge_docs WHERE doc_no LIKE ? || '-%' AND substr(doc_no, length(?) + 2) GLOB '[0-9][0-9]*'))),
+          ?, ?, ?, ?, ?, ?, ?)`)
         .bind(id, d.section, d.country, d.company, d.client, d.doc_type, d.category, d.title, d.summary, d.key_action, JSON.stringify(d.failure_types), d.published_on, d.rilr_ref, d.source_ref,
-          d.duplicate_of, d.doc_no, prefix, prefix, prefix, prefix, d.review_due, user.username),
-      audit(c.env, user, 'create', id, `${d.section} ${d.country}: ${d.title}`),
+          d.duplicate_of, d.doc_no, fmt, prefix, prefix, prefix, prefix, d.review_due, user.username, rev.value, d.origin, d.author ?? rf.author, d.is_form, rf.expires_on),
+      c.env.DB.prepare(`INSERT INTO knowledge_revisions (id, doc_id, revision, status, change_note, author, revision_date, expires_on, created_by) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?)`)
+        .bind(crypto.randomUUID(), id, rev.value, rf.change_note ?? 'First issue', d.author ?? rf.author, rf.revision_date, rf.expires_on, user.username),
+      audit(c.env, user, 'create', id, `${d.section} ${d.country}: ${d.title} (draft Rev ${rev.value})`),
     ]);
   } catch (e) {
     return c.json({ error: uniqueError(e) }, 400);
   }
   const row = await c.env.DB.prepare('SELECT doc_no FROM knowledge_docs WHERE id = ?').bind(id).first<{ doc_no: string }>();
-  return c.json({ id, doc_no: row?.doc_no }, 201);
+  return c.json({ id, doc_no: row?.doc_no, revision: rev.value }, 201);
 });
 
 knowledge.put('/:id', async (c) => {
   const user = c.get('user');
+  const p = await controller(c.env, user);
   const cur = await find(c.env, c.req.param('id'));
-  if (!cur || (cur.retired_at && !isAdmin(user))) return c.json({ error: 'Document not found' }, 404);
+  if (!cur || cur.retired_at) return c.json({ error: 'Document not found' }, 404);
   const places = await placesFor(c.env, user);
-  // an entry already filed under a country the person doesn't cover may still be corrected, without moving it
   const r = checkDoc(await c.req.json().catch(() => ({})), [...places, cur.country]);
   if ('error' in r) return c.json({ error: r.error }, 400);
-  const d: CleanDoc = r.doc;
-  if (d.country !== cur.country && !(await mayFile(c.env, user, d.country))) return c.json({ error: 'Pick one of your countries or Global' }, 400);
+  const d = r.doc;
+  if (d.country !== cur.country && !(d.country === GLOBAL || places.includes(d.country))) return c.json({ error: 'Pick one of your countries or Global' }, 400);
   if (d.duplicate_of === cur.id) return c.json({ error: 'A document can’t repeat itself' }, 400);
   if (d.duplicate_of && !(await find(c.env, d.duplicate_of))) return c.json({ error: 'The original document was not found' }, 400);
+  // the review date follows approval; only an admin may move it by hand
+  const review = p.admin ? d.review_due : cur.review_due;
   try {
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE knowledge_docs SET section = ?, country = ?, company = ?, client = ?, doc_type = ?, category = ?, title = ?, summary = ?, key_action = ?, failure_types = ?,
-          published_on = ?, rilr_ref = ?, source_ref = ?, duplicate_of = ?, doc_no = coalesce(?, doc_no), review_due = ? WHERE id = ?`)
+          published_on = ?, rilr_ref = ?, source_ref = ?, duplicate_of = ?, doc_no = coalesce(?, doc_no), review_due = ?, origin = ?, author = ?, is_form = ? WHERE id = ?`)
         .bind(d.section, d.country, d.company, d.client, d.doc_type, d.category, d.title, d.summary, d.key_action, JSON.stringify(d.failure_types),
-          d.published_on, d.rilr_ref, d.source_ref, d.duplicate_of, d.doc_no, d.review_due, cur.id),
+          d.published_on, d.rilr_ref, d.source_ref, d.duplicate_of, d.doc_no, review, d.origin, d.author, d.is_form, cur.id),
       audit(c.env, user, 'update', cur.id, d.title === cur.title ? d.title : `${cur.title} → ${d.title}`),
     ]);
   } catch (e) {
@@ -125,10 +373,10 @@ knowledge.put('/:id', async (c) => {
 knowledge.post('/:id/lesson-of-week', async (c) => {
   const user = c.get('user');
   const cur = await find(c.env, c.req.param('id'));
-  if (!cur || cur.retired_at) return c.json({ error: 'Document not found' }, 404);
+  if (!cur || cur.retired_at || !cur.published_at) return c.json({ error: 'Only a published lesson can be the lesson of the week' }, 400);
   if (cur.section !== 'lesson') return c.json({ error: 'Only lessons can be the lesson of the week' }, 400);
   if (cur.duplicate_of) return c.json({ error: 'Pick the original, not a duplicate' }, 400);
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+  const today = riyadhToday();
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE knowledge_docs SET lesson_of_week_from = ? WHERE id = ?').bind(today, cur.id),
     audit(c.env, user, 'lesson_of_week', cur.id, `${cur.title} from ${today}`),
@@ -136,101 +384,242 @@ knowledge.post('/:id/lesson-of-week', async (c) => {
   return c.json({ ok: true, from: today });
 });
 
-/** Retire hides an entry from everyone but admins; restore brings it back. Admins only. */
+/** Retire (reason required) moves the entry to the archive; restore brings it back. Admins and approvers. */
 knowledge.post('/:id/:action{retire|restore}', async (c) => {
   const user = c.get('user');
-  if (!isAdmin(user)) return c.json({ error: 'Only an admin can retire a document' }, 403);
+  const p = await controller(c.env, user);
+  if (!mayRetire(p)) return c.json({ error: 'Only an admin or an approver can retire a document' }, 403);
   const cur = await find(c.env, c.req.param('id'));
   if (!cur) return c.json({ error: 'Document not found' }, 404);
   const retire = c.req.param('action') === 'retire';
+  const reason = String((await c.req.json().catch(() => ({}))).reason ?? '').trim().slice(0, 300);
+  if (retire && !reason) return c.json({ error: 'Say why it is retired' }, 400);
   await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE knowledge_docs SET retired_at = ?, retired_by = ? WHERE id = ?').bind(retire ? new Date().toISOString() : null, retire ? user.username : null, cur.id),
-    audit(c.env, user, retire ? 'retire' : 'restore', cur.id, cur.title),
+    c.env.DB.prepare('UPDATE knowledge_docs SET retired_at = ?, retired_by = ?, retire_reason = ? WHERE id = ?').bind(retire ? now() : null, retire ? user.username : null, retire ? reason : null, cur.id),
+    audit(c.env, user, retire ? 'retire' : 'restore', cur.id, `${cur.doc_no ?? ''} ${cur.title}${retire ? `: ${reason}` : ''}`),
   ]);
   return c.json({ ok: true });
 });
 
-// ---- files ---------------------------------------------------------------------------------------------------
+// ---- revisions and the review / approval workflow -----------------------------------------------------------------
 
-interface FileRow extends KbFile { doc_id: string; kind: 'published' | 'source'; superseded_at: string | null; change_note: string | null; r2_key?: string }
-
-/** Every file of an entry: the current ones for everyone, the history and the editable version for admins. */
-knowledge.get('/:id/files', async (c) => {
-  const user = c.get('user');
-  const cur = await find(c.env, c.req.param('id'));
-  if (!cur || (cur.retired_at && !isAdmin(user))) return c.json({ error: 'Document not found' }, 404);
-  const { results } = await c.env.DB.prepare(`SELECT ${FILE_COLS} FROM knowledge_files f LEFT JOIN user_roles r ON r.username = f.uploaded_by WHERE f.doc_id = ? ORDER BY f.revision DESC, f.uploaded_at DESC`)
-    .bind(cur.id).all<FileRow>();
-  const admin = isAdmin(user);
+/** Every revision with its files, showing only the files this person may open. */
+knowledge.get('/:id/revisions', async (c) => {
+  const p = await controller(c.env, c.get('user'));
+  const d = await find(c.env, c.req.param('id'));
+  if (!d || !visible(p, d)) return c.json({ error: 'Document not found' }, 404);
+  const [revs, files] = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT ${REV_COLS} ${REV_FROM} WHERE v.doc_id = ? AND v.status <> 'discarded' ORDER BY v.revision DESC`).bind(d.id),
+    c.env.DB.prepare(`SELECT ${FILE_COLS} FROM knowledge_files f LEFT JOIN user_roles r ON r.username = f.uploaded_by WHERE f.doc_id = ? AND f.superseded_at IS NULL ORDER BY f.uploaded_at DESC`).bind(d.id),
+  ]);
+  const list = (revs.results as Revision[]).filter((v) => isStaff(p) || v.status === 'approved');
+  const fl = files.results as (KbFile & { kind: 'published' | 'source' })[];
   return c.json({
-    files: results.filter((f) => mayDownload({ kind: f.kind, superseded: !!f.superseded_at }, admin)),
-    revision: cur.revision, isAdmin: admin, canUpload: canEdit(user) && !!c.env.FILES, storage: !!c.env.FILES,
+    me: p, live: d.published_at ? d.revision : null, storage: !!c.env.FILES, mayRetire: mayRetire(p),
+    revisions: list.map((v) => ({
+      ...v, files: fl.filter((f) => f.revision === v.revision && mayOpen(p, f, { revision: d.revision, published_at: d.published_at ?? null, is_form: d.is_form }, v.status)),
+      can: Object.fromEntries((['submit', 'review', 'approve', 'send_back', 'discard', 'edit_files'] as FlowAction[]).map((a) => [a, mayAct(p, v, a)])),
+      problems: v.status === 'draft' ? submitProblems(d, fl.filter((f) => f.revision === v.revision)) : [],
+    })),
   });
 });
+
+/** Starts the next revision of a published document. The live one stays published until this one is approved. */
+knowledge.post('/:id/revisions', async (c) => {
+  const user = c.get('user');
+  const p = await controller(c.env, user);
+  if (!p.admin && !p.editor) return c.json({ error: 'Your role cannot start a revision' }, 403);
+  const d = await find(c.env, c.req.param('id'));
+  if (!d || d.retired_at) return c.json({ error: 'Document not found' }, 404);
+  if (!d.published_at) return c.json({ error: 'The first revision is still being worked on' }, 400);
+  const open = await openRev(c.env, d.id);
+  if (open) return c.json({ error: `Rev ${open.revision} is already ${REV_STATUS[open.status].toLowerCase()}` }, 409);
+  const b = await c.req.json().catch(() => ({}));
+  if (!String(b.change_note ?? '').trim()) return c.json({ error: 'Say what changes in this revision' }, 400);
+  const rev = nextRevision(d.revision, true, b.revision);
+  if ('error' in rev) return c.json({ error: rev.error }, 400);
+  const rf = revisionFields(b, await setting<Periods>(c.env, 'periods', DEFAULT_PERIODS));
+  if ('error' in rf) return c.json({ error: rf.error }, 400);
+  const id = crypto.randomUUID();
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO knowledge_revisions (id, doc_id, revision, status, change_note, author, revision_date, expires_on, created_by) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?)`)
+        .bind(id, d.id, rev.value, rf.change_note, rf.author ?? d.author ?? null, rf.revision_date, rf.expires_on, user.username),
+      audit(c.env, user, 'revise', d.id, `Rev ${rev.value} of ${d.doc_no ?? d.title} started: ${rf.change_note}`),
+    ]);
+  } catch (e) {
+    if (/UNIQUE/.test((e as Error).message)) return c.json({ error: `Rev ${rev.value} was used before. Pick a higher number` }, 400);
+    throw e;
+  }
+  return c.json({ id, revision: rev.value }, 201);
+});
+
+async function revisionFor(c: C) {
+  const d = await find(c.env, c.req.param('id') ?? '');
+  if (!d || d.retired_at) return null;
+  const v = await c.env.DB.prepare('SELECT * FROM knowledge_revisions WHERE doc_id = ? AND revision = ?').bind(d.id, Number(c.req.param('rev'))).first<Revision>();
+  return v ? { d, v } : null;
+}
+
+/** Corrects a draft's details. */
+knowledge.put('/:id/revisions/:rev{[0-9]+}', async (c) => {
+  const user = c.get('user');
+  const p = await controller(c.env, user);
+  const x = await revisionFor(c);
+  if (!x) return c.json({ error: 'Revision not found' }, 404);
+  if (!mayAct(p, x.v, 'edit_files')) return c.json({ error: 'Only a draft can be changed' }, 400);
+  const rf = revisionFields(await c.req.json().catch(() => ({})), await setting<Periods>(c.env, 'periods', DEFAULT_PERIODS));
+  if ('error' in rf) return c.json({ error: rf.error }, 400);
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE knowledge_revisions SET change_note = ?, author = ?, revision_date = ?, expires_on = ? WHERE id = ?').bind(rf.change_note, rf.author, rf.revision_date, rf.expires_on, x.v.id),
+    audit(c.env, user, 'update', x.d.id, `Rev ${x.v.revision} details of ${x.d.doc_no ?? x.d.title}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+const names = async (env: Env, u: string) => (await env.DB.prepare('SELECT full_name FROM user_roles WHERE username = ?').bind(u).first<{ full_name: string }>())?.full_name ?? u;
+async function holds(env: Env, username: string, right: 'can_review' | 'can_approve') {
+  const r = await env.DB.prepare(`SELECT u.role, coalesce(k.${right}, 0) AS ok FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.username = ? AND u.active = 1`)
+    .bind(username).first<{ role: string; ok: number }>();
+  return !!r && (r.role === 'admin' || r.ok === 1);
+}
+
+knowledge.post('/:id/revisions/:rev{[0-9]+}/:step{submit|review|approve|send-back|discard}', async (c) => {
+  const user = c.get('user');
+  const p = await controller(c.env, user);
+  const x = await revisionFor(c);
+  if (!x) return c.json({ error: 'Revision not found' }, 404);
+  const { d, v } = x;
+  const step = c.req.param('step');
+  const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+  const text = (k: string) => (typeof b[k] === 'string' ? (b[k] as string).trim().slice(0, 500) : '');
+  const label = `${d.doc_no ?? d.title} Rev ${v.revision}`;
+  const t = now();
+
+  if (step === 'submit') {
+    if (!mayAct(p, v, 'submit')) return c.json({ error: 'Only a draft can be sent for review, by an editor' }, 403);
+    const files = (await c.env.DB.prepare('SELECT kind, content_type, file_name FROM knowledge_files WHERE doc_id = ? AND revision = ? AND superseded_at IS NULL').bind(d.id, v.revision).all<{ kind: 'published' | 'source'; content_type: string; file_name: string }>()).results;
+    const problems = submitProblems(d, files);
+    if (problems.length) return c.json({ error: problems.join('. ') }, 400);
+    const reviewer = text('reviewer');
+    if (!reviewer) return c.json({ error: 'Pick the reviewer' }, 400);
+    if (!(await holds(c.env, reviewer, 'can_review'))) return c.json({ error: 'That person is not a reviewer' }, 400);
+    if (reviewer.toLowerCase() === user.username.toLowerCase() && !p.admin) return c.json({ error: 'Someone else must review it' }, 400);
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE knowledge_revisions SET status = 'review', reviewer = ?, submitted_by = ?, submitted_at = ?, approver = NULL, sent_back_reason = NULL WHERE id = ?`).bind(reviewer, user.username, t, v.id),
+      audit(c.env, user, 'submit', d.id, `${label} sent for review to ${await names(c.env, reviewer)}${text('comment') ? `: ${text('comment')}` : ''}`),
+    ]);
+    await notify(c, reviewer, `Review: ${label} ${d.title}`, `${user.fullName} sent ${label} "${d.title}" for your review.`);
+  } else if (step === 'review') {
+    if (!mayAct(p, v, 'review')) return c.json({ error: 'Only the reviewer can pass this review, and not on their own submission' }, 403);
+    const approver = text('approver');
+    if (!approver) return c.json({ error: 'Pick the approver' }, 400);
+    if (!(await holds(c.env, approver, 'can_approve'))) return c.json({ error: 'That person is not an approver' }, 400);
+    if (approver.toLowerCase() === (v.submitted_by ?? '').toLowerCase() && !p.admin) return c.json({ error: 'The approver must be someone other than whoever submitted it' }, 400);
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE knowledge_revisions SET status = 'approval', reviewed_at = ?, review_comment = ?, approver = ?, reviewer = coalesce(reviewer, ?) WHERE id = ?`).bind(t, text('comment') || null, approver, user.username, v.id),
+      audit(c.env, user, 'review', d.id, `${label} reviewed, sent to ${await names(c.env, approver)} for approval${text('comment') ? `: ${text('comment')}` : ''}`),
+    ]);
+    await notify(c, approver, `Approval: ${label} ${d.title}`, `${user.fullName} reviewed ${label} "${d.title}". It is waiting for your approval.`);
+  } else if (step === 'approve') {
+    if (!mayAct(p, v, 'approve')) return c.json({ error: 'Only the approver can publish this, and not on their own submission' }, 403);
+    const periods = await setting<Periods>(c.env, 'periods', DEFAULT_PERIODS);
+    const today = riyadhToday();
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE knowledge_revisions SET status = 'superseded' WHERE doc_id = ? AND status = 'approved'`).bind(d.id),
+      c.env.DB.prepare(`UPDATE knowledge_revisions SET status = 'approved', approved_at = ?, approve_comment = ?, approver = coalesce(approver, ?) WHERE id = ?`).bind(t, text('comment') || null, user.username, v.id),
+      c.env.DB.prepare(`UPDATE knowledge_docs SET revision = ?, published_at = ?, approved_by = ?, review_due = ?, expires_on = ?, author = coalesce(?, author), published_on = coalesce(?, published_on) WHERE id = ?`)
+        .bind(v.revision, t, user.username, addMonths(today, periods.reviewMonths), v.expires_on ?? addMonths(v.revision_date ?? today, periods.expiryMonths), v.author, v.revision_date, d.id),
+      audit(c.env, user, 'approve', d.id, `${label} approved and published${d.published_at ? `, Rev ${d.revision} superseded` : ''}${text('comment') ? `: ${text('comment')}` : ''}`),
+    ]);
+    await notify(c, v.submitted_by, `Published: ${label} ${d.title}`, `${user.fullName} approved ${label} "${d.title}". It is now the published revision.`);
+  } else if (step === 'send-back') {
+    if (!mayAct(p, v, 'send_back')) return c.json({ error: 'Only the reviewer or approver holding it can send it back' }, 403);
+    const reason = text('reason');
+    if (!reason) return c.json({ error: 'Say why it is sent back' }, 400);
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE knowledge_revisions SET status = 'draft', sent_back_by = ?, sent_back_at = ?, sent_back_reason = ? WHERE id = ?`).bind(user.username, t, reason, v.id),
+      audit(c.env, user, 'send_back', d.id, `${label} sent back from ${v.status === 'review' ? 'review' : 'approval'}: ${reason}`),
+    ]);
+    await notify(c, v.submitted_by ?? v.created_by, `Sent back: ${label} ${d.title}`, `${user.fullName} sent ${label} "${d.title}" back: ${reason}`);
+  } else {
+    if (!mayAct(p, v, 'discard')) return c.json({ error: 'Only a draft can be discarded' }, 403);
+    if (!d.published_at) return c.json({ error: 'This is the first revision: an admin or approver retires the document instead' }, 400);
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE knowledge_revisions SET status = 'discarded' WHERE id = ?`).bind(v.id),
+      audit(c.env, user, 'discard', d.id, `${label} draft discarded`),
+    ]);
+  }
+  return c.json({ ok: true });
+});
+
+// ---- files --------------------------------------------------------------------------------------------------------
 
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 
-/**
- * Upload (raw body, X-File-Name, ?kind=published|source&note=). The first document file goes in at the current
- * revision and anyone with the edit right may add it. Replacing it is for admins, needs a note, and raises the
- * revision. The editable version is for admins and is filed at the current revision, replacing an older one.
- */
-knowledge.post('/:id/files', async (c: Context<AppBindings>) => {
+/** Upload to a draft revision (raw body, X-File-Name, ?kind=published|source&rev=N). A new file replaces the draft's earlier one. */
+knowledge.post('/:id/files', async (c) => {
   const user = c.get('user');
-  const cur = await find(c.env, c.req.param('id') ?? '');
-  if (!cur || cur.retired_at) return c.json({ error: 'Document not found' }, 404);
+  const p = await controller(c.env, user);
+  const d = await find(c.env, c.req.param('id'));
+  if (!d || d.retired_at) return c.json({ error: 'Document not found' }, 404);
   if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
+  const v = await openRev(c.env, d.id);
+  if (!v || (c.req.query('rev') !== undefined && Number(c.req.query('rev')) !== v.revision)) return c.json({ error: 'Start a new revision before adding files' }, 400);
+  if (!mayAct(p, v, 'edit_files')) return c.json({ error: v.status === 'draft' ? 'Your role cannot add files' : 'Files can only change while the revision is a draft' }, 403);
   const kind = c.req.query('kind') === 'source' ? 'source' : 'published';
-  const note = (c.req.query('note') ?? '').trim().slice(0, 300) || null;
-  const current = await c.env.DB.prepare("SELECT id FROM knowledge_files WHERE doc_id = ? AND kind = 'published' AND superseded_at IS NULL").bind(cur.id).first<{ id: string }>();
-  const replacing = kind === 'published' && !!current;
-  if ((kind === 'source' || replacing) && !isAdmin(user)) {
-    return c.json({ error: kind === 'source' ? 'Only an admin keeps the editable version' : 'Only an admin can replace the document file' }, 403);
-  }
-  if (replacing && !note) return c.json({ error: 'Say what changed in this revision' }, 400);
-  const name = decodeURIComponent(c.req.header('x-file-name') ?? '');
   const bytes = new Uint8Array(await c.req.arrayBuffer());
-  const ok = checkUpload(name, bytes.length);
+  const ok = checkUpload(decodeURIComponent(c.req.header('x-file-name') ?? ''), bytes.length);
   if ('error' in ok) return c.json({ error: ok.error }, 400);
-  const revision = replacing ? cur.revision + 1 : cur.revision;
   const id = crypto.randomUUID();
-  const key = fileKey(cur, revision, kind, id, ok.name);
+  const key = fileKey(d, v.revision, kind, id, ok.name);
   const sha = hex(await crypto.subtle.digest('SHA-256', bytes));
-  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username, sha256: sha, doc: cur.id, revision: String(revision) } });
-  const now = new Date().toISOString();
+  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username, sha256: sha, doc: d.id, revision: String(v.revision) } });
   await c.env.DB.batch([
-    // a new document file supersedes the old one; a new editable version supersedes the old editable version
-    c.env.DB.prepare('UPDATE knowledge_files SET superseded_at = ? WHERE doc_id = ? AND kind = ? AND superseded_at IS NULL').bind(now, cur.id, kind),
-    c.env.DB.prepare('INSERT INTO knowledge_files (id, doc_id, kind, revision, file_name, content_type, size_bytes, sha256, r2_key, change_note, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, cur.id, kind, revision, ok.name, ok.type, bytes.length, sha, key, note, user.username),
-    c.env.DB.prepare('UPDATE knowledge_docs SET revision = ? WHERE id = ?').bind(revision, cur.id),
-    audit(c.env, user, replacing ? 'replace' : 'upload', cur.id,
-      `${kind === 'source' ? 'Editable version' : 'Document'} “${ok.name}” Rev ${revision} for ${cur.doc_no ?? cur.title}${note ? `: ${note}` : ''}`),
+    c.env.DB.prepare('UPDATE knowledge_files SET superseded_at = ? WHERE doc_id = ? AND kind = ? AND revision = ? AND superseded_at IS NULL').bind(now(), d.id, kind, v.revision),
+    c.env.DB.prepare('INSERT INTO knowledge_files (id, doc_id, kind, revision, file_name, content_type, size_bytes, sha256, r2_key, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, d.id, kind, v.revision, ok.name, ok.type, bytes.length, sha, key, user.username),
+    audit(c.env, user, 'upload', d.id, `${kind === 'source' ? 'Editable version' : 'Document'} “${ok.name}” for ${d.doc_no ?? d.title} Rev ${v.revision} (draft)`),
   ]);
-  return c.json({ id, revision, name: ok.name }, 201);
+  return c.json({ id, revision: v.revision, name: ok.name }, 201);
 });
 
-/** Download. Opens in the page with ?inline=1 for PDFs and images. Each download is logged, as in Document Control. */
+function fileResponse(body: BodyInit | null, type: string, name: string, inline: boolean, extra: Record<string, string> = {}) {
+  const show = inline && ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(type);
+  return new Response(body, {
+    headers: {
+      'Content-Type': type, 'Content-Disposition': `${show ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'", 'Cache-Control': 'private, no-store', ...extra,
+    },
+  });
+}
+
+/**
+ * Download. PDFs are stamped on every page with the number, revision, who downloaded it, the date and a copy number;
+ * a revision that is not approved also carries NOT APPROVED across each page. The copy number goes in the audit log.
+ */
 knowledge.get('/:id/files/:fileId', async (c) => {
   const user = c.get('user');
-  const f = await c.env.DB.prepare('SELECT f.*, d.retired_at, d.title, d.doc_no FROM knowledge_files f JOIN knowledge_docs d ON d.id = f.doc_id WHERE f.id = ? AND f.doc_id = ?')
-    .bind(c.req.param('fileId'), c.req.param('id'))
-    .first<FileRow & { r2_key: string; retired_at: string | null; title: string; doc_no: string | null }>();
-  const admin = isAdmin(user);
-  if (!f || (f.retired_at && !admin)) return c.json({ error: 'File not found' }, 404);
-  if (!mayDownload({ kind: f.kind, superseded: !!f.superseded_at }, admin)) return c.json({ error: 'Only an admin can open this version' }, 403);
+  const p = await controller(c.env, user);
+  const f = await c.env.DB.prepare(`SELECT f.*, v.status AS rev_status FROM knowledge_files f LEFT JOIN knowledge_revisions v ON v.doc_id = f.doc_id AND v.revision = f.revision WHERE f.id = ? AND f.doc_id = ?`)
+    .bind(c.req.param('fileId'), c.req.param('id')).first<KbFile & { kind: 'published' | 'source'; r2_key: string; rev_status: RevStatus | null }>();
+  const d = await find(c.env, c.req.param('id'));
+  if (!f || !d || !visible(p, d)) return c.json({ error: 'File not found' }, 404);
+  const status = f.rev_status ?? 'superseded';
+  if (!mayOpen(p, f, { revision: d.revision, published_at: d.published_at ?? null, is_form: d.is_form }, status)) return c.json({ error: 'Your access does not include this version' }, 403);
   if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet' }, 503);
   const obj = await c.env.FILES.get(f.r2_key);
   if (!obj) return c.json({ error: 'The file is missing from storage' }, 404);
-  await audit(c.env, user, 'download', f.doc_id, `${f.kind === 'source' ? 'Editable version' : 'Document'} “${f.file_name}” Rev ${f.revision} of ${f.doc_no ?? f.title}`).run();
-  const inline = c.req.query('inline') === '1' && ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(f.content_type);
-  return new Response(obj.body, {
-    headers: {
-      'Content-Type': f.content_type,
-      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.file_name)}`,
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
-      'Cache-Control': 'private, max-age=60',
-    },
-  });
+  const copy = copyId();
+  let body: BodyInit | null = obj.body;
+  let stamped = false;
+  if (f.content_type === 'application/pdf') {
+    const text = stampText({ docNo: d.doc_no ?? d.title.slice(0, 40), revision: f.revision, by: `${user.fullName} (${user.username})`, date: riyadhToday(), copy, status: status === 'approved' ? 'approved' : REV_STATUS[status].toLowerCase() });
+    const out = await stampPdf(new Uint8Array(await obj.arrayBuffer()), text, status !== 'approved');
+    if (out) { body = out; stamped = true; } else body = (await c.env.FILES.get(f.r2_key))?.body ?? null;
+  }
+  await audit(c.env, user, 'download', d.id,
+    `${f.kind === 'source' ? 'Editable version' : 'Document'} “${f.file_name}” Rev ${f.revision} (${REV_STATUS[status].toLowerCase()}) of ${d.doc_no ?? d.title}, ${copy}${stamped ? '' : ', not stamped'}`).run();
+  return fileResponse(body, f.content_type, f.file_name, c.req.query('inline') === '1', { 'X-Copy-Id': copy });
 });
+
