@@ -19,10 +19,15 @@ export const TYPES: Record<string, string> = {
   xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
   ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   msg: 'application/vnd.ms-outlook', eml: 'message/rfc822', zip: 'application/zip',
+  // videos (6z.17): played in the page, never run as code
+  mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
 };
+export const VIDEO = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 /** Types a browser may show in the page instead of downloading. */
-export const INLINE = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']);
+export const INLINE = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', ...VIDEO]);
 export const MAX_BYTES = 25 * 1024 * 1024;
+/** Videos may be larger; the Worker holds the whole upload in memory, so 50 MB is the ceiling. */
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 export const extOf = (name: string) => (/\.([a-z0-9]{1,6})$/i.exec(name)?.[1] ?? '').toLowerCase();
 
@@ -36,9 +41,9 @@ export function cleanName(name: string): string {
 export function checkUpload(name: string, size: number): { error: string } | { name: string; type: string } {
   const n = cleanName(name);
   const type = TYPES[extOf(n)];
-  if (!type) return { error: `“${n}” isn’t a type SLK Operations Hub keeps. Use a photo, PDF, Word, Excel, PowerPoint, text, CSV, email or zip file.` };
+  if (!type) return { error: `“${n}” isn’t a type SLK Operations Hub keeps. Use a photo, video (MP4, MOV, WebM), PDF, Word, Excel, PowerPoint, text, CSV, email or zip file.` };
   if (size <= 0) return { error: 'The file is empty' };
-  if (size > MAX_BYTES) return { error: `“${n}” is larger than 25 MB` };
+  if (VIDEO.has(type) ? size > MAX_VIDEO_BYTES : size > MAX_BYTES) return { error: `“${n}” is larger than ${VIDEO.has(type) ? '50' : '25'} MB` };
   return { name: n, type };
 }
 

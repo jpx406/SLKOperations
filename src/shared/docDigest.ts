@@ -33,17 +33,21 @@ export function digestSchema() {
   };
 }
 
-export function digestPrompt(p: { title: string; docNo: string | null; kind: string; summary: string | null; keyAction: string | null }) {
+/** Lessons (lesson learnt, best practice, learning from incident) get a two-slide crew deck; other documents only the mind map. */
+export const LESSON_SLIDES = 2;
+
+export function digestPrompt(p: { title: string; docNo: string | null; kind: string; summary: string | null; keyAction: string | null; lesson: boolean }) {
+  const slides = p.lesson
+    ? `1. slides: exactly 2 slides for a 5-minute crew briefing, shown beside a photo of the event.
+   - Slide 1, kind "points": title = a headline of what happened, up to 8 words. points = 3 to 5 lines: what happened, where and during which operation, why it happened, what it caused.
+   - Slide 2, kind "warning": title = "What we do now" or a short equivalent. points = 3 to 5 lines: the key action first, then the other lessons and checks crews must apply.
+   - Points up to 18 words each. note = one sentence the presenter can add ("" if none).`
+    : '1. slides: [] (this document type has no crew slides).';
   return `You prepare field material for NESR slickline crews from the attached document: "${p.title}"${p.docNo ? ` (${p.docNo})` : ''}, a ${p.kind}.
 Use only what the document says. Keep its numbers, limits, pressures, sizes and names exactly. Never add steps, values or advice it doesn't contain. Plain, short English that a crew reads on a screen at the wellsite.
 
-1. slides: a toolbox-talk deck of 5 to 12 slides that covers the whole document in detail, in its order.
-   - First slide kind "title": title = the document's title, points = 1 to 3 lines (what it covers, where it applies), note = "".
-   - Then kind "points" for facts and context, "steps" for an ordered procedure (one step per point, in order), "warning" for hazards, limits, stop-work conditions and must-do actions.
-   - For a lesson or incident: what happened, why it happened, what it caused, what we do now, then the key action as a "warning" slide.
-   - Last slide kind "question": 2 to 4 questions for the crew to check understanding.
-   - Each slide: a title of up to 8 words, 2 to 6 points of up to 20 words each, and note = one sentence the presenter can add ("" if none).
-2. mindmap: the whole document on one screen, to consult during the job instead of reading it again.
+${slides}
+2. mindmap: the whole document on one screen. It is consulted during the job instead of reading the document again, and the AI Agent answers questions from it, so every limit, value, step and responsibility in the document must appear in it.
    - center: the subject in up to 6 words.
    - branches: 4 to 8 main topics (for a procedure: preparation, equipment, steps by phase, checks and limits, hazards, responsibilities, as the document has them).
    - each branch: up to 6 children of up to 10 words; a child may have up to 4 children of its own with exact values (e.g. "Pull test 50% of wire breaking strength").
@@ -61,7 +65,7 @@ function cleanNode(v: unknown, depth: number): MindNode | null {
 }
 
 /** Makes the answer safe to show: known slide kinds, sizes capped, empty slides and branches dropped. */
-export function cleanDigest(raw: unknown, title: string): Digest {
+export function cleanDigest(raw: unknown, title: string, maxSlides = 14): Digest {
   const r = (raw ?? {}) as Record<string, unknown>;
   const slides = (Array.isArray(r.slides) ? r.slides : []).map((x): Slide | null => {
     const o = (x ?? {}) as Record<string, unknown>;
@@ -69,19 +73,26 @@ export function cleanDigest(raw: unknown, title: string): Digest {
     const points = (Array.isArray(o.points) ? o.points : []).map((p) => s(p, 240)).filter(Boolean).slice(0, 8);
     const t = s(o.title, 120);
     return t || points.length ? { kind, title: t || title, points, note: s(o.note, 300) } : null;
-  }).filter((x): x is Slide => !!x).slice(0, 14);
+  }).filter((x): x is Slide => !!x).slice(0, maxSlides);
   const m = (r.mindmap ?? {}) as Record<string, unknown>;
   const branches = (Array.isArray(m.branches) ? m.branches : []).map((b) => cleanNode(b, 2)).filter((b): b is MindNode => !!b).slice(0, 10);
   return { slides, mindmap: { center: s(m.center, 80) || title, branches } };
 }
 
-/** A deck from the record alone (no file, or AI unavailable): the title, the summary, the key action. */
+/** The two lesson slides from the record alone (no file, or AI unavailable): what happened, then the key action. */
 export function fallbackSlides(d: { title: string; doc_no: string | null; summary: string | null; key_action: string | null; failure_types: string[] }): Slide[] {
-  const out: Slide[] = [{ kind: 'title', title: d.title, points: [d.doc_no ?? ''].filter(Boolean), note: '' }];
-  if (d.summary) out.push({ kind: 'points', title: 'What it is about', points: d.summary.split(/(?<=[.!?])\s+/).filter(Boolean).slice(0, 6), note: '' });
-  if (d.key_action) out.push({ kind: 'warning', title: 'Key action', points: [d.key_action], note: '' });
-  if (d.failure_types.length) out.push({ kind: 'points', title: 'Failure types', points: d.failure_types, note: '' });
-  return out;
+  const what = d.summary ? d.summary.split(/(?<=[.!?])\s+/).filter(Boolean).slice(0, 5) : [];
+  const now = [d.key_action, d.failure_types.length ? `Failure types: ${d.failure_types.join(', ')}` : ''].filter((x): x is string => !!x);
+  return [
+    { kind: 'points', title: d.title, points: what.length ? what : [d.doc_no ?? 'See the document'].filter(Boolean), note: '' },
+    { kind: 'warning', title: 'What we do now', points: now.length ? now : ['Read the document with the crew'], note: '' },
+  ];
+}
+
+/** A lesson's two slides from a saved deck; an older, longer deck gives its first two content slides. */
+export function lessonSlides(slides: Slide[]): Slide[] {
+  const content = slides.filter((s) => s.kind !== 'title' && s.kind !== 'question');
+  return (content.length >= LESSON_SLIDES ? content : slides).slice(0, LESSON_SLIDES);
 }
 
 /** Counts the nodes of a mind map (for the page's summary line). */

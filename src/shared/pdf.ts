@@ -1,7 +1,15 @@
 // A small PDF writer for text documents (the approved JRA): A4 or A3 pages, Helvetica and Helvetica-Bold, word-wrapped
 // lines, rules and filled boxes. No dependencies, so it runs in the Worker. Text is encoded as WinAnsi (Windows-1252).
 
-const PAPER = { A4: [595.28, 841.89], A3: [841.89, 1190.55] } as const; // in points
+// in points; SLIDE is 16:9 (960 x 540 landscape), the same size as a PowerPoint widescreen slide
+const PAPER = { A4: [595.28, 841.89], A3: [841.89, 1190.55], SLIDE: [540, 960] } as const;
+
+/** Bytes as a one-char-per-byte string, in chunks: a large photo spread into one call would overflow the stack. */
+function binary(data: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < data.length; i += 0x8000) s += String.fromCharCode(...data.subarray(i, i + 0x8000));
+  return s;
+}
 
 // Helvetica glyph widths (per 1000) for characters 32–126, from the standard font metrics
 const HELV = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
@@ -141,7 +149,7 @@ export class PdfDoc {
     const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
     const ims = this.images.map((im) => add(`<< /Type /XObject /Subtype /Image /Width ${im.width} /Height ${im.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.data.length} >>
 stream
-${String.fromCharCode(...im.data)}
+${binary(im.data)}
 endstream`));
     const xobj = ims.length ? ` /XObject << ${ims.map((id, i) => `/Im${i + 1} ${id} 0 R`).join(' ')} >>` : '';
     const kids: number[] = [];

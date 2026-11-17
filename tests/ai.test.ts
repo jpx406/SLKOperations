@@ -47,6 +47,7 @@ describe('AI Agent tools', () => {
     const samples: Record<string, Record<string, unknown>> = {
       job_statistics: { from: '2026-01-01', unit: ['SL-40'] }, find_jobs: { q: 'W-1' }, get_job: { id: 'j1' }, failure_roster: { month: '2026-10' },
       eight_min_facts: {}, attendance_month: { month: '2026-10' }, reconciliation_findings: {}, sales_revenue: {},
+      find_documents: { q: 'gauge' }, document_mindmap: { id: 'd1' },
     };
     for (const t of AI_TOOLS) {
       const r = toolPaths(t.name, samples[t.name]);
@@ -57,6 +58,19 @@ describe('AI Agent tools', () => {
         expect(readAllowed(path, {})).toBe(false);
       }
     }
+  });
+  it('finds published documents and answers from their mind map', () => {
+    const lib = { docs: [
+      { id: 'a', doc_no: 'SOP-GL-GE-001', title: 'Gauge run procedure', section: 'sop', country: 'Global', published_at: 'x', revision: 2, summary: 'Run a gauge cutter' },
+      { id: 'b', doc_no: 'SOP-GL-GE-002', title: 'Gauge run draft', section: 'sop', country: 'Global', published_at: null },
+      { id: 'c', doc_no: 'CP-BAH-001', title: 'Gauge run for Bapco', section: 'client', country: 'Bahrain', published_at: 'x' },
+    ] };
+    const found = shapeResult('find_documents', { q: 'gauge run', country: 'Saudi Arabia' }, [lib]) as { list: { id: string }[] };
+    expect(found.list.map((d) => d.id)).toEqual(['a']);
+    const map = { center: 'Gauge run', branches: [{ label: 'Limits', children: [{ label: 'Max 150 ft/min', children: [] }] }] };
+    expect(shapeResult('document_mindmap', { id: 'a' }, [{ digest: { mindmap: map, slides: [] }, revision: 2 }, lib.docs[0]])).toMatchObject({ revision: 2, mindmap: map, document: { doc_no: 'SOP-GL-GE-001' } });
+    expect(shapeResult('document_mindmap', { id: 'a' }, [{ digest: null }, lib.docs[0]])).toMatchObject({ mindmap: null });
+    expect(toolPaths('document_mindmap', { id: '../admin' })).toHaveProperty('error');
   });
   it('refuses malformed input before reading anything', () => {
     expect(toolPaths('job_statistics', { from: 'last week' })).toEqual({ error: 'from must be YYYY-MM-DD' });

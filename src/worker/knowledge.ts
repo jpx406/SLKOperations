@@ -8,7 +8,7 @@ import {
 import type Anthropic from '@anthropic-ai/sdk';
 import { costMicroUsd, limitCheck } from '../shared/ai';
 import { analysisPrompt, answerSchema, cleanSuggestion, extractText } from '../shared/docAnalysis';
-import { cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
+import { LESSON_SLIDES, cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
 import { ADD_TYPES, type AddType } from '../shared/knowledge';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
@@ -355,7 +355,7 @@ knowledge.post('/:id/digest', async (c) => {
     const res = await client(c.env).beta.messages.create({
       model: s.model, max_tokens: 16000,
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: digestSchema() } },
-      messages: [{ role: 'user', content: [part, { type: 'text', text: digestPrompt({ title: d.title, docNo: d.doc_no, kind, summary: d.summary, keyAction: d.key_action }) }] }],
+      messages: [{ role: 'user', content: [part, { type: 'text', text: digestPrompt({ title: d.title, docNo: d.doc_no, kind, summary: d.summary, keyAction: d.key_action, lesson: d.section === 'lesson' }) }] }],
       ...fallbackFor(s.model),
     });
     micro = costMicroUsd(res.usage, s.model);
@@ -366,8 +366,8 @@ knowledge.post('/:id/digest', async (c) => {
     let raw: unknown;
     try { raw = JSON.parse(res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map((b) => b.text).join('')); }
     catch { return c.json({ error: 'The AI answer couldn’t be read. Try again.' }, 502); }
-    const dg = cleanDigest(raw, d.title);
-    if (!dg.slides.length || !dg.mindmap.branches.length) return c.json({ error: 'The AI couldn’t make slides from this document. Try again.' }, 502);
+    const dg = cleanDigest(raw, d.title, d.section === 'lesson' ? LESSON_SLIDES : 0);
+    if ((d.section === 'lesson' && !dg.slides.length) || !dg.mindmap.branches.length) return c.json({ error: 'The AI couldn’t make the slides and mind map from this document. Try again.' }, 502);
     await c.env.DB.batch([
       c.env.DB.prepare(`INSERT INTO knowledge_digests (doc_id, revision, slides, mindmap, source, model, made_by) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (doc_id, revision) DO UPDATE SET slides = excluded.slides, mindmap = excluded.mindmap, source = excluded.source, model = excluded.model, made_by = excluded.made_by, made_at = excluded.made_at`)

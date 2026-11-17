@@ -10,11 +10,11 @@ import {
 import { expiryState, formatNumber, guessType, numberPrefix, splitBase } from '../../shared/knowledgeControl';
 import type { Suggestion } from '../../shared/docAnalysis';
 import { ApiError, api, formatDate } from '../api';
-import { Attachments } from '../components/Attachments';
+import { SupportFiles } from './knowledge/Support';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 import { ACCEPT, DocState, Dialog, EDITABLE_ACCEPT, QrBlock, QrDialog, fileUrl, linkBtn, today, uploadFile, type Library } from './knowledge/common';
 import { Archive, BatchAdd, Dashboard, ManualsView, Queue, Register, Settings } from './knowledge/Control';
-import { MindMapDialog, MindMapPanel, Present } from './knowledge/Digest';
+import { LessonDownloads, MindMapDialog, MindMapPanel, Present } from './knowledge/Digest';
 import { Revisions } from './knowledge/Revisions';
 
 /** Read opens the PDF itself, in a new tab (stamped, as every download). Null when there is no PDF to open. */
@@ -355,7 +355,7 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
       {doc.key_action && <div className="mt-3 rounded-md bg-warning-subtle p-3 text-sm"><span className="font-semibold">Key action: </span>{doc.key_action}</div>}
       {doc.failure_types.length > 0 && <p className="mt-3 flex flex-wrap gap-1">{doc.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
       <Revisions doc={doc} people={lib.people} onChange={() => { refresh(); qc.invalidateQueries({ queryKey: ['knowledge-doc', id] }); }} />
-      {lesson && <div className="mt-4 rounded-md border border-border p-3"><Attachments entity="knowledge" id={doc.id} title="Supporting files" /></div>}
+      <SupportFiles docId={doc.id} />
       {doc.published_at && (
         <details className="mt-4 rounded-md border border-border p-3" open={mapOpen} onToggle={(e) => setMapOpen((e.target as HTMLDetailsElement).open)}>
           <summary className="cursor-pointer font-display text-sm font-bold">Mind map: the whole document on one screen</summary>
@@ -370,7 +370,8 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
         </div>
       )}
       <div className="mt-4 flex flex-wrap gap-2">
-        {doc.published_at && <Button variant="primary" onClick={() => setPresent(true)}><Play aria-hidden className="size-4" />Present to the crew</Button>}
+        {lesson && doc.published_at && <Button variant="primary" onClick={() => setPresent(true)}><Play aria-hidden className="size-4" />Present to the crew</Button>} 
+        {lesson && doc.published_at && <LessonDownloads doc={doc} />}
         {pdfHref(doc) && <a href={pdfHref(doc)!} target="_blank" rel="noreferrer" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><BookOpen aria-hidden className="size-4" />Read the PDF</a>}
         {doc.source_ref && <a href={doc.source_ref} target="_blank" rel="noreferrer noopener" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><ExternalLink aria-hidden className="size-4" />Open the source link</a>}
         <Button onClick={() => setQr(!qr)}><QrCode aria-hidden className="size-4" />QR code</Button>

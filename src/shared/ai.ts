@@ -144,6 +144,18 @@ export const AI_TOOLS: AiToolDef[] = [
     input_schema: { type: 'object', properties: { ...FILTER_PROPS }, additionalProperties: false },
     menus: ['sales_dashboard'],
   },
+  {
+    name: 'find_documents',
+    description: 'Search the Knowledge Hub (published SOPs, work instructions, forms, client procedures, lessons learnt) by words in the title, number, summary, client or company. Returns id, number, title, section, country, revision, summary. Use before document_mindmap.',
+    input_schema: { type: 'object', properties: { q: { type: 'string', description: 'Words to look for, e.g. "gauge run" or "Aramco permit"' }, section: { type: 'string', enum: ['lesson', 'sop', 'swi', 'form', 'client'] }, country: { type: 'string', description: 'A country; Global documents are always included' } }, additionalProperties: false },
+    menus: ['knowledge_hub'],
+  },
+  {
+    name: 'document_mindmap',
+    description: 'The mind map of one published document (from find_documents): every step, limit, value, hazard and responsibility in a compact tree. Answer procedure questions from it instead of the full document.',
+    input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'], additionalProperties: false },
+    menus: ['knowledge_hub'],
+  },
 ];
 
 export const toolsFor = (menus: Record<string, { view: boolean }>) => AI_TOOLS.filter((t) => t.menus.some((m) => menus[m]?.view));
@@ -199,6 +211,13 @@ export function toolPaths(name: string, input: Record<string, unknown>): { paths
     }
     case 'reconciliation_findings':
       return { paths: [`/recon/findings?status=${['explained', 'resolved'].includes(str(input.status)) ? str(input.status) : 'open'}`] };
+    case 'find_documents':
+      return { paths: ['/knowledge'] };
+    case 'document_mindmap': {
+      const id = str(input.id);
+      if (!/^[\w-]{1,64}$/.test(id)) return { error: 'Give a document id from find_documents' };
+      return { paths: [`/knowledge/${id}/digest`, `/knowledge/${id}`] };
+    }
     default:
       return { error: `Unknown tool ${name}` };
   }
@@ -273,6 +292,23 @@ export function shapeResult(name: string, input: Record<string, unknown>, bodies
         completed_missing_revenue: list.filter((j) => j.status === 'completed' && j.revenue_cents == null).slice(0, 30).map((j) => pick(j, ['ticket_no', 'start_date', 'location', 'well'])),
       };
     }
+    case 'find_documents': {
+      // published documents only, matched on every word of the query
+      const docs = (((a as { docs?: Rec[] })?.docs) ?? []).filter((d) => d.published_at && !d.retired_at);
+      const words = str(input.q).toLowerCase().split(/\s+/).filter(Boolean);
+      const text = (d: Rec) => [d.title, d.doc_no, d.summary, d.key_action, d.category, d.client, d.company, d.country, ...((d.failure_types as string[]) ?? [])].filter(Boolean).join(' ').toLowerCase();
+      const hits = docs.filter((d) => (!str(input.section) || d.section === str(input.section)) && (!str(input.country) || d.country === str(input.country) || d.country === 'Global')
+        && words.every((w) => text(d).includes(w)));
+      return { documents: hits.length, list: hits.slice(0, 25).map((d) => pick(d, ['id', 'doc_no', 'title', 'section', 'country', 'company', 'client', 'revision', 'summary'])) };
+    }
+    case 'document_mindmap': {
+      const dg = (a as { digest?: { mindmap?: unknown; slides?: unknown } | null; revision?: number; reason?: string }) ?? {};
+      const d = (b as Rec) ?? {};
+      const doc = pick(d, ['doc_no', 'title', 'section', 'country', 'company', 'client', 'revision', 'summary', 'key_action']);
+      return dg.digest?.mindmap
+        ? { document: doc, revision: dg.revision, mindmap: dg.digest.mindmap, note: 'Summary made from the document; cite the document number and revision, and send the person to Read for the exact wording.' }
+        : { document: doc, mindmap: null, note: dg.reason ?? 'No mind map yet. Answer from the summary only, and suggest opening the document\'s Mind map once so it is made.' };
+    }
     default:
       return trim(a);
   }
@@ -295,9 +331,9 @@ export const STARTER_PROMPTS = [
 ];
 
 export function systemPrompt(p: { fullName: string; role: string; countries: string[]; today: string; tools: string[] }) {
-  return `You are the AI Agent in SLK Operations Hub, NESR's slickline operations app. You answer questions about jobs, NPT, failures, attendance, reconciliation and revenue for ${p.fullName} (${p.role}), whose data covers ${p.countries.join(', ') || 'no countries'}. Today is ${p.today} (Riyadh).
+  return `You are the AI Agent in SLK Operations Hub, NESR's slickline operations app. You answer questions about jobs, NPT, failures, attendance, reconciliation, revenue and the procedures and lessons in the Knowledge Hub for ${p.fullName} (${p.role}), whose data covers ${p.countries.join(', ') || 'no countries'}. Today is ${p.today} (Riyadh).
 
 Answer only from what the tools return. The tools read the same pages this person can open, with their permissions; if a tool says access is refused or a page needs unlocking, say so plainly and do not guess the figures. If the tools can't answer the question, say what is missing. You can't change anything in the app; if asked to, say where in SLK Operations Hub the person can do it themselves.
 
-Keep answers short and concrete: lead with the number or the answer, then a few lines of support. Use tables (Markdown) for lists of more than three items. Give dates as 12 Oct 2026. Name the period and filters you used. Tools available to this person: ${p.tools.join(', ') || 'none'}.`;
+Keep answers short and concrete: lead with the number or the answer, then a few lines of support. Use tables (Markdown) for lists of more than three items. Give dates as 12 Oct 2026. Name the period and filters you used. For a question about how a job is done, a limit, a client requirement or a past lesson, use find_documents then document_mindmap, answer from the mind map, and name the document (number, title, revision). Tools available to this person: ${p.tools.join(', ') || 'none'}.`;
 }

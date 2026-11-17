@@ -88,25 +88,45 @@ async function fileRow(c: Context<AppBindings>, s: { entity: AttachEntity; entit
     .bind(c.req.param('fileId'), s.entity, s.entityId).first<{ id: string; file_name: string; content_type: string; r2_key: string; template_id: string | null }>();
 }
 
-/** The file itself. Images and PDFs can open in the page (?inline=1); everything else downloads. */
+/** "bytes=a-b", "bytes=a-" or "bytes=-n" for a file of `size` bytes; null when absent or not satisfiable. */
+export function parseRange(header: string | undefined, size: number): { offset: number; length: number } | null {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header ?? '');
+  if (!m || (!m[1] && !m[2])) return null;
+  let start = m[1] ? Number(m[1]) : size - Number(m[2]);
+  let end = m[1] && m[2] ? Number(m[2]) : size - 1;
+  start = Math.max(0, start); end = Math.min(size - 1, end);
+  return start <= end ? { offset: start, length: end - start + 1 } : null;
+}
+
+/** The file itself. Images, videos and PDFs can open in the page (?inline=1); videos answer byte ranges so they can be scrubbed. */
 attachments.get('/:entity/:entityId/:fileId', async (c) => {
   const s = await scopeOf(c, 'view');
   if ('error' in s) return c.json({ error: s.error }, s.status);
   const row = await fileRow(c, s);
   if (!row) return c.json({ error: 'File not found' }, 404);
   if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet' }, 503);
+  const inline = c.req.query('inline') === '1' && INLINE.has(row.content_type);
+  const headers: Record<string, string> = {
+    'Content-Type': row.content_type,
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(row.file_name)}`,
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+    'Cache-Control': 'private, max-age=300',
+    'Accept-Ranges': 'bytes',
+  };
+  const wanted = c.req.header('range');
+  if (wanted) {
+    const head = await c.env.FILES.head(row.r2_key);
+    if (!head) return c.json({ error: 'The file is missing from storage' }, 404);
+    const r = parseRange(wanted, head.size);
+    if (!r) return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${head.size}` } });
+    const part = await c.env.FILES.get(row.r2_key, { range: r });
+    if (!part) return c.json({ error: 'The file is missing from storage' }, 404);
+    return new Response(part.body, { status: 206, headers: { ...headers, 'Content-Range': `bytes ${r.offset}-${r.offset + r.length - 1}/${head.size}`, 'Content-Length': String(r.length) } });
+  }
   const obj = await c.env.FILES.get(row.r2_key);
   if (!obj) return c.json({ error: 'The file is missing from storage' }, 404);
-  const inline = c.req.query('inline') === '1' && INLINE.has(row.content_type);
-  return new Response(obj.body, {
-    headers: {
-      'Content-Type': row.content_type,
-      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(row.file_name)}`,
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
-      'Cache-Control': 'private, max-age=300',
-    },
-  });
+  return new Response(obj.body, { headers: { ...headers, 'Content-Length': String(obj.size) } });
 });
 
 /** Removing hides the file; the object stays in R2 and the audit log says who removed it. */
