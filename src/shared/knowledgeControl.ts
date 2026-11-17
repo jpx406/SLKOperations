@@ -2,7 +2,7 @@
 // review and approval, revision numbers, who may open which file, numbering settings, review and expiry dates,
 // the document register and batch upload. Pure rules, used by the Worker and the page.
 
-import { ADD_TYPES, COMPANY_CODE, placeCode, type AddType, type KnowledgeDoc, type Section } from './knowledge';
+import { ADD_TYPES, COMPANY_CODE, hasCompany, placeCode, type AddType, type KnowledgeDoc, type Section } from './knowledge';
 
 export const REV_STATUS = {
   draft: 'Draft', review: 'In review', approval: 'Awaiting approval', approved: 'Published', superseded: 'Superseded', discarded: 'Discarded',
@@ -59,6 +59,10 @@ export function submitProblems(doc: Pick<KnowledgeDoc, 'section' | 'summary'> & 
     if (!doc_ && !doc.summary) out.push('Add the document file or write the summary');
     return out;
   }
+  if (doc.section === 'form') {
+    if (!doc_) out.push('Add the form file (Excel, Word, PowerPoint or PDF)');
+    return out;
+  }
   if (!doc_) out.push('Add the document file (PDF)');
   else if (!doc.is_form && doc_.content_type !== 'application/pdf') out.push('The document file must be a PDF');
   if (!source) out.push(doc.is_form ? 'Add the fillable form (Word or Excel)' : 'Add the editable version (Word or Excel)');
@@ -81,7 +85,7 @@ export function mayOpen(p: Controller, f: { kind: 'published' | 'source'; revisi
 // ---- numbering ---------------------------------------------------------------------------------------------
 
 export interface Numbering { mode: 'auto' | 'manual'; prefix: Record<Section, string>; digits: number; place: boolean }
-export const DEFAULT_NUMBERING: Numbering = { mode: 'auto', prefix: { lesson: 'LL', sop: 'SOP', client: 'CP' }, digits: 3, place: true };
+export const DEFAULT_NUMBERING: Numbering = { mode: 'auto', prefix: { lesson: 'LL', sop: 'SOP', swi: 'SWI', form: 'FRM', client: 'CP' }, digits: 3, place: true };
 export interface Periods { reviewMonths: number; expiryMonths: number }
 export const DEFAULT_PERIODS: Periods = { reviewMonths: 12, expiryMonths: 36 };
 
@@ -91,12 +95,13 @@ export function checkNumbering(v: unknown): { error: string } | { value: Numberi
   const digits = Number(b.digits);
   if (!Number.isInteger(digits) || digits < 2 || digits > 6) return { error: 'Digits must be 2 to 6' };
   const prefix = {} as Record<Section, string>;
-  for (const s of ['lesson', 'sop', 'client'] as Section[]) {
-    const p = String(b.prefix?.[s] ?? '').trim().toUpperCase();
+  for (const s of ['lesson', 'sop', 'swi', 'form', 'client'] as Section[]) {
+    // a section saved before it existed keeps its default prefix
+    const p = String(b.prefix?.[s] ?? DEFAULT_NUMBERING.prefix[s]).trim().toUpperCase();
     if (!/^[A-Z][A-Z0-9]{0,7}$/.test(p)) return { error: 'Each prefix is 1 to 8 letters or numbers, starting with a letter' };
     prefix[s] = p;
   }
-  if (new Set(Object.values(prefix)).size < 3) return { error: 'Each section needs its own prefix' };
+  if (new Set(Object.values(prefix)).size < 5) return { error: 'Each section needs its own prefix' };
   return { value: { mode, prefix, digits, place: b.place !== false } };
 }
 
@@ -113,7 +118,7 @@ export function checkPeriods(v: unknown): { error: string } | { value: Periods }
 export function numberPrefix(d: { section: Section; country: string; company: string | null }, n: Numbering = DEFAULT_NUMBERING): string {
   const parts = [n.prefix[d.section]];
   if (n.place) parts.push(placeCode(d.country));
-  if (d.section === 'sop' && d.company) parts.push(COMPANY_CODE[d.company] ?? 'X');
+  if (hasCompany(d.section) && d.company) parts.push(COMPANY_CODE[d.company] ?? 'X');
   return parts.join('-');
 }
 export const formatNumber = (prefix: string, next: number, digits: number) => `${prefix}-${String(next).padStart(digits, '0')}`;
@@ -175,13 +180,14 @@ export function registerMatches(r: RegisterRow, f: RegisterFilter, today: string
   }
 }
 
+const SECTION_SHORT: Record<Section, string> = { lesson: 'Lessons', sop: 'SOPs', swi: 'SWIs', form: 'Forms', client: 'Client procedures' };
 export const REGISTER_HEADER = ['Doc No', 'Title', 'Section', 'Type', 'Country', 'Company / client', 'Origin', 'Rev', 'Status', 'Approved by', 'Published', 'Next review', 'Expires', 'Flags', 'Prior revisions'];
 
 export function registerCells(r: RegisterRow, flags: string[]): (string | number | null)[] {
   const d = r.doc;
   const status = d.retired_at ? 'Retired' : d.published_at ? (r.open ? `Published, Rev ${r.open.revision} ${REV_STATUS[r.open.status].toLowerCase()}` : 'Published') : r.open ? REV_STATUS[r.open.status] : 'Draft';
   const type = d.section === 'lesson' ? ADD_TYPES[(d.doc_type ?? 'lesson_learnt') as AddType].label : ADD_TYPES[d.section].label;
-  return [d.doc_no, d.title, d.section === 'lesson' ? 'Lessons' : d.section === 'sop' ? 'SOPs' : 'Client procedures', d.is_form ? `${type} (form)` : type, d.country,
+  return [d.doc_no, d.title, SECTION_SHORT[d.section], d.is_form && d.section !== 'form' ? `${type} (form)` : type, d.country,
     d.company ?? d.client ?? '', d.origin === 'external' ? 'External' : 'Internal', d.published_at ? d.revision : null, status, d.approved_by_name ?? null,
     d.published_at ? d.published_at.slice(0, 10) : null, d.review_due, d.expires_on ?? null, flags.join(', '), r.priorRevisions];
 }
@@ -202,6 +208,8 @@ export function groupFiles<T extends { name: string }>(files: T[]): { base: stri
 export function guessType(base: string, fallback: AddType): AddType {
   const b = base.toUpperCase();
   if (/^SOP\b|^SOP[-_ ]/.test(b)) return 'sop';
+  if (/^SWI[-_ ]/.test(b)) return 'swi';
+  if (/^(FRM|FORM)[-_ ]/.test(b)) return 'form';
   if (/^CP[-_ ]/.test(b)) return 'client';
   if (/^LFI[-_ ]/.test(b)) return 'learning_from_incident';
   if (/^BP[-_ ]/.test(b)) return 'best_practice';
@@ -214,5 +222,5 @@ export function splitBase(base: string): { doc_no: string | null; title: string 
   const m = /^([A-Z]{1,8}(?:-[A-Z0-9]{1,8})*-\d{2,6})[\s_-]+(.+)$/i.exec(base.trim());
   if (m) return { doc_no: m[1].toUpperCase(), title: m[2].replace(/[_]+/g, ' ').trim() };
   // a type code without a number (BP-Spooling the drum) only says the type: drop it from the title
-  return { doc_no: null, title: base.replace(/^(SOP|LL|CP|LFI|BP)[-_ ]+/i, '').replace(/[_]+/g, ' ').trim() };
+  return { doc_no: null, title: base.replace(/^(SOP|SWI|FRM|FORM|LL|CP|LFI|BP)[-_ ]+/i, '').replace(/[_]+/g, ' ').trim() };
 }

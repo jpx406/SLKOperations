@@ -5,6 +5,11 @@ import {
   DEFAULT_NUMBERING, DEFAULT_PERIODS, REV_STATUS, addMonths, checkNumbering, checkPeriods, isStaff, mayAct, mayOpen, mayRetire, nextRevision, numberPrefix,
   submitProblems, type Controller, type FlowAction, type Numbering, type Periods, type RevStatus, type Revision,
 } from '../shared/knowledgeControl';
+import type Anthropic from '@anthropic-ai/sdk';
+import { costMicroUsd, limitCheck } from '../shared/ai';
+import { analysisPrompt, answerSchema, cleanSuggestion, extractText } from '../shared/docAnalysis';
+import { ADD_TYPES, type AddType } from '../shared/knowledge';
+import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { copyId, stampPdf, stampText } from './stamp';
 
@@ -24,7 +29,19 @@ const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: 
 
 async function controller(env: Env, user: AuthedUser): Promise<Controller> {
   const row = await env.DB.prepare('SELECT can_review, can_approve FROM knowledge_people WHERE username = ?').bind(user.username).first<{ can_review: number; can_approve: number }>();
-  return { username: user.username, admin: user.role === 'admin', editor: !!user.menus.knowledge_hub?.edit, reviewer: !!row?.can_review, approver: !!row?.can_approve };
+  const admin = user.role === 'admin';
+  // an admin is reviewer and approver until Settings says otherwise; admins can still act on any step
+  return { username: user.username, admin, editor: !!user.menus.knowledge_hub?.edit, reviewer: row ? !!row.can_review : admin, approver: row ? !!row.can_approve : admin };
+}
+
+/** Reviewer and approver flags as stored, with admins counted as both until a choice is saved for them. */
+const PERSON_FLAGS = `u.username, u.full_name, u.role, coalesce(k.can_review, CASE WHEN u.role = 'admin' THEN 1 ELSE 0 END) AS can_review,
+  coalesce(k.can_approve, CASE WHEN u.role = 'admin' THEN 1 ELSE 0 END) AS can_approve`;
+
+/** Numbering with every section's prefix (settings saved before SWI and Forms existed keep their defaults). */
+async function numberingOf(env: Env): Promise<Numbering> {
+  const n = await setting<Numbering>(env, 'numbering', DEFAULT_NUMBERING);
+  return { ...n, prefix: { ...DEFAULT_NUMBERING.prefix, ...n.prefix } };
 }
 
 async function setting<T>(env: Env, key: string, fallback: T): Promise<T> {
@@ -90,8 +107,8 @@ knowledge.get('/', async (c) => {
     placesFor(c.env, user),
     c.env.DB.prepare(`SELECT DISTINCT client FROM knowledge_docs WHERE client IS NOT NULL UNION SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND deleted_at IS NULL ORDER BY 1 LIMIT 500`).all<{ client: string }>(),
     setting<Numbering>(c.env, 'numbering', DEFAULT_NUMBERING),
-    staff ? c.env.DB.prepare(`SELECT u.username, u.full_name, coalesce(k.can_review, 0) OR u.role = 'admin' AS can_review, coalesce(k.can_approve, 0) OR u.role = 'admin' AS can_approve
-      FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1 AND (u.role = 'admin' OR k.can_review = 1 OR k.can_approve = 1) ORDER BY u.full_name`).all<{ username: string; full_name: string; can_review: number; can_approve: number }>() : null,
+    staff ? c.env.DB.prepare(`SELECT * FROM (SELECT ${PERSON_FLAGS} FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1)
+      WHERE can_review = 1 OR can_approve = 1 ORDER BY full_name`).all<{ username: string; full_name: string; can_review: number; can_approve: number }>() : null,
     staff ? c.env.DB.prepare(`SELECT count(*) AS n FROM knowledge_revisions WHERE (status = 'review' AND reviewer = ?1) OR (status = 'approval' AND approver = ?1)
       OR (status = 'draft' AND sent_back_reason IS NOT NULL AND (submitted_by = ?1 OR created_by = ?1))`).bind(user.username).first<{ n: number }>() : null,
   ]);
@@ -158,11 +175,92 @@ knowledge.get('/settings', async (c) => {
   const p = await controller(c.env, c.get('user'));
   if (!isStaff(p)) return c.json({ error: 'Settings are for editors, reviewers and approvers' }, 403);
   const [numbering, periods, people] = await Promise.all([
-    setting<Numbering>(c.env, 'numbering', DEFAULT_NUMBERING), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS),
-    c.env.DB.prepare(`SELECT u.username, u.full_name, u.role, coalesce(k.can_review, 0) AS can_review, coalesce(k.can_approve, 0) AS can_approve
-      FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1 ORDER BY u.full_name`).all(),
+    numberingOf(c.env), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS),
+    c.env.DB.prepare(`SELECT ${PERSON_FLAGS} FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1 ORDER BY u.full_name`).all(),
   ]);
   return c.json({ numbering, periods, people: people.results, isAdmin: p.admin });
+});
+
+/**
+ * Document analysis for Add document (raw body, X-File-Name, ?section=): Claude reads the file and suggests every
+ * field; the person checks them before saving. Uses the AI settings and monthly budget of Administration → AI Agent.
+ */
+knowledge.post('/analyse', async (c) => {
+  const user = c.get('user');
+  const p = await controller(c.env, user);
+  if (!p.admin && !p.editor) return c.json({ error: 'Your role cannot add documents' }, 403);
+  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: 'Document analysis isn’t set up: the Anthropic API key is missing on the server. Fill in the fields by hand.' }, 503);
+  const s = await loadSettings(c.env);
+  const u = await spend(c.env, user.username, 'document');
+  const blocked = limitCheck(s, u.monthMicro, u.sentToday);
+  if (blocked) return c.json({ error: `${blocked.replace('The AI Agent is switched off', 'AI is switched off')} Fill in the fields by hand.` }, 429);
+  const name = decodeURIComponent(c.req.header('x-file-name') ?? '');
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  const ok = checkUpload(name, bytes.length);
+  if ('error' in ok) return c.json({ error: ok.error }, 400);
+  const section = c.req.query('section') ?? 'lesson';
+  const fallback = (section in ADD_TYPES ? section : 'lesson_learnt') as AddType;
+  const [places, clients, cats] = await Promise.all([
+    placesFor(c.env, user),
+    c.env.DB.prepare(`SELECT DISTINCT client FROM knowledge_docs WHERE client IS NOT NULL UNION SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND deleted_at IS NULL ORDER BY 1 LIMIT 200`).all<{ client: string }>(),
+    c.env.DB.prepare('SELECT DISTINCT category FROM knowledge_docs WHERE category IS NOT NULL ORDER BY 1 LIMIT 80').all<{ category: string }>(),
+  ]);
+  // what Claude reads: PDFs and images as they are, Office and text files as their text, anything else by its name only
+  const b64 = () => { let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(bin); };
+  let part: Anthropic.Beta.BetaContentBlockParam;
+  if (ok.type === 'application/pdf') {
+    if (bytes.length > 20 * 1024 * 1024) return c.json({ error: 'This PDF is too large to analyse (over 20 MB). Fill in the fields by hand.' }, 400);
+    part = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64() } };
+  } else if (['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(ok.type)) {
+    if (bytes.length > 5 * 1024 * 1024) return c.json({ error: 'This picture is too large to analyse (over 5 MB). Fill in the fields by hand.' }, 400);
+    part = { type: 'image', source: { type: 'base64', media_type: ok.type as 'image/png', data: b64() } };
+  } else {
+    const text = await extractText(ok.name, bytes);
+    part = { type: 'text', text: text ? `<document name="${ok.name}">\n${text}\n</document>` : `Only the file name is available ("${ok.name}"); the file's contents couldn't be read. Fill in what the name shows and leave the rest "".` };
+  }
+  const prompt = analysisPrompt({ fileName: ok.name, places, clients: clients.results.map((r) => r.client), categories: cats.results.map((r) => r.category), today: riyadhToday(), sectionHint: section });
+  let micro = 0, inTok = 0, outTok = 0;
+  try {
+    const res = await client(c.env).beta.messages.create({
+      model: s.model, max_tokens: 4000,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: answerSchema(places) } },
+      messages: [{ role: 'user', content: [part, { type: 'text', text: prompt }] }],
+      ...fallbackFor(s.model),
+    });
+    micro = costMicroUsd(res.usage, s.model);
+    inTok = res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0);
+    outTok = res.usage.output_tokens;
+    if (res.stop_reason === 'refusal') return c.json({ error: 'The AI declined to read this document. Fill in the fields by hand.' }, 422);
+    const text = res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map((b) => b.text).join('');
+    let raw: unknown;
+    try { raw = JSON.parse(text); } catch { return c.json({ error: 'The AI answer couldn’t be read. Fill in the fields by hand.' }, 502); }
+    return c.json({ suggestion: cleanSuggestion(raw, places, fallback), model: s.model });
+  } catch (e) {
+    const msg = serviceError(e);
+    if (!msg) throw e;
+    return c.json({ error: `${msg} You can fill in the fields by hand.` }, 502);
+  } finally {
+    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+  }
+});
+
+/** Document control dashboard: totals, work in progress, reviews and expiry coming up, downloads. Staff only. */
+knowledge.get('/dashboard', async (c) => {
+  const p = await controller(c.env, c.get('user'));
+  if (!isStaff(p)) return c.json({ error: 'The dashboard is for editors, reviewers and approvers' }, 403);
+  const since = new Date(Date.now() - 180 * 864e5).toISOString();
+  const [docs, opens, approvers, downloads, top] = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT ${COLS} ${FROM} WHERE d.retired_at IS NULL`),
+    c.env.DB.prepare(`SELECT v.doc_id, v.revision, v.status, v.submitted_at, coalesce(r1.full_name, v.reviewer) AS reviewer_name, coalesce(r2.full_name, v.approver) AS approver_name
+      FROM knowledge_revisions v LEFT JOIN user_roles r1 ON r1.username = v.reviewer LEFT JOIN user_roles r2 ON r2.username = v.approver WHERE v.status IN ('draft','review','approval')`),
+    c.env.DB.prepare(`SELECT coalesce(r.full_name, v.approver) AS label, count(*) AS n FROM knowledge_revisions v LEFT JOIN user_roles r ON r.username = v.approver
+      WHERE v.status IN ('approved','superseded') AND v.approved_at IS NOT NULL GROUP BY 1 ORDER BY n DESC LIMIT 12`),
+    c.env.DB.prepare(`SELECT substr(occurred_at, 1, 7) AS month, count(*) AS n FROM audit_log WHERE entity_type = 'knowledge_docs' AND action = 'download' AND occurred_at >= ? GROUP BY 1 ORDER BY 1`).bind(since),
+    c.env.DB.prepare(`SELECT a.entity_id AS id, d.title, d.doc_no, count(*) AS n FROM audit_log a JOIN knowledge_docs d ON d.id = a.entity_id
+      WHERE a.entity_type = 'knowledge_docs' AND a.action = 'download' AND a.occurred_at >= ? GROUP BY a.entity_id ORDER BY n DESC LIMIT 10`).bind(since),
+  ]);
+  return c.json({ docs: (docs.results as Record<string, unknown>[]).map(toDoc), open: opens.results, approvers: approvers.results, downloads: downloads.results, top: top.results });
 });
 
 knowledge.put('/settings', async (c) => {
@@ -479,9 +577,9 @@ knowledge.put('/:id/revisions/:rev{[0-9]+}', async (c) => {
 
 const names = async (env: Env, u: string) => (await env.DB.prepare('SELECT full_name FROM user_roles WHERE username = ?').bind(u).first<{ full_name: string }>())?.full_name ?? u;
 async function holds(env: Env, username: string, right: 'can_review' | 'can_approve') {
-  const r = await env.DB.prepare(`SELECT u.role, coalesce(k.${right}, 0) AS ok FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.username = ? AND u.active = 1`)
-    .bind(username).first<{ role: string; ok: number }>();
-  return !!r && (r.role === 'admin' || r.ok === 1);
+  const r = await env.DB.prepare(`SELECT ${PERSON_FLAGS} FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.username = ? AND u.active = 1`)
+    .bind(username).first<{ can_review: number; can_approve: number }>();
+  return !!r && r[right] === 1;
 }
 
 knowledge.post('/:id/revisions/:rev{[0-9]+}/:step{submit|review|approve|send-back|discard}', async (c) => {

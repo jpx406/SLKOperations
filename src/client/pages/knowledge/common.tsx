@@ -1,5 +1,6 @@
-import { X } from 'lucide-react';
+import { Download, Printer, X } from 'lucide-react';
 import { useEffect } from 'react';
+import { renderSVG } from 'uqr';
 import { TYPES, checkUpload } from '../../../shared/attachments';
 import type { KbFile, KnowledgeDoc } from '../../../shared/knowledge';
 import { REV_STATUS, type Controller, type Numbering, type RevStatus } from '../../../shared/knowledgeControl';
@@ -47,6 +48,64 @@ const TONE: Record<RevStatus | 'unpublished', string> = {
 /** A small status label: Draft, In review, Awaiting approval, Published, Superseded. */
 export function RevPill({ status, children }: { status: RevStatus; children?: React.ReactNode }) {
   return <span className={cx('label-caps inline-flex items-center rounded-xs border px-1.5 whitespace-nowrap', TONE[status])}>{children ?? REV_STATUS[status]}</span>;
+}
+
+// ---- QR codes ---------------------------------------------------------------------------------------------------
+
+export const docLink = (id: string) => `${window.location.origin}/knowledge?doc=${id}`;
+const qrSvg = (link: string) => renderSVG(link, { border: 2, ecc: 'M', whiteColor: '#ffffff', blackColor: '#0b121a' });
+
+function saveBlob(blob: Blob, name: string) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/** The QR code with its link, and buttons to save it as SVG or PNG or print it as a label. */
+export function QrBlock({ doc }: { doc: KnowledgeDoc }) {
+  const link = docLink(doc.id);
+  const svg = qrSvg(link);
+  const name = (doc.doc_no ?? doc.title).replace(/[^\w.-]+/g, '_');
+  const png = () => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 600;
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#fff'; g.fillRect(0, 0, 600, 600); g.drawImage(img, 0, 0, 600, 600);
+      c.toBlob((b) => b && saveBlob(b, `QR ${name}.png`), 'image/png');
+    };
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  };
+  const print = () => {
+    const w = window.open('', '_blank', 'width=420,height=560');
+    if (!w) return;
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    w.document.write(`<!doctype html><title>QR ${esc(name)}</title><body style="font-family:sans-serif;text-align:center;margin:24px">
+      <div style="width:260px;margin:auto">${svg}</div><p style="font-weight:700;margin:8px 0 2px">${esc(doc.doc_no ?? '')}</p><p style="margin:0">${esc(doc.title)}</p>
+      <p style="font-size:11px;color:#555">Scan for the published revision</p><script>window.onload=()=>{window.print()}</script></body>`);
+    w.document.close();
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-4 rounded-md border border-border p-3">
+      <div className="size-36 shrink-0 rounded-sm bg-white p-1" dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="min-w-0 flex-1 basis-48">
+        <p className="text-sm">Scanning opens this document in SLK Operations Hub, always at its published revision. Print it on toolboxes, in the unit or on paper copies.</p>
+        <p className="mt-1 break-all font-mono text-xs text-text-muted">{link}</p>
+        <div className="mt-2 flex flex-wrap gap-1">
+          <Button size="sm" onClick={() => saveBlob(new Blob([svg], { type: 'image/svg+xml' }), `QR ${name}.svg`)}><Download aria-hidden className="size-3.5" />SVG</Button>
+          <Button size="sm" onClick={png}><Download aria-hidden className="size-3.5" />PNG</Button>
+          <Button size="sm" onClick={print}><Printer aria-hidden className="size-3.5" />Print label</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function QrDialog({ doc, onClose }: { doc: KnowledgeDoc; onClose: () => void }) {
+  return <Dialog title={`QR code · ${doc.doc_no ?? doc.title}`} onClose={onClose}><p className="mb-3 text-sm font-semibold">{doc.title}</p><QrBlock doc={doc} /></Dialog>;
 }
 
 /** What the list shows beside an entry for staff: a revision being worked on, or a draft never published. */

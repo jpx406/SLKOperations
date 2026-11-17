@@ -116,6 +116,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   // document control (6z.14): editors prepare revisions and files; reviewers, approvers and admins are checked in the
   // route, so their steps (and retiring, settings, manuals) only need the tab
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/(files|revisions)$/, menu: 'knowledge_hub', action: 'edit' },
+  // Add document reads the file with AI first (6z.15)
+  { method: 'POST', re: /^\/api\/knowledge\/analyse$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'PUT', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(submit|discard)$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(review|approve|send-back)$/, menu: 'knowledge_hub', action: 'view' },

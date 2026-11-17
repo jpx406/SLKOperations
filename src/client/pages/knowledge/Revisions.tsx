@@ -163,8 +163,8 @@ function OpenRevision({ doc, r, people, me, busy, storage, run }: { doc: Knowled
 
       {r.can.edit_files && storage && (
         <div className="mt-2 flex flex-wrap gap-2">
-          <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{doc_ ? 'Replace the document' : 'Add the document (PDF)'}
-            <input type="file" accept={doc.is_form ? ACCEPT : '.pdf'} className="sr-only" disabled={busy} onChange={(e) => upload(e.target.files?.[0], 'published')} /></label>
+          <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{doc_ ? 'Replace the document' : doc.section === 'form' ? 'Add the form (any format)' : 'Add the document (PDF)'}
+            <input type="file" accept={doc.is_form || doc.section === 'form' ? ACCEPT : '.pdf'} className="sr-only" disabled={busy} onChange={(e) => upload(e.target.files?.[0], 'published')} /></label>
           <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{source ? 'Replace' : 'Add'} the {doc.is_form ? 'fillable form' : 'editable version'}
             <input type="file" accept={EDITABLE_ACCEPT} className="sr-only" disabled={busy} onChange={(e) => upload(e.target.files?.[0], 'source')} /></label>
         </div>

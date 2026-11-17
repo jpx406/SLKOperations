@@ -1,4 +1,4 @@
-// Knowledge Hub (S21, S43, 6z.13): three sections.
+// Knowledge Hub (S21, S43, 6z.13, 6z.15): five sections (SWI and Forms added in 6z.15).
 //   1. Lessons learnt, best practices and learnings from incidents, for one country or Global.
 //   2. SLK Standard Operating Procedures, for one country or Global, and for one company (NESR, SAPESCO, Gulf Energy).
 //   3. Client procedures, for one country and one client, shown on jobs in that country.
@@ -8,7 +8,10 @@
 export const DOC_TYPES = { lesson_learnt: 'Lesson learnt', best_practice: 'Best practice', learning_from_incident: 'Learning from incident' } as const;
 export type DocType = keyof typeof DOC_TYPES;
 
-export const SECTIONS = { lesson: 'Lessons & best practices', sop: 'SLK SOPs', client: 'Client procedures' } as const;
+export const SECTIONS = { lesson: 'Lessons & best practices', sop: 'SLK SOPs', swi: 'Work instructions (SWI)', form: 'Forms', client: 'Client procedures' } as const;
+/** Sections filed under Global or a country and a company (NESR, SAPESCO, Gulf Energy). */
+export const COMPANY_SECTIONS: Section[] = ['sop', 'swi', 'form'];
+export const hasCompany = (s: Section) => COMPANY_SECTIONS.includes(s);
 export type Section = keyof typeof SECTIONS;
 export const isSection = (v: unknown): v is Section => typeof v === 'string' && v in SECTIONS;
 
@@ -18,6 +21,8 @@ export const ADD_TYPES = {
   best_practice: { label: 'Best practice', section: 'lesson' },
   learning_from_incident: { label: 'Learning from incident', section: 'lesson' },
   sop: { label: 'SLK Standard Operating Procedure', section: 'sop' },
+  swi: { label: 'Standard Work Instruction (SWI)', section: 'swi' },
+  form: { label: 'Form', section: 'form' },
   client: { label: 'Client procedure', section: 'client' },
 } as const satisfies Record<string, { label: string; section: Section }>;
 export type AddType = keyof typeof ADD_TYPES;
@@ -69,8 +74,8 @@ export function checkDoc(b: DocInput, countries: string[]): { error: string } | 
   if (country === GLOBAL ? section === 'client' : !countries.includes(country)) {
     return { error: section === 'client' ? 'Pick the country of the client' : 'Pick a country or Global' };
   }
-  const company = section === 'sop' ? text(b.company, 40) : '';
-  if (section === 'sop' && !(SOP_COMPANIES as readonly string[]).includes(company)) return { error: 'Pick the company: NESR, SAPESCO or Gulf Energy' };
+  const company = hasCompany(section) ? text(b.company, 40) : '';
+  if (hasCompany(section) && !(SOP_COMPANIES as readonly string[]).includes(company)) return { error: 'Pick the company: NESR, SAPESCO or Gulf Energy' };
   const client = section === 'client' ? text(b.client, 120) : '';
   if (section === 'client' && !client) return { error: 'Name the client' };
   const title = text(b.title, 200);
@@ -93,7 +98,7 @@ export function checkDoc(b: DocInput, countries: string[]): { error: string } | 
       summary: text(b.summary, 4000) || null, key_action: lesson ? text(b.key_action, 1000) || null : null, failure_types: types, published_on: published || null,
       rilr_ref: lesson ? text(b.rilr_ref, 120) || null : null, source_ref: link || null, duplicate_of: lesson ? text(b.duplicate_of, 64) || null : null,
       doc_no: docNo || null, review_due: review || null,
-      origin: b.origin === 'external' ? 'external' : 'internal', author: text(b.author, 120) || null, is_form: section !== 'lesson' && (b.is_form === true || b.is_form === 1 || b.is_form === '1') ? 1 : 0,
+      origin: b.origin === 'external' ? 'external' : 'internal', author: text(b.author, 120) || null, is_form: section === 'form' ? 1 : section !== 'lesson' && (b.is_form === true || b.is_form === 1 || b.is_form === '1') ? 1 : 0,
     },
   };
 }
@@ -108,14 +113,14 @@ export const COMPANY_CODE: Record<string, string> = { NESR: 'NESR', SAPESCO: 'SA
 
 /** The prefix a new document number counts from: LL-SA, SOP-GL-NESR, CP-BAH. */
 export function docPrefix(d: Pick<CleanDoc, 'section' | 'country' | 'company'>): string {
-  const head = d.section === 'lesson' ? 'LL' : d.section === 'sop' ? 'SOP' : 'CP';
-  return [head, placeCode(d.country), d.section === 'sop' && d.company ? COMPANY_CODE[d.company] ?? 'X' : ''].filter(Boolean).join('-');
+  const head = { lesson: 'LL', sop: 'SOP', swi: 'SWI', form: 'FRM', client: 'CP' }[d.section];
+  return [head, placeCode(d.country), hasCompany(d.section) && d.company ? COMPANY_CODE[d.company] ?? 'X' : ''].filter(Boolean).join('-');
 }
 
 /** One folder name: no slashes or characters R2 tools dislike, at most 80 characters. */
 export const folderName = (s: string) => s.replace(/[\\/:*?"<>|#%\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled';
 
-const SECTION_FOLDER: Record<Section, string> = { lesson: 'Lessons learnt', sop: 'SOPs', client: 'Client procedures' };
+const SECTION_FOLDER: Record<Section, string> = { lesson: 'Lessons learnt', sop: 'SOPs', swi: 'Work instructions', form: 'Forms', client: 'Client procedures' };
 
 /**
  * Where a file goes in R2, so the bucket reads like a filing cabinet:
@@ -123,7 +128,7 @@ const SECTION_FOLDER: Record<Section, string> = { lesson: 'Lessons learnt', sop:
  */
 export function fileKey(d: Pick<KnowledgeDoc, 'section' | 'country' | 'company' | 'client' | 'doc_no' | 'title'>, revision: number, kind: 'published' | 'source', id: string, name: string): string {
   const parts = ['knowledge', SECTION_FOLDER[d.section], folderName(d.country)];
-  if (d.section === 'sop' && d.company) parts.push(folderName(d.company));
+  if (hasCompany(d.section) && d.company) parts.push(folderName(d.company));
   if (d.section === 'client' && d.client) parts.push(folderName(d.client));
   parts.push(folderName([d.doc_no, d.title].filter(Boolean).join(' ')), `Rev ${revision}`, kind === 'source' ? 'editable' : 'document', `${id.slice(0, 8)} ${name}`);
   return parts.join('/');

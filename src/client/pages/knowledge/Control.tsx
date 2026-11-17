@@ -4,12 +4,13 @@ import { Download, Eye, FileSpreadsheet, FolderPlus, Pencil, RotateCcw, Trash2, 
 import { useMemo, useState } from 'react';
 import { INLINE, sizeText } from '../../../shared/attachments';
 import { csv, workbook } from '../../../shared/xlsx';
-import { ADD_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, reviewState, type AddType, type KnowledgeDoc, type Section } from '../../../shared/knowledge';
+import { ADD_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, hasCompany, reviewState, type AddType, type KnowledgeDoc, type Section } from '../../../shared/knowledge';
 import {
   DEFAULT_NUMBERING, DEFAULT_PERIODS, REGISTER_FILTERS, REGISTER_HEADER, REV_STATUS, expiryState, formatNumber, groupFiles, guessType, numberPrefix, registerCells, registerMatches, splitBase,
   type Numbering, type Periods, type RegisterFilter, type RegisterRow, type Revision,
 } from '../../../shared/knowledgeControl';
 import { ApiError, api, formatDate } from '../../api';
+import { BarChart, KpiTile } from '../../components/charts';
 import { Banner, Button, Card, EmptyState, Field, Skeleton, cx, inputClass, inputSized } from '../../components/ui';
 import { Dialog, RevPill, isEditable, linkBtn, today, uploadFile, type Library } from './common';
 
@@ -65,6 +66,98 @@ export function Queue({ onOpen }: { onOpen: (id: string) => void }) {
         {mine.length ? list(mine) : <p className="px-4 py-3 text-sm text-text-muted">Nothing is waiting on you.</p>}
       </Card>
       {rest.length > 0 && <Card className="p-0"><h2 className="border-b border-border px-4 py-2.5 font-display text-base font-bold">Everything in progress <span className="font-mono text-xs font-normal text-text-muted">{rest.length}</span></h2>{list(rest)}</Card>}
+    </div>
+  );
+}
+
+// ---- dashboard ------------------------------------------------------------------------------------------------
+
+interface DashData {
+  docs: KnowledgeDoc[];
+  open: { doc_id: string; revision: number; status: 'draft' | 'review' | 'approval'; submitted_at: string | null; reviewer_name: string | null; approver_name: string | null }[];
+  approvers: { label: string; n: number }[]; downloads: { month: string; n: number }[]; top: { id: string; title: string; doc_no: string | null; n: number }[];
+}
+
+/** Document control at a glance, after Document Control's dashboard: totals, work in progress, what falls due, downloads. */
+export function Dashboard({ onOpen }: { onOpen: (id: string) => void }) {
+  const q = useQuery({ queryKey: ['knowledge-dashboard'], queryFn: () => api<DashData>('/knowledge/dashboard') });
+  if (q.isLoading) return <Skeleton className="h-96" />;
+  if (q.isError) return <Banner tone="danger">{q.error.message}</Banner>;
+  const d = q.data!;
+  const now = today();
+  const pub = d.docs.filter((x) => x.published_at);
+  const byId = new Map(d.docs.map((x) => [x.id, x]));
+  const reviewOver = pub.filter((x) => reviewState(x.review_due, now) === 'overdue');
+  const reviewSoon = pub.filter((x) => reviewState(x.review_due, now) === 'soon');
+  const expired = pub.filter((x) => expiryState(x.expires_on ?? null, now) === 'expired');
+  const expiring = pub.filter((x) => expiryState(x.expires_on ?? null, now) === 'soon');
+  const inReview = d.open.filter((o) => o.status === 'review'), inApproval = d.open.filter((o) => o.status === 'approval'), drafts = d.open.filter((o) => o.status === 'draft');
+  const bucket = (label: string, value: number, key = label) => ({ key, label, value, ids: [] as string[] });
+  const bySection = (Object.keys(SECTIONS) as Section[]).map((s) => bucket(SECTIONS[s], pub.filter((x) => x.section === s).length, s));
+  const byPlace = [...new Set(pub.map((x) => x.country))].sort((a, b) => (a === GLOBAL ? -1 : b === GLOBAL ? 1 : a.localeCompare(b))).map((p) => bucket(p, pub.filter((x) => x.country === p).length));
+  const byCompany = SOP_COMPANIES.map((co) => bucket(co, pub.filter((x) => x.company === co).length));
+  const downloads = d.downloads.map((m) => bucket(m.month, m.n));
+  const list = (title: string, docs: KnowledgeDoc[], date: (x: KnowledgeDoc) => string | null | undefined, tone: string) => (
+    <Card className="p-0">
+      <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold">{title} <span className="font-mono text-xs text-text-muted">{docs.length}</span></h2>
+      {docs.length ? (
+        <ul className="divide-y divide-border">
+          {docs.slice(0, 8).map((x) => (
+            <li key={x.id} className="flex items-center gap-2 px-4 py-2 text-sm">
+              <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => onOpen(x.id)}>{x.doc_no && <span className="mr-1 font-mono text-xs">{x.doc_no}</span>}{x.title}</button>
+              <span className={cx('shrink-0 text-xs font-semibold', tone)}>{date(x) ? formatDate(date(x)!) : ''}</span>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="px-4 py-3 text-sm text-text-muted">None.</p>}
+    </Card>
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+        <KpiTile label="Published" value={pub.length} />
+        <KpiTile label="In review" value={inReview.length} />
+        <KpiTile label="Awaiting approval" value={inApproval.length} />
+        <KpiTile label="Drafts" value={drafts.length} />
+        <KpiTile label="Review overdue" value={reviewOver.length} note={reviewSoon.length ? `${reviewSoon.length} due in 30 days` : undefined} />
+        <KpiTile label="Expired" value={expired.length} note={expiring.length ? `${expiring.length} within 90 days` : undefined} />
+        <KpiTile label="External" value={pub.filter((x) => x.origin === 'external').length} />
+        <KpiTile label="Downloads" value={d.downloads.reduce((a, m) => a + m.n, 0)} note="last 6 months" />
+      </dl>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <BarChart title="Published documents by section" buckets={bySection} horizontal />
+        <BarChart title="Published documents by country" buckets={byPlace} horizontal />
+        <BarChart title="SOPs, SWIs and forms by company" buckets={byCompany} horizontal />
+        <BarChart title="Approvals by approver" buckets={d.approvers.map((a) => bucket(a.label, a.n))} horizontal />
+        <BarChart title="Downloads by month" buckets={downloads} />
+        <Card className="p-0">
+          <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold">Most downloaded, last 6 months</h2>
+          {d.top.length ? <ul className="divide-y divide-border">{d.top.map((t) => (
+            <li key={t.id} className="flex items-center gap-2 px-4 py-2 text-sm">
+              <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => onOpen(t.id)}>{t.doc_no && <span className="mr-1 font-mono text-xs">{t.doc_no}</span>}{t.title}</button>
+              <span className="font-mono text-xs">{t.n}</span>
+            </li>
+          ))}</ul> : <p className="px-4 py-3 text-sm text-text-muted">No downloads yet.</p>}
+        </Card>
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {list('Periodic review overdue or due in 30 days', [...reviewOver, ...reviewSoon], (x) => x.review_due, 'text-warning')}
+        {list('Expired or expiring in 90 days', [...expired, ...expiring], (x) => x.expires_on, 'text-danger')}
+        <Card className="p-0 lg:col-span-2">
+          <h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold">In review and awaiting approval <span className="font-mono text-xs text-text-muted">{inReview.length + inApproval.length}</span></h2>
+          {inReview.length + inApproval.length ? (
+            <ul className="divide-y divide-border">
+              {[...inApproval, ...inReview].map((o) => { const x = byId.get(o.doc_id); return x && (
+                <li key={o.doc_id} className="flex flex-wrap items-center gap-2 px-4 py-2 text-sm">
+                  <button type="button" className="min-w-0 flex-1 basis-56 truncate text-left hover:underline" onClick={() => onOpen(o.doc_id)}>{x.doc_no && <span className="mr-1 font-mono text-xs">{x.doc_no}</span>}{x.title} · Rev {o.revision}</button>
+                  <RevPill status={o.status} />
+                  <span className="text-xs text-text-muted">with {o.status === 'review' ? o.reviewer_name : o.approver_name}{o.submitted_at && ` since ${formatDate(o.submitted_at.slice(0, 10))}`}</span>
+                </li>
+              ); })}
+            </ul>
+          ) : <p className="px-4 py-3 text-sm text-text-muted">Nothing is waiting.</p>}
+        </Card>
+      </div>
     </div>
   );
 }
@@ -275,14 +368,15 @@ function SettingsForm({ data, onSaved }: { data: SettingsData; onSaved: () => vo
     try { await api(`/knowledge/people/${encodeURIComponent(username)}`, { method: 'PUT', json: { can_review: !!next.can_review, can_approve: !!next.can_approve } }); setPeople(people.map((x) => (x.username === username ? next : x))); onSaved(); }
     catch (e) { setMsg({ tone: 'danger', text: (e as ApiError).message }); }
   };
+  // admins stay listed even when unticked, so they can be ticked again
   const holders = people.filter((x) => x.role === 'admin' || x.can_review || x.can_approve);
-  const sample = (s: Section) => formatNumber(numberPrefix({ section: s, country: s === 'client' ? 'Saudi Arabia' : GLOBAL, company: s === 'sop' ? 'NESR' : null }, n), 1, n.digits);
+  const sample = (s: Section) => formatNumber(numberPrefix({ section: s, country: s === 'client' ? 'Saudi Arabia' : GLOBAL, company: hasCompany(s) ? 'NESR' : null }, n), 1, n.digits);
   return (
     <div className="flex flex-col gap-4">
       {msg && <Banner tone={msg.tone}>{msg.text}</Banner>}
       <Card>
         <h2 className="font-display text-base font-bold">Reviewers and approvers</h2>
-        <p className="mt-1 text-sm text-text-muted">A document goes to a reviewer, then an approver, before readers see it. Whoever sent it can’t review or approve it. Admins can do every step.</p>
+        <p className="mt-1 text-sm text-text-muted">A document goes to a reviewer, then an approver, before readers see it. Whoever sent it can’t review or approve it. Only the people ticked here are offered as reviewers and approvers; admins are ticked until you change them, and can always step in on any document.</p>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-text-muted"><tr><th className="py-1 pr-3 font-semibold">Person</th><th className="py-1 pr-3 font-semibold">Reviewer</th><th className="py-1 font-semibold">Approver</th></tr></thead>
@@ -290,8 +384,8 @@ function SettingsForm({ data, onSaved }: { data: SettingsData; onSaved: () => vo
               {holders.map((x) => (
                 <tr key={x.username}>
                   <td className="py-1.5 pr-3">{x.full_name} <span className="text-xs text-text-muted">{x.username}{x.role === 'admin' && ' · admin'}</span></td>
-                  <td className="py-1.5 pr-3"><input type="checkbox" aria-label={`${x.full_name} reviews`} disabled={!admin || x.role === 'admin'} checked={x.role === 'admin' || !!x.can_review} onChange={(e) => setRole(x.username, { can_review: e.target.checked ? 1 : 0 })} /></td>
-                  <td className="py-1.5"><input type="checkbox" aria-label={`${x.full_name} approves`} disabled={!admin || x.role === 'admin'} checked={x.role === 'admin' || !!x.can_approve} onChange={(e) => setRole(x.username, { can_approve: e.target.checked ? 1 : 0 })} /></td>
+                  <td className="py-1.5 pr-3"><input type="checkbox" aria-label={`${x.full_name} reviews`} disabled={!admin} checked={!!x.can_review} onChange={(e) => setRole(x.username, { can_review: e.target.checked ? 1 : 0 })} /></td>
+                  <td className="py-1.5"><input type="checkbox" aria-label={`${x.full_name} approves`} disabled={!admin} checked={!!x.can_approve} onChange={(e) => setRole(x.username, { can_approve: e.target.checked ? 1 : 0 })} /></td>
                 </tr>
               ))}
             </tbody>
@@ -317,7 +411,7 @@ function SettingsForm({ data, onSaved }: { data: SettingsData; onSaved: () => vo
           </Field>
           <Field id="ks-digits" label="Digits"><input id="ks-digits" type="number" min={2} max={6} className={inputClass} disabled={!admin} value={n.digits} onChange={(e) => setN({ ...n, digits: Number(e.target.value) })} /></Field>
           <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" disabled={!admin} checked={n.place} onChange={(e) => setN({ ...n, place: e.target.checked })} />Add the place code (GL, SA, BAH)</label>
-          {(['lesson', 'sop', 'client'] as Section[]).map((s) => (
+          {(Object.keys(SECTIONS) as Section[]).map((s) => (
             <Field key={s} id={`ks-${s}`} label={`${SECTIONS[s]} prefix`} hint={`Next issued looks like ${sample(s)}`}>
               <input id={`ks-${s}`} className={inputClass} disabled={!admin} value={n.prefix[s]} onChange={(e) => setN({ ...n, prefix: { ...n.prefix, [s]: e.target.value.toUpperCase() } })} />
             </Field>
@@ -399,7 +493,7 @@ export function BatchAdd({ lib, section, onClose }: { lib: Library; section: Sec
           </ul>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field id="kb-country" label="Country or Global"><Select id="kb-country" className={inputClass} value={shared.country} onChange={(e) => set('country', e.target.value)}>{[GLOBAL, ...lib.places].map((c) => <option key={c}>{c}</option>)}</Select></Field>
-            <Field id="kb-company" label="Company (SOPs)"><Select id="kb-company" className={inputClass} value={shared.company} onChange={(e) => set('company', e.target.value)}>{SOP_COMPANIES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
+            <Field id="kb-company" label="Company (SOPs, SWIs, forms)"><Select id="kb-company" className={inputClass} value={shared.company} onChange={(e) => set('company', e.target.value)}>{SOP_COMPANIES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
             <Field id="kb-client" label="Client (client procedures)"><input id="kb-client" className={inputClass} list="kb-clients" value={shared.client} onChange={(e) => set('client', e.target.value)} /></Field>
             <datalist id="kb-clients">{lib.clients.map((c) => <option key={c} value={c} />)}</datalist>
             <Field id="kb-category" label="Category"><input id="kb-category" className={inputClass} value={shared.category} onChange={(e) => set('category', e.target.value)} placeholder="Lessons need one; General if blank" /></Field>

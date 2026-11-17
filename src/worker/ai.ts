@@ -22,7 +22,7 @@ export async function loadSettings(env: Env): Promise<AiSettings> {
   return parseSettings(results);
 }
 
-export async function spend(env: Env, username: string, feature: 'agent' | 'assistant' = 'agent') {
+export async function spend(env: Env, username: string, feature: 'agent' | 'assistant' | 'document' = 'agent') {
   const [month, today] = await env.DB.batch([
     env.DB.prepare('SELECT coalesce(sum(cost_microusd), 0) AS micro FROM ai_usage WHERE occurred_at >= ?').bind(monthStart()),
     env.DB.prepare(`SELECT count(*) AS n FROM ai_usage WHERE feature = ? AND username = ? AND occurred_at >= ?`).bind(feature, username, dayStart()),
