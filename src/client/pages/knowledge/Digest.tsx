@@ -6,6 +6,7 @@ import type { KnowledgeDoc } from '../../../shared/knowledge';
 import { ApiError, api, formatDate } from '../../api';
 import { Banner, Button, Skeleton, cx } from '../../components/ui';
 import { Dialog } from './common';
+import { splitPictures } from '../../../shared/lessonDeck';
 import { downloadLesson } from './lessonExport';
 
 // Slides and mind map of a published document (6z.16). Made once per revision by AI from the document and saved,
@@ -169,29 +170,55 @@ function printMap(doc: KnowledgeDoc, map: MindMap) {
 
 // ---- lesson slides -----------------------------------------------------------------------------------------------
 
-interface DeckSlide extends Slide { docId: string; docLabel: string; picture: string | null }
+/** A slide of the toolbox talk: two per lesson with its pictures, or the lesson's own PDF when slides couldn't be made. */
+interface DeckSlide extends Slide { docId: string; docLabel: string; pictures: string[]; pdf?: string }
 
-function SlideView({ s }: { s: DeckSlide }) {
-  const warn = s.kind === 'warning';
-  const [key, ...rest] = warn ? s.points : [null, ...s.points];
+function PictureGrid({ urls }: { urls: string[] }) {
+  const shown = urls.slice(0, 6);
   return (
-    <div className={cx('grid h-full items-center gap-6 md:gap-10', s.picture && 'md:grid-cols-[1.3fr_1fr]')}>
-      <div className="flex min-w-0 flex-col justify-center">
-        <p className={cx('label-caps flex items-center gap-2', warn ? 'text-warning' : 'text-text-muted')}>{warn && <AlertTriangle aria-hidden className="size-4" />}{s.docLabel}</p>
-        <h2 className={cx('mt-2 font-display text-3xl font-extrabold md:text-5xl', warn && 'text-warning')}>{s.title}</h2>
-        {key && <p className="mt-6 rounded-lg border-2 border-warning bg-warning-subtle p-4 text-xl font-bold md:text-3xl">{key}</p>}
-        <ul className="mt-6 flex flex-col gap-3">
-          {rest.filter((p): p is string => !!p).map((p, i) => <li key={i} className="flex gap-3 text-lg md:text-2xl"><span aria-hidden className={cx('mt-3 size-2.5 shrink-0 rounded-full', warn ? 'bg-warning' : 'bg-accent')} />{p}</li>)}
-        </ul>
-        {s.note && <p className="mt-6 border-l-2 border-border-strong pl-3 text-sm text-text-muted md:text-base">{s.note}</p>}
-      </div>
-      {s.picture && <img src={s.picture} alt="" className="max-h-[60vh] w-full rounded-lg border border-border bg-surface-2 object-contain" />}
+    <div className={cx('grid max-h-[64vh] gap-2', shown.length > 2 && 'grid-cols-2')}>
+      {shown.map((u) => <img key={u} src={u} alt="" className={cx('w-full rounded-lg border border-border bg-surface-2 object-contain', shown.length === 1 ? 'max-h-[60vh]' : shown.length === 2 ? 'max-h-[31vh]' : 'max-h-[20vh]')} />)}
     </div>
   );
 }
 
-/** A lesson's two slides, each with one of its support pictures (the oldest first), from the saved deck or the record. */
-async function lessonDeck(d: KnowledgeDoc, makeIfMissing: boolean): Promise<{ slides: Slide[]; pictures: (string | null)[]; made: boolean; error?: string }> {
+function SlideView({ s }: { s: DeckSlide }) {
+  if (s.pdf) {
+    // the lesson itself, when its slides couldn't be made
+    return (
+      <div className="flex h-full min-h-[60vh] flex-col gap-2">
+        <p className="label-caps text-text-muted">{s.docLabel} · the lesson document</p>
+        <iframe title={s.docLabel} src={s.pdf} className="min-h-0 w-full flex-1 rounded-lg border border-border bg-white" />
+      </div>
+    );
+  }
+  const warn = s.kind === 'warning';
+  const [key, ...rest] = warn ? s.points : [null, ...s.points];
+  const many = s.points.length > 5;
+  return (
+    <div className={cx('grid h-full items-center gap-6 md:gap-10', s.pictures.length > 0 && 'md:grid-cols-[1.3fr_1fr]')}>
+      <div className="flex min-w-0 flex-col justify-center">
+        <p className={cx('label-caps flex items-center gap-2', warn ? 'text-warning' : 'text-text-muted')}>{warn && <AlertTriangle aria-hidden className="size-4" />}{s.docLabel}</p>
+        <h2 className={cx('mt-2 font-display text-3xl font-extrabold md:text-5xl', warn && 'text-warning')}>{s.title}</h2>
+        {key && <p className={cx('mt-5 rounded-lg border-2 border-warning bg-warning-subtle p-4 font-bold', many ? 'text-lg md:text-2xl' : 'text-xl md:text-3xl')}>{key}</p>}
+        <ul className={cx('mt-5 flex flex-col', many ? 'gap-2' : 'gap-3')}>
+          {rest.filter((p): p is string => !!p).map((p, i) => <li key={i} className={cx('flex gap-3', many ? 'text-base md:text-xl' : 'text-lg md:text-2xl')}><span aria-hidden className={cx('mt-2.5 size-2.5 shrink-0 rounded-full', warn ? 'bg-warning' : 'bg-accent')} />{p}</li>)}
+        </ul>
+        {s.note && <p className="mt-5 border-l-2 border-border-strong pl-3 text-sm text-text-muted md:text-base">{s.note}</p>}
+      </div>
+      {s.pictures.length > 0 && <PictureGrid urls={s.pictures} />}
+    </div>
+  );
+}
+
+const lessonPdf = (d: KnowledgeDoc) => (d.file && d.file.content_type === 'application/pdf' ? `/api/knowledge/${d.id}/files/${d.file.id}?inline=1` : null);
+
+/**
+ * A lesson's two slides, from the saved deck, with ALL its support pictures spread over them (the first half beside
+ * slide 1, the rest beside slide 2). When the slides couldn't be made, `made` is false and the caller shows the
+ * lesson's own PDF if it has one, else slides from the record.
+ */
+async function lessonDeck(d: KnowledgeDoc, makeIfMissing: boolean): Promise<{ slides: Slide[]; pictures: string[][]; made: boolean; pdf: string | null; error?: string }> {
   let saved: Slide[] | null = null, error: string | undefined;
   if (d.published_at) {
     try {
@@ -203,7 +230,7 @@ async function lessonDeck(d: KnowledgeDoc, makeIfMissing: boolean): Promise<{ sl
   const files = await api<{ files: { id: string; content_type: string; uploaded_at: string }[] }>(`/attachments/knowledge/${d.id}`).then((r) => r.files).catch(() => []);
   const pics = files.filter((f) => /^image\/(jpeg|png|gif|webp)$/.test(f.content_type)).sort((a, b) => a.uploaded_at.localeCompare(b.uploaded_at)).map((f) => `/api/attachments/knowledge/${d.id}/${f.id}?inline=1`);
   const slides = saved?.length ? lessonSlides(saved) : fallbackSlides(d);
-  return { slides, pictures: slides.map((_, i) => pics[i] ?? null), made: !!saved?.length, error };
+  return { slides, pictures: splitPictures(pics, slides.length), made: !!saved?.length, pdf: lessonPdf(d), error };
 }
 
 /** PowerPoint and PDF buttons for one lesson's slides. */
@@ -212,7 +239,18 @@ export function LessonDownloads({ doc, compact }: { doc: KnowledgeDoc; compact?:
   const [error, setError] = useState<string | null>(null);
   const go = async (as: 'pptx' | 'pdf') => {
     setBusy(as); setError(null);
-    try { const d = await lessonDeck(doc, true); await downloadLesson(doc, d.slides, d.pictures, as); if (d.error) setError(`${d.error} The slides were made from the summary.`); }
+    try {
+      const d = await lessonDeck(doc, true);
+      if (!d.made && as === 'pdf' && d.pdf) {
+        // no slides: the PDF button gives the lesson document itself
+        const a = document.createElement('a');
+        a.href = d.pdf.replace('?inline=1', ''); a.download = doc.file?.file_name ?? 'lesson.pdf'; a.click();
+        setError('The slides couldn’t be made, so this is the lesson document itself.');
+        return;
+      }
+      await downloadLesson(doc, d.slides, d.pictures, as);
+      if (!d.made) setError(`${d.error ? `${d.error} ` : ''}These slides were made from the summary.`);
+    }
     catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   };
   return (
@@ -239,11 +277,18 @@ export function Present({ docs, onClose }: { docs: KnowledgeDoc[]; onClose: () =
       let missing = 0;
       for (const d of docs) {
         const r = await lessonDeck(d, docs.length === 1);
+        const docLabel = [d.doc_no, d.title].filter(Boolean).join(' · ');
         if (!r.made) missing++;
-        if (r.error && docs.length === 1) setNote(`${r.error} Showing the summary instead.`);
-        out.push(...r.slides.map((s, k) => ({ ...s, docId: d.id, docLabel: [d.doc_no, d.title].filter(Boolean).join(' · '), picture: r.pictures[k] })));
+        if (!r.made && r.pdf) {
+          // no slides: present the lesson learnt itself
+          out.push({ kind: 'points', title: d.title, points: [], note: '', docId: d.id, docLabel, pictures: [], pdf: r.pdf });
+          if (docs.length === 1) setNote(`${r.error ? `${r.error} ` : ''}The slides couldn’t be made, so the lesson document itself is shown.`);
+        } else {
+          if (!r.made && docs.length === 1) setNote(`${r.error ? `${r.error} ` : ''}The slides couldn’t be made and the lesson has no PDF, so its summary is shown.`);
+          out.push(...r.slides.map((s, k) => ({ ...s, docId: d.id, docLabel, pictures: r.pictures[k] ?? [] })));
+        }
       }
-      if (docs.length > 1 && missing) setNote(`${missing} of ${docs.length} lessons have no slides yet and show their summary. Present one alone to make its slides.`);
+      if (docs.length > 1 && missing) setNote(`${missing} of ${docs.length} lessons have no slides yet and show the lesson document (or its summary). Present one alone to make its slides.`);
       if (live) setSlides(out);
     })();
     return () => { live = false; };

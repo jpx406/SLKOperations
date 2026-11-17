@@ -1,7 +1,7 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive as ArchiveIcon, BookOpen, Download, ExternalLink, FileText, Files, Info, Network, Pencil, Play, Plus, QrCode, RotateCcw, Search, Sparkles, Star } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   ADD_TYPES, DOC_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, addTypeOf, filterLibrary, groupByPlace, hasCompany, isSection, lessonOfWeek, matches, proceduresForJob, reviewState,
@@ -12,7 +12,7 @@ import type { Suggestion } from '../../shared/docAnalysis';
 import { ApiError, api, formatDate } from '../api';
 import { SupportFiles } from './knowledge/Support';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
-import { ACCEPT, DocState, Dialog, EDITABLE_ACCEPT, QrBlock, QrDialog, fileUrl, linkBtn, today, uploadFile, type Library } from './knowledge/common';
+import { ACCEPT, DocState, Dialog, EDITABLE_ACCEPT, QrBlock, QrDialog, SupportList, fileUrl, linkBtn, supportHref, today, uploadFile, type Library, type SupportBrief } from './knowledge/common';
 import { Archive, BatchAdd, Dashboard, ManualsView, Queue, Register, Settings } from './knowledge/Control';
 import { LessonDownloads, MindMapDialog, MindMapPanel, Present } from './knowledge/Digest';
 import { Revisions } from './knowledge/Revisions';
@@ -44,9 +44,18 @@ export function KnowledgeHub() {
   const section: Section = isSection(view) ? view : 'lesson';
   const all = lib?.docs ?? [];
   const reading = params.get('doc');
+  const scannedFile = params.get('file');
+  useEffect(() => {
+    if (!lib || !reading || !scannedFile) return;
+    const d = lib.docs.find((x) => x.id === reading);
+    const sf = d?.support?.find((x) => x.id === scannedFile);
+    if (d && sf) window.location.replace(supportHref(d.id, sf, true));
+  }, [lib, reading, scannedFile]);
   const [editing, setEditing] = useState<KnowledgeDoc | 'new' | null>(null);
   const [batch, setBatch] = useState(false);
   const [qr, setQr] = useState<KnowledgeDoc | null>(null);
+  const [qrFile, setQrFile] = useState<{ doc: KnowledgeDoc; file: SupportBrief } | null>(null);
+  const onQrFile = (doc: KnowledgeDoc, file: SupportBrief) => setQrFile({ doc, file });
   const [map, setMap] = useState<KnowledgeDoc | null>(null);
   const canEdit = !!lib?.canEdit;
   const refresh = () => { qc.invalidateQueries({ queryKey: ['knowledge'] }); qc.invalidateQueries({ queryKey: ['knowledge-queue'] }); qc.invalidateQueries({ queryKey: ['knowledge-register'] }); };
@@ -79,8 +88,8 @@ export function KnowledgeHub() {
       {q.isError && <Banner tone="danger">{q.error.message}</Banner>}
       {lib && (
         <div role="tabpanel" aria-label={VIEWS[view]}>
-          {view === 'lesson' && <Lessons all={all.filter((d) => d.section === 'lesson')} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onEdit={setEditing} onQr={setQr} onMap={setMap} refresh={refresh} />}
-          {isSection(view) && view !== 'lesson' && <Controlled section={view} all={all.filter((d) => d.section === view)} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onQr={setQr} onMap={setMap} />}
+          {view === 'lesson' && <Lessons all={all.filter((d) => d.section === 'lesson')} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onEdit={setEditing} onQr={setQr} onQrFile={onQrFile} onMap={setMap} refresh={refresh} />}
+          {isSection(view) && view !== 'lesson' && <Controlled section={view} all={all.filter((d) => d.section === view)} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onQr={setQr} onQrFile={onQrFile} onMap={setMap} />}
           {view === 'manuals' && <ManualsView />}
           {view === 'dashboard' && <Dashboard onOpen={open} />}
           {view === 'queue' && <Queue onOpen={open} />}
@@ -93,6 +102,7 @@ export function KnowledgeHub() {
       {editing && lib && <Editor doc={editing === 'new' ? null : editing} lib={lib} section={section} onClose={(changed, id) => { setEditing(null); if (changed) refresh(); if (id) open(id); }} />}
       {batch && lib && <BatchAdd lib={lib} section={section} onClose={(changed) => { setBatch(false); if (changed) refresh(); }} />}
       {qr && <QrDialog doc={qr} onClose={() => setQr(null)} />}
+      {qrFile && <QrDialog doc={qrFile.doc} file={qrFile.file} onClose={() => setQrFile(null)} />}
       {map && <MindMapDialog doc={map} canRemake={staff} onClose={() => setMap(null)} />}
     </section>
   );
@@ -109,9 +119,9 @@ function ReadButton({ d, onRead, small }: { d: KnowledgeDoc; onRead: (d: Knowled
 
 // ---- section 1: lessons, best practices, learnings from incidents --------------------------------------------
 
-function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onMap, refresh }: {
+function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, onMap, refresh }: {
   all: KnowledgeDoc[]; canEdit: boolean; params: URLSearchParams; set: (k: string, v: string) => void;
-  onRead: (d: KnowledgeDoc) => void; onEdit: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onMap: (d: KnowledgeDoc) => void; refresh: () => void;
+  onRead: (d: KnowledgeDoc) => void; onEdit: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void; refresh: () => void;
 }) {
   const f = { q: params.get('q') ?? '', type: params.get('type') ?? '', category: params.get('category') ?? '', failure: params.get('failure') ?? '', place: params.get('place') ?? '',
     sort: (params.get('sort') === 'az' ? 'az' : 'newest') as 'az' | 'newest', duplicates: params.get('dups') === '1' };
@@ -180,6 +190,9 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onMap, refre
                 {d.published_at && <Button size="sm" variant="ghost" onClick={() => setPresent([d])}><Play aria-hidden className="size-3.5" />Present</Button>}
                 {d.published_at && <Button size="sm" variant="ghost" aria-label={`Mind map of ${d.title}`} title="Mind map" onClick={() => onMap(d)}><Network aria-hidden className="size-3.5" /></Button>}
                 <Button size="sm" variant="ghost" aria-label={`Details of ${d.title}`} title="Details" onClick={() => onRead(d)}><Info aria-hidden className="size-3.5" /></Button>
+              </div>
+              <div>
+                <SupportList doc={d} onQr={onQrFile} className="mt-2" />
                 <Button size="sm" variant="ghost" aria-label={`QR code for ${d.title}`} title="QR code" onClick={() => onQr(d)}><QrCode aria-hidden className="size-3.5" /></Button>
                 {canEdit && <Button size="sm" variant="ghost" aria-label={`Edit ${d.title}`} onClick={() => onEdit(d)}><Pencil aria-hidden className="size-3.5" /></Button>}
                 {canEdit && d.published_at && !d.duplicate_of && hero?.id !== d.id && <Button size="sm" variant="ghost" aria-label={`Make ${d.title} the lesson of the week`} title="Make this the lesson of the week" onClick={() => pick(d)}><Star aria-hidden className="size-3.5" /></Button>}
@@ -212,9 +225,9 @@ const EMPTY: Record<Exclude<Section, 'lesson'>, [string, string]> = {
   client: ['No client procedures yet', 'Add a client procedure with Add document: upload the file and pick the country and the client. Once approved it shows on every job in that country.'],
 };
 
-function Controlled({ section, all, canEdit, params, set, onRead, onQr, onMap }: {
+function Controlled({ section, all, canEdit, params, set, onRead, onQr, onQrFile, onMap }: {
   section: Exclude<Section, 'lesson'>; all: KnowledgeDoc[]; canEdit: boolean; params: URLSearchParams; set: (k: string, v: string) => void; onRead: (d: KnowledgeDoc) => void;
-  onQr: (d: KnowledgeDoc) => void; onMap: (d: KnowledgeDoc) => void;
+  onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void;
 }) {
   const qText = params.get('q') ?? '';
   const company = hasCompany(section) ? params.get('company') ?? '' : '';
@@ -249,10 +262,10 @@ function Controlled({ section, all, canEdit, params, set, onRead, onQr, onMap }:
               ? groupClients(g.docs).map(([client, docs]) => (
                 <div key={client}>
                   <p className="label-caps bg-surface-2 px-4 py-1 text-text-muted">{client}</p>
-                  <DocList docs={docs} onRead={onRead} onQr={onQr} onMap={onMap} />
+                  <DocList docs={docs} onRead={onRead} onQr={onQr} onQrFile={onQrFile} onMap={onMap} />
                 </div>
               ))
-              : <DocList docs={[...g.docs].sort((a, b) => (a.doc_no ?? a.title).localeCompare(b.doc_no ?? b.title))} onRead={onRead} onQr={onQr} onMap={onMap} />}
+              : <DocList docs={[...g.docs].sort((a, b) => (a.doc_no ?? a.title).localeCompare(b.doc_no ?? b.title))} onRead={onRead} onQr={onQr} onQrFile={onQrFile} onMap={onMap} />}
           </Card>
         ))}
       </div>
@@ -281,7 +294,7 @@ function Flags({ d }: { d: KnowledgeDoc }) {
 
 const extOf = (name: string) => (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? '').toUpperCase();
 
-function DocList({ docs, onRead, onQr, onMap }: { docs: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onMap: (d: KnowledgeDoc) => void }) {
+function DocList({ docs, onRead, onQr, onQrFile, onMap }: { docs: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void }) {
   return (
     <ul className="divide-y divide-border">
       {docs.map((d) => (
@@ -304,6 +317,7 @@ function DocList({ docs, onRead, onQr, onMap }: { docs: KnowledgeDoc[]; onRead: 
             <Button size="sm" variant="ghost" aria-label={`QR code for ${d.title}`} title="QR code" onClick={() => onQr(d)}><QrCode aria-hidden className="size-3.5" /></Button>
             <Button size="sm" variant="ghost" aria-label={`Details of ${d.title}`} onClick={() => onRead(d)}><Info aria-hidden className="size-3.5" />Details</Button>
           </div>
+          <SupportList doc={d} onQr={onQrFile} className="ml-7 min-w-0 basis-[calc(100%-1.75rem)]" />
         </li>
       ))}
     </ul>
@@ -545,7 +559,7 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
 
 // ---- on the job: client procedures for the job's country ---------------------------------------------------------
 
-function JobDocRow({ d, client, onMap }: { d: KnowledgeDoc; client?: string | null; onMap: (d: KnowledgeDoc) => void }) {
+function JobDocRow({ d, client, onMap, onQrFile }: { d: KnowledgeDoc; client?: string | null; onMap: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void }) {
   const mine = client && d.client?.toLowerCase() === client.toLowerCase();
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
@@ -558,6 +572,7 @@ function JobDocRow({ d, client, onMap }: { d: KnowledgeDoc; client?: string | nu
         <Button size="sm" variant="ghost" onClick={() => onMap(d)}><Network aria-hidden className="size-3.5" />Mind map</Button>
         {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title}`}><Download aria-hidden className="size-3.5" /></a>}
       </div>
+      <SupportList doc={d} onQr={onQrFile} className="basis-full" />
     </li>
   );
 }
@@ -569,6 +584,8 @@ function JobDocRow({ d, client, onMap }: { d: KnowledgeDoc; client?: string | nu
 export function ClientProcedures({ country, client }: { country: string; client?: string | null }) {
   const q = useQuery({ queryKey: ['knowledge'], queryFn: () => api<Library>('/knowledge'), retry: false });
   const [map, setMap] = useState<KnowledgeDoc | null>(null);
+  const [qrFile, setQrFile] = useState<{ doc: KnowledgeDoc; file: SupportBrief } | null>(null);
+  const onQrFile = (doc: KnowledgeDoc, file: SupportBrief) => setQrFile({ doc, file });
   if (!q.data) return null;
   const live = q.data.docs.filter((d) => d.published_at && !d.retired_at);
   const docs = proceduresForJob(live, country, client);
@@ -576,15 +593,16 @@ export function ClientProcedures({ country, client }: { country: string; client?
     .sort((a, b) => a.section.localeCompare(b.section) || (a.doc_no ?? a.title).localeCompare(b.doc_no ?? b.title));
   return (
     <div className="flex flex-col gap-2">
-      {docs.length ? <ul className="divide-y divide-border rounded-md border border-border">{docs.map((d) => <JobDocRow key={d.id} d={d} client={client} onMap={setMap} />)}</ul>
+      {docs.length ? <ul className="divide-y divide-border rounded-md border border-border">{docs.map((d) => <JobDocRow key={d.id} d={d} client={client} onMap={setMap} onQrFile={onQrFile} />)}</ul>
         : <p className="text-sm text-text-muted">No client procedures for {country} yet. They are added in the <Link className="underline" to="/knowledge?s=client">Knowledge Hub</Link>.</p>}
       {sops.length > 0 && (
         <details className="rounded-md border border-border">
           <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">SLK SOPs and work instructions for {country} and Global ({sops.length})</summary>
-          <ul className="divide-y divide-border border-t border-border">{sops.map((d) => <JobDocRow key={d.id} d={d} onMap={setMap} />)}</ul>
+          <ul className="divide-y divide-border border-t border-border">{sops.map((d) => <JobDocRow key={d.id} d={d} onMap={setMap} onQrFile={onQrFile} />)}</ul>
         </details>
       )}
       {map && <MindMapDialog doc={map} onClose={() => setMap(null)} />}
+      {qrFile && <QrDialog doc={qrFile.doc} file={qrFile.file} onClose={() => setQrFile(null)} />}
     </div>
   );
 }

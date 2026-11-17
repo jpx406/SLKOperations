@@ -128,6 +128,11 @@ knowledge.get('/', async (c) => {
     staff ? c.env.DB.prepare(`SELECT count(*) AS n FROM knowledge_revisions WHERE (status = 'review' AND reviewer = ?1) OR (status = 'approval' AND approver = ?1)
       OR (status = 'draft' AND sent_back_reason IS NOT NULL AND (submitted_by = ?1 OR created_by = ?1))`).bind(user.username).first<{ n: number }>() : null,
   ]);
+  // support files (pictures, videos, documents) of every entry, listed under it (6z.19)
+  const support = await c.env.DB.prepare(`SELECT id, entity_id, file_name, content_type, size_bytes FROM attachments
+    WHERE entity_type = 'knowledge' AND deleted_at IS NULL ORDER BY uploaded_at`).all<{ id: string; entity_id: string; file_name: string; content_type: string; size_bytes: number }>();
+  const supportOf = new Map<string, { id: string; file_name: string; content_type: string; size_bytes: number }[]>();
+  for (const s of support.results) supportOf.set(s.entity_id, [...(supportOf.get(s.entity_id) ?? []), { id: s.id, file_name: s.file_name, content_type: s.content_type, size_bytes: s.size_bytes }]);
   const live = new Map<string, { file?: KbFile; source?: KbFile }>();
   for (const f of files.results) {
     const e = live.get(f.doc_id) ?? {};
@@ -141,7 +146,7 @@ knowledge.get('/', async (c) => {
       const l = live.get(d.id);
       const showSource = !!l?.source && mayOpen(p, { kind: 'source', revision: d.revision }, { revision: d.revision, published_at: d.published_at ?? null, is_form: d.is_form }, 'approved');
       const o = open.get(d.id);
-      return { ...d, file: l?.file ?? null, source: showSource ? l!.source : null, open: o ? { id: o.id, revision: o.revision, status: o.status, reviewer: o.reviewer, approver: o.approver, sent_back_reason: o.sent_back_reason } : null };
+      return { ...d, file: l?.file ?? null, source: showSource ? l!.source : null, support: supportOf.get(d.id) ?? [], open: o ? { id: o.id, revision: o.revision, status: o.status, reviewer: o.reviewer, approver: o.approver, sent_back_reason: o.sent_back_reason } : null };
     }),
     canEdit: p.editor || p.admin, isAdmin: p.admin, me: p, places, clients: clients.results.map((r) => r.client), numbering,
     people: people?.results ?? [], queueCount: queue?.n ?? 0,

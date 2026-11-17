@@ -9,7 +9,25 @@ import { zip } from './xlsx';
 export interface Jpeg { width: number; height: number; data: Uint8Array }
 export interface LessonDeck {
   title: string; docNo: string | null; revision: number; kind: string; country: string; date: string;
-  slides: Slide[]; pictures: (Jpeg | null)[];
+  /** The pictures shown on each slide (any number; up to six are laid out per slide). */
+  slides: Slide[]; pictures: Jpeg[][];
+}
+
+/** All of a lesson's pictures over its slides, in order: the first half beside slide 1, the rest beside slide 2. */
+export function splitPictures<T>(pictures: T[], slides: number): T[][] {
+  const out: T[][] = Array.from({ length: slides }, () => []);
+  if (!slides) return out;
+  const per = Math.ceil(pictures.length / slides);
+  pictures.forEach((p, i) => out[Math.min(slides - 1, Math.floor(i / Math.max(1, per)))].push(p));
+  return out;
+}
+
+/** Cells for n pictures in a w x h panel: one, a column of two, then two columns. */
+export function pictureCells(n: number, x: number, y: number, w: number, h: number, gap = 6) {
+  const count = Math.min(n, 6);
+  const cols = count <= 2 ? 1 : 2, rows = Math.ceil(count / cols);
+  const cw = (w - gap * (cols - 1)) / cols, ch = (h - gap * (rows - 1)) / rows;
+  return Array.from({ length: count }, (_, i) => ({ x: x + (i % cols) * (cw + gap), y: y + Math.floor(i / cols) * (ch + gap), w: cw, h: ch }));
 }
 
 const W = 960, H = 540;
@@ -36,7 +54,8 @@ function fit(points: string[], w: number, h: number, sizes: number[], bold = fal
 
 export function layout(deck: LessonDeck, i: number): Item[] {
   const s = deck.slides[i];
-  const pic = deck.pictures[i] ?? null;
+  const pics = (deck.pictures[i] ?? []).slice(0, 6);
+  const pic = pics.length > 0;
   const items: Item[] = [];
   // header band: what this is, the number, the place
   items.push({ t: 'rect', x: 0, y: 0, w: W, h: 58, fill: C.band });
@@ -60,11 +79,11 @@ export function layout(deck: LessonDeck, i: number): Item[] {
     y += boxH + 16;
     const rest = s.points.slice(1);
     if (rest.length) {
-      const b = fit(rest, textW - 22, 488 - y - (s.note ? 40 : 0), [18, 16, 15, 14, 13, 12]);
+      const b = fit(rest, textW - 22, 488 - y - (s.note ? 40 : 0), [18, 16, 15, 14, 13, 12, 11, 10]);
       for (const l of b.lines) { items.push({ t: 'text', x: 36, y, w: textW, lines: l, size: b.size, color: C.ink, bullet: true }); y += l.length * b.size * 1.25 + b.size * 0.6; }
     }
   } else {
-    const b = fit(s.points, textW - 22, room, [20, 18, 16, 15, 14, 13, 12]);
+    const b = fit(s.points, textW - 22, room, [20, 18, 16, 15, 14, 13, 12, 11, 10]);
     for (const l of b.lines) { items.push({ t: 'text', x: 36, y, w: textW, lines: l, size: b.size, color: C.ink, bullet: true }); y += l.length * b.size * 1.25 + b.size * 0.6; }
   }
   if (s.note) {
@@ -73,12 +92,15 @@ export function layout(deck: LessonDeck, i: number): Item[] {
     items.push({ t: 'text', x: 48, y: 460, w: textW - 14, lines: n.lines[0], size: n.size, color: C.muted });
   }
   if (pic) {
-    // the whole picture, centred in its panel (never cropped, so nothing in it is lost)
+    // every picture whole, centred in its own cell (never cropped, so nothing in it is lost)
     const bx = 572, by = 84, bw = 352, bh = 404;
     items.push({ t: 'rect', x: bx, y: by, w: bw, h: bh, fill: C.panel });
-    const k = Math.min(bw / pic.width, bh / pic.height);
-    const pw = pic.width * k, ph = pic.height * k;
-    items.push({ t: 'pic', x: bx + (bw - pw) / 2, y: by + (bh - ph) / 2, w: pw, h: ph, img: pic });
+    pictureCells(pics.length, bx + 4, by + 4, bw - 8, bh - 8).forEach((cell, k) => {
+      const img = pics[k];
+      const z = Math.min(cell.w / img.width, cell.h / img.height);
+      const pw = img.width * z, ph = img.height * z;
+      items.push({ t: 'pic', x: cell.x + (cell.w - pw) / 2, y: cell.y + (cell.h - ph) / 2, w: pw, h: ph, img });
+    });
   }
   // footer (the PDF writer prints its own footer and page numbers, so these are PowerPoint only)
   items.push({ t: 'rect', x: 36, y: 504, w: W - 72, h: 1, fill: C.rule, footer: true });

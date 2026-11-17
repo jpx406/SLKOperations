@@ -45,10 +45,10 @@ export const LESSON_SLIDES = 2;
 
 export function digestPrompt(p: { title: string; docNo: string | null; kind: string; summary: string | null; keyAction: string | null; lesson: boolean }) {
   const slides = p.lesson
-    ? `1. slides: exactly 2 slides for a 5-minute crew briefing, shown beside a photo of the event.
-   - Slide 1, kind "points": title = a headline of what happened, up to 8 words. points = 3 to 5 lines: what happened, where and during which operation, why it happened, what it caused.
-   - Slide 2, kind "warning": title = "What we do now" or a short equivalent. points = 3 to 5 lines: the key action first, then the other lessons and checks crews must apply.
-   - Points up to 18 words each. note = one sentence the presenter can add ("" if none).`
+    ? `1. slides: exactly 2 slides for a crew briefing, shown beside the lesson's photos. Use ALL the explanations in the lesson: leave nothing out that the document explains (every event, cause, contributing factor, consequence, action, lesson and recommendation), condensed but complete.
+   - Slide 1, kind "points": title = a headline of what happened, up to 8 words. points = up to 8 lines in order: what happened, where and during which operation, the sequence of events, every cause and contributing factor, what it caused.
+   - Slide 2, kind "warning": title = "What we do now" or a short equivalent. points = up to 8 lines: the key action first, then every other lesson, recommendation and check the document gives.
+   - Points up to 25 words each, with the document's numbers exactly. note = one sentence the presenter can add ("" if none).`
     : '1. slides: [] (this document type has no crew slides).';
   return `You prepare field material for NESR slickline crews from the attached document: "${p.title}"${p.docNo ? ` (${p.docNo})` : ''}, a ${p.kind}.
 Use only what the document says. Keep its numbers, limits, pressures, sizes and names exactly. Never add steps, values or advice it doesn't contain. Plain, short English that a crew reads on a screen at the wellsite.

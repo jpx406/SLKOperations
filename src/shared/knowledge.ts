@@ -47,6 +47,8 @@ export interface KnowledgeDoc {
   file?: KbFile | null;
   /** The current editable version (admins only). */
   source?: KbFile | null;
+  /** Support files (pictures, videos, documents) kept with the entry, listed under it (6z.19). */
+  support?: { id: string; file_name: string; content_type: string; size_bytes: number }[];
 }
 
 export interface DocInput {

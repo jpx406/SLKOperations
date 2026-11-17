@@ -22,8 +22,9 @@ export async function toJpeg(url: string, max = 1600): Promise<Jpeg | null> {
   } catch { return null; }
 }
 
-export async function downloadLesson(doc: KnowledgeDoc, slides: Slide[], pictureUrls: (string | null)[], as: 'pptx' | 'pdf') {
-  const pictures = await Promise.all(slides.map((_, i) => (pictureUrls[i] ? toJpeg(pictureUrls[i]!) : Promise.resolve(null))));
+export async function downloadLesson(doc: KnowledgeDoc, slides: Slide[], pictureUrls: string[][], as: 'pptx' | 'pdf') {
+  // every picture of every slide, converted to JPEG; one that can't be read is left out
+  const pictures = await Promise.all(slides.map(async (_, i) => (await Promise.all((pictureUrls[i] ?? []).map((u) => toJpeg(u)))).filter((j): j is Jpeg => !!j)));
   const deck: LessonDeck = {
     title: doc.title, docNo: doc.doc_no, revision: doc.revision, kind: ADD_TYPES[(doc.doc_type ?? 'lesson_learnt') as AddType].label, country: doc.country,
     date: formatDate(new Date().toISOString().slice(0, 10)), slides, pictures,

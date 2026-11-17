@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { NESR_LOGO_JPEG } from '../src/shared/brandLogo';
 import { fallbackSlides, lessonSlides } from '../src/shared/docDigest';
-import { deckPdf, deckPptx, layout, type LessonDeck } from '../src/shared/lessonDeck';
+import { deckPdf, deckPptx, layout, pictureCells, splitPictures, type LessonDeck } from '../src/shared/lessonDeck';
 import { unzip } from '../src/shared/xlsxRead';
 
 const jpeg = { width: NESR_LOGO_JPEG.width, height: NESR_LOGO_JPEG.height, data: Uint8Array.from(atob(NESR_LOGO_JPEG.base64), (ch) => ch.charCodeAt(0)) };
@@ -12,7 +12,7 @@ const deck: LessonDeck = {
     { kind: 'points', title: 'Wire parted while pulling out of hole', points: ['The 0.125 in wire parted at the stuffing box during POOH at 3,200 ft.', 'Packing was worn and not inspected before rig up.', 'The tool string fell; a fishing job cost 14 hours.'], note: 'Ask who checked the packing on the last job.' },
     { kind: 'warning', title: 'What we do now', points: ['Inspect and replace stuffing box packing before every job.', 'Record the check on the pre-job checklist.', 'Stop and check if the line shows wear marks.'], note: '' },
   ],
-  pictures: [jpeg, null],
+  pictures: [[jpeg, jpeg, jpeg], []],
 };
 
 describe('lesson slides as PowerPoint and PDF (6z.17)', () => {
@@ -45,5 +45,22 @@ describe('lesson slides as PowerPoint and PDF (6z.17)', () => {
     expect(text.match(/\/Type \/Page /g)).toHaveLength(2);
     expect(text).toContain('/MediaBox [0 0 960 540]');
     if (process.env.DECK_OUT) writeFileSync(`${process.env.DECK_OUT}/lesson.pdf`, bytes);
+  });
+});
+
+describe('all of a lesson’s pictures on its slides (6z.19)', () => {
+  it('spreads every picture over the slides in order', () => {
+    expect(splitPictures(['a', 'b', 'c', 'd', 'e'], 2)).toEqual([['a', 'b', 'c'], ['d', 'e']]);
+    expect(splitPictures(['a'], 2)).toEqual([['a'], []]);
+    expect(splitPictures([], 2)).toEqual([[], []]);
+  });
+  it('lays one, two, or up to six pictures out in a grid that fits the panel', () => {
+    expect(pictureCells(1, 0, 0, 100, 100)).toEqual([{ x: 0, y: 0, w: 100, h: 100 }]);
+    const two = pictureCells(2, 0, 0, 100, 106);
+    expect(two.map((c) => [c.x, c.y, c.h])).toEqual([[0, 0, 50], [0, 56, 50]]);
+    const four = pictureCells(4, 0, 0, 106, 106);
+    expect(four.map((c) => [c.x, c.y])).toEqual([[0, 0], [56, 0], [0, 56], [56, 56]]);
+    expect(pictureCells(9, 0, 0, 100, 100)).toHaveLength(6);
+    expect(layout(deck, 0).filter((i) => i.t === 'pic')).toHaveLength(3);
   });
 });

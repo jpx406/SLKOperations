@@ -1,4 +1,4 @@
-import { Download, Printer, X } from 'lucide-react';
+import { BookOpen, Download, FileText, Film, Image as ImageIcon, Printer, QrCode, X } from 'lucide-react';
 import { useEffect } from 'react';
 import { renderSVG } from 'uqr';
 import { TYPES, checkUpload } from '../../../shared/attachments';
@@ -52,7 +52,8 @@ export function RevPill({ status, children }: { status: RevStatus; children?: Re
 
 // ---- QR codes ---------------------------------------------------------------------------------------------------
 
-export const docLink = (id: string) => `${window.location.origin}/knowledge?doc=${id}`;
+export const docLink = (id: string, fileId?: string) => `${window.location.origin}/knowledge?doc=${id}${fileId ? `&file=${fileId}` : ''}`;
+export type SupportBrief = NonNullable<KnowledgeDoc['support']>[number];
 const qrSvg = (link: string) => renderSVG(link, { border: 2, ecc: 'M', whiteColor: '#ffffff', blackColor: '#0b121a' });
 
 function saveBlob(blob: Blob, name: string) {
@@ -63,11 +64,11 @@ function saveBlob(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-/** The QR code with its link, and buttons to save it as SVG or PNG or print it as a label. */
-export function QrBlock({ doc }: { doc: KnowledgeDoc }) {
-  const link = docLink(doc.id);
+/** The QR code with its link, and buttons to save it as SVG or PNG or print it as a label. With `file`, it opens that support file. */
+export function QrBlock({ doc, file }: { doc: KnowledgeDoc; file?: SupportBrief }) {
+  const link = docLink(doc.id, file?.id);
   const svg = qrSvg(link);
-  const name = (doc.doc_no ?? doc.title).replace(/[^\w.-]+/g, '_');
+  const name = (file ? `${doc.doc_no ?? doc.title} ${file.file_name}` : doc.doc_no ?? doc.title).replace(/[^\w.-]+/g, '_');
   const png = () => {
     const img = new Image();
     img.onload = () => {
@@ -85,14 +86,17 @@ export function QrBlock({ doc }: { doc: KnowledgeDoc }) {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
     w.document.write(`<!doctype html><title>QR ${esc(name)}</title><body style="font-family:sans-serif;text-align:center;margin:24px">
       <div style="width:260px;margin:auto">${svg}</div><p style="font-weight:700;margin:8px 0 2px">${esc(doc.doc_no ?? '')}</p><p style="margin:0">${esc(doc.title)}</p>
-      <p style="font-size:11px;color:#555">Scan for the published revision</p><script>window.onload=()=>{window.print()}</script></body>`);
+      ${file ? `<p style="margin:4px 0 0;font-weight:700">${esc(file.file_name)}</p>` : ''}
+      <p style="font-size:11px;color:#555">${file ? 'Scan to open this support file' : 'Scan for the published revision'}</p><script>window.onload=()=>{window.print()}</script></body>`);
     w.document.close();
   };
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-md border border-border p-3">
       <div className="size-36 shrink-0 rounded-sm bg-white p-1" dangerouslySetInnerHTML={{ __html: svg }} />
       <div className="min-w-0 flex-1 basis-48">
-        <p className="text-sm">Scanning opens this document in SLK Operations Hub, always at its published revision. Print it on toolboxes, in the unit or on paper copies.</p>
+        <p className="text-sm">{file
+          ? `Scanning opens “${file.file_name}”, a support file of this document, in SLK Operations Hub (after signing in).`
+          : 'Scanning opens this document in SLK Operations Hub, always at its published revision. Print it on toolboxes, in the unit or on paper copies.'}</p>
         <p className="mt-1 break-all font-mono text-xs text-text-muted">{link}</p>
         <div className="mt-2 flex flex-wrap gap-1">
           <Button size="sm" onClick={() => saveBlob(new Blob([svg], { type: 'image/svg+xml' }), `QR ${name}.svg`)}><Download aria-hidden className="size-3.5" />SVG</Button>
@@ -104,8 +108,44 @@ export function QrBlock({ doc }: { doc: KnowledgeDoc }) {
   );
 }
 
-export function QrDialog({ doc, onClose }: { doc: KnowledgeDoc; onClose: () => void }) {
-  return <Dialog title={`QR code · ${doc.doc_no ?? doc.title}`} onClose={onClose}><p className="mb-3 text-sm font-semibold">{doc.title}</p><QrBlock doc={doc} /></Dialog>;
+export function QrDialog({ doc, file, onClose }: { doc: KnowledgeDoc; file?: SupportBrief; onClose: () => void }) {
+  return (
+    <Dialog title={`QR code · ${file ? file.file_name : doc.doc_no ?? doc.title}`} onClose={onClose}>
+      <p className="mb-3 text-sm font-semibold">{doc.title}{file && <span className="block font-normal text-text-muted">Support file: {file.file_name}</span>}</p>
+      <QrBlock doc={doc} file={file} />
+    </Dialog>
+  );
+}
+
+// ---- support files listed under a document ---------------------------------------------------------------------
+
+export const supportHref = (docId: string, f: { id: string }, inline = false) => `/api/attachments/knowledge/${docId}/${f.id}${inline ? '?inline=1' : ''}`;
+const opensInPage = (type: string) => /^(application\/pdf|image\/(jpeg|png|gif|webp)|video\/(mp4|webm|quicktime))$/.test(type);
+const kindIcon = (type: string) => (type.startsWith('image/') ? ImageIcon : type.startsWith('video/') ? Film : FileText);
+
+/** The support files of a document, under it in a list: Read (in the browser), Download and QR, no mind map. */
+export function SupportList({ doc, onQr, className }: { doc: KnowledgeDoc; onQr: (doc: KnowledgeDoc, file: SupportBrief) => void; className?: string }) {
+  const files = doc.support ?? [];
+  if (!files.length) return null;
+  return (
+    <ul aria-label={`Support files of ${doc.title}`} className={cx('flex min-w-0 max-w-full flex-col gap-1 border-l-2 border-border pl-3', className)}>
+      {files.map((f) => {
+        const Icon = kindIcon(f.content_type);
+        return (
+          <li key={f.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+            <Icon aria-hidden className="size-3.5 shrink-0 text-text-subtle" />
+            <span className="min-w-0 flex-1 basis-40 truncate" title={f.file_name}>{f.file_name}</span>
+            <span className="text-text-subtle">{f.size_bytes < 1048576 ? `${Math.max(1, Math.round(f.size_bytes / 1024))} KB` : `${(f.size_bytes / 1048576).toFixed(1)} MB`}</span>
+            <span className="flex gap-0.5">
+              {opensInPage(f.content_type) && <a className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-semibold text-text-muted hover:bg-surface-2 hover:text-text" href={supportHref(doc.id, f, true)} target="_blank" rel="noreferrer" aria-label={`Read ${f.file_name}`}><BookOpen aria-hidden className="size-3" />Read</a>}
+              <a className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-semibold text-text-muted hover:bg-surface-2 hover:text-text" href={supportHref(doc.id, f)} download={f.file_name} aria-label={`Download ${f.file_name}`}><Download aria-hidden className="size-3" />Download</a>
+              <button type="button" className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-semibold text-text-muted hover:bg-surface-2 hover:text-text" aria-label={`QR code for ${f.file_name}`} onClick={() => onQr(doc, f)}><QrCode aria-hidden className="size-3" />QR</button>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 /** What the list shows beside an entry for staff: a revision being worked on, or a draft never published. */
