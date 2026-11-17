@@ -34,42 +34,66 @@ export function useDigest(doc: KnowledgeDoc | null, enabled = true) {
 
 // ---- mind map ----------------------------------------------------------------------------------------------------
 
-const BRANCH = ['border-accent-text', 'border-warning', 'border-success', 'border-danger', 'border-border-strong', 'border-accent-text', 'border-warning', 'border-success', 'border-danger', 'border-border-strong'];
+// Option C, chosen by the owner (6z.18): the subject on top and one numbered card per topic, in the document's order.
+// Values are grey chips, limits amber, stop-work conditions red, and the stop-work topic is a red-tinted card.
 
-function Branch({ b, i, side }: { b: MindNode; i: number; side: 'left' | 'right' }) {
+const CHART = ['--color-chart-1', '--color-chart-2', '--color-chart-3', '--color-chart-4', '--color-chart-5', '--color-chart-6'];
+const CHIP: Record<string, string> = {
+  value: 'bg-surface-3 font-mono text-text',
+  limit: 'bg-warning-subtle font-semibold text-warning',
+  stop: 'bg-danger-subtle font-semibold text-danger',
+  '': 'bg-surface-3 text-text',
+};
+const isStop = (b: MindNode) => b.kind === 'stop' || /^stop\b|stop[- ]work/i.test(b.label);
+
+function Chip({ n }: { n: MindNode }) {
+  return <span className={cx('inline-block rounded-xs px-1.5 py-px text-xs whitespace-nowrap', CHIP[n.kind ?? ''])}>{n.label}</span>;
+}
+
+/** A key to the chip colours, shown above the map. */
+export function MindLegend() {
   return (
-    <div className={cx('relative rounded-md border border-border bg-surface p-3', side === 'left' ? 'border-l-4 lg:border-l lg:border-r-4 lg:text-right' : 'border-l-4', BRANCH[i % BRANCH.length],
-      // the line to the centre, on wide screens
-      side === 'left' ? 'lg:after:absolute lg:after:top-1/2 lg:after:-right-6 lg:after:w-6 lg:after:border-t lg:after:border-border-strong'
-        : 'lg:before:absolute lg:before:top-1/2 lg:before:-left-6 lg:before:w-6 lg:before:border-t lg:before:border-border-strong')}>
-      <p className="font-display text-sm font-bold">{b.label}</p>
-      {b.children.length > 0 && (
-        <ul className="mt-1.5 flex flex-col gap-1">
-          {b.children.map((c, j) => (
-            <li key={j} className="text-sm">
-              <span className="font-semibold">{c.label}</span>
-              {c.children.length > 0 && (
-                <span className={cx('mt-0.5 flex flex-wrap gap-1', side === 'left' && 'lg:justify-end')}>
-                  {c.children.map((g, k) => <span key={k} className="rounded-sm bg-surface-3 px-1.5 text-xs">{g.label}</span>)}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+      <span className="inline-flex items-center gap-1"><Chip n={{ label: '2.72 in', kind: 'value', children: [] }} />value</span>
+      <span className="inline-flex items-center gap-1"><Chip n={{ label: 'max 150 ft/min', kind: 'limit', children: [] }} />limit</span>
+      <span className="inline-flex items-center gap-1"><Chip n={{ label: 'stop', kind: 'stop', children: [] }} />stop work</span>
+    </span>
   );
 }
 
-/** The map: the subject in the middle, half the branches on each side on wide screens, one column on a phone. */
-export function MindMapView({ map }: { map: MindMap }) {
-  const half = Math.ceil(map.branches.length / 2);
-  const left = map.branches.slice(0, half), right = map.branches.slice(half);
+function Card({ b, i }: { b: MindNode; i: number }) {
+  const stop = isStop(b);
+  const color = `var(${stop ? '--color-danger' : CHART[i % CHART.length]})`;
   return (
-    <div className="grid grid-cols-1 items-center gap-3 lg:grid-cols-[1fr_auto_1fr] lg:gap-x-12">
-      <div className="order-2 flex flex-col gap-3 lg:order-1">{left.map((b, i) => <Branch key={i} b={b} i={i} side="left" />)}</div>
-      <div className="order-1 mx-auto max-w-60 rounded-xl border-2 border-accent-text bg-accent px-5 py-4 text-center font-display text-lg font-extrabold text-on-accent lg:order-2">{map.center}</div>
-      <div className="order-3 flex flex-col gap-3">{right.map((b, i) => <Branch key={i} b={b} i={i + half} side="right" />)}</div>
+    <li className={cx('relative rounded-lg border border-border p-3.5 sm:before:absolute sm:before:-top-4 sm:before:left-1/2 sm:before:h-4 sm:before:w-0.5 sm:before:bg-border-strong',
+      stop ? 'bg-danger-subtle' : 'bg-surface')} style={{ borderTop: `4px solid ${color}` }}>
+      <header className="mb-2 flex items-center gap-2">
+        <span className="grid size-6 shrink-0 place-items-center rounded-full text-xs font-extrabold text-bg" style={{ background: color }}>{i + 1}</span>
+        <h3 className={cx('font-display text-sm font-bold', stop && 'text-danger')}>{b.label}</h3>
+      </header>
+      <ul className="flex flex-col gap-1.5">
+        {b.children.map((c, j) => (
+          <li key={j} className="relative pl-3 text-sm">
+            <span aria-hidden className="absolute left-0 top-[0.45rem] size-1.5 rounded-full" style={{ background: color }} />
+            <span className={cx(c.kind === 'stop' && 'font-semibold text-danger', c.kind === 'limit' && 'font-semibold')}>{c.label}</span>
+            {c.children.length > 0 && <span className="mt-0.5 flex flex-wrap gap-1">{c.children.map((g, k) => <Chip key={k} n={g} />)}</span>}
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+/** The map: the subject on top, a rail, and the numbered topic cards below (one column on a phone). */
+export function MindMapView({ map }: { map: MindMap }) {
+  return (
+    <div>
+      <div className="mx-auto w-max max-w-full rounded-lg bg-text px-5 py-2.5 text-center font-display text-lg font-extrabold text-bg">{map.center}</div>
+      <div aria-hidden className="mx-auto hidden h-4 w-0.5 bg-border-strong sm:block" />
+      <div aria-hidden className="mx-[8%] hidden h-0.5 bg-border-strong sm:block" />
+      <ol className="mt-3 grid grid-cols-1 gap-3 sm:mt-4 sm:grid-cols-[repeat(auto-fit,minmax(13.5rem,1fr))] sm:gap-x-3 sm:gap-y-6">
+        {map.branches.map((b, i) => <Card key={i} b={b} i={i} />)}
+      </ol>
     </div>
   );
 }
@@ -97,13 +121,14 @@ export function MindMapPanel({ doc, canRemake }: { doc: KnowledgeDoc; canRemake?
             <Button size="sm" variant="ghost" onClick={() => printMap(doc, map)}><Printer aria-hidden className="size-3.5" />Print</Button>
             {canRemake && <Button size="sm" variant="ghost" loading={making} onClick={() => make(true)}><RefreshCw aria-hidden className="size-3.5" />Make again</Button>}
           </div>
+          <div className="mb-3"><MindLegend /></div>
           <MindMapView map={map} />
         </>
       )}
       {full && map && (
-        <div role="dialog" aria-modal="true" aria-label={`Mind map: ${doc.title}`} className="fixed inset-0 z-[60] overflow-y-auto bg-bg p-4 md:p-8 md:[&_li]:text-lg md:[&_p]:text-lg md:[&_span]:text-base">
+        <div role="dialog" aria-modal="true" aria-label={`Mind map: ${doc.title}`} className="fixed inset-0 z-[60] overflow-y-auto bg-bg p-4 md:p-8 md:[&_li]:text-base md:[&_h3]:text-base">
           {/* larger type full screen, to read at the unit */}
-          <div className="mb-4 flex items-center gap-3"><h2 className="min-w-0 flex-1 font-display text-lg font-bold">{doc.doc_no && <span className="mr-2 font-mono text-sm">{doc.doc_no}</span>}{doc.title}</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={() => setFull(false)}><X aria-hidden className="size-4" /></Button></div>
+          <div className="mb-4 flex flex-wrap items-center gap-3"><h2 className="min-w-0 flex-1 font-display text-lg font-bold">{doc.doc_no && <span className="mr-2 font-mono text-sm">{doc.doc_no}</span>}{doc.title}{doc.published_at && <span className="ml-2 text-sm font-normal text-text-muted">Rev {doc.revision}</span>}</h2><MindLegend /><Button size="sm" variant="ghost" aria-label="Close" onClick={() => setFull(false)}><X aria-hidden className="size-4" /></Button></div>
           <MindMapView map={map} />
         </div>
       )}
@@ -120,10 +145,25 @@ function printMap(doc: KnowledgeDoc, map: MindMap) {
   const w = window.open('', '_blank', 'width=900,height=700');
   if (!w) return;
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  const branches = map.branches.map((b) => `<section><h3>${esc(b.label)}</h3><ul>${b.children.map((c) => `<li><b>${esc(c.label)}</b>${c.children.length ? `<br><span>${c.children.map((g) => esc(g.label)).join(' · ')}</span>` : ''}</li>`).join('')}</ul></section>`).join('');
-  w.document.write(`<!doctype html><title>${esc(doc.title)}</title><style>body{font-family:sans-serif;margin:16px;color:#111}h1{font-size:18px;margin:0}h2{font-size:22px;text-align:center;border:2px solid #111;border-radius:12px;padding:8px;margin:12px auto;max-width:420px}
-    main{columns:2;column-gap:18px}section{break-inside:avoid;border-left:4px solid #333;padding:4px 10px;margin:0 0 12px}h3{margin:0 0 4px;font-size:14px}ul{margin:0;padding-left:16px;font-size:12px}span{color:#444}p{font-size:10px;color:#555}</style>
-    <h1>${esc(doc.doc_no ?? '')} ${esc(doc.title)} · Rev ${doc.revision}</h1><h2>${esc(map.center)}</h2><main>${branches}</main><p>Summary made from the document. The document is the reference. Printed ${new Date().toISOString().slice(0, 10)}.</p><script>window.onload=()=>window.print()</script>`);
+  // the same numbered cards as the screen, in print colours
+  const COLORS = ['#1565c0', '#2e7d32', '#b26b00', '#6a1b9a', '#00838f', '#5b6470'];
+  const chip = (g: MindNode) => `<i class="c ${g.kind || 'plain'}">${esc(g.label)}</i>`;
+  const cards = map.branches.map((b, i) => {
+    const stop = isStop(b), color = stop ? '#c62828' : COLORS[i % COLORS.length];
+    return `<section class="${stop ? 'stop' : ''}" style="border-top-color:${color}"><h3><b style="background:${color}">${i + 1}</b>${esc(b.label)}</h3><ul>${b.children.map((c) =>
+      `<li style="--d:${color}"><span class="${c.kind || ''}">${esc(c.label)}</span>${c.children.length ? `<div>${c.children.map(chip).join(' ')}</div>` : ''}</li>`).join('')}</ul></section>`;
+  }).join('');
+  w.document.write(`<!doctype html><title>${esc(doc.title)}</title><style>
+    *{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:14px;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    h1{font-size:15px;margin:0}h1 small{color:#555;font-weight:400}.root{width:max-content;margin:10px auto 14px;background:#0b121a;color:#fff;border-radius:8px;padding:8px 18px;font-size:18px;font-weight:800}
+    main{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}section{break-inside:avoid;border:1px solid #d5dae0;border-top:4px solid;border-radius:8px;padding:8px 10px}
+    section.stop{background:#fdecec}h3{display:flex;gap:6px;align-items:center;margin:0 0 6px;font-size:13px}h3 b{color:#fff;border-radius:50%;width:18px;height:18px;display:grid;place-items:center;font-size:10px;flex:none}
+    ul{list-style:none;margin:0;padding:0;font-size:11px}li{margin:0 0 5px;padding-left:9px;position:relative}li:before{content:"";position:absolute;left:0;top:5px;width:4px;height:4px;border-radius:50%;background:var(--d)}
+    li span.stop{color:#c62828;font-weight:700}li span.limit{font-weight:700}li div{margin-top:2px}
+    .c{display:inline-block;font-style:normal;border-radius:3px;padding:0 4px;font-size:10px;margin:1px 0}.c.plain,.c.value{background:#eef1f4;font-family:Consolas,monospace}.c.limit{background:#fff4d6;color:#8a5200;font-weight:700}.c.stop{background:#fdecec;color:#c62828;font-weight:700}
+    p{font-size:9px;color:#555}</style>
+    <h1>${esc(doc.doc_no ?? '')} ${esc(doc.title)} <small>· Rev ${doc.revision} · grey value · amber limit · red stop work</small></h1><div class="root">${esc(map.center)}</div><main>${cards}</main>
+    <p>Mind map made from the document. The document is the reference. Printed ${new Date().toISOString().slice(0, 10)}.</p><script>window.onload=()=>window.print()</script>`);
   w.document.close();
 }
 

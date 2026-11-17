@@ -306,7 +306,7 @@ export function shapeResult(name: string, input: Record<string, unknown>, bodies
       const d = (b as Rec) ?? {};
       const doc = pick(d, ['doc_no', 'title', 'section', 'country', 'company', 'client', 'revision', 'summary', 'key_action']);
       return dg.digest?.mindmap
-        ? { document: doc, revision: dg.revision, mindmap: dg.digest.mindmap, note: 'Summary made from the document; cite the document number and revision, and send the person to Read for the exact wording.' }
+        ? { document: doc, revision: dg.revision, mindmap: dg.digest.mindmap, note: 'Summary made from the document. kind "limit" is a value that must be respected, kind "stop" a condition that stops the job, kind "value" a setting or size to use; state limits and stop conditions exactly. Cite the document number and revision, and send the person to Read for the exact wording.' }
         : { document: doc, mindmap: null, note: dg.reason ?? 'No mind map yet. Answer from the summary only, and suggest opening the document\'s Mind map once so it is made.' };
     }
     default:

@@ -8,7 +8,9 @@ describe('slides and mind map (6z.16)', () => {
     expect(s.required).toEqual(['slides', 'mindmap']);
     expect(s.properties.slides.items.properties.kind.enum).toEqual(['title', 'points', 'steps', 'warning', 'question']);
     const branch = s.properties.mindmap.properties.branches.items as { properties: { children: { items: { properties: { children: { items: { required: string[] } } } } } } };
-    expect(branch.properties.children.items.properties.children.items.required).toEqual(['label']);
+    expect(branch.properties.children.items.properties.children.items.required).toEqual(['label', 'kind']);
+    const tagged = cleanDigest({ slides: [], mindmap: { center: 'Gauge run', branches: [{ label: 'Stop the job', kind: 'stop', children: [{ label: 'Over-pull', kind: '', children: [{ label: '> 200 lb', kind: 'stop' }, { label: 'x', kind: 'bogus' }] }] }] } }, 'T');
+    expect(tagged.mindmap.branches[0]).toEqual({ label: 'Stop the job', kind: 'stop', children: [{ label: 'Over-pull', children: [{ label: '> 200 lb', kind: 'stop', children: [] }, { label: 'x', children: [] }] }] });
     expect(JSON.stringify(s)).not.toContain('maxItems');
     const p = digestPrompt({ title: 'Rope socket', docNo: 'SWI-7', kind: 'Standard Work Instruction (SWI)', summary: 'Make up and test', keyAction: null, lesson: false });
     expect(p).toContain('Never add steps');

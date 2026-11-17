@@ -6,17 +6,24 @@ export const SLIDE_KINDS = ['title', 'points', 'steps', 'warning', 'question'] a
 export type SlideKind = (typeof SLIDE_KINDS)[number];
 export interface Slide { kind: SlideKind; title: string; points: string[]; note: string }
 
-export interface MindNode { label: string; children: MindNode[] }
+/**
+ * What a point is (6z.18), so the map can colour it: a plain value (grey), a limit to respect (amber), a condition
+ * that stops the job (red), or nothing special. A branch marked "stop" is the stop-work card.
+ */
+export const MIND_KINDS = ['', 'value', 'limit', 'stop'] as const;
+export type MindKind = (typeof MIND_KINDS)[number];
+export interface MindNode { label: string; kind?: MindKind; children: MindNode[] }
 export interface MindMap { center: string; branches: MindNode[] }
 
 export interface Digest { slides: Slide[]; mindmap: MindMap }
 
 const str = { type: 'string' } as const;
-// branch → topic → detail: three levels, the last one a plain label
-const leaf = { type: 'object', additionalProperties: false, required: ['label'], properties: { label: str } };
+const kindProp = { type: 'string', enum: [...MIND_KINDS] } as const;
+// branch → topic → detail: three levels, the last one a short label (often a value or a limit)
+const leaf = { type: 'object', additionalProperties: false, required: ['label', 'kind'], properties: { label: str, kind: kindProp } };
 const node = (depth: number): Record<string, unknown> => ({
-  type: 'object', additionalProperties: false, required: ['label', 'children'],
-  properties: { label: str, children: { type: 'array', items: depth > 0 ? node(depth - 1) : leaf } },
+  type: 'object', additionalProperties: false, required: ['label', 'kind', 'children'],
+  properties: { label: str, kind: kindProp, children: { type: 'array', items: depth > 0 ? node(depth - 1) : leaf } },
 });
 
 /** The answer's fixed shape: up to 12 slides, and a mind map three levels deep. */
@@ -49,8 +56,9 @@ Use only what the document says. Keep its numbers, limits, pressures, sizes and 
 ${slides}
 2. mindmap: the whole document on one screen. It is consulted during the job instead of reading the document again, and the AI Agent answers questions from it, so every limit, value, step and responsibility in the document must appear in it.
    - center: the subject in up to 6 words.
-   - branches: 4 to 8 main topics (for a procedure: preparation, equipment, steps by phase, checks and limits, hazards, responsibilities, as the document has them).
-   - each branch: up to 6 children of up to 10 words; a child may have up to 4 children of its own with exact values (e.g. "Pull test 50% of wire breaking strength").
+   - branches: 4 to 8 main topics in the document's order (for a procedure: preparation, equipment, steps by phase, checks and limits, stop-work conditions, after the job, responsibilities, as the document has them). Put every stop-work condition together in one branch and give that branch kind "stop".
+   - each branch: up to 6 children of up to 10 words (what to do or check); a child may have up to 4 children of its own that are short exact values, at most 5 words each (e.g. "2.72 in OD", "max 150 ft/min", "> 200 lb over-pull").
+   - kind on every node: "value" for a size, setting, quantity or name to use; "limit" for a maximum, minimum or test value that must be respected; "stop" for a condition that stops the job; "" for anything else (branches and most children).
 ${p.summary ? `\nThe record's summary: ${p.summary}` : ''}${p.keyAction ? `\nThe record's key action: ${p.keyAction}` : ''}`;
 }
 
@@ -61,7 +69,8 @@ function cleanNode(v: unknown, depth: number): MindNode | null {
   const label = s(n.label, 120);
   if (!label) return null;
   const kids = depth > 0 && Array.isArray(n.children) ? n.children.map((c) => cleanNode(c, depth - 1)).filter((c): c is MindNode => !!c).slice(0, 8) : [];
-  return { label, children: kids };
+  const kind = (MIND_KINDS as readonly string[]).includes(n.kind as string) ? (n.kind as MindKind) : '';
+  return kind ? { label, kind, children: kids } : { label, children: kids };
 }
 
 /** Makes the answer safe to show: known slide kinds, sizes capped, empty slides and branches dropped. */
