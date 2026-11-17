@@ -40,20 +40,12 @@ export function digestSchema() {
   };
 }
 
-/** Lessons (lesson learnt, best practice, learning from incident) get a two-slide crew deck; other documents only the mind map. */
-export const LESSON_SLIDES = 2;
-
-export function digestPrompt(p: { title: string; docNo: string | null; kind: string; summary: string | null; keyAction: string | null; lesson: boolean }) {
-  const slides = p.lesson
-    ? `1. slides: exactly 2 slides for a crew briefing, shown beside the lesson's photos. Use ALL the explanations in the lesson: leave nothing out that the document explains (every event, cause, contributing factor, consequence, action, lesson and recommendation), condensed but complete.
-   - Slide 1, kind "points": title = a headline of what happened, up to 8 words. points = up to 8 lines in order: what happened, where and during which operation, the sequence of events, every cause and contributing factor, what it caused.
-   - Slide 2, kind "warning": title = "What we do now" or a short equivalent. points = up to 8 lines: the key action first, then every other lesson, recommendation and check the document gives.
-   - Points up to 25 words each, with the document's numbers exactly. note = one sentence the presenter can add ("" if none).`
-    : '1. slides: [] (this document type has no crew slides).';
+/** The prompt for the mind map. The answer still has a slides field (kept empty since crew slides were removed in 6z.20). */
+export function digestPrompt(p: { title: string; docNo: string | null; kind: string; summary: string | null; keyAction: string | null }) {
   return `You prepare field material for NESR slickline crews from the attached document: "${p.title}"${p.docNo ? ` (${p.docNo})` : ''}, a ${p.kind}.
 Use only what the document says. Keep its numbers, limits, pressures, sizes and names exactly. Never add steps, values or advice it doesn't contain. Plain, short English that a crew reads on a screen at the wellsite.
 
-${slides}
+1. slides: [] (always empty).
 2. mindmap: the whole document on one screen. It is consulted during the job instead of reading the document again, and the AI Agent answers questions from it, so every limit, value, step and responsibility in the document must appear in it.
    - center: the subject in up to 6 words.
    - branches: 4 to 8 main topics in the document's order (for a procedure: preparation, equipment, steps by phase, checks and limits, stop-work conditions, after the job, responsibilities, as the document has them). Put every stop-work condition together in one branch and give that branch kind "stop".
@@ -74,7 +66,7 @@ function cleanNode(v: unknown, depth: number): MindNode | null {
 }
 
 /** Makes the answer safe to show: known slide kinds, sizes capped, empty slides and branches dropped. */
-export function cleanDigest(raw: unknown, title: string, maxSlides = 14): Digest {
+export function cleanDigest(raw: unknown, title: string, maxSlides = 0): Digest {
   const r = (raw ?? {}) as Record<string, unknown>;
   const slides = (Array.isArray(r.slides) ? r.slides : []).map((x): Slide | null => {
     const o = (x ?? {}) as Record<string, unknown>;
@@ -86,22 +78,6 @@ export function cleanDigest(raw: unknown, title: string, maxSlides = 14): Digest
   const m = (r.mindmap ?? {}) as Record<string, unknown>;
   const branches = (Array.isArray(m.branches) ? m.branches : []).map((b) => cleanNode(b, 2)).filter((b): b is MindNode => !!b).slice(0, 10);
   return { slides, mindmap: { center: s(m.center, 80) || title, branches } };
-}
-
-/** The two lesson slides from the record alone (no file, or AI unavailable): what happened, then the key action. */
-export function fallbackSlides(d: { title: string; doc_no: string | null; summary: string | null; key_action: string | null; failure_types: string[] }): Slide[] {
-  const what = d.summary ? d.summary.split(/(?<=[.!?])\s+/).filter(Boolean).slice(0, 5) : [];
-  const now = [d.key_action, d.failure_types.length ? `Failure types: ${d.failure_types.join(', ')}` : ''].filter((x): x is string => !!x);
-  return [
-    { kind: 'points', title: d.title, points: what.length ? what : [d.doc_no ?? 'See the document'].filter(Boolean), note: '' },
-    { kind: 'warning', title: 'What we do now', points: now.length ? now : ['Read the document with the crew'], note: '' },
-  ];
-}
-
-/** A lesson's two slides from a saved deck; an older, longer deck gives its first two content slides. */
-export function lessonSlides(slides: Slide[]): Slide[] {
-  const content = slides.filter((s) => s.kind !== 'title' && s.kind !== 'question');
-  return (content.length >= LESSON_SLIDES ? content : slides).slice(0, LESSON_SLIDES);
 }
 
 /** Counts the nodes of a mind map (for the page's summary line). */

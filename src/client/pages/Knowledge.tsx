@@ -1,6 +1,6 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive as ArchiveIcon, BookOpen, Download, ExternalLink, FileText, Files, Info, Network, Pencil, Play, Plus, QrCode, RotateCcw, Search, Sparkles, Star } from 'lucide-react';
+import { Archive as ArchiveIcon, BookOpen, Download, ExternalLink, FileText, Files, Info, Network, Pencil, Plus, QrCode, RotateCcw, Search, Sparkles, Star } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
@@ -14,7 +14,7 @@ import { SupportFiles } from './knowledge/Support';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 import { ACCEPT, DocState, Dialog, EDITABLE_ACCEPT, QrBlock, QrDialog, SupportList, fileUrl, linkBtn, supportHref, today, uploadFile, type Library, type SupportBrief } from './knowledge/common';
 import { Archive, BatchAdd, Dashboard, ManualsView, Queue, Register, Settings } from './knowledge/Control';
-import { LessonDownloads, MindMapDialog, MindMapPanel, Present } from './knowledge/Digest';
+import { MindMapDialog, MindMapPanel } from './knowledge/Digest';
 import { Revisions } from './knowledge/Revisions';
 
 /** Read opens the PDF itself, in a new tab (stamped, as every download). Null when there is no PDF to open. */
@@ -128,10 +128,8 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
   const lib = useMemo(() => filterLibrary(all, f), [all, f.q, f.type, f.category, f.failure, f.place, f.sort, f.duplicates]); // eslint-disable-line react-hooks/exhaustive-deps
   const published = useMemo(() => all.filter((d) => d.published_at), [all]);
   const hero = useMemo(() => lessonOfWeek(published, today()), [published]);
-  const [present, setPresent] = useState<KnowledgeDoc[] | null>(null);
   const pick = async (d: KnowledgeDoc) => { await api(`/knowledge/${d.id}/lesson-of-week`, { method: 'POST' }); refresh(); };
   const chip = (on: boolean) => cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
-  const presentable = lib.docs.filter((d) => d.published_at);
 
   if (!all.length) return <EmptyState title="No lessons yet">{canEdit ? 'Add lessons learnt, best practices and learnings from incidents with Add document. Each one is reviewed and approved before readers see it.' : 'Nothing has been published yet.'}</EmptyState>;
   return (
@@ -144,7 +142,6 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
           {hero.summary && <p className="mt-2 max-w-3xl text-sm">{hero.summary}</p>}
           {hero.key_action && <p className="mt-2 max-w-3xl text-sm"><span className="font-semibold">Key action: </span>{hero.key_action}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="primary" onClick={() => setPresent([hero])}><Play aria-hidden className="size-4" />Present to the crew</Button>
             <ReadButton d={hero} onRead={onRead} />
             <Button size="sm" variant="ghost" onClick={() => onMap(hero)}><Network aria-hidden className="size-4" />Mind map</Button>
             <Button size="sm" variant="ghost" onClick={() => onRead(hero)}><Info aria-hidden className="size-4" />Details</Button>
@@ -161,7 +158,6 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
         </Select>
         <Select aria-label="Sort" className={inputSized('w-32')} value={f.sort} onChange={(e) => set('sort', e.target.value === 'az' ? 'az' : '')}><option value="newest">Newest</option><option value="az">A → Z</option></Select>
         <label className="flex h-(--layout-control-md) items-center gap-2 text-sm"><input type="checkbox" checked={f.duplicates} onChange={(e) => set('dups', e.target.checked ? '1' : '')} />Show duplicates</label>
-        {presentable.length > 0 && <Button className="ml-auto" onClick={() => setPresent(presentable)}><Play aria-hidden className="size-4" />Present these {presentable.length} as a toolbox talk</Button>}
       </div>
       <div role="group" aria-label="Document type" className="mb-2 flex flex-wrap gap-1.5">
         <button type="button" className={chip(!f.type)} onClick={() => set('type', '')}>All types</button>
@@ -187,7 +183,6 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
               <div className="mt-auto flex flex-wrap gap-1 pt-3">
                 <ReadButton d={d} onRead={onRead} small />
                 {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title}`}><Download aria-hidden className="size-3.5" /></a>}
-                {d.published_at && <Button size="sm" variant="ghost" onClick={() => setPresent([d])}><Play aria-hidden className="size-3.5" />Present</Button>}
                 {d.published_at && <Button size="sm" variant="ghost" aria-label={`Mind map of ${d.title}`} title="Mind map" onClick={() => onMap(d)}><Network aria-hidden className="size-3.5" /></Button>}
                 <Button size="sm" variant="ghost" aria-label={`Details of ${d.title}`} title="Details" onClick={() => onRead(d)}><Info aria-hidden className="size-3.5" /></Button>
               </div>
@@ -201,7 +196,6 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
           </li>
         ))}
       </ul>
-      {present && <Present docs={present} onClose={() => setPresent(null)} />}
     </>
   );
 }
@@ -331,7 +325,6 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
   // retired entries (from the archive) aren't in the list: fetch them
   const one = useQuery({ queryKey: ['knowledge-doc', id], queryFn: () => api<KnowledgeDoc>(`/knowledge/${id}`), enabled: !inList });
   const doc = inList ?? one.data;
-  const [present, setPresent] = useState(false);
   const [qr, setQr] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [retiring, setRetiring] = useState(false);
@@ -342,7 +335,6 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
     return <Dialog title="Document" onClose={onClose}>{one.isError ? <Banner tone="danger">{one.error.message}</Banner> : <Skeleton className="h-24" />}</Dialog>;
   }
   const original = lib.docs.find((x) => x.id === doc.duplicate_of);
-  const lesson = doc.section === 'lesson';
   const review = doc.published_at ? reviewState(doc.review_due, today()) : null;
   const expiry = doc.published_at ? expiryState(doc.expires_on ?? null, today()) : null;
   const mayRetire = lib.me.admin || lib.me.approver;
@@ -355,7 +347,6 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
     } catch (e) { setError((e as ApiError).message); }
   };
   const meta = [ADD_TYPES[addTypeOf(doc)].label, doc.country, doc.company, doc.client, doc.category, doc.author && `Author ${doc.author}`, doc.published_on && formatDate(doc.published_on), doc.rilr_ref].filter(Boolean).join(' · ');
-  if (present) return <Present docs={[doc]} onClose={() => setPresent(false)} />;
   return (
     <Dialog title={doc.title} onClose={onClose} wide>
       <p className="text-xs text-text-muted">{doc.doc_no && <span className="font-mono">{doc.doc_no} · </span>}{doc.published_at ? `Rev ${doc.revision}` : 'Not published'} · {meta}</p>
@@ -384,8 +375,6 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
         </div>
       )}
       <div className="mt-4 flex flex-wrap gap-2">
-        {lesson && doc.published_at && <Button variant="primary" onClick={() => setPresent(true)}><Play aria-hidden className="size-4" />Present to the crew</Button>} 
-        {lesson && doc.published_at && <LessonDownloads doc={doc} />}
         {pdfHref(doc) && <a href={pdfHref(doc)!} target="_blank" rel="noreferrer" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><BookOpen aria-hidden className="size-4" />Read the PDF</a>}
         {doc.source_ref && <a href={doc.source_ref} target="_blank" rel="noreferrer noopener" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><ExternalLink aria-hidden className="size-4" />Open the source link</a>}
         <Button onClick={() => setQr(!qr)}><QrCode aria-hidden className="size-4" />QR code</Button>

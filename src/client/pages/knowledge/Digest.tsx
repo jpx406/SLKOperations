@@ -1,16 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronLeft, ChevronRight, FileDown, Maximize2, Network, Presentation, Printer, RefreshCw, Sparkles, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { fallbackSlides, lessonSlides, mindSize, type Digest, type MindMap, type MindNode, type Slide } from '../../../shared/docDigest';
+import { Maximize2, Printer, RefreshCw, Sparkles, X } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { mindSize, type Digest, type MindMap, type MindNode } from '../../../shared/docDigest';
 import type { KnowledgeDoc } from '../../../shared/knowledge';
 import { ApiError, api, formatDate } from '../../api';
 import { Banner, Button, Skeleton, cx } from '../../components/ui';
 import { Dialog } from './common';
-import { splitPictures } from '../../../shared/lessonDeck';
-import { downloadLesson } from './lessonExport';
 
-// Slides and mind map of a published document (6z.16). Made once per revision by AI from the document and saved,
-// so presenting to the crew or checking the mind map during the job never reads the document again.
+// Mind map of a published document (6z.16; lesson slides removed in 6z.20). Made once per revision by AI from the document and saved,
+// so checking the mind map during the job never reads the document again.
 
 interface DigestOut { digest: Digest | null; revision?: number; source?: string; made_at?: string; reason?: string; mayMake?: boolean }
 
@@ -112,7 +110,7 @@ export function MindMapPanel({ doc, canRemake }: { doc: KnowledgeDoc; canRemake?
       {!map ? (
         <div className="flex flex-wrap items-center gap-2">
           <p className="min-w-0 flex-1 basis-56 text-sm text-text-muted">No mind map yet. It is made once from the document, then opens straight away for everyone.</p>
-          <Button variant="primary" loading={making} onClick={() => make()}><Sparkles aria-hidden className="size-4" />{making ? 'Reading the document…' : doc.section === 'lesson' ? 'Make the mind map and slides' : 'Make the mind map'}</Button>
+          <Button variant="primary" loading={making} onClick={() => make()}><Sparkles aria-hidden className="size-4" />{making ? 'Reading the document…' : 'Make the mind map'}</Button>
         </div>
       ) : (
         <>
@@ -166,173 +164,4 @@ function printMap(doc: KnowledgeDoc, map: MindMap) {
     <h1>${esc(doc.doc_no ?? '')} ${esc(doc.title)} <small>· Rev ${doc.revision} · grey value · amber limit · red stop work</small></h1><div class="root">${esc(map.center)}</div><main>${cards}</main>
     <p>Mind map made from the document. The document is the reference. Printed ${new Date().toISOString().slice(0, 10)}.</p><script>window.onload=()=>window.print()</script>`);
   w.document.close();
-}
-
-// ---- lesson slides -----------------------------------------------------------------------------------------------
-
-/** A slide of the toolbox talk: two per lesson with its pictures, or the lesson's own PDF when slides couldn't be made. */
-interface DeckSlide extends Slide { docId: string; docLabel: string; pictures: string[]; pdf?: string }
-
-function PictureGrid({ urls }: { urls: string[] }) {
-  const shown = urls.slice(0, 6);
-  return (
-    <div className={cx('grid max-h-[64vh] gap-2', shown.length > 2 && 'grid-cols-2')}>
-      {shown.map((u) => <img key={u} src={u} alt="" className={cx('w-full rounded-lg border border-border bg-surface-2 object-contain', shown.length === 1 ? 'max-h-[60vh]' : shown.length === 2 ? 'max-h-[31vh]' : 'max-h-[20vh]')} />)}
-    </div>
-  );
-}
-
-function SlideView({ s }: { s: DeckSlide }) {
-  if (s.pdf) {
-    // the lesson itself, when its slides couldn't be made
-    return (
-      <div className="flex h-full min-h-[60vh] flex-col gap-2">
-        <p className="label-caps text-text-muted">{s.docLabel} · the lesson document</p>
-        <iframe title={s.docLabel} src={s.pdf} className="min-h-0 w-full flex-1 rounded-lg border border-border bg-white" />
-      </div>
-    );
-  }
-  const warn = s.kind === 'warning';
-  const [key, ...rest] = warn ? s.points : [null, ...s.points];
-  const many = s.points.length > 5;
-  return (
-    <div className={cx('grid h-full items-center gap-6 md:gap-10', s.pictures.length > 0 && 'md:grid-cols-[1.3fr_1fr]')}>
-      <div className="flex min-w-0 flex-col justify-center">
-        <p className={cx('label-caps flex items-center gap-2', warn ? 'text-warning' : 'text-text-muted')}>{warn && <AlertTriangle aria-hidden className="size-4" />}{s.docLabel}</p>
-        <h2 className={cx('mt-2 font-display text-3xl font-extrabold md:text-5xl', warn && 'text-warning')}>{s.title}</h2>
-        {key && <p className={cx('mt-5 rounded-lg border-2 border-warning bg-warning-subtle p-4 font-bold', many ? 'text-lg md:text-2xl' : 'text-xl md:text-3xl')}>{key}</p>}
-        <ul className={cx('mt-5 flex flex-col', many ? 'gap-2' : 'gap-3')}>
-          {rest.filter((p): p is string => !!p).map((p, i) => <li key={i} className={cx('flex gap-3', many ? 'text-base md:text-xl' : 'text-lg md:text-2xl')}><span aria-hidden className={cx('mt-2.5 size-2.5 shrink-0 rounded-full', warn ? 'bg-warning' : 'bg-accent')} />{p}</li>)}
-        </ul>
-        {s.note && <p className="mt-5 border-l-2 border-border-strong pl-3 text-sm text-text-muted md:text-base">{s.note}</p>}
-      </div>
-      {s.pictures.length > 0 && <PictureGrid urls={s.pictures} />}
-    </div>
-  );
-}
-
-const lessonPdf = (d: KnowledgeDoc) => (d.file && d.file.content_type === 'application/pdf' ? `/api/knowledge/${d.id}/files/${d.file.id}?inline=1` : null);
-
-/**
- * A lesson's two slides, from the saved deck, with ALL its support pictures spread over them (the first half beside
- * slide 1, the rest beside slide 2). When the slides couldn't be made, `made` is false and the caller shows the
- * lesson's own PDF if it has one, else slides from the record.
- */
-async function lessonDeck(d: KnowledgeDoc, makeIfMissing: boolean): Promise<{ slides: Slide[]; pictures: string[][]; made: boolean; pdf: string | null; error?: string }> {
-  let saved: Slide[] | null = null, error: string | undefined;
-  if (d.published_at) {
-    try {
-      const got = await api<DigestOut>(`/knowledge/${d.id}/digest`);
-      saved = got.digest?.slides ?? null;
-      if (!saved?.length && makeIfMissing) saved = (await api<DigestOut>(`/knowledge/${d.id}/digest`, { method: 'POST', json: {} })).digest?.slides ?? null;
-    } catch (e) { error = (e as ApiError).message; }
-  }
-  const files = await api<{ files: { id: string; content_type: string; uploaded_at: string }[] }>(`/attachments/knowledge/${d.id}`).then((r) => r.files).catch(() => []);
-  const pics = files.filter((f) => /^image\/(jpeg|png|gif|webp)$/.test(f.content_type)).sort((a, b) => a.uploaded_at.localeCompare(b.uploaded_at)).map((f) => `/api/attachments/knowledge/${d.id}/${f.id}?inline=1`);
-  const slides = saved?.length ? lessonSlides(saved) : fallbackSlides(d);
-  return { slides, pictures: splitPictures(pics, slides.length), made: !!saved?.length, pdf: lessonPdf(d), error };
-}
-
-/** PowerPoint and PDF buttons for one lesson's slides. */
-export function LessonDownloads({ doc, compact }: { doc: KnowledgeDoc; compact?: boolean }) {
-  const [busy, setBusy] = useState<'pptx' | 'pdf' | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const go = async (as: 'pptx' | 'pdf') => {
-    setBusy(as); setError(null);
-    try {
-      const d = await lessonDeck(doc, true);
-      if (!d.made && as === 'pdf' && d.pdf) {
-        // no slides: the PDF button gives the lesson document itself
-        const a = document.createElement('a');
-        a.href = d.pdf.replace('?inline=1', ''); a.download = doc.file?.file_name ?? 'lesson.pdf'; a.click();
-        setError('The slides couldn’t be made, so this is the lesson document itself.');
-        return;
-      }
-      await downloadLesson(doc, d.slides, d.pictures, as);
-      if (!d.made) setError(`${d.error ? `${d.error} ` : ''}These slides were made from the summary.`);
-    }
-    catch (e) { setError((e as Error).message); } finally { setBusy(null); }
-  };
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1">
-      <Button size="sm" variant={compact ? 'ghost' : 'secondary'} loading={busy === 'pptx'} onClick={() => go('pptx')}><Presentation aria-hidden className="size-3.5" />PowerPoint</Button>
-      <Button size="sm" variant={compact ? 'ghost' : 'secondary'} loading={busy === 'pdf'} onClick={() => go('pdf')}><FileDown aria-hidden className="size-3.5" />PDF</Button>
-      {error && <span className="text-xs text-warning">{error}</span>}
-    </span>
-  );
-}
-
-/**
- * Toolbox talk for lessons: two slides per lesson, with its pictures. One lesson makes its slides the first time;
- * several use the saved slides and the summary for any not made yet. Arrow keys move, Escape leaves.
- */
-export function Present({ docs, onClose }: { docs: KnowledgeDoc[]; onClose: () => void }) {
-  const [slides, setSlides] = useState<DeckSlide[] | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      const out: DeckSlide[] = [];
-      let missing = 0;
-      for (const d of docs) {
-        const r = await lessonDeck(d, docs.length === 1);
-        const docLabel = [d.doc_no, d.title].filter(Boolean).join(' · ');
-        if (!r.made) missing++;
-        if (!r.made && r.pdf) {
-          // no slides: present the lesson learnt itself
-          out.push({ kind: 'points', title: d.title, points: [], note: '', docId: d.id, docLabel, pictures: [], pdf: r.pdf });
-          if (docs.length === 1) setNote(`${r.error ? `${r.error} ` : ''}The slides couldn’t be made, so the lesson document itself is shown.`);
-        } else {
-          if (!r.made && docs.length === 1) setNote(`${r.error ? `${r.error} ` : ''}The slides couldn’t be made and the lesson has no PDF, so its summary is shown.`);
-          out.push(...r.slides.map((s, k) => ({ ...s, docId: d.id, docLabel, pictures: r.pictures[k] ?? [] })));
-        }
-      }
-      if (docs.length > 1 && missing) setNote(`${missing} of ${docs.length} lessons have no slides yet and show the lesson document (or its summary). Present one alone to make its slides.`);
-      if (live) setSlides(out);
-    })();
-    return () => { live = false; };
-  }, [docs]);
-  const n = slides?.length ?? 0;
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); setI((x) => Math.min(n - 1, x + 1)); }
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') setI((x) => Math.max(0, x - 1));
-    };
-    window.addEventListener('keydown', key);
-    document.documentElement.requestFullscreen?.().catch(() => undefined);
-    return () => { window.removeEventListener('keydown', key); if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined); };
-  }, [n, onClose]);
-  const s = slides?.[i];
-  return (
-    <div role="dialog" aria-modal="true" aria-label="Toolbox talk" className="fixed inset-0 z-[60] flex flex-col bg-bg p-6 md:p-12">
-      <div className="flex flex-wrap items-center gap-3 text-sm text-text-muted">
-        <span className="label-caps">Toolbox talk{slides && ` · ${i + 1} of ${n}`}</span>
-        <span className="ml-auto flex items-center gap-1">
-          {docs.length === 1 && slides && <LessonDownloads doc={docs[0]} compact />}
-          <Button size="sm" variant="ghost" onClick={onClose}><X aria-hidden className="size-4" />Close</Button>
-        </span>
-      </div>
-      {note && <div className="mx-auto mt-2 w-full max-w-6xl"><Banner tone="info">{note}</Banner></div>}
-      <div aria-live="polite" className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center overflow-y-auto py-4">
-        {!slides ? (
-          <div className="flex flex-col items-center gap-3 text-center text-text-muted">
-            <Network aria-hidden className="size-10 animate-pulse" />
-            <p className="text-lg">Preparing the slides from the document…</p>
-            <p className="text-sm">The first time takes up to a minute. After that they open straight away.</p>
-          </div>
-        ) : s && <SlideView s={s} />}
-      </div>
-      {slides && (
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex flex-wrap justify-center gap-1" aria-hidden>{slides.map((_, k) => <span key={k} className={cx('h-1.5 w-5 rounded-pill', k === i ? 'bg-accent' : 'bg-surface-3')} />)}</div>
-          <div className="flex items-center gap-3">
-            <Button onClick={() => setI(i - 1)} disabled={i === 0}><ChevronLeft aria-hidden className="size-4" />Previous</Button>
-            <Button variant="primary" onClick={() => (i >= n - 1 ? onClose() : setI(i + 1))}>{i >= n - 1 ? 'Finish' : <>Next<ChevronRight aria-hidden className="size-4" /></>}</Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }

@@ -8,7 +8,7 @@ import {
 import type Anthropic from '@anthropic-ai/sdk';
 import { costMicroUsd, limitCheck } from '../shared/ai';
 import { analysisPrompt, answerSchema, cleanSuggestion, extractText } from '../shared/docAnalysis';
-import { LESSON_SLIDES, cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
+import { cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
 import { ADD_TYPES, type AddType } from '../shared/knowledge';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
@@ -316,7 +316,7 @@ knowledge.get('/:id/digest', async (c) => {
   const p = await controller(c.env, c.get('user'));
   const d = await find(c.env, c.req.param('id'));
   if (!d || !visible(p, d)) return c.json({ error: 'Document not found' }, 404);
-  if (!d.published_at) return c.json({ digest: null, reason: 'Slides and the mind map are made once the document is published.' });
+  if (!d.published_at) return c.json({ digest: null, reason: 'The mind map is made once the document is published.' });
   const r = await c.env.DB.prepare('SELECT slides, mindmap, source, model, made_at, revision FROM knowledge_digests WHERE doc_id = ? AND revision = ?').bind(d.id, d.revision).first<DigestRow>();
   return c.json(r ? digestOut(r) : { digest: null, mayMake: true });
 });
@@ -330,11 +330,11 @@ knowledge.post('/:id/digest', async (c) => {
   const p = await controller(c.env, user);
   const d = await find(c.env, c.req.param('id'));
   if (!d || !visible(p, d)) return c.json({ error: 'Document not found' }, 404);
-  if (!d.published_at) return c.json({ error: 'Slides and the mind map are made once the document is published.' }, 400);
+  if (!d.published_at) return c.json({ error: 'The mind map is made once the document is published.' }, 400);
   const again = (await c.req.json().catch(() => ({}))).again === true;
   const have = await c.env.DB.prepare('SELECT slides, mindmap, source, model, made_at, revision FROM knowledge_digests WHERE doc_id = ? AND revision = ?').bind(d.id, d.revision).first<DigestRow>();
   if (have && !(again && isStaff(p))) return c.json(digestOut(have));
-  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: 'Slides and mind maps need AI, which isn’t set up on the server (the Anthropic API key is missing).' }, 503);
+  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: 'Mind maps need AI, which isn’t set up on the server (the Anthropic API key is missing).' }, 503);
   const s = await loadSettings(c.env);
   const u = await spend(c.env, user.username, 'document');
   const blocked = limitCheck(s, u.monthMicro, u.sentToday);
@@ -360,7 +360,7 @@ knowledge.post('/:id/digest', async (c) => {
     const res = await client(c.env).beta.messages.create({
       model: s.model, max_tokens: 16000,
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: digestSchema() } },
-      messages: [{ role: 'user', content: [part, { type: 'text', text: digestPrompt({ title: d.title, docNo: d.doc_no, kind, summary: d.summary, keyAction: d.key_action, lesson: d.section === 'lesson' }) }] }],
+      messages: [{ role: 'user', content: [part, { type: 'text', text: digestPrompt({ title: d.title, docNo: d.doc_no, kind, summary: d.summary, keyAction: d.key_action }) }] }],
       ...fallbackFor(s.model),
     });
     micro = costMicroUsd(res.usage, s.model);
@@ -371,13 +371,13 @@ knowledge.post('/:id/digest', async (c) => {
     let raw: unknown;
     try { raw = JSON.parse(res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map((b) => b.text).join('')); }
     catch { return c.json({ error: 'The AI answer couldn’t be read. Try again.' }, 502); }
-    const dg = cleanDigest(raw, d.title, d.section === 'lesson' ? LESSON_SLIDES : 0);
-    if ((d.section === 'lesson' && !dg.slides.length) || !dg.mindmap.branches.length) return c.json({ error: 'The AI couldn’t make the slides and mind map from this document. Try again.' }, 502);
+    const dg = cleanDigest(raw, d.title);
+    if (!dg.mindmap.branches.length) return c.json({ error: 'The AI couldn’t make the mind map from this document. Try again.' }, 502);
     await c.env.DB.batch([
       c.env.DB.prepare(`INSERT INTO knowledge_digests (doc_id, revision, slides, mindmap, source, model, made_by) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (doc_id, revision) DO UPDATE SET slides = excluded.slides, mindmap = excluded.mindmap, source = excluded.source, model = excluded.model, made_by = excluded.made_by, made_at = excluded.made_at`)
         .bind(d.id, d.revision, JSON.stringify(dg.slides), JSON.stringify(dg.mindmap), source, s.model, user.username),
-      audit(c.env, user, 'digest', d.id, `Slides (${dg.slides.length}) and mind map for ${d.doc_no ?? d.title} Rev ${d.revision} from ${source}`),
+      audit(c.env, user, 'digest', d.id, `Mind map for ${d.doc_no ?? d.title} Rev ${d.revision} from ${source}`),
     ]);
     return c.json({ digest: dg, revision: d.revision, source, made_at: now() });
   } catch (e) {
