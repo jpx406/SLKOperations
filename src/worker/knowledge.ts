@@ -8,6 +8,7 @@ import {
 import type Anthropic from '@anthropic-ai/sdk';
 import { costMicroUsd, limitCheck } from '../shared/ai';
 import { analysisPrompt, answerSchema, cleanSuggestion, extractText } from '../shared/docAnalysis';
+import { cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
 import { ADD_TYPES, type AddType } from '../shared/knowledge';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
@@ -37,6 +38,21 @@ async function controller(env: Env, user: AuthedUser): Promise<Controller> {
 /** Reviewer and approver flags as stored, with admins counted as both until a choice is saved for them. */
 const PERSON_FLAGS = `u.username, u.full_name, u.role, coalesce(k.can_review, CASE WHEN u.role = 'admin' THEN 1 ELSE 0 END) AS can_review,
   coalesce(k.can_approve, CASE WHEN u.role = 'admin' THEN 1 ELSE 0 END) AS can_approve`;
+
+/** What Claude reads of a file: PDFs and pictures as they are, Office and text files as their text, else the name only. */
+async function contentPart(name: string, type: string, bytes: Uint8Array): Promise<{ error: string } | { part: Anthropic.Beta.BetaContentBlockParam; source: string }> {
+  const b64 = () => { let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(bin); };
+  if (type === 'application/pdf') {
+    if (bytes.length > 20 * 1024 * 1024) return { error: 'This PDF is too large for AI (over 20 MB).' };
+    return { part: { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64() } }, source: name };
+  }
+  if (['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(type)) {
+    if (bytes.length > 5 * 1024 * 1024) return { error: 'This picture is too large for AI (over 5 MB).' };
+    return { part: { type: 'image', source: { type: 'base64', media_type: type as 'image/png', data: b64() } }, source: name };
+  }
+  const text = await extractText(name, bytes);
+  return { part: { type: 'text', text: text ? `<document name="${name}">\n${text}\n</document>` : `Only the file name is available ("${name}"); the file's contents couldn't be read. Use what the name shows and leave the rest "".` }, source: name };
+}
 
 /** Numbering with every section's prefix (settings saved before SWI and Forms existed keep their defaults). */
 async function numberingOf(env: Env): Promise<Numbering> {
@@ -205,19 +221,9 @@ knowledge.post('/analyse', async (c) => {
     c.env.DB.prepare(`SELECT DISTINCT client FROM knowledge_docs WHERE client IS NOT NULL UNION SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND deleted_at IS NULL ORDER BY 1 LIMIT 200`).all<{ client: string }>(),
     c.env.DB.prepare('SELECT DISTINCT category FROM knowledge_docs WHERE category IS NOT NULL ORDER BY 1 LIMIT 80').all<{ category: string }>(),
   ]);
-  // what Claude reads: PDFs and images as they are, Office and text files as their text, anything else by its name only
-  const b64 = () => { let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(bin); };
-  let part: Anthropic.Beta.BetaContentBlockParam;
-  if (ok.type === 'application/pdf') {
-    if (bytes.length > 20 * 1024 * 1024) return c.json({ error: 'This PDF is too large to analyse (over 20 MB). Fill in the fields by hand.' }, 400);
-    part = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64() } };
-  } else if (['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(ok.type)) {
-    if (bytes.length > 5 * 1024 * 1024) return c.json({ error: 'This picture is too large to analyse (over 5 MB). Fill in the fields by hand.' }, 400);
-    part = { type: 'image', source: { type: 'base64', media_type: ok.type as 'image/png', data: b64() } };
-  } else {
-    const text = await extractText(ok.name, bytes);
-    part = { type: 'text', text: text ? `<document name="${ok.name}">\n${text}\n</document>` : `Only the file name is available ("${ok.name}"); the file's contents couldn't be read. Fill in what the name shows and leave the rest "".` };
-  }
+  const read = await contentPart(ok.name, ok.type, bytes);
+  if ('error' in read) return c.json({ error: `${read.error} Fill in the fields by hand.` }, 400);
+  const part = read.part;
   const prompt = analysisPrompt({ fileName: ok.name, places, clients: clients.results.map((r) => r.client), categories: cats.results.map((r) => r.category), today: riyadhToday(), sectionHint: section });
   let micro = 0, inTok = 0, outTok = 0;
   try {
@@ -293,6 +299,90 @@ knowledge.put('/people/:username', async (c) => {
     audit(c.env, user, 'roles', who, `${exists.full_name}: ${review ? 'reviewer' : 'not a reviewer'}, ${approve ? 'approver' : 'not an approver'}`, 'knowledge_people'),
   ]);
   return c.json({ ok: true });
+});
+
+// ---- slides and mind map (6z.16) --------------------------------------------------------------------------------
+
+type DigestRow = { slides: string; mindmap: string; source: string; model: string; made_at: string; revision: number };
+const digestOut = (r: DigestRow) => ({ digest: { slides: JSON.parse(r.slides), mindmap: JSON.parse(r.mindmap) } as Digest, revision: r.revision, source: r.source, made_at: r.made_at });
+
+/** The saved slides and mind map of the published revision, or none yet. */
+knowledge.get('/:id/digest', async (c) => {
+  const p = await controller(c.env, c.get('user'));
+  const d = await find(c.env, c.req.param('id'));
+  if (!d || !visible(p, d)) return c.json({ error: 'Document not found' }, 404);
+  if (!d.published_at) return c.json({ digest: null, reason: 'Slides and the mind map are made once the document is published.' });
+  const r = await c.env.DB.prepare('SELECT slides, mindmap, source, model, made_at, revision FROM knowledge_digests WHERE doc_id = ? AND revision = ?').bind(d.id, d.revision).first<DigestRow>();
+  return c.json(r ? digestOut(r) : { digest: null, mayMake: true });
+});
+
+/**
+ * Makes the slides and mind map of the published revision from its document file (or, for a lesson without a
+ * file, from its summary) and saves them. Anyone with the tab may make the first one; staff may make it again.
+ */
+knowledge.post('/:id/digest', async (c) => {
+  const user = c.get('user');
+  const p = await controller(c.env, user);
+  const d = await find(c.env, c.req.param('id'));
+  if (!d || !visible(p, d)) return c.json({ error: 'Document not found' }, 404);
+  if (!d.published_at) return c.json({ error: 'Slides and the mind map are made once the document is published.' }, 400);
+  const again = (await c.req.json().catch(() => ({}))).again === true;
+  const have = await c.env.DB.prepare('SELECT slides, mindmap, source, model, made_at, revision FROM knowledge_digests WHERE doc_id = ? AND revision = ?').bind(d.id, d.revision).first<DigestRow>();
+  if (have && !(again && isStaff(p))) return c.json(digestOut(have));
+  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: 'Slides and mind maps need AI, which isn’t set up on the server (the Anthropic API key is missing).' }, 503);
+  const s = await loadSettings(c.env);
+  const u = await spend(c.env, user.username, 'document');
+  const blocked = limitCheck(s, u.monthMicro, u.sentToday);
+  if (blocked) return c.json({ error: blocked.replace('The AI Agent is switched off', 'AI is switched off') }, 429);
+  // the document file of the published revision; a lesson may have only its written summary
+  const f = await c.env.DB.prepare(`SELECT file_name, content_type, r2_key FROM knowledge_files WHERE doc_id = ? AND revision = ? AND kind = 'published' AND superseded_at IS NULL`)
+    .bind(d.id, d.revision).first<{ file_name: string; content_type: string; r2_key: string }>();
+  let part: Anthropic.Beta.BetaContentBlockParam;
+  let source: string;
+  if (f && c.env.FILES) {
+    const obj = await c.env.FILES.get(f.r2_key);
+    if (!obj) return c.json({ error: 'The document file is missing from storage' }, 404);
+    const read = await contentPart(f.file_name, f.content_type, new Uint8Array(await obj.arrayBuffer()));
+    if ('error' in read) return c.json({ error: read.error }, 400);
+    ({ part, source } = read);
+  } else if (d.summary || d.key_action) {
+    part = { type: 'text', text: `<document name="${d.title}">\n${[d.summary, d.key_action && `Key action: ${d.key_action}`, d.failure_types.length ? `Failure types: ${d.failure_types.join(', ')}` : ''].filter(Boolean).join('\n\n')}\n</document>` };
+    source = 'the written summary';
+  } else return c.json({ error: 'This document has no file or summary to make slides from.' }, 400);
+  const kind = d.section === 'lesson' ? ADD_TYPES[(d.doc_type ?? 'lesson_learnt') as AddType].label.toLowerCase() : ADD_TYPES[d.section as Exclude<typeof d.section, 'lesson'>].label;
+  let micro = 0, inTok = 0, outTok = 0;
+  try {
+    const res = await client(c.env).beta.messages.create({
+      model: s.model, max_tokens: 16000,
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: digestSchema() } },
+      messages: [{ role: 'user', content: [part, { type: 'text', text: digestPrompt({ title: d.title, docNo: d.doc_no, kind, summary: d.summary, keyAction: d.key_action }) }] }],
+      ...fallbackFor(s.model),
+    });
+    micro = costMicroUsd(res.usage, s.model);
+    inTok = res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0);
+    outTok = res.usage.output_tokens;
+    if (res.stop_reason === 'refusal') return c.json({ error: 'The AI declined to read this document.' }, 422);
+    if (res.stop_reason === 'max_tokens') return c.json({ error: 'The document is too long for one pass. Try again, or ask an admin.' }, 422);
+    let raw: unknown;
+    try { raw = JSON.parse(res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map((b) => b.text).join('')); }
+    catch { return c.json({ error: 'The AI answer couldn’t be read. Try again.' }, 502); }
+    const dg = cleanDigest(raw, d.title);
+    if (!dg.slides.length || !dg.mindmap.branches.length) return c.json({ error: 'The AI couldn’t make slides from this document. Try again.' }, 502);
+    await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO knowledge_digests (doc_id, revision, slides, mindmap, source, model, made_by) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (doc_id, revision) DO UPDATE SET slides = excluded.slides, mindmap = excluded.mindmap, source = excluded.source, model = excluded.model, made_by = excluded.made_by, made_at = excluded.made_at`)
+        .bind(d.id, d.revision, JSON.stringify(dg.slides), JSON.stringify(dg.mindmap), source, s.model, user.username),
+      audit(c.env, user, 'digest', d.id, `Slides (${dg.slides.length}) and mind map for ${d.doc_no ?? d.title} Rev ${d.revision} from ${source}`),
+    ]);
+    return c.json({ digest: dg, revision: d.revision, source, made_at: now() });
+  } catch (e) {
+    const msg = serviceError(e);
+    if (!msg) throw e;
+    return c.json({ error: msg }, 502);
+  } finally {
+    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+  }
 });
 
 // ---- reference manuals: an uncontrolled folder library ------------------------------------------------------------

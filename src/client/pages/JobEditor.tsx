@@ -408,7 +408,7 @@ export function JobEditor() {
             </div>
 
             {country && me?.menus.knowledge_hub?.view && <>
-              <SectionTitle aside="Knowledge Hub">Client procedures</SectionTitle>
+              <SectionTitle aside="Knowledge Hub · read or check the mind map">Procedures for this job</SectionTitle>
               <ClientProcedures country={country} client={values.location || job.location} />
             </>}
 

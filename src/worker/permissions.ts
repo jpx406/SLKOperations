@@ -118,6 +118,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/(files|revisions)$/, menu: 'knowledge_hub', action: 'edit' },
   // Add document reads the file with AI first (6z.15)
   { method: 'POST', re: /^\/api\/knowledge\/analyse$/, menu: 'knowledge_hub', action: 'edit' },
+  // slides and mind map of a published document: any reader may make the first one (6z.16)
+  { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/digest$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'PUT', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(submit|discard)$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(review|approve|send-back)$/, menu: 'knowledge_hub', action: 'view' },
@@ -208,7 +210,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/inventory\/mcr(\/(movements|reconciliation))?$/, menus: ['inventory_mcr'] },
   { re: /^\/api\/admin\//, menus: ['users'] },
   { re: /^\/api\/ai\/status$/, menus: ['ai_agent'] },
-  { re: /^\/api\/knowledge(\/[^/]+(\/(files|revisions)(\/[^/]+)?)?)?$/, menus: ['knowledge_hub'] },
+  { re: /^\/api\/knowledge(\/[^/]+(\/(files|revisions|digest)(\/[^/]+)?)?)?$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/knowledge\/manuals\/files\/[^/]+$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/quick-plan$/, menus: ['quick_plan'] },
   { re: /^\/api\/attachments\/job\/[^/]+(\/[^/]+)?$/, menus: ['jobs'] },

@@ -1,7 +1,7 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive as ArchiveIcon, BookOpen, ChevronLeft, ChevronRight, Download, ExternalLink, FileText, Files, Pencil, Play, Plus, QrCode, RotateCcw, Search, Sparkles, Star, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Archive as ArchiveIcon, BookOpen, Download, ExternalLink, FileText, Files, Info, Network, Pencil, Play, Plus, QrCode, RotateCcw, Search, Sparkles, Star } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   ADD_TYPES, DOC_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, addTypeOf, filterLibrary, groupByPlace, hasCompany, isSection, lessonOfWeek, matches, proceduresForJob, reviewState,
@@ -14,7 +14,11 @@ import { Attachments } from '../components/Attachments';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 import { ACCEPT, DocState, Dialog, EDITABLE_ACCEPT, QrBlock, QrDialog, fileUrl, linkBtn, today, uploadFile, type Library } from './knowledge/common';
 import { Archive, BatchAdd, Dashboard, ManualsView, Queue, Register, Settings } from './knowledge/Control';
+import { MindMapDialog, MindMapPanel, Present } from './knowledge/Digest';
 import { Revisions } from './knowledge/Revisions';
+
+/** Read opens the PDF itself, in a new tab (stamped, as every download). Null when there is no PDF to open. */
+const pdfHref = (d: KnowledgeDoc) => (d.file && d.file.content_type === 'application/pdf' ? fileUrl(d.id, d.file, true) : null);
 
 // Knowledge Hub (S21, S43, 6z.13, 6z.14): lessons and best practices, SLK SOPs and client procedures, each under
 // document control (draft, review, approval, published revision, history, stamped downloads), plus the reference
@@ -43,6 +47,7 @@ export function KnowledgeHub() {
   const [editing, setEditing] = useState<KnowledgeDoc | 'new' | null>(null);
   const [batch, setBatch] = useState(false);
   const [qr, setQr] = useState<KnowledgeDoc | null>(null);
+  const [map, setMap] = useState<KnowledgeDoc | null>(null);
   const canEdit = !!lib?.canEdit;
   const refresh = () => { qc.invalidateQueries({ queryKey: ['knowledge'] }); qc.invalidateQueries({ queryKey: ['knowledge-queue'] }); qc.invalidateQueries({ queryKey: ['knowledge-register'] }); };
   const counts = (sec: Section) => all.filter((d) => d.section === sec && !d.duplicate_of && d.published_at).length;
@@ -74,8 +79,8 @@ export function KnowledgeHub() {
       {q.isError && <Banner tone="danger">{q.error.message}</Banner>}
       {lib && (
         <div role="tabpanel" aria-label={VIEWS[view]}>
-          {view === 'lesson' && <Lessons all={all.filter((d) => d.section === 'lesson')} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onEdit={setEditing} onQr={setQr} refresh={refresh} />}
-          {isSection(view) && view !== 'lesson' && <Controlled section={view} all={all.filter((d) => d.section === view)} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onQr={setQr} />}
+          {view === 'lesson' && <Lessons all={all.filter((d) => d.section === 'lesson')} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onEdit={setEditing} onQr={setQr} onMap={setMap} refresh={refresh} />}
+          {isSection(view) && view !== 'lesson' && <Controlled section={view} all={all.filter((d) => d.section === view)} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onQr={setQr} onMap={setMap} />}
           {view === 'manuals' && <ManualsView />}
           {view === 'dashboard' && <Dashboard onOpen={open} />}
           {view === 'queue' && <Queue onOpen={open} />}
@@ -88,15 +93,25 @@ export function KnowledgeHub() {
       {editing && lib && <Editor doc={editing === 'new' ? null : editing} lib={lib} section={section} onClose={(changed, id) => { setEditing(null); if (changed) refresh(); if (id) open(id); }} />}
       {batch && lib && <BatchAdd lib={lib} section={section} onClose={(changed) => { setBatch(false); if (changed) refresh(); }} />}
       {qr && <QrDialog doc={qr} onClose={() => setQr(null)} />}
+      {map && <MindMapDialog doc={map} canRemake={staff} onClose={() => setMap(null)} />}
     </section>
   );
 }
 
+/** Read: the PDF itself in a new tab; a document without a PDF opens its details instead. */
+function ReadButton({ d, onRead, small }: { d: KnowledgeDoc; onRead: (d: KnowledgeDoc) => void; small?: boolean }) {
+  const href = pdfHref(d);
+  const icon = <BookOpen aria-hidden className={small ? 'size-3.5' : 'size-4'} />;
+  return href
+    ? <a className={cx(linkBtn, !small && 'h-(--layout-control-sm)')} href={href} target="_blank" rel="noreferrer" aria-label={`Read ${d.title} (PDF)`}>{icon}Read</a>
+    : <Button size="sm" onClick={() => onRead(d)} aria-label={`Read ${d.title}`}>{icon}Read</Button>;
+}
+
 // ---- section 1: lessons, best practices, learnings from incidents --------------------------------------------
 
-function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, refresh }: {
+function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onMap, refresh }: {
   all: KnowledgeDoc[]; canEdit: boolean; params: URLSearchParams; set: (k: string, v: string) => void;
-  onRead: (d: KnowledgeDoc) => void; onEdit: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; refresh: () => void;
+  onRead: (d: KnowledgeDoc) => void; onEdit: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onMap: (d: KnowledgeDoc) => void; refresh: () => void;
 }) {
   const f = { q: params.get('q') ?? '', type: params.get('type') ?? '', category: params.get('category') ?? '', failure: params.get('failure') ?? '', place: params.get('place') ?? '',
     sort: (params.get('sort') === 'az' ? 'az' : 'newest') as 'az' | 'newest', duplicates: params.get('dups') === '1' };
@@ -120,7 +135,9 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, refresh }: {
           {hero.key_action && <p className="mt-2 max-w-3xl text-sm"><span className="font-semibold">Key action: </span>{hero.key_action}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" variant="primary" onClick={() => setPresent([hero])}><Play aria-hidden className="size-4" />Present to the crew</Button>
-            <Button size="sm" onClick={() => onRead(hero)}><BookOpen aria-hidden className="size-4" />Read</Button>
+            <ReadButton d={hero} onRead={onRead} />
+            <Button size="sm" variant="ghost" onClick={() => onMap(hero)}><Network aria-hidden className="size-4" />Mind map</Button>
+            <Button size="sm" variant="ghost" onClick={() => onRead(hero)}><Info aria-hidden className="size-4" />Details</Button>
           </div>
         </Card>
       )}
@@ -150,7 +167,7 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, refresh }: {
           <li key={d.id}>
             <Card className={cx('flex h-full flex-col', (d.duplicate_of || !d.published_at) && 'opacity-80')}>
               <p className="label-caps flex flex-wrap items-center gap-1.5 text-text-muted">{d.doc_type && DOC_TYPES[d.doc_type]} · {d.country}{d.duplicate_of && ' · duplicate'} <DocState d={d} /></p>
-              <h3 className="mt-1 font-display text-base font-bold">{d.title}</h3>
+              <h3 className="mt-1 font-display text-base font-bold"><button type="button" className="text-left hover:underline" onClick={() => onRead(d)}>{d.title}</button></h3>
               {d.summary && <p className="mt-1 line-clamp-3 text-sm text-text-muted">{d.summary}</p>}
               {d.failure_types.length > 0 && <p className="mt-2 flex flex-wrap gap-1">{d.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
               <p className="mt-2 text-xs text-text-subtle">
@@ -158,9 +175,11 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, refresh }: {
                 {d.doc_no && <> · <span className="font-mono">{d.doc_no}</span></>}{d.published_at && ` · Rev ${d.revision}`}{d.rilr_ref && <> · <span className="font-mono">{d.rilr_ref}</span></>}
               </p>
               <div className="mt-auto flex flex-wrap gap-1 pt-3">
-                <Button size="sm" onClick={() => onRead(d)}><BookOpen aria-hidden className="size-3.5" />Read</Button>
-                {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name}><Download aria-hidden className="size-3.5" />Download</a>}
+                <ReadButton d={d} onRead={onRead} small />
+                {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title}`}><Download aria-hidden className="size-3.5" /></a>}
                 {d.published_at && <Button size="sm" variant="ghost" onClick={() => setPresent([d])}><Play aria-hidden className="size-3.5" />Present</Button>}
+                {d.published_at && <Button size="sm" variant="ghost" aria-label={`Mind map of ${d.title}`} title="Mind map" onClick={() => onMap(d)}><Network aria-hidden className="size-3.5" /></Button>}
+                <Button size="sm" variant="ghost" aria-label={`Details of ${d.title}`} title="Details" onClick={() => onRead(d)}><Info aria-hidden className="size-3.5" /></Button>
                 <Button size="sm" variant="ghost" aria-label={`QR code for ${d.title}`} title="QR code" onClick={() => onQr(d)}><QrCode aria-hidden className="size-3.5" /></Button>
                 {canEdit && <Button size="sm" variant="ghost" aria-label={`Edit ${d.title}`} onClick={() => onEdit(d)}><Pencil aria-hidden className="size-3.5" /></Button>}
                 {canEdit && d.published_at && !d.duplicate_of && hero?.id !== d.id && <Button size="sm" variant="ghost" aria-label={`Make ${d.title} the lesson of the week`} title="Make this the lesson of the week" onClick={() => pick(d)}><Star aria-hidden className="size-3.5" /></Button>}
@@ -193,8 +212,9 @@ const EMPTY: Record<Exclude<Section, 'lesson'>, [string, string]> = {
   client: ['No client procedures yet', 'Add a client procedure with Add document: upload the file and pick the country and the client. Once approved it shows on every job in that country.'],
 };
 
-function Controlled({ section, all, canEdit, params, set, onRead, onQr }: {
-  section: Exclude<Section, 'lesson'>; all: KnowledgeDoc[]; canEdit: boolean; params: URLSearchParams; set: (k: string, v: string) => void; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void;
+function Controlled({ section, all, canEdit, params, set, onRead, onQr, onMap }: {
+  section: Exclude<Section, 'lesson'>; all: KnowledgeDoc[]; canEdit: boolean; params: URLSearchParams; set: (k: string, v: string) => void; onRead: (d: KnowledgeDoc) => void;
+  onQr: (d: KnowledgeDoc) => void; onMap: (d: KnowledgeDoc) => void;
 }) {
   const qText = params.get('q') ?? '';
   const company = hasCompany(section) ? params.get('company') ?? '' : '';
@@ -229,10 +249,10 @@ function Controlled({ section, all, canEdit, params, set, onRead, onQr }: {
               ? groupClients(g.docs).map(([client, docs]) => (
                 <div key={client}>
                   <p className="label-caps bg-surface-2 px-4 py-1 text-text-muted">{client}</p>
-                  <DocList docs={docs} onRead={onRead} onQr={onQr} />
+                  <DocList docs={docs} onRead={onRead} onQr={onQr} onMap={onMap} />
                 </div>
               ))
-              : <DocList docs={[...g.docs].sort((a, b) => (a.doc_no ?? a.title).localeCompare(b.doc_no ?? b.title))} onRead={onRead} onQr={onQr} />}
+              : <DocList docs={[...g.docs].sort((a, b) => (a.doc_no ?? a.title).localeCompare(b.doc_no ?? b.title))} onRead={onRead} onQr={onQr} onMap={onMap} />}
           </Card>
         ))}
       </div>
@@ -261,7 +281,7 @@ function Flags({ d }: { d: KnowledgeDoc }) {
 
 const extOf = (name: string) => (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? '').toUpperCase();
 
-function DocList({ docs, onRead, onQr }: { docs: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void }) {
+function DocList({ docs, onRead, onQr, onMap }: { docs: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onMap: (d: KnowledgeDoc) => void }) {
   return (
     <ul className="divide-y divide-border">
       {docs.map((d) => (
@@ -277,10 +297,12 @@ function DocList({ docs, onRead, onQr }: { docs: KnowledgeDoc[]; onRead: (d: Kno
           </div>
           <DocState d={d} />
           <div className="flex flex-wrap gap-1">
-            {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title} (${extOf(d.file.file_name)})`}><Download aria-hidden className="size-3.5" />{d.section === 'form' ? extOf(d.file.file_name) : 'Download'}</a>}
-            {d.is_form && d.source ? <a className={linkBtn} href={fileUrl(d.id, d.source)} download={d.source.file_name} aria-label={`Download the form ${d.title} (${extOf(d.source.file_name)})`}><Download aria-hidden className="size-3.5" />{d.section === 'form' ? extOf(d.source.file_name) : 'Form'}</a> : null}
+            {pdfHref(d) && <ReadButton d={d} onRead={onRead} small />}
+            {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title} (${extOf(d.file.file_name)})`}><Download aria-hidden className="size-3.5" />{d.section === 'form' ? extOf(d.file.file_name) : ''}</a>}
+            {d.is_form && d.source ? <a className={linkBtn} href={fileUrl(d.id, d.source)} download={d.source.file_name} aria-label={`Download the form ${d.title} (${extOf(d.source.file_name)})`}><Download aria-hidden className="size-3.5" />{extOf(d.source.file_name)}</a> : null}
+            {d.published_at && <Button size="sm" variant="ghost" aria-label={`Mind map of ${d.title}`} title="Mind map" onClick={() => onMap(d)}><Network aria-hidden className="size-3.5" /></Button>}
             <Button size="sm" variant="ghost" aria-label={`QR code for ${d.title}`} title="QR code" onClick={() => onQr(d)}><QrCode aria-hidden className="size-3.5" /></Button>
-            <Button size="sm" variant="ghost" onClick={() => onRead(d)}><BookOpen aria-hidden className="size-3.5" />Open</Button>
+            <Button size="sm" variant="ghost" aria-label={`Details of ${d.title}`} onClick={() => onRead(d)}><Info aria-hidden className="size-3.5" />Details</Button>
           </div>
         </li>
       ))}
@@ -297,6 +319,7 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
   const doc = inList ?? one.data;
   const [present, setPresent] = useState(false);
   const [qr, setQr] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [retiring, setRetiring] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -333,6 +356,12 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
       {doc.failure_types.length > 0 && <p className="mt-3 flex flex-wrap gap-1">{doc.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
       <Revisions doc={doc} people={lib.people} onChange={() => { refresh(); qc.invalidateQueries({ queryKey: ['knowledge-doc', id] }); }} />
       {lesson && <div className="mt-4 rounded-md border border-border p-3"><Attachments entity="knowledge" id={doc.id} title="Supporting files" /></div>}
+      {doc.published_at && (
+        <details className="mt-4 rounded-md border border-border p-3" open={mapOpen} onToggle={(e) => setMapOpen((e.target as HTMLDetailsElement).open)}>
+          <summary className="cursor-pointer font-display text-sm font-bold">Mind map: the whole document on one screen</summary>
+          {mapOpen && <div className="mt-3"><MindMapPanel doc={doc} canRemake={lib.me.admin || lib.me.editor || lib.me.reviewer || lib.me.approver} /></div>}
+        </details>
+      )}
       {qr && <div className="mt-4"><QrBlock doc={doc} /></div>}
       {retiring && (
         <div className="mt-4 rounded-md bg-surface-2 p-3">
@@ -341,7 +370,8 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
         </div>
       )}
       <div className="mt-4 flex flex-wrap gap-2">
-        {lesson && doc.published_at && <Button variant="primary" onClick={() => setPresent(true)}><Play aria-hidden className="size-4" />Present to the crew</Button>}
+        {doc.published_at && <Button variant="primary" onClick={() => setPresent(true)}><Play aria-hidden className="size-4" />Present to the crew</Button>}
+        {pdfHref(doc) && <a href={pdfHref(doc)!} target="_blank" rel="noreferrer" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><BookOpen aria-hidden className="size-4" />Read the PDF</a>}
         {doc.source_ref && <a href={doc.source_ref} target="_blank" rel="noreferrer noopener" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><ExternalLink aria-hidden className="size-4" />Open the source link</a>}
         <Button onClick={() => setQr(!qr)}><QrCode aria-hidden className="size-4" />QR code</Button>
         {lib.canEdit && !doc.retired_at && <Button onClick={() => onEdit(doc)}><Pencil aria-hidden className="size-4" />Edit details</Button>}
@@ -350,41 +380,6 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
           : <Button variant="danger" className="ml-auto" onClick={() => setRetiring(!retiring)}><ArchiveIcon aria-hidden className="size-4" />Retire</Button>)}
       </div>
     </Dialog>
-  );
-}
-
-/** Toolbox talk: one document per slide, large type, arrow keys to move, Escape to leave. */
-function Present({ docs, onClose }: { docs: KnowledgeDoc[]; onClose: () => void }) {
-  const [i, setI] = useState(0);
-  const d = docs[i];
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); setI((x) => Math.min(docs.length - 1, x + 1)); }
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') setI((x) => Math.max(0, x - 1));
-    };
-    window.addEventListener('keydown', key);
-    document.documentElement.requestFullscreen?.().catch(() => undefined);
-    return () => { window.removeEventListener('keydown', key); if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined); };
-  }, [docs.length, onClose]);
-  return (
-    <div role="dialog" aria-modal="true" aria-label="Toolbox talk" className="fixed inset-0 z-[60] flex flex-col bg-bg p-6 md:p-12">
-      <div className="flex items-center gap-3 text-sm text-text-muted">
-        <span className="label-caps">Toolbox talk · {i + 1} of {docs.length}</span>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={onClose}><X aria-hidden className="size-4" />Close</Button>
-      </div>
-      <div aria-live="polite" className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center">
-        <p className="label-caps text-warning">{d.doc_type && DOC_TYPES[d.doc_type]}{d.category && ` · ${d.category}`}</p>
-        <h2 className="mt-2 font-display text-3xl font-extrabold md:text-5xl">{d.title}</h2>
-        {d.summary && <p className="mt-6 whitespace-pre-wrap text-lg md:text-2xl">{d.summary}</p>}
-        {d.key_action && <p className="mt-8 rounded-md bg-warning-subtle p-4 text-lg font-semibold text-warning md:text-2xl">Key action: {d.key_action}</p>}
-        {d.failure_types.length > 0 && <p className="mt-6 text-sm text-text-muted">{d.failure_types.join(' · ')}</p>}
-      </div>
-      <div className="flex items-center justify-center gap-3">
-        <Button onClick={() => setI(i - 1)} disabled={i === 0}><ChevronLeft aria-hidden className="size-4" />Previous</Button>
-        <Button variant="primary" onClick={() => (i === docs.length - 1 ? onClose() : setI(i + 1))}>{i === docs.length - 1 ? 'Finish' : <>Next<ChevronRight aria-hidden className="size-4" /></>}</Button>
-      </div>
-    </div>
   );
 }
 
@@ -549,25 +544,46 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
 
 // ---- on the job: client procedures for the job's country ---------------------------------------------------------
 
-/** Published client procedures to read before the job: the job's country, its client first. Hidden without the tab. */
+function JobDocRow({ d, client, onMap }: { d: KnowledgeDoc; client?: string | null; onMap: (d: KnowledgeDoc) => void }) {
+  const mine = client && d.client?.toLowerCase() === client.toLowerCase();
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+      <div className="min-w-0 flex-1 basis-56">
+        <p className="text-sm font-semibold">{d.title}</p>
+        <p className="text-xs text-text-muted">{[d.client ?? d.company, mine && 'this job’s client', d.doc_no, `Rev ${d.revision}`].filter(Boolean).join(' · ')}</p>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {pdfHref(d) && <a className={linkBtn} href={pdfHref(d)!} target="_blank" rel="noreferrer" aria-label={`Read ${d.title} (PDF)`}><BookOpen aria-hidden className="size-3.5" />Read</a>}
+        <Button size="sm" variant="ghost" onClick={() => onMap(d)}><Network aria-hidden className="size-3.5" />Mind map</Button>
+        {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title}`}><Download aria-hidden className="size-3.5" /></a>}
+      </div>
+    </li>
+  );
+}
+
+/**
+ * Procedures for the job: the published client procedures of the job's country (its client first), and the SLK SOPs
+ * and work instructions for that country and Global, each with Read and its mind map. Hidden without the tab.
+ */
 export function ClientProcedures({ country, client }: { country: string; client?: string | null }) {
   const q = useQuery({ queryKey: ['knowledge'], queryFn: () => api<Library>('/knowledge'), retry: false });
+  const [map, setMap] = useState<KnowledgeDoc | null>(null);
   if (!q.data) return null;
-  const docs = proceduresForJob(q.data.docs.filter((d) => d.published_at), country, client);
-  if (!docs.length) return <p className="text-sm text-text-muted">No client procedures for {country} yet. They are added in the <Link className="underline" to="/knowledge?s=client">Knowledge Hub</Link>.</p>;
+  const live = q.data.docs.filter((d) => d.published_at && !d.retired_at);
+  const docs = proceduresForJob(live, country, client);
+  const sops = live.filter((d) => (d.section === 'sop' || d.section === 'swi') && (d.country === country || d.country === GLOBAL))
+    .sort((a, b) => a.section.localeCompare(b.section) || (a.doc_no ?? a.title).localeCompare(b.doc_no ?? b.title));
   return (
-    <ul className="divide-y divide-border rounded-md border border-border">
-      {docs.map((d) => (
-        <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
-          <div className="min-w-0 flex-1 basis-56">
-            <p className="text-sm font-semibold">{d.title}</p>
-            <p className="text-xs text-text-muted">{d.client}{client && d.client?.toLowerCase() === client.toLowerCase() && ' · this job’s client'}{d.doc_no && <> · <span className="font-mono">{d.doc_no}</span></>} · Rev {d.revision}</p>
-          </div>
-          {d.file
-            ? <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name}><Download aria-hidden className="size-3.5" />Download</a>
-            : <Link className={linkBtn} to={`/knowledge?s=client&doc=${d.id}`}>Open in the Knowledge Hub</Link>}
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-2">
+      {docs.length ? <ul className="divide-y divide-border rounded-md border border-border">{docs.map((d) => <JobDocRow key={d.id} d={d} client={client} onMap={setMap} />)}</ul>
+        : <p className="text-sm text-text-muted">No client procedures for {country} yet. They are added in the <Link className="underline" to="/knowledge?s=client">Knowledge Hub</Link>.</p>}
+      {sops.length > 0 && (
+        <details className="rounded-md border border-border">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">SLK SOPs and work instructions for {country} and Global ({sops.length})</summary>
+          <ul className="divide-y divide-border border-t border-border">{sops.map((d) => <JobDocRow key={d.id} d={d} onMap={setMap} />)}</ul>
+        </details>
+      )}
+      {map && <MindMapDialog doc={map} onClose={() => setMap(null)} />}
+    </div>
   );
 }
