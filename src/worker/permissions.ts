@@ -113,6 +113,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/knowledge$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'PUT', re: /^\/api\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/lesson-of-week$/, menu: 'knowledge_hub', action: 'edit' },
+  // the document file and its editable version; replacing, the editable version and retiring are for admins (checked in the route)
+  { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/(files|retire|restore)$/, menu: 'knowledge_hub', action: 'edit' },
   // asking the agent only reads; its tools go through READ_RULES with the asker's own session
   { method: 'POST', re: /^\/api\/ai\/chat$/, menu: 'ai_agent', action: 'view' },
   { method: 'POST', re: /^\/api\/ai\/assistant$/, menu: 'ai_assistant', action: 'view' },
@@ -197,7 +199,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/inventory\/mcr(\/(movements|reconciliation))?$/, menus: ['inventory_mcr'] },
   { re: /^\/api\/admin\//, menus: ['users'] },
   { re: /^\/api\/ai\/status$/, menus: ['ai_agent'] },
-  { re: /^\/api\/knowledge(\/[^/]+)?$/, menus: ['knowledge_hub'] },
+  { re: /^\/api\/knowledge(\/[^/]+(\/files(\/[^/]+)?)?)?$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/quick-plan$/, menus: ['quick_plan'] },
   { re: /^\/api\/attachments\/job\/[^/]+(\/[^/]+)?$/, menus: ['jobs'] },
   { re: /^\/api\/attachments\/knowledge\/[^/]+(\/[^/]+)?$/, menus: ['knowledge_hub'] },

@@ -76,7 +76,9 @@ People come from Users & Roles: each role is assigned to a sheet under Users & R
   },
   {
     id: 'knowledge', title: 'Knowledge Hub', menus: ['knowledge_hub'],
-    body: `The library of lessons learnt, best practices and learnings from incidents. Search, filter by failure type, type and category, and open an entry to read its key action or the source document. "Present these N as a toolbox talk" shows the filtered entries as full-screen slides for a crew briefing (arrow keys move, Escape leaves). The Lesson of the Week sits at the top.`,
+    body: `Three sections. Lessons & best practices holds lessons learnt, best practices and learnings from incidents: search, filter by country, failure type, type and category, and open an entry to read its key action. "Present these N as a toolbox talk" shows the filtered entries as full-screen slides for a crew briefing (arrow keys move, Escape leaves). The Lesson of the Week sits at the top. SLK SOPs lists the standard operating procedures, Global first and then each country, with NESR, SAPESCO or Gulf Energy on each. Client procedures lists each country's procedures by client; they also show on a job's Preparation stage for the job's country, its own client first.
+
+Add document asks for the type first (lesson, SOP or client procedure) and files the entry in its section, under Global or a country. Leave the document number blank and the next one is given (for example SOP-GL-NESR-001). Everyone can download the current file. Admins also keep the editable version (Word or Excel), replace the file with a new revision (say what changed; the old revision is kept and only admins can open it) and retire an entry instead of deleting it. Every upload and download is in the audit trail.`,
   },
   {
     id: 'bonus', title: 'Bonus and Sales', menus: ['bonus', 'sales_dashboard'],

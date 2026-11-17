@@ -15,8 +15,9 @@ const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: 
 async function recordCountry(env: Env, user: AuthedUser, entity: AttachEntity, id: string): Promise<string | null> {
   const row = entity === 'job'
     ? await env.DB.prepare('SELECT country FROM jobs WHERE id = ? AND deleted_at IS NULL').bind(id).first<{ country: string }>()
-    : await env.DB.prepare('SELECT country FROM knowledge_docs WHERE id = ?').bind(id).first<{ country: string }>();
-  return row && user.countries.includes(row.country) ? row.country : null;
+    : await env.DB.prepare('SELECT country FROM knowledge_docs WHERE id = ? AND retired_at IS NULL').bind(id).first<{ country: string }>();
+  // the Knowledge Hub is one library for every country (and Global); job files stay inside the person's countries
+  return row && (entity === 'knowledge' || user.countries.includes(row.country)) ? row.country : null;
 }
 
 const may = (user: AuthedUser, entity: AttachEntity, action: 'view' | 'edit') => !!user.menus[MENU[entity]]?.[action];

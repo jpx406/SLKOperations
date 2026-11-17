@@ -19,6 +19,7 @@ import { BonusDistribution } from './Bonus';
 import { PreJobNotePanel } from './PreJobNotes';
 import { CrewPanel, DetailsSection, PrepChecks, SectionTitle, WirePanel, serviceFlags } from '../components/jobParts';
 import { DiagramsCard } from './Diagrams';
+import { ClientProcedures } from './Knowledge';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
 
 type SaveState = { kind: 'idle' | 'dirty' | 'saving' | 'saved' } | { kind: 'error'; message: string } | { kind: 'conflict'; message: string };
@@ -405,6 +406,11 @@ export function JobEditor() {
               {select('special_setup', 'Special setup', YES_NO)}
               {values.special_setup === 'yes' && text('special_setup_notes', 'Special setup notes')}
             </div>
+
+            {country && me?.menus.knowledge_hub?.view && <>
+              <SectionTitle aside="Knowledge Hub">Client procedures</SectionTitle>
+              <ClientProcedures country={country} client={values.location || job.location} />
+            </>}
 
             <SectionTitle aside="QAF14009 and QAF14010">Rig up and tool string diagrams</SectionTitle>
             <DiagramsCard jobId={job.id} />
