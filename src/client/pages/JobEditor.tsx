@@ -1,7 +1,7 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Check, Loader2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { EXECUTION_FIELDS, FIELD_POLICY, canEditField, stageOfField } from '../../shared/fieldPolicy';
 import { useRules } from '../rules';
@@ -22,7 +22,10 @@ import { DiagramsCard } from './Diagrams';
 import { ClientProcedures } from './Knowledge';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
 
-type SaveState = { kind: 'idle' | 'dirty' | 'saving' | 'saved' } | { kind: 'error'; message: string } | { kind: 'conflict'; message: string };
+// the winch data check is only loaded when Closure is opened
+const WinchDataCard = lazy(() => import('./WinchData'));
+
+type SaveState ={ kind: 'idle' | 'dirty' | 'saving' | 'saved' } | { kind: 'error'; message: string } | { kind: 'conflict'; message: string };
 
 const DATETIME = new Set(['arrived_at', 'rig_up_at', 'rig_down_at']);
 const STAGE_INFO: Record<Stage, { n: string; title: string; sub: string }> = {
@@ -438,6 +441,13 @@ export function JobEditor() {
                 <SectionTitle aside="Uploaded to the job’s folder, approved by the SDM">Job package</SectionTitle>
                 <p className="mb-3 text-xs text-text-muted">The job can be completed once every document that applies is uploaded and the SDM has approved the package. The list is kept in Administration → Form templates.</p>
                 <JobPackage jobId={job.id} canEdit={canEditJobs && canEditStage(me!.menus, 'closure')} />
+              </>
+            )}
+
+            {job && (
+              <>
+                <SectionTitle aside="Winch export against the cable guidelines">Winch data: plots and guidelines check</SectionTitle>
+                <Suspense fallback={<Skeleton className="h-40" />}><WinchDataCard job={job} /></Suspense>
               </>
             )}
 

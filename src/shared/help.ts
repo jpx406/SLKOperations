@@ -30,7 +30,7 @@ Preparation holds the well data, the wire and drum, the pressure control equipme
 
 Execution holds the times (arrival, rig-up, rig-down), NPT, runs, failure, and the sections the services opened: plug, fishing, memory survey, perforation. A job with an explosive service also shows the explosives prompt. The job log (sequence of events) records what happened in order and works offline; entries wait on the device and send when the connection is back.
 
-Closure holds the paperwork checks (job log and ticket signed, job package, wellsite audit, runs logged in WIREGUARD), the service order, the ticket value (revenue) and the bonus distribution.
+Closure holds the paperwork checks (job log and ticket signed, job package, wellsite audit, runs logged in WIREGUARD), the service order, the ticket value (revenue) and the bonus distribution. It also has the winch data check: add the winch export (time, depth, line speed, tension), the well zones (four depths or a survey file) and the rule set; the app shows the trip against time and against depth and lists every guideline broken, with a CSV and a printout. Nothing is saved to the job yet, and the rule limits are kept on that device.
 
 Every stage has an Attachments section at the bottom: drop photos, the signed ticket, job log scans, permits or reports there (PDF, images, Office, text, email or zip, up to 25 MB each). An uploaded JRA Excel is kept there too. Removing a file hides it; the audit trail keeps a record.
 
