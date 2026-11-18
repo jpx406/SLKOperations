@@ -23,7 +23,7 @@ describe('Forms and work instructions (6z.15)', () => {
     const xlsx = { kind: 'published' as const, content_type: 'application/vnd.ms-excel', file_name: 'a.xlsx' };
     expect(submitProblems({ section: 'form', summary: null }, [])).toEqual(['Add the form file (Excel, Word, PowerPoint or PDF)']);
     expect(submitProblems({ section: 'form', summary: null }, [xlsx])).toEqual([]);
-    expect(submitProblems({ section: 'swi', summary: null }, [xlsx])).toEqual(['The document file must be a PDF', 'Add the editable version (Word or Excel)']);
+    expect(submitProblems({ section: 'swi', summary: null }, [xlsx])).toEqual(['The document file must be a PDF', 'Add the editable version (Word .docx)']);
     const reader = { username: 'r', admin: false, editor: false, reviewer: false, approver: false };
     expect(mayOpen(reader, { kind: 'published', revision: 0 }, { revision: 0, published_at: 'x', is_form: 1 }, 'approved')).toBe(true);
     expect(mayOpen(reader, { kind: 'source', revision: 0 }, { revision: 0, published_at: 'x', is_form: 1 }, 'approved')).toBe(true);

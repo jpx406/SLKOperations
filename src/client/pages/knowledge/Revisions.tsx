@@ -4,7 +4,7 @@ import { Check, CornerUpLeft, Download, Eye, FilePlus2, Send, Trash2, Upload } f
 import { useState } from 'react';
 import { INLINE, sizeText } from '../../../shared/attachments';
 import type { KnowledgeDoc } from '../../../shared/knowledge';
-import { type Controller, type FlowAction, type Revision } from '../../../shared/knowledgeControl';
+import { editableAccept, editableProblem, type Controller, type FlowAction, type Revision } from '../../../shared/knowledgeControl';
 import { ApiError, api, formatDate } from '../../api';
 import { Banner, Button, Field, Skeleton, cx, inputClass } from '../../components/ui';
 import { ACCEPT, EDITABLE_ACCEPT, RevPill, fileUrl, linkBtn, today, uploadFile, type FileRow, type Person } from './common';
@@ -45,6 +45,12 @@ export function Revisions({ doc, people, onChange, onApproved }: { doc: Knowledg
         {!live && <p className="mt-1 text-sm text-text-muted">Not published yet. Readers see it once it is approved.</p>}
         {live && <RevMeta r={live} />}
         {live && <FileList doc={doc} files={live.files} />}
+        {live && d.me.admin && doc.section !== 'form' && d.storage && (
+          <label className={cx(linkBtn, 'mt-2 cursor-pointer')} title="Replaces the Word file of the published revision. The PDF and the approval stay; the old file is kept in the history.">
+            <Upload aria-hidden className="size-3.5" />{live.files.some((f) => f.kind === 'source') ? 'Replace' : 'Add'} the {doc.is_form ? 'fillable form' : 'editable version'} (.docx)
+            <input type="file" accept={editableAccept(doc)} className="sr-only" disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (!f) return; const bad = editableProblem(doc, f.name); if (bad) { setError(bad); return; } run(() => uploadFile(doc.id, f, 'source', true)); }} />
+          </label>
+        )}
         {live && !live.files.length && <p className="mt-1 text-sm text-text-muted">No file with this revision.</p>}
         {live && !open && (d.me.admin || d.me.editor) && !starting && (
           <Button size="sm" className="mt-2" onClick={() => setStarting(true)}><FilePlus2 aria-hidden className="size-3.5" />Start Rev {live.revision + 1}</Button>
@@ -149,7 +155,11 @@ function OpenRevision({ doc, r, people, me, busy, storage, run, onApproved }: { 
   const step = (s: string, body: Record<string, string> = {}) => run(() => api(`/knowledge/${doc.id}/revisions/${r.revision}/${s}`, { method: 'POST', json: body }));
   const doc_ = r.files.find((f) => f.kind === 'published');
   const source = r.files.find((f) => f.kind === 'source');
-  const upload = (file: File | undefined, kind: 'published' | 'source') => file && run(() => uploadFile(doc.id, file, kind));
+  const upload = (file: File | undefined, kind: 'published' | 'source') => file && run(async () => {
+    const bad = kind === 'source' && doc.section !== 'form' ? editableProblem(doc, file.name) : null;
+    if (bad) throw new Error(bad);
+    await uploadFile(doc.id, file, kind);
+  });
 
   return (
     <section className={cx('rounded-md border p-3', r.status === 'draft' ? 'border-border' : 'border-warning')} aria-label={`Rev ${r.revision}`}>
@@ -166,7 +176,7 @@ function OpenRevision({ doc, r, people, me, busy, storage, run, onApproved }: { 
           <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{doc_ ? 'Replace the document' : doc.section === 'form' ? 'Add the form (any format)' : 'Add the document (PDF)'}
             <input type="file" accept={doc.is_form || doc.section === 'form' ? ACCEPT : '.pdf'} className="sr-only" disabled={busy} onChange={(e) => upload(e.target.files?.[0], 'published')} /></label>
           <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{source ? 'Replace' : 'Add'} the {doc.is_form ? 'fillable form' : 'editable version'}
-            <input type="file" accept={EDITABLE_ACCEPT} className="sr-only" disabled={busy} onChange={(e) => upload(e.target.files?.[0], 'source')} /></label>
+            <input type="file" accept={doc.section === 'form' ? EDITABLE_ACCEPT : editableAccept(doc)} className="sr-only" disabled={busy} onChange={(e) => { upload(e.target.files?.[0], 'source'); e.target.value = ''; }} /></label>
         </div>
       )}
 

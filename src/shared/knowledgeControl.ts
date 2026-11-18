@@ -65,8 +65,19 @@ export function submitProblems(doc: Pick<KnowledgeDoc, 'section' | 'summary'> & 
   }
   if (!doc_) out.push('Add the document file (PDF)');
   else if (!doc.is_form && doc_.content_type !== 'application/pdf') out.push('The document file must be a PDF');
-  if (!source) out.push(doc.is_form ? 'Add the fillable form (Word or Excel)' : 'Add the editable version (Word or Excel)');
+  if (!source) out.push(doc.is_form ? 'Add the fillable form (Word .docx or Excel .xlsx)' : 'Add the editable version (Word .docx)');
+  else { const bad = editableProblem(doc, source.file_name); if (bad) out.push(bad); }
   return out;
+}
+
+/**
+ * Editable versions are Word .docx files (6z.24), so they open everywhere and company copies can be made from them.
+ * A fillable form may also be an Excel .xlsx. Forms filed under Forms keep their original format (that is their document file).
+ */
+export const editableAccept = (doc: { is_form?: number | boolean | null }) => (doc.is_form ? '.docx,.xlsx' : '.docx');
+export function editableProblem(doc: { is_form?: number | boolean | null }, name: string): string | null {
+  if (doc.is_form) return /\.(docx|xlsx)$/i.test(name) ? null : `The fillable form must be a Word (.docx) or Excel (.xlsx) file, not “${name}”. Open it and use Save As to change the format.`;
+  return /\.docx$/i.test(name) ? null : `The editable version must be a Word file (.docx), not “${name}”. Open it in Word and use Save As › Word Document (.docx).`;
 }
 
 /**

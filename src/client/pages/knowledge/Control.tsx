@@ -6,7 +6,7 @@ import { INLINE, sizeText } from '../../../shared/attachments';
 import { csv, workbook } from '../../../shared/xlsx';
 import { ADD_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, hasCompany, reviewState, type AddType, type KnowledgeDoc, type Section } from '../../../shared/knowledge';
 import {
-  DEFAULT_NUMBERING, DEFAULT_PERIODS, REGISTER_FILTERS, REGISTER_HEADER, REV_STATUS, expiryState, formatNumber, groupFiles, guessType, numberPrefix, registerCells, registerMatches, splitBase,
+  DEFAULT_NUMBERING, DEFAULT_PERIODS, REGISTER_FILTERS, REGISTER_HEADER, REV_STATUS, editableProblem, expiryState, formatNumber, groupFiles, guessType, numberPrefix, registerCells, registerMatches, splitBase,
   type Numbering, type Periods, type RegisterFilter, type RegisterRow, type Revision,
 } from '../../../shared/knowledgeControl';
 import { ApiError, api, formatDate } from '../../api';
@@ -457,7 +457,10 @@ export function BatchAdd({ lib, section, onClose }: { lib: Library; section: Sec
       const sec = ADD_TYPES[t].section;
       const { doc_no, title } = splitBase(g.base);
       const pdf = g.files.find((f) => /\.pdf$/i.test(f.name)) ?? g.files.find((f) => !isEditable(f.name));
-      const source = g.files.find((f) => isEditable(f.name) && f !== pdf);
+      const found = g.files.find((f) => isEditable(f.name) && f !== pdf);
+      // editable versions are Word .docx only (6z.24): an older .doc or an Excel file is left out, and said so
+      const source = found && (sec === 'form' || !editableProblem({}, found.name)) ? found : undefined;
+      const leftOut = found && !source ? `, editable “${found.name}” left out (Word .docx only)` : '';
       try {
         if (sec === 'client' && (!shared.client.trim() || shared.country === GLOBAL)) throw new ApiError(400, 'Client procedures need a country and a client', {});
         const r = await api<{ id: string; doc_no: string }>('/knowledge', { method: 'POST', json: { type: t, title, doc_no: doc_no ?? '', country: shared.country, company: shared.company, client: shared.client,
@@ -469,7 +472,7 @@ export function BatchAdd({ lib, section, onClose }: { lib: Library; section: Sec
           try { await api(`/knowledge/${r.id}/revisions/0/submit`, { method: 'POST', json: { reviewer: shared.reviewer } }); sent = ', sent for review'; }
           catch (e) { sent = `, kept as a draft (${(e as ApiError).message})`; }
         }
-        out.push(`✓ ${r.doc_no} ${title}${sent}`);
+        out.push(`✓ ${r.doc_no} ${title}${sent}${leftOut}`);
       } catch (e) { out.push(`✗ ${g.base}: ${(e as ApiError).message}`); }
       setLog([...out]);
     }
@@ -479,7 +482,7 @@ export function BatchAdd({ lib, section, onClose }: { lib: Library; section: Sec
   const done = log.length > 0 && !busy;
   return (
     <Dialog title="Add several documents" onClose={() => onClose(log.length > 0)} wide>
-      <p className="text-sm text-text-muted">Pick the files. Files with the same name make one document: the PDF is the document, Word or Excel the editable version. A name like “SOP-GL-NESR-012 Rig up.pdf” gives the number and the title.</p>
+      <p className="text-sm text-text-muted">Pick the files. Files with the same name make one document: the PDF is the document, the Word file (.docx) the editable version. A name like “SOP-GL-NESR-012 Rig up.pdf” gives the number and the title.</p>
       <input type="file" multiple aria-label="Files" className="mt-3 text-sm" disabled={busy} onChange={(e) => { setFiles([...(e.target.files ?? [])]); setLog([]); }} />
       {groups.length > 0 && (
         <>

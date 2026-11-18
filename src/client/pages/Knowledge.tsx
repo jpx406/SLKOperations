@@ -7,7 +7,7 @@ import {
   ADD_TYPES, DOC_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, addTypeOf, filterLibrary, groupByPlace, hasCompany, isSection, lessonOfWeek, matches, proceduresForJob, reviewState,
   type AddType, type DocType, type KnowledgeDoc, type Section,
 } from '../../shared/knowledge';
-import { expiryState, formatNumber, guessType, numberPrefix, splitBase } from '../../shared/knowledgeControl';
+import { editableAccept, editableProblem, expiryState, formatNumber, guessType, numberPrefix, splitBase } from '../../shared/knowledgeControl';
 import type { Suggestion } from '../../shared/docAnalysis';
 import { ApiError, api, formatDate } from '../api';
 import { SupportFiles } from './knowledge/Support';
@@ -457,6 +457,9 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
   };
 
   const save = async () => {
+    // editable versions are Word .docx only (6z.24); checked before anything is saved
+    const bad = source && sec !== 'form' ? editableProblem({ is_form: f.is_form }, source.name) : null;
+    if (bad) { setError(bad); return; }
     setBusy(true); setError(null);
     const body = { ...f, failure_types: f.failure_types.split(',').map((x) => x.trim()).filter(Boolean) };
     try {
@@ -483,8 +486,8 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
           <Field id="kd-file" label="Document" hint="PDF, or for a form its Excel, Word or PowerPoint file">
             <input id="kd-file" type="file" accept={ACCEPT} className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </Field>
-          <Field id="kd-source" label="Editable version (optional)" hint="Word or Excel. Needed before review for SOPs, SWIs and client procedures">
-            <input id="kd-source" type="file" accept={EDITABLE_ACCEPT} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
+          <Field id="kd-source" label="Editable version (optional)" hint="Word file (.docx). Needed before review for SOPs, SWIs and client procedures">
+            <input id="kd-source" type="file" accept={sec === 'form' ? EDITABLE_ACCEPT : editableAccept({ is_form: f.is_form })} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
           </Field>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -547,7 +550,7 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
             {input('revision_date', 'Revision date', { type: 'date' })}
             {input('expires_on', 'Expires (blank: the usual period)', { type: 'date' })}
             {!file && <Field id="kd-file2" label="Document" hint={isFormish ? 'The form in its original format, or a PDF' : 'PDF'}><input id="kd-file2" type="file" accept={isFormish ? ACCEPT : '.pdf'} className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></Field>}
-            {!source && <Field id="kd-source2" label="Editable version" hint="Word or Excel"><input id="kd-source2" type="file" accept={EDITABLE_ACCEPT} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} /></Field>}
+            {!source && <Field id="kd-source2" label={f.is_form ? 'Fillable form' : 'Editable version'} hint={f.is_form ? 'Word (.docx) or Excel (.xlsx)' : 'Word file (.docx)'}><input id="kd-source2" type="file" accept={sec === 'form' ? EDITABLE_ACCEPT : editableAccept({ is_form: f.is_form })} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} /></Field>}
           </div>
         )}
       </div>

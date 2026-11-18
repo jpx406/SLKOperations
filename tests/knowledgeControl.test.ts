@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_NUMBERING, addMonths, checkNumbering, checkPeriods, expiryState, formatNumber, groupFiles, guessType, mayAct, mayOpen, mayRetire, nextRevision, numberPrefix,
-  registerCells, registerMatches, splitBase, submitProblems, type Controller, type RegisterRow,
+  editableAccept, editableProblem, registerCells, registerMatches, splitBase, submitProblems, type Controller, type RegisterRow,
 } from '../src/shared/knowledgeControl';
 import type { KnowledgeDoc } from '../src/shared/knowledge';
 import { readAllowed, ruleFor } from '../src/worker/permissions';
@@ -32,12 +32,25 @@ describe('document control', () => {
     const pdf = { kind: 'published' as const, content_type: 'application/pdf', file_name: 'a.pdf' };
     const docx = { kind: 'source' as const, content_type: 'application/msword', file_name: 'a.docx' };
     const xlsx = { kind: 'published' as const, content_type: 'application/vnd.ms-excel', file_name: 'a.xls' };
-    expect(submitProblems({ section: 'sop', summary: null }, [])).toEqual(['Add the document file (PDF)', 'Add the editable version (Word or Excel)']);
+    expect(submitProblems({ section: 'sop', summary: null }, [])).toEqual(['Add the document file (PDF)', 'Add the editable version (Word .docx)']);
     expect(submitProblems({ section: 'sop', summary: null }, [pdf, docx])).toEqual([]);
     expect(submitProblems({ section: 'client', summary: null }, [xlsx, docx])).toEqual(['The document file must be a PDF']);
-    expect(submitProblems({ section: 'client', summary: null, is_form: 1 }, [xlsx])).toEqual(['Add the fillable form (Word or Excel)']);
+    expect(submitProblems({ section: 'client', summary: null, is_form: 1 }, [xlsx])).toEqual(['Add the fillable form (Word .docx or Excel .xlsx)']);
+    // an older .doc kept from before 6z.24 must be replaced before review
+    expect(submitProblems({ section: 'sop', summary: null }, [pdf, { ...docx, file_name: 'a.doc' }])).toEqual(['The editable version must be a Word file (.docx), not “a.doc”. Open it in Word and use Save As › Word Document (.docx).']);
+    expect(submitProblems({ section: 'sop', summary: null, is_form: 1 }, [pdf, { ...docx, file_name: 'a.xlsx' }])).toEqual([]);
     expect(submitProblems({ section: 'lesson', summary: null }, [])).toEqual(['Add the document file or write the summary']);
     expect(submitProblems({ section: 'lesson', summary: 'Check packing' }, [])).toEqual([]);
+  });
+  it('takes editable versions only as Word .docx (fillable forms also Excel .xlsx)', () => {
+    expect(editableProblem({}, 'SOP-02.docx')).toBeNull();
+    expect(editableProblem({}, 'SOP-02.DOCX')).toBeNull();
+    expect(editableProblem({}, 'SOP-02.doc')).toContain('must be a Word file (.docx)');
+    expect(editableProblem({}, 'SOP-02.xlsx')).toContain('must be a Word file (.docx)');
+    expect(editableProblem({ is_form: 1 }, 'Checklist.xlsx')).toBeNull();
+    expect(editableProblem({ is_form: 1 }, 'Checklist.xls')).toContain('Word (.docx) or Excel (.xlsx)');
+    expect(editableAccept({})).toBe('.docx');
+    expect(editableAccept({ is_form: 1 })).toBe('.docx,.xlsx');
   });
   it('opens the published file to everyone, the editable version to staff, old revisions to reviewers up', () => {
     const doc = { revision: 2, published_at: '2026-11-01' };

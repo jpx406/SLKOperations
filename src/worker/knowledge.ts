@@ -3,7 +3,7 @@ import { checkUpload } from '../shared/attachments';
 import { GLOBAL, checkDoc, fileKey, folderName, type KbFile, type KnowledgeDoc } from '../shared/knowledge';
 import {
   DEFAULT_NUMBERING, DEFAULT_PERIODS, REV_STATUS, addMonths, checkNumbering, checkPeriods, isStaff, mayAct, mayOpen, mayRetire, nextRevision, numberPrefix,
-  submitProblems, type Controller, type FlowAction, type Numbering, type Periods, type RevStatus, type Revision,
+  editableProblem, submitProblems, type Controller, type FlowAction, type Numbering, type Periods, type RevStatus, type Revision,
 } from '../shared/knowledgeControl';
 import type Anthropic from '@anthropic-ai/sdk';
 import { costMicroUsd, limitCheck } from '../shared/ai';
@@ -926,22 +926,37 @@ knowledge.post('/:id/files', async (c) => {
   const d = await find(c.env, c.req.param('id'));
   if (!d || d.retired_at) return c.json({ error: 'Document not found' }, 404);
   if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
-  const v = await openRev(c.env, d.id);
-  if (!v || (c.req.query('rev') !== undefined && Number(c.req.query('rev')) !== v.revision)) return c.json({ error: 'Start a new revision before adding files' }, 400);
-  if (!mayAct(p, v, 'edit_files')) return c.json({ error: v.status === 'draft' ? 'Your role cannot add files' : 'Files can only change while the revision is a draft' }, 403);
   const kind = c.req.query('kind') === 'source' ? 'source' : 'published';
+  // admins replace the editable version of the published revision in place (6z.24); its PDF and approval stay
+  const live = kind === 'source' && c.req.query('live') === '1';
+  let v: Revision | null;
+  if (live) {
+    if (!p.admin) return c.json({ error: 'Only an admin replaces the editable version of a published document' }, 403);
+    if (!d.published_at) return c.json({ error: 'This document is not published yet: add files to its draft' }, 400);
+    v = await c.env.DB.prepare(`SELECT * FROM knowledge_revisions WHERE doc_id = ? AND revision = ? AND status = 'approved'`).bind(d.id, d.revision).first<Revision>();
+    if (!v) return c.json({ error: 'The published revision was not found' }, 404);
+  } else {
+    v = await openRev(c.env, d.id);
+    if (!v || (c.req.query('rev') !== undefined && Number(c.req.query('rev')) !== v.revision)) return c.json({ error: 'Start a new revision before adding files' }, 400);
+    if (!mayAct(p, v, 'edit_files')) return c.json({ error: v.status === 'draft' ? 'Your role cannot add files' : 'Files can only change while the revision is a draft' }, 403);
+  }
+  const fileName = decodeURIComponent(c.req.header('x-file-name') ?? '');
+  // editable versions are Word .docx only (fillable forms may also be Excel .xlsx); forms filed under Forms keep any format
+  if (kind === 'source' && d.section !== 'form') { const bad = editableProblem(d, fileName); if (bad) return c.json({ error: bad }, 400); }
   const bytes = new Uint8Array(await c.req.arrayBuffer());
-  const ok = checkUpload(decodeURIComponent(c.req.header('x-file-name') ?? ''), bytes.length);
+  const ok = checkUpload(fileName, bytes.length);
   if ('error' in ok) return c.json({ error: ok.error }, 400);
   const id = crypto.randomUUID();
   const key = fileKey(d, v.revision, kind, id, ok.name);
   const sha = hex(await crypto.subtle.digest('SHA-256', bytes));
+  // the file being replaced stays in storage and in the record (superseded), named in the audit line
+  const prev = live ? await c.env.DB.prepare(`SELECT file_name FROM knowledge_files WHERE doc_id = ? AND kind = 'source' AND revision = ? AND superseded_at IS NULL`).bind(d.id, v.revision).first<{ file_name: string }>() : null;
   await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username, sha256: sha, doc: d.id, revision: String(v.revision) } });
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE knowledge_files SET superseded_at = ? WHERE doc_id = ? AND kind = ? AND revision = ? AND superseded_at IS NULL').bind(now(), d.id, kind, v.revision),
     c.env.DB.prepare('INSERT INTO knowledge_files (id, doc_id, kind, revision, file_name, content_type, size_bytes, sha256, r2_key, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(id, d.id, kind, v.revision, ok.name, ok.type, bytes.length, sha, key, user.username),
-    audit(c.env, user, 'upload', d.id, `${kind === 'source' ? 'Editable version' : 'Document'} “${ok.name}” for ${d.doc_no ?? d.title} Rev ${v.revision} (draft)`),
+    audit(c.env, user, 'upload', d.id, `${kind === 'source' ? 'Editable version' : 'Document'} “${ok.name}” for ${d.doc_no ?? d.title} Rev ${v.revision} (${live ? `published, replaced by an admin${prev ? `; was “${prev.file_name}”` : ""}` : "draft"})`),
   ]);
   return c.json({ id, revision: v.revision, name: ok.name }, 201);
 });

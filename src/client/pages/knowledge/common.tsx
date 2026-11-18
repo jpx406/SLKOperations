@@ -22,10 +22,11 @@ export const EDITABLE_ACCEPT = '.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.txt,.csv
 export const linkBtn = 'inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-semibold text-text hover:bg-surface-2';
 export const isEditable = (name: string) => /\.(docx?|xlsx?|xlsm|pptx?|txt|csv|zip)$/i.test(name);
 
-export async function uploadFile(docId: string, file: File, kind: 'published' | 'source') {
+/** Upload to the draft revision; with `live` (admins, editable version only) it replaces the published revision's file. */
+export async function uploadFile(docId: string, file: File, kind: 'published' | 'source', live = false) {
   const ok = checkUpload(file.name, file.size);
   if ('error' in ok) throw new ApiError(400, ok.error, {});
-  return api<{ revision: number }>(`/knowledge/${docId}/files?kind=${kind}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
+  return api<{ revision: number }>(`/knowledge/${docId}/files?kind=${kind}${live ? '&live=1' : ''}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
 }
 
 export function Dialog({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
