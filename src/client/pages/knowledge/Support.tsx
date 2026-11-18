@@ -77,7 +77,7 @@ export function SupportFiles({ docId }: { docId: string }) {
           className={cx('mt-2 flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3 text-sm', over ? 'border-accent-edge bg-surface-2' : 'border-border-strong')}>
           <input ref={input} type="file" multiple accept={ACCEPT} className="hidden" aria-label="Support files to add" onChange={(e) => upload(e.target.files)} />
           <Button size="sm" loading={!!busy} onClick={() => input.current?.click()}><Upload aria-hidden className="size-4" />Add pictures, videos or documents</Button>
-          <span className="text-text-muted">{busy ? `Uploading ${busy}…` : 'or drop them here · videos up to 50 MB, other files 25 MB · pictures are used on the lesson slides'}</span>
+          <span className="text-text-muted">{busy ? `Uploading ${busy}…` : 'or drop them here · videos up to 50 MB, other files 25 MB'}</span>
         </div>
       )}
       {q.isSuccess && !files.length && <p className="mt-2 text-sm text-text-subtle">No support files.</p>}

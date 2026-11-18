@@ -11,8 +11,8 @@ async function inflate(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** The files inside a zip, read through its central directory. */
-export async function unzip(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
+/** The files inside a zip, read through its central directory: the XML parts only, or with `all` every file. */
+export async function unzip(bytes: Uint8Array, all = false): Promise<Map<string, Uint8Array>> {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let eocd = -1;
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65_557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
@@ -28,7 +28,7 @@ export async function unzip(bytes: Uint8Array): Promise<Map<string, Uint8Array>>
     const name = td.decode(bytes.subarray(off + 46, off + 46 + nameLen));
     const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
     const raw = bytes.subarray(start, start + size);
-    if (/\.(xml|rels)$/.test(name)) out.set(name, method === 8 ? await inflate(raw) : method === 0 ? raw : new Uint8Array());
+    if (all ? !name.endsWith('/') : /\.(xml|rels)$/.test(name)) out.set(name, method === 8 ? await inflate(raw) : method === 0 ? raw : new Uint8Array());
     off += 46 + nameLen + extra + comment;
   }
   return out;

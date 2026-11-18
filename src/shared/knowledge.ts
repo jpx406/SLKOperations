@@ -41,6 +41,8 @@ export interface KnowledgeDoc {
   /** Document control (6z.14): internal or external origin, author, expiry, a fillable form, when the live revision was published. */
   origin?: 'internal' | 'external'; author?: string | null; expires_on?: string | null; is_form?: number; published_at?: string | null; approved_by?: string | null;
   approved_by_name?: string | null; retire_reason?: string | null;
+  /** A SAPESCO or Gulf Energy copy (6z.21): the NESR document it was made from and the NESR revision it follows. */
+  copy_of?: string | null; copy_of_revision?: number | null;
   /** The revision being worked on, if any (staff only). */
   open?: { id: string; revision: number; status: 'draft' | 'review' | 'approval'; reviewer: string | null; approver: string | null; sent_back_reason: string | null } | null;
   /** The current document file, if one was uploaded. */

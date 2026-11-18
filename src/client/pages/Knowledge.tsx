@@ -16,6 +16,8 @@ import { ACCEPT, DocState, Dialog, EDITABLE_ACCEPT, QrBlock, QrDialog, SupportLi
 import { Archive, BatchAdd, Dashboard, ManualsView, Queue, Register, Settings } from './knowledge/Control';
 import { MindMapDialog, MindMapPanel } from './knowledge/Digest';
 import { Revisions } from './knowledge/Revisions';
+import { CopiesPanel, CopyLines, CopyNote, MakeCopiesDialog, copiesOf } from './knowledge/Copies';
+import { mayHaveCopies } from '../../shared/companyCopy';
 
 /** Read opens the PDF itself, in a new tab (stamped, as every download). Null when there is no PDF to open. */
 const pdfHref = (d: KnowledgeDoc) => (d.file && d.file.content_type === 'application/pdf' ? fileUrl(d.id, d.file, true) : null);
@@ -57,6 +59,8 @@ export function KnowledgeHub() {
   const [qrFile, setQrFile] = useState<{ doc: KnowledgeDoc; file: SupportBrief } | null>(null);
   const onQrFile = (doc: KnowledgeDoc, file: SupportBrief) => setQrFile({ doc, file });
   const [map, setMap] = useState<KnowledgeDoc | null>(null);
+  const [copiesFor, setCopiesFor] = useState<string | null>(null);
+  const copyDoc = copiesFor ? all.find((d) => d.id === copiesFor) : undefined;
   const canEdit = !!lib?.canEdit;
   const refresh = () => { qc.invalidateQueries({ queryKey: ['knowledge'] }); qc.invalidateQueries({ queryKey: ['knowledge-queue'] }); qc.invalidateQueries({ queryKey: ['knowledge-register'] }); };
   const counts = (sec: Section) => all.filter((d) => d.section === sec && !d.duplicate_of && d.published_at).length;
@@ -89,7 +93,7 @@ export function KnowledgeHub() {
       {lib && (
         <div role="tabpanel" aria-label={VIEWS[view]}>
           {view === 'lesson' && <Lessons all={all.filter((d) => d.section === 'lesson')} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onEdit={setEditing} onQr={setQr} onQrFile={onQrFile} onMap={setMap} refresh={refresh} />}
-          {isSection(view) && view !== 'lesson' && <Controlled section={view} all={all.filter((d) => d.section === view)} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onQr={setQr} onQrFile={onQrFile} onMap={setMap} />}
+          {isSection(view) && view !== 'lesson' && <Controlled section={view} all={all.filter((d) => d.section === view)} everything={all} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onQr={setQr} onQrFile={onQrFile} onMap={setMap} />}
           {view === 'manuals' && <ManualsView />}
           {view === 'dashboard' && <Dashboard onOpen={open} />}
           {view === 'queue' && <Queue onOpen={open} />}
@@ -98,12 +102,13 @@ export function KnowledgeHub() {
           {view === 'settings' && <Settings />}
         </div>
       )}
-      {reading && lib && <Reader id={reading} lib={lib} onClose={() => set('doc', '')} onEdit={(d) => setEditing(d)} refresh={refresh} />}
-      {editing && lib && <Editor doc={editing === 'new' ? null : editing} lib={lib} section={section} onClose={(changed, id) => { setEditing(null); if (changed) refresh(); if (id) open(id); }} />}
+      {reading && lib && <Reader id={reading} lib={lib} onClose={() => set('doc', '')} onEdit={(d) => setEditing(d)} refresh={refresh} onOpen={open} onMakeCopies={(d) => setCopiesFor(d.id)} />}
+      {editing && lib && <Editor doc={editing === 'new' ? null : editing} lib={lib} section={section} onClose={(changed, id, ask) => { setEditing(null); if (changed) refresh(); if (id) open(id); if (id && ask) setCopiesFor(id); }} />}
       {batch && lib && <BatchAdd lib={lib} section={section} onClose={(changed) => { setBatch(false); if (changed) refresh(); }} />}
       {qr && <QrDialog doc={qr} onClose={() => setQr(null)} />}
       {qrFile && <QrDialog doc={qrFile.doc} file={qrFile.file} onClose={() => setQrFile(null)} />}
       {map && <MindMapDialog doc={map} canRemake={staff} onClose={() => setMap(null)} />}
+      {copyDoc && <MakeCopiesDialog doc={copyDoc} onOpen={open} onClose={(changed) => { setCopiesFor(null); if (changed) refresh(); }} />}
     </section>
   );
 }
@@ -219,8 +224,8 @@ const EMPTY: Record<Exclude<Section, 'lesson'>, [string, string]> = {
   client: ['No client procedures yet', 'Add a client procedure with Add document: upload the file and pick the country and the client. Once approved it shows on every job in that country.'],
 };
 
-function Controlled({ section, all, canEdit, params, set, onRead, onQr, onQrFile, onMap }: {
-  section: Exclude<Section, 'lesson'>; all: KnowledgeDoc[]; canEdit: boolean; params: URLSearchParams; set: (k: string, v: string) => void; onRead: (d: KnowledgeDoc) => void;
+function Controlled({ section, all, everything, canEdit, params, set, onRead, onQr, onQrFile, onMap }: {
+  section: Exclude<Section, 'lesson'>; all: KnowledgeDoc[]; everything: KnowledgeDoc[]; canEdit: boolean; params: URLSearchParams; set: (k: string, v: string) => void; onRead: (d: KnowledgeDoc) => void;
   onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void;
 }) {
   const qText = params.get('q') ?? '';
@@ -256,10 +261,10 @@ function Controlled({ section, all, canEdit, params, set, onRead, onQr, onQrFile
               ? groupClients(g.docs).map(([client, docs]) => (
                 <div key={client}>
                   <p className="label-caps bg-surface-2 px-4 py-1 text-text-muted">{client}</p>
-                  <DocList docs={docs} onRead={onRead} onQr={onQr} onQrFile={onQrFile} onMap={onMap} />
+                  <DocList docs={docs} all={everything} onRead={onRead} onQr={onQr} onQrFile={onQrFile} onMap={onMap} />
                 </div>
               ))
-              : <DocList docs={[...g.docs].sort((a, b) => (a.doc_no ?? a.title).localeCompare(b.doc_no ?? b.title))} onRead={onRead} onQr={onQr} onQrFile={onQrFile} onMap={onMap} />}
+              : <DocList docs={[...g.docs].sort((a, b) => (a.doc_no ?? a.title).localeCompare(b.doc_no ?? b.title))} all={everything} onRead={onRead} onQr={onQr} onQrFile={onQrFile} onMap={onMap} />}
           </Card>
         ))}
       </div>
@@ -288,7 +293,7 @@ function Flags({ d }: { d: KnowledgeDoc }) {
 
 const extOf = (name: string) => (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? '').toUpperCase();
 
-function DocList({ docs, onRead, onQr, onQrFile, onMap }: { docs: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void }) {
+function DocList({ docs, all, onRead, onQr, onQrFile, onMap }: { docs: KnowledgeDoc[]; all: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void }) {
   return (
     <ul className="divide-y divide-border">
       {docs.map((d) => (
@@ -298,7 +303,7 @@ function DocList({ docs, onRead, onQr, onQrFile, onMap }: { docs: KnowledgeDoc[]
             <button type="button" className="text-left font-semibold hover:underline" onClick={() => onRead(d)}>{d.title}</button>
             <p className="text-xs text-text-muted">
               {d.doc_no && <span className="font-mono">{d.doc_no}</span>}{d.doc_no && ' · '}{d.published_at ? `Rev ${d.revision}` : 'not published'}
-              {d.company && ` · ${d.company}`}{d.is_form ? ' · form' : ''}{d.published_on && ` · ${formatDate(d.published_on)}`}
+              {d.company && ` · ${d.company}`}{d.copy_of && ' copy'}{d.is_form ? ' · form' : ''}{d.published_on && ` · ${formatDate(d.published_on)}`}
               <Flags d={d} />
             </p>
           </div>
@@ -312,6 +317,7 @@ function DocList({ docs, onRead, onQr, onQrFile, onMap }: { docs: KnowledgeDoc[]
             <Button size="sm" variant="ghost" aria-label={`Details of ${d.title}`} onClick={() => onRead(d)}><Info aria-hidden className="size-3.5" />Details</Button>
           </div>
           <SupportList doc={d} onQr={onQrFile} className="ml-7 min-w-0 basis-[calc(100%-1.75rem)]" />
+          <CopyLines doc={d} all={all} onOpen={onRead} className="ml-7 min-w-0 basis-[calc(100%-1.75rem)]" />
         </li>
       ))}
     </ul>
@@ -320,7 +326,7 @@ function DocList({ docs, onRead, onQr, onQrFile, onMap }: { docs: KnowledgeDoc[]
 
 // ---- reader -------------------------------------------------------------------------------------------------------
 
-function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Library; onClose: () => void; onEdit: (d: KnowledgeDoc) => void; refresh: () => void }) {
+function Reader({ id, lib, onClose, onEdit, refresh, onOpen, onMakeCopies }: { id: string; lib: Library; onClose: () => void; onEdit: (d: KnowledgeDoc) => void; refresh: () => void; onOpen: (id: string) => void; onMakeCopies: (d: KnowledgeDoc) => void }) {
   const inList = lib.docs.find((d) => d.id === id);
   // retired entries (from the archive) aren't in the list: fetch them
   const one = useQuery({ queryKey: ['knowledge-doc', id], queryFn: () => api<KnowledgeDoc>(`/knowledge/${id}`), enabled: !inList });
@@ -354,12 +360,15 @@ function Reader({ id, lib, onClose, onEdit, refresh }: { id: string; lib: Librar
       {doc.retired_at && <div className="mt-2"><Banner tone="warning">Retired {formatDate(doc.retired_at.slice(0, 10))}{doc.retire_reason && `: ${doc.retire_reason}`}. Only admins and approvers see it.</Banner></div>}
       {doc.origin === 'external' && <div className="mt-2"><Banner tone="info">External document: controlled distribution. Check with its owner before sharing it outside NESR.</Banner></div>}
       {original && <div className="mt-2"><Banner tone="info">This repeats “{original.title}”.</Banner></div>}
+      <CopyNote doc={doc} lib={lib} onOpen={onOpen} />
       {review && <div className="mt-2"><Banner tone={review === 'overdue' ? 'danger' : 'warning'}>Periodic review {review === 'overdue' ? 'was due' : 'is due'} on {formatDate(doc.review_due!)}.</Banner></div>}
       {expiry && <div className="mt-2"><Banner tone={expiry === 'expired' ? 'danger' : 'warning'}>{expiry === 'expired' ? 'Expired' : 'Expires'} on {formatDate(doc.expires_on!)}.</Banner></div>}
       {doc.summary && <p className="mt-3 whitespace-pre-wrap text-sm">{doc.summary}</p>}
       {doc.key_action && <div className="mt-3 rounded-md bg-warning-subtle p-3 text-sm"><span className="font-semibold">Key action: </span>{doc.key_action}</div>}
       {doc.failure_types.length > 0 && <p className="mt-3 flex flex-wrap gap-1">{doc.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
-      <Revisions doc={doc} people={lib.people} onChange={() => { refresh(); qc.invalidateQueries({ queryKey: ['knowledge-doc', id] }); }} />
+      <Revisions doc={doc} people={lib.people} onChange={() => { refresh(); qc.invalidateQueries({ queryKey: ['knowledge-doc', id] }); }}
+        onApproved={() => { if (mayHaveCopies(doc) && copiesOf(lib, doc).length && (lib.me.admin || lib.me.editor)) onMakeCopies(doc); }} />
+      <CopiesPanel doc={doc} lib={lib} onOpen={onOpen} onMake={() => onMakeCopies(doc)} />
       <SupportFiles docId={doc.id} />
       {doc.published_at && (
         <details className="mt-4 rounded-md border border-border p-3" open={mapOpen} onToggle={(e) => setMapOpen((e.target as HTMLDetailsElement).open)}>
@@ -395,7 +404,7 @@ type Suggested = Suggestion & Record<string, unknown>;
  * Add document starts with the file (6z.15): it is read by AI and every field is filled in from it, then the person
  * checks and corrects them before saving. Editing an existing entry goes straight to the fields.
  */
-function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib: Library; section: Section; onClose: (changed: boolean, openId?: string) => void }) {
+function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib: Library; section: Section; onClose: (changed: boolean, openId?: string, askCopies?: boolean) => void }) {
   const startType: AddType = doc ? addTypeOf(doc) : section === 'lesson' ? 'lesson_learnt' : section;
   const [f, setF] = useState({
     type: startType, country: doc?.country ?? (section === 'client' ? lib.places[0] ?? '' : GLOBAL), company: doc?.company ?? 'NESR', client: doc?.client ?? '',
@@ -455,7 +464,8 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
       const { id } = await api<{ id: string }>('/knowledge', { method: 'POST', json: body });
       if (file) await uploadFile(id, file, 'published');
       if (source) await uploadFile(id, source, 'source');
-      onClose(true, id);
+      // a global NESR SOP or SWI with its Word file: offer the SAPESCO and Gulf Energy copies (6z.21)
+      onClose(true, id, mayHaveCopies({ section: sec, country: f.country, company: f.company }) && !!source && /\.docx$/i.test(source.name));
     } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   const hint = (k: string, h?: string) => (read?.filled.has(k) ? `Read from the document${h ? `. ${h}` : ''}` : h);

@@ -9,6 +9,15 @@
         "dev"
       ],
       "port": 5173
+    },
+    {
+      "name": "mockups",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "const h=require('http'),f=require('fs'),p=require('path'),r=p.resolve('design'),t={'.html':'text/html','.png':'image/png','.jpg':'image/jpeg','.pdf':'application/pdf'};h.createServer((q,s)=>{const x=p.join(r,decodeURIComponent(q.url.split('?')[0]));if(!x.startsWith(r)||!f.existsSync(x)||f.statSync(x).isDirectory()){s.writeHead(404);return s.end()}s.writeHead(200,{'Content-Type':t[p.extname(x)]||'application/octet-stream'});f.createReadStream(x).pipe(s)}).listen(5180)"
+      ],
+      "port": 5180
     }
   ]
 }

@@ -17,7 +17,7 @@ interface Data { me: Controller; live: number | null; storage: boolean; mayRetir
 
 const when = (iso: string | null) => (iso ? formatDate(iso.slice(0, 10)) : '');
 
-export function Revisions({ doc, people, onChange }: { doc: KnowledgeDoc; people: Person[]; onChange: () => void }) {
+export function Revisions({ doc, people, onChange, onApproved }: { doc: KnowledgeDoc; people: Person[]; onChange: () => void; onApproved?: () => void }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['knowledge-revs', doc.id], queryFn: () => api<Data>(`/knowledge/${doc.id}/revisions`) });
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export function Revisions({ doc, people, onChange }: { doc: KnowledgeDoc; people
           onStart={(body) => run(async () => { await api(`/knowledge/${doc.id}/revisions`, { method: 'POST', json: body }); setStarting(false); })} />}
       </section>
 
-      {open && staffSees && <OpenRevision doc={doc} r={open} people={people} me={d.me} busy={busy} storage={d.storage} run={run} />}
+      {open && staffSees && <OpenRevision doc={doc} r={open} people={people} me={d.me} busy={busy} storage={d.storage} run={run} onApproved={onApproved} />}
 
       {past.length > 0 && (
         <section aria-label="Revision history">
@@ -137,7 +137,7 @@ function StartRevision({ doc, current, busy, onStart, onCancel }: { doc: Knowled
   );
 }
 
-function OpenRevision({ doc, r, people, me, busy, storage, run }: { doc: KnowledgeDoc; r: Rev; people: Person[]; me: Controller; busy: boolean; storage: boolean; run: (fn: () => Promise<unknown>) => void }) {
+function OpenRevision({ doc, r, people, me, busy, storage, run, onApproved }: { doc: KnowledgeDoc; r: Rev; people: Person[]; me: Controller; busy: boolean; storage: boolean; run: (fn: () => Promise<unknown>) => void; onApproved?: () => void }) {
   const [comment, setComment] = useState('');
   const [reason, setReason] = useState('');
   const [backing, setBacking] = useState(false);
@@ -197,7 +197,7 @@ function OpenRevision({ doc, r, people, me, busy, storage, run }: { doc: Knowled
           )}
           <div className="mt-2 flex flex-wrap gap-2">
             {r.can.review && <Button variant="primary" loading={busy} disabled={!approver} onClick={() => step('review', { approver, comment })}><Check aria-hidden className="size-4" />Pass the review</Button>}
-            {r.can.approve && <Button variant="primary" loading={busy} onClick={() => step('approve', { comment })}><Check aria-hidden className="size-4" />Approve and publish</Button>}
+            {r.can.approve && <Button variant="primary" loading={busy} onClick={() => run(async () => { await api(`/knowledge/${doc.id}/revisions/${r.revision}/approve`, { method: 'POST', json: { comment } }); onApproved?.(); })}><Check aria-hidden className="size-4" />Approve and publish</Button>}
             <Button variant="secondary" onClick={() => setBacking(!backing)}><CornerUpLeft aria-hidden className="size-4" />Send back</Button>
           </div>
         </div>

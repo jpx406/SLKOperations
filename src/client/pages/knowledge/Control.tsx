@@ -13,6 +13,7 @@ import { ApiError, api, formatDate } from '../../api';
 import { BarChart, KpiTile } from '../../components/charts';
 import { Banner, Button, Card, EmptyState, Field, Skeleton, cx, inputClass, inputSized } from '../../components/ui';
 import { Dialog, RevPill, isEditable, linkBtn, today, uploadFile, type Library } from './common';
+import { CompanyTemplates } from './Copies';
 
 // Document control screens for the Knowledge Hub (6z.14), after the NESR Document Control app: the approval queue,
 // the document register (with its export), the archive of retired documents, the reference manuals library,
@@ -28,7 +29,7 @@ const saveFile = (data: BlobPart, name: string, type: string) => {
 
 // ---- queue ----------------------------------------------------------------------------------------------------
 
-type QueueRow = Revision & { title: string; doc_no: string | null; section: Section; country: string; company: string | null; client: string | null; published_at: string | null; waitingOnMe: boolean };
+type QueueRow = Revision & { title: string; doc_no: string | null; section: Section; country: string; company: string | null; client: string | null; published_at: string | null; waitingOnMe: boolean; copy_of_no: string | null; has_pdf: number };
 
 export function Queue({ onOpen }: { onOpen: (id: string) => void }) {
   const q = useQuery({ queryKey: ['knowledge-queue'], queryFn: () => api<{ rows: QueueRow[] }>('/knowledge/queue') });
@@ -44,12 +45,12 @@ export function Queue({ onOpen }: { onOpen: (id: string) => void }) {
           <div className="min-w-0 flex-1 basis-60">
             <button type="button" className="text-left font-semibold hover:underline" onClick={() => onOpen(r.doc_id)}>{r.title}</button>
             <p className="text-xs text-text-muted">
-              {r.doc_no && <span className="font-mono">{r.doc_no}</span>} · Rev {r.revision}{r.published_at ? ' (new revision)' : ' (first issue)'} · {SECTIONS[r.section]} · {r.country}{r.company && ` · ${r.company}`}{r.client && ` · ${r.client}`}
+              {r.doc_no && <span className="font-mono">{r.doc_no}</span>} · Rev {r.revision}{r.published_at ? ' (new revision)' : ' (first issue)'} · {SECTIONS[r.section]} · {r.country}{r.company && ` · ${r.company}`}{r.client && ` · ${r.client}`}{r.copy_of_no && <> · copy of <span className="font-mono">{r.copy_of_no}</span></>}
             </p>
             <p className="text-xs text-text-subtle">
               {r.status === 'review' && `With ${r.reviewer_name} for review, sent by ${r.submitted_by_name}`}
               {r.status === 'approval' && `With ${r.approver_name} for approval, reviewed by ${r.reviewer_name}`}
-              {r.status === 'draft' && (r.sent_back_reason ? `Sent back: ${r.sent_back_reason}` : `Draft by ${r.created_by_name}`)}
+              {r.status === 'draft' && (r.sent_back_reason ? `Sent back: ${r.sent_back_reason}` : r.copy_of_no && !r.has_pdf ? 'Word copy made: waiting for an admin to add the PDF' : `Draft by ${r.created_by_name}`)}
               {r.change_note && ` · ${r.change_note}`}
             </p>
           </div>
@@ -426,6 +427,7 @@ function SettingsForm({ data, onSaved }: { data: SettingsData; onSaved: () => vo
         </div>
       </Card>
       {admin ? <Button variant="primary" className="self-start" loading={busy} onClick={save}>Save numbering and periods</Button> : <p className="text-sm text-text-muted">Only an admin changes these settings.</p>}
+      <CompanyTemplates />
     </div>
   );
 }

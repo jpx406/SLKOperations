@@ -10,6 +10,8 @@ import { costMicroUsd, limitCheck } from '../shared/ai';
 import { analysisPrompt, answerSchema, cleanSuggestion, extractText } from '../shared/docAnalysis';
 import { cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
 import { ADD_TYPES, type AddType } from '../shared/knowledge';
+import { COPY_COMPANIES, DEFAULT_COPY_SETTINGS, checkCopySettings, copyNumber, copySettingsOf, makeCompanyCopy, mayHaveCopies, type CopyCompany, type CopySettings } from '../shared/companyCopy';
+import { unzip } from '../shared/xlsxRead';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { copyId, stampPdf, stampText } from './stamp';
@@ -74,6 +76,7 @@ async function placesFor(env: Env, user: AuthedUser): Promise<string[]> {
 
 const COLS = `d.id, d.section, d.country, d.company, d.client, d.doc_type, d.category, d.title, d.summary, d.key_action, d.failure_types, d.published_on, d.rilr_ref, d.source_ref,
   d.duplicate_of, d.lesson_of_week_from, d.doc_no, d.revision, d.review_due, d.retired_at, d.retire_reason, d.origin, d.author, d.expires_on, d.is_form, d.published_at, d.approved_by,
+  d.copy_of, d.copy_of_revision,
   coalesce(ra.full_name, d.approved_by) AS approved_by_name`;
 const FROM = 'FROM knowledge_docs d LEFT JOIN user_roles ra ON ra.username = d.approved_by';
 const FILE_COLS = 'f.id, f.doc_id, f.kind, f.revision, f.file_name, f.content_type, f.size_bytes, f.uploaded_at, f.superseded_at, f.change_note, coalesce(r.full_name, f.uploaded_by) AS uploaded_by_name';
@@ -158,8 +161,10 @@ knowledge.get('/queue', async (c) => {
   const user = c.get('user');
   const p = await controller(c.env, user);
   if (!isStaff(p)) return c.json({ error: 'The queue is for editors, reviewers and approvers' }, 403);
-  const { results } = await c.env.DB.prepare(`SELECT ${REV_COLS}, d.title, d.doc_no, d.section, d.country, d.company, d.client, d.revision AS live_revision, d.published_at
-    ${REV_FROM} JOIN knowledge_docs d ON d.id = v.doc_id WHERE v.status IN ('draft','review','approval') AND d.retired_at IS NULL ORDER BY coalesce(v.submitted_at, v.created_at) DESC`).all<Revision & Record<string, unknown>>();
+  const { results } = await c.env.DB.prepare(`SELECT ${REV_COLS}, d.title, d.doc_no, d.section, d.country, d.company, d.client, d.revision AS live_revision, d.published_at,
+    d.copy_of, d.copy_of_revision, s.doc_no AS copy_of_no,
+    (SELECT count(*) FROM knowledge_files f WHERE f.doc_id = v.doc_id AND f.revision = v.revision AND f.kind = 'published' AND f.superseded_at IS NULL) AS has_pdf
+    ${REV_FROM} JOIN knowledge_docs d ON d.id = v.doc_id LEFT JOIN knowledge_docs s ON s.id = d.copy_of WHERE v.status IN ('draft','review','approval') AND d.retired_at IS NULL ORDER BY coalesce(v.submitted_at, v.created_at) DESC`).all<Revision & Record<string, unknown>>();
   const mine = (u: unknown) => typeof u === 'string' && u.toLowerCase() === user.username.toLowerCase();
   const rows = results.filter((r) => p.admin || p.editor || mine(r.reviewer) || mine(r.approver) || mine(r.submitted_by) || mine(r.created_by))
     .map((r) => ({ ...r, mayReview: mayAct(p, r, 'review'), mayApprove: mayAct(p, r, 'approve'), maySendBack: mayAct(p, r, 'send_back'), maySubmit: mayAct(p, r, 'submit'),
@@ -199,7 +204,151 @@ knowledge.get('/settings', async (c) => {
     numberingOf(c.env), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS),
     c.env.DB.prepare(`SELECT ${PERSON_FLAGS} FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1 ORDER BY u.full_name`).all(),
   ]);
-  return c.json({ numbering, periods, people: people.results, isAdmin: p.admin });
+  return c.json({ numbering, periods, people: people.results, isAdmin: p.admin, copies: await copySettings(c.env) });
+});
+
+// ---- company copies of global NESR SOPs and SWIs (6z.21) ----------------------------------------------------------
+
+const copySettings = async (env: Env): Promise<CopySettings> => copySettingsOf(await setting<CopySettings>(env, 'copies', DEFAULT_COPY_SETTINGS));
+const isCopyCompany = (v: unknown): v is CopyCompany => (COPY_COMPANIES as readonly unknown[]).includes(v);
+const putSetting = (env: Env, user: AuthedUser, key: string, v: unknown) => env.DB.prepare(`INSERT INTO knowledge_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
+  ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`).bind(key, JSON.stringify(v), user.username, now());
+
+/** Company names, number prefixes, colours, cover approvers and word list. Admins. */
+knowledge.put('/settings/copies', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only an admin changes the company templates' }, 403);
+  const r = checkCopySettings(await c.req.json().catch(() => ({})), await copySettings(c.env));
+  if ('error' in r) return c.json({ error: r.error }, 400);
+  await c.env.DB.batch([putSetting(c.env, user, 'copies', r.value),
+    audit(c.env, user, 'settings', 'copies', `Company templates: ${COPY_COMPANIES.map((co) => `${co} ${r.value.companies[co].prefix} #${r.value.companies[co].colour}`).join(', ')}`, 'knowledge_settings')]);
+  return c.json({ ok: true, copies: r.value });
+});
+
+/** The company's template: one of its own SOPs in Word (raw body, X-File-Name). Admins. */
+knowledge.post('/settings/copies/:company/template', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only an admin changes the company templates' }, 403);
+  if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
+  const co = c.req.param('company');
+  if (!isCopyCompany(co)) return c.json({ error: 'Pick SAPESCO or Gulf Energy' }, 400);
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  const ok = checkUpload(decodeURIComponent(c.req.header('x-file-name') ?? ''), bytes.length);
+  if ('error' in ok) return c.json({ error: ok.error }, 400);
+  if (!/\.docx$/i.test(ok.name)) return c.json({ error: 'The template is a Word file (.docx): one of the company’s own SOPs' }, 400);
+  const parts = await unzip(bytes).catch(() => null);
+  if (!parts?.has('word/document.xml')) return c.json({ error: 'This file is not a Word document' }, 400);
+  if (![...parts.keys()].some((k) => /^word\/(header|footer)\d*\.xml$/.test(k))) return c.json({ error: 'This Word file has no header or footer to take the logo from' }, 400);
+  const key = `knowledge/Templates/${folderName(co)}/${crypto.randomUUID().slice(0, 8)} ${ok.name}`;
+  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username } });
+  const s = await copySettings(c.env);
+  s.companies[co] = { ...s.companies[co], template: { key, file_name: ok.name, uploaded_at: now(), uploaded_by: user.username } };
+  await c.env.DB.batch([putSetting(c.env, user, 'copies', s), audit(c.env, user, 'upload', 'copies', `${co} template “${ok.name}”`, 'knowledge_settings')]);
+  return c.json({ ok: true, copies: s });
+});
+
+knowledge.get('/settings/copies/:company/template', async (c) => {
+  const p = await controller(c.env, c.get('user'));
+  if (!isStaff(p)) return c.json({ error: 'Templates are for editors, reviewers and approvers' }, 403);
+  const co = c.req.param('company');
+  const t = isCopyCompany(co) ? (await copySettings(c.env)).companies[co].template : null;
+  if (!t || !c.env.FILES) return c.json({ error: 'No template yet' }, 404);
+  const obj = await c.env.FILES.get(t.key);
+  if (!obj) return c.json({ error: 'The template is missing from storage' }, 404);
+  return fileResponse(obj.body, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', t.file_name, false);
+});
+
+/** "30th December 2022", as NESR covers print dates. */
+const printedDate = (iso: string | null | undefined) => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return undefined;
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`), n = d.getUTCDate();
+  const th = n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th';
+  return `${n}${th} ${d.toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' })} ${d.getUTCFullYear()}`;
+};
+
+/**
+ * Makes (or makes again) the SAPESCO and Gulf Energy Word copies of a global NESR SOP or SWI from its editable
+ * Word file. Each copy is a draft revision with the same number as the NESR revision, holding only the Word file;
+ * an admin saves it as PDF, uploads it and sends it for review. A copy already in review or approval is left alone.
+ */
+knowledge.post('/:id/copies', async (c) => {
+  const user = c.get('user');
+  const p = await controller(c.env, user);
+  if (!p.admin && !p.editor) return c.json({ error: 'Your role cannot make company copies' }, 403);
+  if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
+  const d = await find(c.env, c.req.param('id'));
+  if (!d || d.retired_at) return c.json({ error: 'Document not found' }, 404);
+  if (!mayHaveCopies(d)) return c.json({ error: 'Only global NESR SOPs and SWIs get SAPESCO and Gulf Energy copies' }, 400);
+  const b = await c.req.json().catch(() => ({})) as { companies?: unknown };
+  const companies = (Array.isArray(b.companies) ? b.companies : [...COPY_COMPANIES]).filter(isCopyCompany);
+  if (!companies.length) return c.json({ error: 'Pick SAPESCO, Gulf Energy or both' }, 400);
+  // the NESR Word file: the newest revision's editable version
+  const src = await c.env.DB.prepare(`SELECT f.file_name, f.r2_key, f.revision, v.revision_date, v.expires_on FROM knowledge_files f
+    JOIN knowledge_revisions v ON v.doc_id = f.doc_id AND v.revision = f.revision
+    WHERE f.doc_id = ? AND f.kind = 'source' AND f.superseded_at IS NULL AND v.status IN ('draft','review','approval','approved') ORDER BY f.revision DESC LIMIT 1`)
+    .bind(d.id).first<{ file_name: string; r2_key: string; revision: number; revision_date: string | null; expires_on: string | null }>();
+  if (!src || !/\.docx$/i.test(src.file_name)) return c.json({ error: 'Company copies are made from the NESR Word file (.docx). Add it as the editable version first.' }, 400);
+  const srcObj = await c.env.FILES.get(src.r2_key);
+  if (!srcObj) return c.json({ error: 'The NESR Word file is missing from storage' }, 404);
+  const srcBytes = new Uint8Array(await srcObj.arrayBuffer());
+  const [settings, periods] = await Promise.all([copySettings(c.env), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS)]);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const made: { company: CopyCompany; id: string; doc_no: string | null; revision: number; changes: { label: string; n: number }[]; leftovers: string[] }[] = [];
+  const skipped: { company: CopyCompany; reason: string }[] = [];
+
+  for (const co of companies) {
+    const t = settings.companies[co];
+    if (!t.template) { skipped.push({ company: co, reason: `Add the ${co} template in Knowledge Hub › Settings first` }); continue; }
+    const tplObj = await c.env.FILES.get(t.template.key);
+    if (!tplObj) { skipped.push({ company: co, reason: `The ${co} template is missing from storage: upload it again in Settings` }); continue; }
+    const copyNo = copyNumber(d.doc_no, t.prefix);
+    const existing = await c.env.DB.prepare('SELECT id, revision, published_at FROM knowledge_docs WHERE copy_of = ? AND company = ? AND retired_at IS NULL')
+      .bind(d.id, co).first<{ id: string; revision: number; published_at: string | null }>();
+    const open = existing ? await openRev(c.env, existing.id) : null;
+    if (open && open.status !== 'draft') { skipped.push({ company: co, reason: `The ${co} copy is ${REV_STATUS[open.status].toLowerCase()}: finish or send it back first` }); continue; }
+    if (existing && !open && existing.published_at && src.revision <= existing.revision) { skipped.push({ company: co, reason: `The ${co} copy is already at Rev ${existing.revision}` }); continue; }
+
+    let out;
+    try {
+      out = await makeCompanyCopy(srcBytes, new Uint8Array(await tplObj.arrayBuffer()), { t, nesrColours: settings.nesrColours, copyNo, revision: pad(src.revision), date: printedDate(src.revision_date) });
+    } catch (e) { skipped.push({ company: co, reason: (e as Error).message }); continue; }
+
+    const docId = existing?.id ?? crypto.randomUUID();
+    const rev = open?.revision ?? src.revision;
+    const revDate = src.revision_date ?? riyadhToday();
+    const expires = src.expires_on && src.expires_on > revDate ? src.expires_on : addMonths(revDate, periods.expiryMonths);
+    const stmts: D1PreparedStatement[] = [];
+    if (!existing) {
+      stmts.push(c.env.DB.prepare(`INSERT INTO knowledge_docs (id, section, country, company, client, doc_type, category, title, summary, key_action, failure_types, doc_no, created_by, revision,
+          origin, author, is_form, expires_on, copy_of, copy_of_revision) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(docId, d.section, d.country, co, d.category, d.title, d.summary, copyNo, user.username, rev, d.origin ?? 'internal', d.author ?? null, d.is_form ?? 0, expires, d.id, src.revision));
+    } else stmts.push(c.env.DB.prepare('UPDATE knowledge_docs SET copy_of_revision = ?, title = ? WHERE id = ?').bind(src.revision, d.title, docId));
+    if (!open) {
+      stmts.push(c.env.DB.prepare(`INSERT INTO knowledge_revisions (id, doc_id, revision, status, change_note, author, revision_date, expires_on, created_by) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?)`)
+        .bind(crypto.randomUUID(), docId, rev, `${co} copy of ${d.doc_no ?? d.title} Rev ${src.revision}`, d.author ?? null, revDate, expires, user.username));
+    }
+    const fileId = crypto.randomUUID();
+    const name = `${copyNo ?? co} ${d.title} Rev ${pad(rev)}.docx`.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').slice(0, 180);
+    const key = fileKey({ section: d.section, country: d.country, company: co, client: null, doc_no: copyNo, title: d.title }, rev, 'source', fileId, name);
+    const bytes = out.bytes;
+    const sha = hex(await crypto.subtle.digest('SHA-256', bytes));
+    stmts.push(
+      c.env.DB.prepare(`UPDATE knowledge_files SET superseded_at = ? WHERE doc_id = ? AND kind = 'source' AND revision = ? AND superseded_at IS NULL`).bind(now(), docId, rev),
+      c.env.DB.prepare('INSERT INTO knowledge_files (id, doc_id, kind, revision, file_name, content_type, size_bytes, sha256, r2_key, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(fileId, docId, 'source', rev, name, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', bytes.length, sha, key, user.username),
+      audit(c.env, user, existing ? 'revise' : 'create', docId, `${co} Word copy ${copyNo ?? d.title} Rev ${rev} made from ${d.doc_no ?? d.title} Rev ${src.revision}: ${out.changes.map((x) => `${x.label} ×${x.n}`).join(', ')}${out.leftovers.length ? `. Still says NESR in ${out.leftovers.length} places` : ''}`),
+    );
+    try {
+      await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, customMetadata: { name, by: user.username, sha256: sha, doc: docId, revision: String(rev), from: d.id } });
+      await c.env.DB.batch(stmts);
+    } catch (e) {
+      const m = (e as Error).message;
+      skipped.push({ company: co, reason: /UNIQUE/.test(m) ? (/doc_no/.test(m) ? `Another document already has the number ${copyNo}` : `Rev ${rev} of the ${co} copy was used before`) : m });
+      continue;
+    }
+    made.push({ company: co, id: docId, doc_no: copyNo, revision: rev, changes: out.changes, leftovers: out.leftovers });
+  }
+  return c.json({ made, skipped }, made.length ? 201 : 200);
 });
 
 /**

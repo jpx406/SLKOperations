@@ -125,6 +125,10 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(review|approve|send-back)$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/(retire|restore)$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'PUT', re: /^\/api\/knowledge\/(settings|people\/[^/]+)$/, menu: 'knowledge_hub', action: 'view' },
+  // company copies (6z.21): editors make them; the routes keep the templates to admins
+  { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/copies$/, menu: 'knowledge_hub', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/knowledge\/settings\/copies$/, menu: 'knowledge_hub', action: 'view' },
+  { method: 'POST', re: /^\/api\/knowledge\/settings\/copies\/[^/]+\/template$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'POST', re: /^\/api\/knowledge\/manuals\/(folders|folders\/[^/]+\/(files|remove)|files\/[^/]+\/remove)$/, menu: 'knowledge_hub', action: 'view' },
   // asking the agent only reads; its tools go through READ_RULES with the asker's own session
   { method: 'POST', re: /^\/api\/ai\/chat$/, menu: 'ai_agent', action: 'view' },
@@ -212,6 +216,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/ai\/status$/, menus: ['ai_agent'] },
   { re: /^\/api\/knowledge(\/[^/]+(\/(files|revisions|digest)(\/[^/]+)?)?)?$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/knowledge\/manuals\/files\/[^/]+$/, menus: ['knowledge_hub'] },
+  { re: /^\/api\/knowledge\/settings\/copies\/[^/]+\/template$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/quick-plan$/, menus: ['quick_plan'] },
   { re: /^\/api\/attachments\/job\/[^/]+(\/[^/]+)?$/, menus: ['jobs'] },
   { re: /^\/api\/attachments\/knowledge\/[^/]+(\/[^/]+)?$/, menus: ['knowledge_hub'] },
