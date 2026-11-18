@@ -279,18 +279,38 @@ knowledge.post('/:id/copies', async (c) => {
   const d = await find(c.env, c.req.param('id'));
   if (!d || d.retired_at) return c.json({ error: 'Document not found' }, 404);
   if (!mayHaveCopies(d)) return c.json({ error: 'Only global NESR SOPs and SWIs get SAPESCO and Gulf Energy copies' }, 400);
-  const b = await c.req.json().catch(() => ({})) as { companies?: unknown };
-  const companies = (Array.isArray(b.companies) ? b.companies : [...COPY_COMPANIES]).filter(isCopyCompany);
+  // JSON { companies }, or (6z.23) the NESR Word file itself as the body with ?companies=…, for when the stored
+  // editable version is not a .docx (an older .doc, for example): used only to make the copies, the NESR record is untouched
+  const given = /octet-stream/.test(c.req.header('content-type') ?? '');
+  const b = given ? { companies: (c.req.query('companies') ?? '').split(',').filter(Boolean) } : await c.req.json().catch(() => ({})) as { companies?: unknown };
+  const companies = (Array.isArray(b.companies) && b.companies.length ? b.companies : [...COPY_COMPANIES]).filter(isCopyCompany);
   if (!companies.length) return c.json({ error: 'Pick SAPESCO, Gulf Energy or both' }, 400);
-  // the NESR Word file: the newest revision's editable version
-  const src = await c.env.DB.prepare(`SELECT f.file_name, f.r2_key, f.revision, v.revision_date, v.expires_on FROM knowledge_files f
-    JOIN knowledge_revisions v ON v.doc_id = f.doc_id AND v.revision = f.revision
-    WHERE f.doc_id = ? AND f.kind = 'source' AND f.superseded_at IS NULL AND v.status IN ('draft','review','approval','approved') ORDER BY f.revision DESC LIMIT 1`)
-    .bind(d.id).first<{ file_name: string; r2_key: string; revision: number; revision_date: string | null; expires_on: string | null }>();
-  if (!src || !/\.docx$/i.test(src.file_name)) return c.json({ error: 'Company copies are made from the NESR Word file (.docx). Add it as the editable version first.' }, 400);
-  const srcObj = await c.env.FILES.get(src.r2_key);
-  if (!srcObj) return c.json({ error: 'The NESR Word file is missing from storage' }, 404);
-  const srcBytes = new Uint8Array(await srcObj.arrayBuffer());
+  let srcBytes: Uint8Array;
+  let src: { file_name: string; revision: number; revision_date: string | null; expires_on: string | null };
+  if (given) {
+    const name = decodeURIComponent(c.req.header('x-file-name') ?? '');
+    if (!/\.docx$/i.test(name)) return c.json({ error: 'Pick the Word file saved as .docx' }, 400);
+    srcBytes = new Uint8Array(await c.req.arrayBuffer());
+    const ok = checkUpload(name, srcBytes.length);
+    if ('error' in ok) return c.json({ error: ok.error }, 400);
+    const rev = await c.env.DB.prepare(`SELECT revision, revision_date, expires_on FROM knowledge_revisions WHERE doc_id = ? AND status IN ('draft','review','approval','approved') ORDER BY revision DESC LIMIT 1`)
+      .bind(d.id).first<{ revision: number; revision_date: string | null; expires_on: string | null }>();
+    src = { file_name: ok.name, revision: rev?.revision ?? d.revision, revision_date: rev?.revision_date ?? null, expires_on: rev?.expires_on ?? null };
+  } else {
+    // the NESR Word file: the newest revision's editable version
+    const f = await c.env.DB.prepare(`SELECT f.file_name, f.r2_key, f.revision, v.revision_date, v.expires_on FROM knowledge_files f
+      JOIN knowledge_revisions v ON v.doc_id = f.doc_id AND v.revision = f.revision
+      WHERE f.doc_id = ? AND f.kind = 'source' AND f.superseded_at IS NULL AND v.status IN ('draft','review','approval','approved') ORDER BY f.revision DESC LIMIT 1`)
+      .bind(d.id).first<{ file_name: string; r2_key: string; revision: number; revision_date: string | null; expires_on: string | null }>();
+    if (!f) return c.json({ error: 'Company copies are made from the NESR Word file (.docx). Add it as the editable version, or pick the .docx file here.', needsWord: true }, 400);
+    if (!/\.docx$/i.test(f.file_name)) {
+      return c.json({ error: `The editable version is “${f.file_name}”, not a .docx Word file. Open it in Word, Save As › Word Document (.docx), and pick that file here.`, needsWord: true }, 400);
+    }
+    const obj = await c.env.FILES.get(f.r2_key);
+    if (!obj) return c.json({ error: 'The NESR Word file is missing from storage. Pick the .docx file here.', needsWord: true }, 404);
+    srcBytes = new Uint8Array(await obj.arrayBuffer());
+    src = f;
+  }
   const [settings, periods] = await Promise.all([copySettings(c.env), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS)]);
   const pad = (n: number) => String(n).padStart(2, '0');
   const made: { company: CopyCompany; id: string; doc_no: string | null; revision: number; changes: { label: string; n: number }[]; leftovers: string[] }[] = [];

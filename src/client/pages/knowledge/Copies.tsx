@@ -105,10 +105,16 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
   const copies = s.data?.copies;
   const ready = (co: CopyCompany) => !!copies?.companies[co].template;
   const chosen = COPY_COMPANIES.filter((co) => pick[co] && ready(co));
-  const make = async () => {
+  // when the stored editable version isn't a .docx, the Word file can be picked here, for the copies only
+  const [needsWord, setNeedsWord] = useState(false);
+  const make = async (word?: File) => {
     setBusy(true); setError(null);
-    try { setResult(await api('/knowledge/' + doc.id + '/copies', { method: 'POST', json: { companies: chosen } })); }
-    catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
+    try {
+      setResult(word
+        ? await api(`/knowledge/${doc.id}/copies?companies=${encodeURIComponent(chosen.join(','))}`, { method: 'POST', body: word, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(word.name) } })
+        : await api(`/knowledge/${doc.id}/copies`, { method: 'POST', json: { companies: chosen } }));
+      setNeedsWord(false);
+    } catch (e) { setError((e as ApiError).message); if ((e as ApiError).body?.needsWord) setNeedsWord(true); } finally { setBusy(false); }
   };
   // an admin adds a missing template right here, without leaving the document
   const qc = useQueryClient();
@@ -159,7 +165,11 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
           <p className="mt-2 text-xs text-text-muted">Made from this document’s editable Word file. Each copy starts as a draft: an admin saves it as PDF and uploads it, then it goes for review and approval.</p>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => onClose(false)}>Not now</Button>
-            <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={make}><Copy aria-hidden className="size-4" />{!chosen.length ? 'Make copies' : chosen.length === 1 ? 'Make the copy' : `Make ${chosen.length} copies`}</Button>
+            {needsWord && (
+              <label className={cx(linkBtn, 'h-(--layout-control-md) cursor-pointer', (busy || !chosen.length) && 'pointer-events-none opacity-50')}><Upload aria-hidden className="size-4" />Pick the .docx file
+                <input type="file" accept=".docx" className="sr-only" disabled={busy || !chosen.length} onChange={(e) => { const f = e.target.files?.[0]; if (f) make(f); }} /></label>
+            )}
+            <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={() => make()}><Copy aria-hidden className="size-4" />{!chosen.length ? 'Make copies' : chosen.length === 1 ? 'Make the copy' : `Make ${chosen.length} copies`}</Button>
           </div>
         </>
       )}

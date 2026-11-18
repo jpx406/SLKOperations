@@ -1517,3 +1517,9 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Owner report (2026-11-18):** on production the copy question showed both companies greyed out with "Make 0 copies": no templates had been added yet, and the only way was Settings.
 - **Change:** when a company has no template, an admin now sees "Add the SAPESCO template (.docx)" (or Gulf Energy) right in the question; once added, that company is ticked and ready. Others are told to ask an admin. With nothing ticked the button says "Make copies". A ready company with no cover names set says the NESR names are kept until an admin sets them in Settings.
 - **Verified:** tests 358; type check clean; in the local app with both templates cleared, the question shows both upload buttons and the plain "Make copies"; 390 px with no sideways scroll.
+
+## 6z.23 — Company copies from an older Word file
+
+- **Owner report (2026-11-18):** NESR-8000-SOP-02 refused with "Company copies are made from the NESR Word file (.docx)" although it has an editable version: the stored file is not a .docx (an older .doc, for example), and replacing it would mean a new NESR revision with review and approval.
+- **Change:** the message now names the stored file and says what to do; the copy question then offers "Pick the .docx file". The picked file is used only to make the copies (the NESR record and its files stay as they are); the copy follows the NESR document's newest revision number and date. `POST /api/knowledge/:id/copies` takes the .docx as the body with `?companies=`.
+- **Verified:** tests 358; type check clean; in the local app a global NESR SOP whose editable version is a .doc: making the copy gave the named-file message and the Pick the .docx file button; sending the .docx made SAP-8000-SOP-92 Rev 4 with nothing left saying NESR. Test documents retired, test files removed.
