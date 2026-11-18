@@ -110,6 +110,19 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
     try { setResult(await api('/knowledge/' + doc.id + '/copies', { method: 'POST', json: { companies: chosen } })); }
     catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
+  // an admin adds a missing template right here, without leaving the document
+  const qc = useQueryClient();
+  const [adding, setAdding] = useState<CopyCompany | null>(null);
+  const addTemplate = async (co: CopyCompany, file: File | undefined) => {
+    if (!file) return;
+    setAdding(co); setError(null);
+    try {
+      await api(`/knowledge/settings/copies/${encodeURIComponent(co)}/template`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
+      await qc.invalidateQueries({ queryKey: ['knowledge-settings'] });
+      setPick((p) => ({ ...p, [co]: true }));
+    } catch (e) { setError((e as ApiError).message); } finally { setAdding(null); }
+  };
+  const admin = !!s.data?.isAdmin;
   return (
     <Dialog title="Make company copies?" onClose={() => onClose(!!result?.made.length)}>
       <p className="text-sm text-text-muted"><span className="font-mono">{doc.doc_no}</span> · {doc.title}</p>
@@ -120,23 +133,33 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
           <div className="mt-3 flex flex-col gap-2">
             {COPY_COMPANIES.map((co) => {
               const t = copies.companies[co];
+              const noNames = !Object.values(t.approvers).some(Boolean);
               return (
-                <label key={co} className={cx('flex items-start gap-3 rounded-md border border-border p-3', !ready(co) && 'opacity-70')}>
-                  <input type="checkbox" className="mt-1 size-4" disabled={!ready(co)} checked={pick[co] && ready(co)} onChange={(e) => setPick({ ...pick, [co]: e.target.checked })} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 font-semibold"><Swatch company={co} colour={t.colour} />{co}</span>
-                    <span className="block text-xs text-text-muted">
-                      {ready(co) ? <>Word copy <span className="font-mono">{copyNumber(doc.doc_no, t.prefix) ?? doc.title}</span> in {doc.section === 'swi' ? 'SWI' : 'SOP'} › Global › {co}</> : `No ${co} template yet. An admin adds it in Knowledge Hub › Settings.`}
-                    </span>
-                  </span>
-                </label>
+                <div key={co} className="flex items-start gap-3 rounded-md border border-border p-3">
+                  <input id={`mc-${co}`} type="checkbox" className="mt-1 size-4" disabled={!ready(co)} checked={pick[co] && ready(co)} onChange={(e) => setPick({ ...pick, [co]: e.target.checked })} />
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor={`mc-${co}`} className={cx('flex items-center gap-2 font-semibold', !ready(co) && 'text-text-muted')}><Swatch company={co} colour={t.colour} />{co}</label>
+                    {ready(co) ? (
+                      <p className="text-xs text-text-muted">
+                        Word copy <span className="font-mono">{copyNumber(doc.doc_no, t.prefix) ?? doc.title}</span> in {doc.section === 'swi' ? 'SWI' : 'SOP'} › Global › {co}
+                        {noNames && <span className="block">Cover names: kept from the NESR document until an admin sets {co}’s in Settings.</span>}
+                      </p>
+                    ) : admin ? (
+                      <>
+                        <p className="text-xs text-text-muted">No {co} template yet. Add one of {co}’s own SOPs in Word: the copy takes its logo, header and footer.</p>
+                        <label className={cx(linkBtn, 'mt-2 cursor-pointer')}><Upload aria-hidden className="size-3.5" />{adding === co ? 'Saving the template…' : `Add the ${co} template (.docx)`}
+                          <input type="file" accept=".docx" className="sr-only" disabled={!!adding} onChange={(e) => addTemplate(co, e.target.files?.[0])} /></label>
+                      </>
+                    ) : <p className="text-xs text-text-muted">No {co} template yet. Ask an admin to add it in Knowledge Hub › Settings › Company templates.</p>}
+                  </div>
+                </div>
               );
             })}
           </div>
           <p className="mt-2 text-xs text-text-muted">Made from this document’s editable Word file. Each copy starts as a draft: an admin saves it as PDF and uploads it, then it goes for review and approval.</p>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => onClose(false)}>Not now</Button>
-            <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={make}><Copy aria-hidden className="size-4" />Make {chosen.length === 1 ? 'the copy' : `${chosen.length} copies`}</Button>
+            <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={make}><Copy aria-hidden className="size-4" />{!chosen.length ? 'Make copies' : chosen.length === 1 ? 'Make the copy' : `Make ${chosen.length} copies`}</Button>
           </div>
         </>
       )}
