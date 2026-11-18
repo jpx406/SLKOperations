@@ -8,7 +8,7 @@ import { roleLabel } from '../../shared/roles';
 import type { WgStatus } from '../../shared/types';
 import { api, countryScope, setCountryScope } from '../api';
 import { useMe } from '../auth';
-import { useDisplay, type DensityChoice } from '../display';
+import { SCREEN_SIZES, useDisplay, type DensityChoice } from '../display';
 import { AssistantLauncher, HelpButton } from './Help';
 import { Button, cx, rovingKeys } from './ui';
 import { AboutDialog, BrandHeader, NesrLogo, PRODUCT, Wordmark } from './Brand';
@@ -336,6 +336,17 @@ function AccountMenu({ name, role, admin, countries, passwordUrl, display, onAbo
                 ))}
               </div>
               <p className="mt-1 text-xs text-text-subtle">Auto: on for touch screens, off with a mouse.</p>
+            </div>
+            <div className="px-2.5 py-1.5">
+              <p id="size-label" className="mb-1.5 text-sm font-semibold">Screen size</p>
+              <div role="radiogroup" aria-labelledby="size-label" onKeyDown={rovingKeys} className="flex overflow-hidden rounded-md border border-border-strong">
+                {SCREEN_SIZES.map((s) => (
+                  <button key={s.value} type="button" role="radio" aria-checked={display.size === s.value} aria-label={`${s.label}, ${s.px} px`} title={`${s.label} (${s.px} px)`}
+                    tabIndex={display.size === s.value ? 0 : -1} onClick={() => display.setSize(s.value)}
+                    className={cx('h-(--layout-control-sm) flex-1 text-xs font-semibold', display.size === s.value ? 'bg-accent text-on-accent' : 'text-text-muted hover:bg-surface-2')}>{s.short}</button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-text-subtle">Text, spacing and buttons together, on this device. S suits a computer, M a phone or tablet.</p>
             </div>
           </div>
           <div className="border-t border-border pt-1.5">

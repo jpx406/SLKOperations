@@ -12,7 +12,7 @@ Face ID, Touch ID, a fingerprint or Windows Hello can replace the password. Set 
 
 The header shows the WIREGUARD sync time (green when recent, amber after 30 minutes, red after an error), the Riyadh clock, Help, Ask (the help assistant) and your name and role. If you cover more than one country, the country switch narrows every page to one of them (on a phone it is in the account menu).
 
-The account menu (your name, top right) holds Sunlight mode and Large touch controls. Sunlight is a high-contrast light theme for working outdoors; Large touch controls makes buttons and text bigger for fingers and gloves. Both switch on by themselves on tablets and phones; on a desk with a mouse the app opens dark and compact. Whatever you choose is remembered on that device.
+The account menu (your name, top right) holds Sunlight mode, Large touch controls and Screen size. Sunlight is a high-contrast light theme for working outdoors; Large touch controls makes buttons and text bigger for fingers and gloves. Both switch on by themselves on tablets and phones; on a desk with a mouse the app opens dark and compact. Screen size makes everything smaller or larger together (text, spacing and buttons): XS (13 px), S (14 px, the default on a computer), M (16 px, the default on phones and tablets) and L (18 px). Whatever you choose is remembered on that device.
 
 The top row holds the groups (Operation, Service Quality, Attendance, Inventory and so on); the second row holds the pages in the group. You only see the tabs your role or your extra grants include.`,
   },

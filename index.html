@@ -13,10 +13,13 @@
     <script>
       // same rules as src/client/display.ts, applied before the first paint: touch screens default to Sunlight and large controls
       (function () {
-        var touch = window.matchMedia && matchMedia('(pointer: coarse)').matches, t = null, d = null;
-        try { t = localStorage.getItem('slk-theme'); d = localStorage.getItem('slk-density'); } catch (e) {}
+        var touch = window.matchMedia && matchMedia('(pointer: coarse)').matches, t = null, d = null, s = null;
+        try { t = localStorage.getItem('slk-theme'); d = localStorage.getItem('slk-density'); s = localStorage.getItem('slk-size'); } catch (e) {}
         if (t === 'light' || (t !== 'dark' && touch)) document.documentElement.dataset.theme = 'light';
         if (d === 'touch' || (d !== 'desk' && touch)) document.documentElement.dataset.density = 'touch';
+        // screen size: XS 13 px, S 14 px (computers), M 16 px (touch screens), L 18 px
+        var px = { xs: 13, s: 14, m: 16, l: 18 }[s] || (touch ? 16 : 14);
+        document.documentElement.style.fontSize = (px / 16 * 100) + '%';
       })();
     </script>
   </head>

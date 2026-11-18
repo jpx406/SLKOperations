@@ -32,10 +32,34 @@ export function applyDensity(choice: DensityChoice) {
   else delete document.documentElement.dataset.density;
 }
 
+// Screen size (6z.25): scales the whole app (text, spacing, controls, all in rem) from the root font size, like
+// zoom but kept per device. Computers default to S (14 px), touch screens to M (16 px, the size before 6z.25).
+export type ScreenSize = 'xs' | 's' | 'm' | 'l';
+export const SCREEN_SIZES: { value: ScreenSize; short: string; label: string; px: number }[] = [
+  { value: 'xs', short: 'XS', label: 'Extra small', px: 13 },
+  { value: 's', short: 'S', label: 'Small', px: 14 },
+  { value: 'm', short: 'M', label: 'Medium', px: 16 },
+  { value: 'l', short: 'L', label: 'Large', px: 18 },
+];
+export const isScreenSize = (v: unknown): v is ScreenSize => SCREEN_SIZES.some((s) => s.value === v);
+/** The root font size for a size: 13 px is 81.25% of the browser's 16 px. */
+export const sizeScale = (s: ScreenSize) => `${(SCREEN_SIZES.find((x) => x.value === s)!.px / 16) * 100}%`;
+
+export function initialSize(): ScreenSize {
+  const s = read('slk-size');
+  return isScreenSize(s) ? s : touchDevice() ? 'm' : 's';
+}
+
+export function applySize(s: ScreenSize) {
+  document.documentElement.style.fontSize = sizeScale(s);
+}
+
 export function useDisplay() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [density, setDensity] = useState<DensityChoice>(initialDensity);
+  const [size, setSize] = useState<ScreenSize>(initialSize);
   useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => { applySize(size); }, [size]);
   useEffect(() => {
     applyDensity(density);
     // "auto" follows the device, e.g. a laptop with a touch screen switching pointer
@@ -50,5 +74,7 @@ export function useDisplay() {
     toggleTheme: () => setTheme((t) => { const n: Theme = t === 'light' ? 'dark' : 'light'; write('slk-theme', n); return n; }),
     density,
     setDensity: (d: DensityChoice) => { write('slk-density', d === 'auto' ? null : d); setDensity(d); },
+    size,
+    setSize: (s: ScreenSize) => { write('slk-size', s); setSize(s); },
   };
 }
