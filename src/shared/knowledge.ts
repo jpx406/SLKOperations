@@ -78,9 +78,9 @@ export function checkDoc(b: DocInput, countries: string[]): { error: string } | 
   if (country === GLOBAL ? section === 'client' : !countries.includes(country)) {
     return { error: section === 'client' ? 'Pick the country of the client' : 'Pick a country or Global' };
   }
-  // lessons have no company of their own, except a SAPESCO or Gulf Energy copy (6z.27), which keeps it
+  // a lesson may say whose it is (6z.28): NESR, SAPESCO or Gulf Energy; none given means NESR
   const given = text(b.company, 40);
-  const company = hasCompany(section) ? given : section === 'lesson' && (SOP_COMPANIES as readonly string[]).includes(given) && given !== 'NESR' ? given : '';
+  const company = hasCompany(section) || (section === 'lesson' && (SOP_COMPANIES as readonly string[]).includes(given)) ? given : '';
   if (hasCompany(section) && !(SOP_COMPANIES as readonly string[]).includes(company)) return { error: 'Pick the company: NESR, SAPESCO or Gulf Energy' };
   const client = section === 'client' ? text(b.client, 120) : '';
   if (section === 'client' && !client) return { error: 'Name the client' };

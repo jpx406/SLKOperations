@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_COPY_SETTINGS, copyKind, makeCompanySlides, mayHaveCopies } from '../src/shared/companyCopy';
+import { DEFAULT_COPY_SETTINGS, copyKind, copyTargets, makeCompanySlides, mayHaveCopies, nesrNumber } from '../src/shared/companyCopy';
 import { checkDoc, nextQaf, qafNumber } from '../src/shared/knowledge';
 import { editableAccept, editableProblem, guessType, splitBase, submitProblems } from '../src/shared/knowledgeControl';
 import { zip } from '../src/shared/xlsx';
@@ -61,18 +61,26 @@ describe('lessons: slides and company copies (6z.27)', () => {
     expect(editableProblem({ section: 'sop' }, 'SOP.pptx')).toMatch(/Word file/);
   });
 
-  it('lessons from any country have copies; a copy, or a SAPESCO lesson, has none', () => {
+  it('lessons from any country have copies: NESR lessons for SAPESCO and Gulf Energy, theirs a NESR version (6z.28); a copy has none', () => {
     expect(mayHaveCopies({ section: 'lesson', country: 'Saudi Arabia', company: null })).toBe(true);
+    expect(mayHaveCopies({ section: 'lesson', country: 'Oman', company: 'Gulf Energy' })).toBe(true);
     expect(mayHaveCopies({ section: 'lesson', country: 'Global', company: 'SAPESCO', copy_of: 'x' })).toBe(false);
+    expect(copyTargets({ section: 'lesson', company: 'NESR' })).toEqual(['SAPESCO', 'Gulf Energy']);
+    expect(copyTargets({ section: 'lesson', company: null })).toEqual(['SAPESCO', 'Gulf Energy']);
+    expect(copyTargets({ section: 'lesson', company: 'SAPESCO' })).toEqual(['NESR']);
+    expect(copyTargets({ section: 'sop', company: 'NESR' })).toEqual(['SAPESCO', 'Gulf Energy']);
+    expect(nesrNumber('SAP-LL-GL-004', 'SAP')).toBe('NESR-LL-GL-004');
+    expect(nesrNumber('LL-OM-002', 'GES')).toBe('NESR-LL-OM-002');
     expect(mayHaveCopies({ section: 'sop', country: 'Saudi Arabia', company: 'NESR' })).toBe(false);
     expect(copyKind({ section: 'lesson' })).toBe('slides');
     expect(copyKind({ section: 'swi' })).toBe('word');
   });
 
-  it('a lesson copy keeps its company when edited; a plain lesson has none', () => {
+  it('a lesson says whose it is: NESR, SAPESCO or Gulf Energy, none meaning NESR (6z.28)', () => {
     const l = { type: 'lesson_learnt', country: 'Global', title: 'Wire parted', category: 'Wireline' };
     expect(checkDoc({ ...l, company: 'SAPESCO' }, [])).toMatchObject({ doc: { company: 'SAPESCO' } });
-    expect(checkDoc({ ...l, company: 'NESR' }, [])).toMatchObject({ doc: { company: null } });
+    expect(checkDoc({ ...l, company: 'NESR' }, [])).toMatchObject({ doc: { company: 'NESR' } });
+    expect(checkDoc({ ...l, company: 'Someone' }, [])).toMatchObject({ doc: { company: null } });
   });
 });
 
@@ -145,6 +153,24 @@ describe('lesson copies in PowerPoint (6z.27)', () => {
     expect(s('ppt/slideMasters/slideMaster1.xml')).toContain('SAPESCO');
     expect(r.leftovers).toEqual([]);
     expect(r.changes.map((c) => c.label)).toContain('Slide masters, layouts, theme and logo from the template');
+  });
+
+  it('turns a SAPESCO lesson back into a NESR one, in the NESR presentation (6z.28)', async () => {
+    const t = DEFAULT_COPY_SETTINGS.companies.SAPESCO;
+    const sap = await makeCompanySlides(nesrDeck(), sapDeck(), { t, nesrColours: ['024800'] });
+    const r = await makeCompanySlides(sap.bytes, nesrDeck(), { t, nesrColours: ['024800'], toNesr: true });
+    const out = await unzip(r.bytes, true);
+    const s = (k: string) => td.decode(out.get(k)!);
+    const all = s('ppt/slides/slide1.xml') + s('ppt/slides/slide2.xml');
+    expect(all).toContain('NESR');
+    expect(all).toContain('National Energy Services Reunited');
+    expect(all).toContain('NESR-8000-SOP-11');
+    expect(all).toContain('val="024800"');
+    expect(all).not.toMatch(/SAPESCO|Sahara|SAP-|EE0000/);
+    // the NESR deck's own two slides were taken out, the two lesson slides put in
+    expect(s('ppt/presentation.xml').match(/<p:sldId /g)).toHaveLength(2);
+    expect(r.leftovers).toEqual([]);
+    expect(r.changes.map((c) => c.label)).toEqual(expect.arrayContaining(['SAPESCO → NESR', 'SAP numbers → NESR', 'Sahara Petroleum Services → National Energy Services Reunited']));
   });
 
   it('refuses files that are not presentations', async () => {

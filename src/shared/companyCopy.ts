@@ -33,7 +33,14 @@ export interface CompanyTemplate {
   slides?: TemplateFile | null;
 }
 export interface TemplateFile { key: string; file_name: string; uploaded_at: string; uploaded_by: string }
-export interface CopySettings { nesrColours: string[]; companies: Record<CopyCompany, CompanyTemplate> }
+export interface CopySettings {
+  nesrColours: string[]; companies: Record<CopyCompany, CompanyTemplate>;
+  /** NESR's own presentation, for NESR versions of SAPESCO and Gulf Energy lessons (6z.28). */
+  nesrSlides?: TemplateFile | null;
+}
+/** Who a copy is for: SAPESCO or Gulf Energy from NESR, or NESR from a SAPESCO or Gulf Energy lesson (6z.28). */
+export type CopyTarget = CopyCompany | 'NESR';
+export const isCopyCompany = (v: unknown): v is CopyCompany => (COPY_COMPANIES as readonly unknown[]).includes(v);
 
 const noApprovers = (): Record<ApproverRole, string> => ({ prepared: '', reviewed: '', segment: '', corporate: '' });
 export const DEFAULT_COPY_SETTINGS: CopySettings = {
@@ -69,14 +76,14 @@ export function checkCopySettings(b: unknown, current: CopySettings = DEFAULT_CO
       approvers: Object.fromEntries(APPROVER_ROLES.map((k) => [k, str(ap?.[k], 120)])) as Record<ApproverRole, string>,
     };
   }
-  return { value: { nesrColours: [...new Set(nesr)], companies } };
+  return { value: { nesrColours: [...new Set(nesr)], companies, nesrSlides: current.nesrSlides ?? null } };
 }
 
 export function copySettingsOf(raw: unknown): CopySettings {
   const r = (raw ?? {}) as Partial<CopySettings>;
   const companies = { ...DEFAULT_COPY_SETTINGS.companies };
   for (const co of COPY_COMPANIES) if (r.companies?.[co]) companies[co] = { ...DEFAULT_COPY_SETTINGS.companies[co], ...r.companies[co] };
-  return { nesrColours: r.nesrColours?.length ? r.nesrColours : DEFAULT_COPY_SETTINGS.nesrColours, companies };
+  return { nesrColours: r.nesrColours?.length ? r.nesrColours : DEFAULT_COPY_SETTINGS.nesrColours, companies, nesrSlides: r.nesrSlides ?? null };
 }
 
 /**
@@ -84,7 +91,10 @@ export function copySettingsOf(raw: unknown): CopySettings {
  * from any country (PowerPoint, 6z.27). A copy has none of its own.
  */
 export const mayHaveCopies = (d: { section: string; country: string; company: string | null; copy_of?: string | null }) =>
-  !d.copy_of && (d.section === 'lesson' ? !d.company || d.company === 'NESR' : (d.section === 'sop' || d.section === 'swi') && d.country === 'Global' && d.company === 'NESR');
+  !d.copy_of && (d.section === 'lesson' || ((d.section === 'sop' || d.section === 'swi') && d.country === 'Global' && d.company === 'NESR'));
+/** A NESR document gets SAPESCO and Gulf Energy copies; a SAPESCO or Gulf Energy lesson gets a NESR version (6z.28). */
+export const copyTargets = (d: { section: string; company: string | null }): CopyTarget[] =>
+  d.section === 'lesson' && isCopyCompany(d.company) ? ['NESR'] : [...COPY_COMPANIES];
 /** Which template a document's copies are made with: slides for lessons, Word for SOPs and SWIs. */
 export const copyKind = (d: { section: string }): 'slides' | 'word' => (d.section === 'lesson' ? 'slides' : 'word');
 
@@ -94,6 +104,13 @@ export function copyNumber(no: string | null, prefix: string): string | null {
   if (/^NESR(?=[-_ ])/i.test(no)) return no.replace(/^NESR/i, prefix);
   if (/-NESR(?=-|$)/i.test(no)) return no.replace(/-NESR(?=-|$)/i, `-${prefix}`);
   return `${prefix}-${no}`;
+}
+
+/** A NESR version's number (6z.28): SAP-LL-GL-004 → NESR-LL-GL-004; one without the company prefix gets NESR in front. */
+export function nesrNumber(no: string | null, prefix: string): string | null {
+  if (!no) return null;
+  const re = new RegExp('^' + prefix.replace(/[^A-Z0-9]/gi, '') + '(?=[-_ ])', 'i');
+  return re.test(no) ? no.replace(re, 'NESR') : copyNumber(no, 'NESR');
 }
 
 // ---- the paragraph engine --------------------------------------------------------------------------------------
@@ -189,6 +206,16 @@ export function textRules(t: CompanyTemplate): Rule[] {
     { label: `National Energy Services Reunited → ${t.longName || t.name}`, find: /National Energy Services Reunited(?: Corp(?:oration)?\.?)?/g, to: t.longName || t.name },
     { label: `NESR numbers → ${t.prefix}`, find: /\bNESR(?=-[A-Z0-9])/g, to: t.prefix },
     { label: `NESR → ${t.name}`, find: /\bNESR\b/g, to: t.name },
+  ];
+}
+
+/** The text changes back to NESR from a company's lesson (6z.28): its full name, its number prefix, its name, and its extra words the other way round. */
+export function nesrRules(t: CompanyTemplate): Rule[] {
+  return [
+    ...t.words.filter((w) => w.from && w.to).map((w) => ({ label: `“${w.to}” → “${w.from}”`, find: new RegExp(reEsc(w.to), 'g'), to: w.from })),
+    ...(t.longName ? [{ label: `${t.longName} → National Energy Services Reunited`, find: new RegExp(reEsc(t.longName), 'g'), to: 'National Energy Services Reunited' }] : []),
+    { label: `${t.prefix} numbers → NESR`, find: new RegExp(`\\b${reEsc(t.prefix)}(?=-[A-Z0-9])`, 'g'), to: 'NESR' },
+    { label: `${t.name} → NESR`, find: new RegExp(`\\b${reEsc(t.name)}\\b`, 'g'), to: 'NESR' },
   ];
 }
 
@@ -424,7 +451,7 @@ const partNo = (p: string) => Number(/(\d+)\.xml$/.exec(p)?.[1] ?? 0);
 /**
  * Makes the company PowerPoint file. `source` is the NESR .pptx, `template` one of the company's own presentations.
  */
-export async function makeCompanySlides(source: Uint8Array, template: Uint8Array, opts: { t: CompanyTemplate; nesrColours: string[] }): Promise<CopyResult> {
+export async function makeCompanySlides(source: Uint8Array, template: Uint8Array, opts: { t: CompanyTemplate; nesrColours: string[]; toNesr?: boolean }): Promise<CopyResult> {
   let files: Map<string, Uint8Array>, out: Map<string, Uint8Array>;
   try { files = await unzip(source, true); } catch { throw new Error('The editable file is not a PowerPoint file (.pptx)'); }
   try { out = await unzip(template, true); } catch { throw new Error('The company template is not a PowerPoint file (.pptx)'); }
@@ -432,7 +459,10 @@ export async function makeCompanySlides(source: Uint8Array, template: Uint8Array
   if (!out.has('ppt/presentation.xml')) throw new Error('The company template is not a PowerPoint file (.pptx)');
   const { t } = opts;
   const counts = new Map<string, number>();
-  const rules = textRules(t);
+  // NESR to the company, or (6z.28) the company's lesson back to NESR
+  const rules = opts.toNesr ? nesrRules(t) : textRules(t);
+  const fromColours = opts.toNesr ? [t.colour] : opts.nesrColours, toColour = opts.toNesr ? opts.nesrColours[0] ?? '024800' : t.colour;
+  const leftWord = opts.toNesr ? new RegExp(`\\b${reEsc(t.name)}\\b`, 'gi') : /NESR/gi;
   const src = (k: string) => td.decode(files.get(k) ?? new Uint8Array());
   const get = (k: string) => td.decode(out.get(k) ?? new Uint8Array());
   let ct = get('[Content_Types].xml');
@@ -484,7 +514,7 @@ export async function makeCompanySlides(source: Uint8Array, template: Uint8Array
     if (type) ct = ct.replace(/(<Types\b[^>]*>)/, `$1<Default Extension="${ext}" ContentType="${type}"/>`);
   };
   const editText = (xml: string) => {
-    const coloured = recolour(xml, opts.nesrColours, t.colour, counts);
+    const coloured = recolour(xml, fromColours, toColour, counts);
     const paras = paragraphs(coloured, 'a');
     applyRules(paras, rules, counts);
     return rebuild(coloured, paras, 'a');
@@ -547,7 +577,7 @@ export async function makeCompanySlides(source: Uint8Array, template: Uint8Array
   for (const p of slideName.values()) {
     for (const para of paragraphs(get(p), 'a')) {
       const s = joined(para);
-      for (const m of s.matchAll(/NESR/gi)) leftovers.add(s.slice(Math.max(0, m.index! - 30), m.index! + 34).trim());
+      for (const m of s.matchAll(leftWord)) leftovers.add(s.slice(Math.max(0, m.index! - 30), m.index! + 34).trim());
     }
   }
   return {

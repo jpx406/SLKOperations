@@ -198,7 +198,7 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
         {lib.docs.map((d) => (
           <li key={d.id}>
             <Card className={cx('flex h-full flex-col', (d.duplicate_of || !d.published_at) && 'opacity-80')}>
-              <p className="label-caps flex flex-wrap items-center gap-1.5 text-text-muted">{d.doc_type && DOC_TYPES[d.doc_type]} · {d.country}{d.copy_of && ` · ${d.company} copy`}{d.duplicate_of && ' · duplicate'} <DocState d={d} /></p>
+              <p className="label-caps flex flex-wrap items-center gap-1.5 text-text-muted">{d.doc_type && DOC_TYPES[d.doc_type]} · {d.country}{d.copy_of ? ` · ${d.company} copy` : d.company && d.company !== 'NESR' ? ` · ${d.company}` : ''}{d.duplicate_of && ' · duplicate'} <DocState d={d} /></p>
               <h3 className="mt-1 font-display text-base font-bold"><button type="button" className="text-left hover:underline" onClick={() => onRead(d)}>{d.title}</button></h3>
               {d.summary && <p className="mt-1 line-clamp-3 text-sm text-text-muted">{d.summary}</p>}
               {d.failure_types.length > 0 && <p className="mt-2 flex flex-wrap gap-1">{d.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
@@ -498,7 +498,7 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
       if (source) await uploadFile(id, source, 'source');
       qc.invalidateQueries({ queryKey: ['knowledge-forms-record'] });
       // a global NESR SOP or SWI with its Word file, or a lesson with its slides: offer the SAPESCO and Gulf Energy copies (6z.21, 6z.27)
-      onClose(true, id, mayHaveCopies({ section: sec, country: f.country, company: lesson ? null : f.company }) && !!source && (lesson ? /\.pptx$/i : /\.docx$/i).test(source.name));
+      onClose(true, id, mayHaveCopies({ section: sec, country: f.country, company: f.company }) && !!source && (lesson ? /\.pptx$/i : /\.docx$/i).test(source.name));
     } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   const hint = (k: string, h?: string) => (read?.filled.has(k) ? `Read from the document${h ? `. ${h}` : ''}` : h);
@@ -543,7 +543,7 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
         <Field id="kd-country" label={sec === 'client' ? 'Country' : 'Country or Global'} hint={hint('country')}>
           <Select id="kd-country" className={inputClass} value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>{placeOptions.map((c) => <option key={c}>{c}</option>)}</Select>
         </Field>
-        {hasCompany(sec) && (
+        {(hasCompany(sec) || lesson) && (
           <Field id="kd-company" label="Company" hint={hint('company')}>
             <Select id="kd-company" className={inputClass} value={f.company} onChange={(e) => setF({ ...f, company: e.target.value })}>{SOP_COMPANIES.map((c) => <option key={c}>{c}</option>)}</Select>
           </Field>

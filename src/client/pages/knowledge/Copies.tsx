@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, Download, Plus, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
 import {
-  APPROVER_LABEL, APPROVER_ROLES, COPY_COMPANIES, COPY_STATE, copyKind, copyNumber, copyState, mayHaveCopies, type CopyCompany, type CopySettings, type CopyState,
+  APPROVER_LABEL, APPROVER_ROLES, COPY_COMPANIES, COPY_STATE, copyKind, copyNumber, copyState, copyTargets, isCopyCompany, mayHaveCopies, nesrNumber, type CopyCompany, type CopySettings, type CopyState, type CopyTarget,
 } from '../../../shared/companyCopy';
 import type { KnowledgeDoc } from '../../../shared/knowledge';
 import { ApiError, api, formatDate } from '../../api';
@@ -19,14 +19,14 @@ const KIND = {
   slides: { file: 'PowerPoint file', app: 'PowerPoint', ext: '.pptx', tpl: 'one of the company’s own presentations: the copy takes its slide masters, layouts, theme and logo' },
 } as const;
 
-const SWATCH: Record<CopyCompany, string> = { SAPESCO: '#EE0000', 'Gulf Energy': '#863A3A' };
+const SWATCH: Record<CopyTarget, string> = { SAPESCO: '#EE0000', 'Gulf Energy': '#863A3A', NESR: '#024800' };
 const TONE: Record<CopyState, string> = { draft: 'border-border text-text-muted', review: 'border-warning text-warning', approval: 'border-warning text-warning', behind: 'border-warning text-warning', current: 'border-success text-success' };
 
 interface SettingsReply { copies: CopySettings; isAdmin: boolean }
 const useCopySettings = () => useQuery({ queryKey: ['knowledge-settings'], queryFn: () => api<SettingsReply & Record<string, unknown>>('/knowledge/settings') });
 
 function Swatch({ company, colour }: { company: string; colour?: string }) {
-  return <span aria-hidden className="inline-block size-3 shrink-0 rounded-xs" style={{ background: colour ? `#${colour}` : SWATCH[company as CopyCompany] ?? 'currentColor' }} />;
+  return <span aria-hidden className="inline-block size-3 shrink-0 rounded-xs" style={{ background: colour ? `#${colour}` : SWATCH[company as CopyTarget] ?? 'currentColor' }} />;
 }
 
 export const copiesOf = (lib: Library, doc: KnowledgeDoc) => lib.docs.filter((d) => d.copy_of === doc.id);
@@ -81,9 +81,11 @@ export function CopiesPanel({ doc, lib, onOpen, onMake }: { doc: KnowledgeDoc; l
   if (!mayHaveCopies(doc) || !staff) return null;
   const copies = copiesOf(lib, doc);
   const mayMake = lib.me.admin || lib.me.editor;
+  // a SAPESCO or Gulf Energy lesson gets a NESR version instead (6z.28)
+  const toNesr = copyTargets(doc)[0] === 'NESR';
   return (
-    <section className="mt-4 rounded-md border border-border p-3" aria-label="Company copies">
-      <h3 className="font-display text-sm font-bold">SAPESCO and Gulf Energy copies</h3>
+    <section className="mt-4 rounded-md border border-border p-3" aria-label={toNesr ? 'NESR version' : 'Company copies'}>
+      <h3 className="font-display text-sm font-bold">{toNesr ? 'NESR version' : 'SAPESCO and Gulf Energy copies'}</h3>
       {copies.length ? (
         <ul className="mt-2 flex flex-col gap-1.5">
           {copies.map((c) => (
@@ -94,25 +96,28 @@ export function CopiesPanel({ doc, lib, onOpen, onMake }: { doc: KnowledgeDoc; l
             </li>
           ))}
         </ul>
-      ) : <p className="mt-1 text-sm text-text-muted">None yet. The app writes each company’s {KIND[copyKind(doc)].file} from this document’s editable version; an admin saves it as PDF and sends it for review.</p>}
-      {mayMake && <Button size="sm" className="mt-2" onClick={onMake}><Copy aria-hidden className="size-3.5" />{copies.length ? 'Make the copies again' : 'Make company copies'}</Button>}
+      ) : <p className="mt-1 text-sm text-text-muted">None yet. The app writes {toNesr ? 'the NESR' : 'each company’s'} {KIND[copyKind(doc)].file} from this document’s editable version; an admin saves it as PDF and sends it for review.</p>}
+      {mayMake && <Button size="sm" className="mt-2" onClick={onMake}><Copy aria-hidden className="size-3.5" />{toNesr ? (copies.length ? 'Make the NESR version again' : 'Make the NESR version') : copies.length ? 'Make the copies again' : 'Make company copies'}</Button>}
     </section>
   );
 }
 
-interface Made { company: CopyCompany; id: string; doc_no: string | null; revision: number; changes: { label: string; n: number }[]; leftovers: string[] }
+interface Made { company: CopyTarget; id: string; doc_no: string | null; revision: number; changes: { label: string; n: number }[]; leftovers: string[] }
 
 /** Asked after saving a global NESR SOP or SWI (and from its details): which company copies to make. */
 export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; onClose: (changed: boolean) => void; onOpen: (id: string) => void }) {
   const s = useCopySettings();
-  const [pick, setPick] = useState<Record<CopyCompany, boolean>>({ SAPESCO: true, 'Gulf Energy': true });
+  const [pick, setPick] = useState<Record<string, boolean>>({ SAPESCO: true, 'Gulf Energy': true, NESR: true });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ made: Made[]; skipped: { company: CopyCompany; reason: string }[] } | null>(null);
+  const [result, setResult] = useState<{ made: Made[]; skipped: { company: CopyTarget; reason: string }[] } | null>(null);
   const copies = s.data?.copies;
   const kind = copyKind(doc), K = KIND[kind];
-  const ready = (co: CopyCompany) => !!(kind === 'slides' ? copies?.companies[co].slides : copies?.companies[co].template);
-  const chosen = COPY_COMPANIES.filter((co) => pick[co] && ready(co));
+  // a NESR document's SAPESCO and Gulf Energy copies, or a SAPESCO or Gulf Energy lesson's NESR version (6z.28)
+  const targets = copyTargets(doc);
+  const from = isCopyCompany(doc.company) ? doc.company : null;
+  const ready = (co: CopyTarget) => !!(co === 'NESR' ? copies?.nesrSlides : kind === 'slides' ? copies?.companies[co].slides : copies?.companies[co].template);
+  const chosen = targets.filter((co) => pick[co] && ready(co));
   // when the stored editable version isn't a .docx, the Word file can be picked here, for the copies only
   const [needsWord, setNeedsWord] = useState(false);
   const make = async (word?: File) => {
@@ -126,8 +131,8 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
   };
   // an admin adds a missing template right here, without leaving the document
   const qc = useQueryClient();
-  const [adding, setAdding] = useState<CopyCompany | null>(null);
-  const addTemplate = async (co: CopyCompany, file: File | undefined) => {
+  const [adding, setAdding] = useState<CopyTarget | null>(null);
+  const addTemplate = async (co: CopyTarget, file: File | undefined) => {
     if (!file) return;
     setAdding(co); setError(null);
     try {
@@ -138,24 +143,26 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
   };
   const admin = !!s.data?.isAdmin;
   return (
-    <Dialog title="Make company copies?" onClose={() => onClose(!!result?.made.length)}>
+    <Dialog title={from ? 'Make the NESR version?' : 'Make company copies?'} onClose={() => onClose(!!result?.made.length)}>
       <p className="text-sm text-text-muted"><span className="font-mono">{doc.doc_no}</span> · {doc.title}</p>
       {error && <div className="mt-2"><Banner tone="danger">{error}</Banner></div>}
       {s.isLoading && <Skeleton className="mt-3 h-24" />}
       {copies && !result && (
         <>
           <div className="mt-3 flex flex-col gap-2">
-            {COPY_COMPANIES.map((co) => {
-              const t = copies.companies[co];
+            {targets.map((co) => {
+              const t = copies.companies[co === 'NESR' ? from! : co];
+              const colour = co === 'NESR' ? copies.nesrColours[0] : t.colour;
+              const no = co === 'NESR' ? nesrNumber(doc.doc_no, t.prefix) : copyNumber(doc.doc_no, t.prefix);
               const noNames = !Object.values(t.approvers).some(Boolean);
               return (
                 <div key={co} className="flex items-start gap-3 rounded-md border border-border p-3">
                   <input id={`mc-${co}`} type="checkbox" className="mt-1 size-4" disabled={!ready(co)} checked={pick[co] && ready(co)} onChange={(e) => setPick({ ...pick, [co]: e.target.checked })} />
                   <div className="min-w-0 flex-1">
-                    <label htmlFor={`mc-${co}`} className={cx('flex items-center gap-2 font-semibold', !ready(co) && 'text-text-muted')}><Swatch company={co} colour={t.colour} />{co}</label>
+                    <label htmlFor={`mc-${co}`} className={cx('flex items-center gap-2 font-semibold', !ready(co) && 'text-text-muted')}><Swatch company={co} colour={colour} />{co}</label>
                     {ready(co) ? (
                       <p className="text-xs text-text-muted">
-                        {kind === 'slides' ? 'Slides' : 'Word'} copy <span className="font-mono">{copyNumber(doc.doc_no, t.prefix) ?? doc.title}</span> in {kind === 'slides' ? `Lessons › ${doc.country}` : `${doc.section === 'swi' ? 'SWI' : 'SOP'} › Global › ${co}`}
+                        {kind === 'slides' ? 'Slides' : 'Word'} copy <span className="font-mono">{no ?? doc.title}</span> in {kind === 'slides' ? `Lessons › ${doc.country}` : `${doc.section === 'swi' ? 'SWI' : 'SOP'} › Global › ${co}`}
                         {kind === 'word' && noNames && <span className="block">Cover names: kept from the NESR document until an admin sets {co}’s in Settings.</span>}
                       </p>
                     ) : admin ? (
@@ -165,6 +172,7 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
                           <input type="file" accept={K.ext} className="sr-only" disabled={!!adding} onChange={(e) => addTemplate(co, e.target.files?.[0])} /></label>
                       </>
                     ) : <p className="text-xs text-text-muted">No {co} {kind === 'slides' ? 'slides ' : ''}template yet. Ask an admin to add it in Knowledge Hub › Doc Control › Settings › Company templates.</p>}
+                    {co === 'NESR' && <p className="text-xs text-text-muted">The text changes back from {from}: {t.name} to NESR, {t.prefix}- numbers to NESR-, its colour to NESR green.</p>}
                   </div>
                 </div>
               );
@@ -177,7 +185,7 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
               <label className={cx(linkBtn, 'h-(--layout-control-md) cursor-pointer', (busy || !chosen.length) && 'pointer-events-none opacity-50')}><Upload aria-hidden className="size-4" />Pick the {K.ext} file
                 <input type="file" accept={K.ext} className="sr-only" disabled={busy || !chosen.length} onChange={(e) => { const f = e.target.files?.[0]; if (f) make(f); }} /></label>
             )}
-            <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={() => make()}><Copy aria-hidden className="size-4" />{!chosen.length ? 'Make copies' : chosen.length === 1 ? 'Make the copy' : `Make ${chosen.length} copies`}</Button>
+            <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={() => make()}><Copy aria-hidden className="size-4" />{from ? 'Make the NESR version' : !chosen.length ? 'Make copies' : chosen.length === 1 ? 'Make the copy' : `Make ${chosen.length} copies`}</Button>
           </div>
         </>
       )}
@@ -187,7 +195,7 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
             <div key={m.id} className="rounded-md border border-border p-3">
               <p className="flex flex-wrap items-center gap-2 font-semibold"><Swatch company={m.company} />{m.company} <span className="font-mono text-sm font-normal">{m.doc_no}</span> <span className="text-sm font-normal text-text-muted">Rev {m.revision} draft</span></p>
               <ul className="mt-1 list-disc pl-5 text-xs text-text-muted">{m.changes.map((c) => <li key={c.label}>{c.label}{c.n > 1 ? ` (${c.n})` : ''}</li>)}</ul>
-              {m.leftovers.length > 0 && <div className="mt-2"><Banner tone="warning">Check: {m.leftovers.map((x) => (/^The slide size/.test(x) ? x : `still says NESR “…${x}…”`)).join(' · ')}. Fix it in {K.app} before making the PDF.</Banner></div>}
+              {m.leftovers.length > 0 && <div className="mt-2"><Banner tone="warning">Check: {m.leftovers.map((x) => (/^The slide size/.test(x) ? x : `still says ${from ?? 'NESR'} “…${x}…”`)).join(' · ')}. Fix it in {K.app} before making the PDF.</Banner></div>}
               <Button size="sm" className="mt-2" onClick={() => { onClose(true); onOpen(m.id); }}>Open the copy</Button>
             </div>
           ))}
@@ -220,7 +228,7 @@ function TemplatesForm({ data, onSaved }: { data: SettingsReply; onSaved: () => 
     try { await api('/knowledge/settings/copies', { method: 'PUT', json: v }); setMsg({ tone: 'success', text: 'Company templates saved' }); onSaved(); }
     catch (e) { setMsg({ tone: 'danger', text: (e as ApiError).message }); } finally { setBusy(null); }
   };
-  const upload = async (co: CopyCompany, file: File | undefined, slides = false) => {
+  const upload = async (co: CopyTarget, file: File | undefined, slides = false) => {
     if (!file) return;
     setBusy(slides ? `${co}-slides` : co); setMsg(null);
     try {
@@ -289,11 +297,31 @@ function TemplatesForm({ data, onSaved }: { data: SettingsReply; onSaved: () => 
         })}
       </div>
       <div className="mt-3 max-w-sm">
+        <NesrSlides v={v} admin={admin} busy={busy} upload={(f) => upload('NESR', f, true)} />
         <Field id="ct-nesr" label="NESR colours to replace (hex, comma separated)" hint="The cover blocks and table borders of NESR documents use 024800">
           <input id="ct-nesr" className={inputClass} disabled={!admin} value={v.nesrColours.join(', ')} onChange={(e) => setV({ ...v, nesrColours: e.target.value.split(',').map((x) => x.trim().replace('#', '').toUpperCase()).filter(Boolean) })} />
         </Field>
       </div>
       {admin ? <Button variant="primary" className="mt-3" loading={busy === 'save'} onClick={save}>Save company templates</Button> : <p className="mt-3 text-sm text-text-muted">Only an admin changes the company templates.</p>}
     </Card>
+  );
+}
+
+/** NESR's own presentation (6z.28): NESR versions of SAPESCO and Gulf Energy lessons are built in it. */
+function NesrSlides({ v, admin, busy, upload }: { v: CopySettings; admin: boolean; busy: string | null; upload: (f: File | undefined) => void }) {
+  const t = v.nesrSlides;
+  return (
+    <section className="mb-3 rounded-md border border-border border-t-4 p-3" style={{ borderTopColor: `#${v.nesrColours[0] ?? '024800'}` }} aria-label="NESR slides template">
+      <h3 className="font-display text-sm font-bold">NESR</h3>
+      <p className="mt-1 text-xs text-text-muted">For NESR versions of SAPESCO and Gulf Energy lessons: one of NESR’s own presentations. The company’s name, number prefix and colour (set above) change back to NESR.</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+        {t
+          ? <><span className="min-w-0 flex-1 basis-48 break-words"><span className="label-caps mr-1 text-text-muted">Slides</span>{t.file_name}<span className="block text-xs text-text-muted">Added {formatDate(t.uploaded_at.slice(0, 10))}</span></span>
+            <a className={linkBtn} href="/api/knowledge/settings/copies/NESR/template?kind=slides" download={t.file_name}><Download aria-hidden className="size-3.5" />Download</a></>
+          : <span className="flex-1 text-warning">No NESR slides template yet: NESR versions of lessons can’t be made.</span>}
+        {admin && <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{busy === 'NESR-slides' ? 'Saving…' : t ? 'Replace' : 'Add the PowerPoint template'}
+          <input type="file" accept=".pptx" className="sr-only" disabled={!!busy} onChange={(e) => upload(e.target.files?.[0])} /></label>}
+      </div>
+    </section>
   );
 }

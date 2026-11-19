@@ -10,7 +10,7 @@ import { costMicroUsd, limitCheck } from '../shared/ai';
 import { analysisPrompt, answerSchema, cleanSuggestion, extractText } from '../shared/docAnalysis';
 import { cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
 import { ADD_TYPES, type AddType } from '../shared/knowledge';
-import { COPY_COMPANIES, DEFAULT_COPY_SETTINGS, checkCopySettings, copyKind, copyNumber, copySettingsOf, makeCompanyCopy, makeCompanySlides, mayHaveCopies, type CopyCompany, type CopySettings } from '../shared/companyCopy';
+import { COPY_COMPANIES, DEFAULT_COPY_SETTINGS, checkCopySettings, copyKind, copyNumber, copySettingsOf, copyTargets, nesrNumber, isCopyCompany, makeCompanyCopy, makeCompanySlides, mayHaveCopies, type CopySettings, type CopyTarget } from '../shared/companyCopy';
 
 const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -240,7 +240,6 @@ knowledge.get('/settings', async (c) => {
 // ---- company copies of global NESR SOPs and SWIs (6z.21) ----------------------------------------------------------
 
 const copySettings = async (env: Env): Promise<CopySettings> => copySettingsOf(await setting<CopySettings>(env, 'copies', DEFAULT_COPY_SETTINGS));
-const isCopyCompany = (v: unknown): v is CopyCompany => (COPY_COMPANIES as readonly unknown[]).includes(v);
 const putSetting = (env: Env, user: AuthedUser, key: string, v: unknown) => env.DB.prepare(`INSERT INTO knowledge_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
   ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`).bind(key, JSON.stringify(v), user.username, now());
 
@@ -261,11 +260,12 @@ knowledge.post('/settings/copies/:company/template', async (c) => {
   if (user.role !== 'admin') return c.json({ error: 'Only an admin changes the company templates' }, 403);
   if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
   const co = c.req.param('company');
-  if (!isCopyCompany(co)) return c.json({ error: 'Pick SAPESCO or Gulf Energy' }, 400);
+  const slides = c.req.query('kind') === 'slides';
+  // NESR has a slides template too, for NESR versions of SAPESCO and Gulf Energy lessons (6z.28)
+  if (!isCopyCompany(co) && !(co === 'NESR' && slides)) return c.json({ error: 'Pick SAPESCO or Gulf Energy' }, 400);
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   const ok = checkUpload(decodeURIComponent(c.req.header('x-file-name') ?? ''), bytes.length);
   if ('error' in ok) return c.json({ error: ok.error }, 400);
-  const slides = c.req.query('kind') === 'slides';
   const parts = await unzip(bytes).catch(() => null);
   if (slides) {
     if (!/\.pptx$/i.test(ok.name)) return c.json({ error: 'The slides template is a PowerPoint file (.pptx): one of the company’s own presentations' }, 400);
@@ -280,7 +280,8 @@ knowledge.post('/settings/copies/:company/template', async (c) => {
   await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username } });
   const s = await copySettings(c.env);
   const file = { key, file_name: ok.name, uploaded_at: now(), uploaded_by: user.username };
-  s.companies[co] = { ...s.companies[co], ...(slides ? { slides: file } : { template: file }) };
+  if (isCopyCompany(co)) s.companies[co] = { ...s.companies[co], ...(slides ? { slides: file } : { template: file }) };
+  else s.nesrSlides = file;
   await c.env.DB.batch([putSetting(c.env, user, 'copies', s), audit(c.env, user, 'upload', 'copies', `${co} ${slides ? 'slides ' : ''}template “${ok.name}”`, 'knowledge_settings')]);
   return c.json({ ok: true, copies: s });
 });
@@ -290,8 +291,9 @@ knowledge.get('/settings/copies/:company/template', async (c) => {
   if (!isStaff(p)) return c.json({ error: 'Templates are for editors, reviewers and approvers' }, 403);
   const co = c.req.param('company');
   const slides = c.req.query('kind') === 'slides';
-  const cs = isCopyCompany(co) ? (await copySettings(c.env)).companies[co] : null;
-  const t = cs ? (slides ? cs.slides : cs.template) : null;
+  const all = await copySettings(c.env);
+  const cs = isCopyCompany(co) ? all.companies[co] : null;
+  const t = co === 'NESR' && slides ? all.nesrSlides : cs ? (slides ? cs.slides : cs.template) : null;
   if (!t || !c.env.FILES) return c.json({ error: 'No template yet' }, 404);
   const obj = await c.env.FILES.get(t.key);
   if (!obj) return c.json({ error: 'The template is missing from storage' }, 404);
@@ -318,7 +320,10 @@ knowledge.post('/:id/copies', async (c) => {
   if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
   const d = await find(c.env, c.req.param('id'));
   if (!d || d.retired_at) return c.json({ error: 'Document not found' }, 404);
-  if (!mayHaveCopies(d)) return c.json({ error: 'Only global NESR SOPs and SWIs, and lessons, get SAPESCO and Gulf Energy copies' }, 400);
+  if (!mayHaveCopies(d)) return c.json({ error: 'Only global NESR SOPs and SWIs, and lessons, get company copies' }, 400);
+  // a NESR document gets SAPESCO and Gulf Energy copies; a SAPESCO or Gulf Energy lesson gets a NESR version (6z.28)
+  const targets = copyTargets(d);
+  const fromCo = isCopyCompany(d.company) ? d.company : null;
   // lessons are copied as slides (6z.27), SOPs and SWIs as Word files
   const slides = copyKind(d) === 'slides';
   const ext = slides ? 'pptx' : 'docx', fileType = slides ? PPTX : DOCX, what = slides ? 'PowerPoint file (.pptx)' : 'Word file (.docx)';
@@ -326,8 +331,8 @@ knowledge.post('/:id/copies', async (c) => {
   // editable version is not a .docx (an older .doc, for example): used only to make the copies, the NESR record is untouched
   const given = /octet-stream/.test(c.req.header('content-type') ?? '');
   const b = given ? { companies: (c.req.query('companies') ?? '').split(',').filter(Boolean) } : await c.req.json().catch(() => ({})) as { companies?: unknown };
-  const companies = (Array.isArray(b.companies) && b.companies.length ? b.companies : [...COPY_COMPANIES]).filter(isCopyCompany);
-  if (!companies.length) return c.json({ error: 'Pick SAPESCO, Gulf Energy or both' }, 400);
+  const companies = (Array.isArray(b.companies) && b.companies.length ? b.companies : targets).filter((x): x is CopyTarget => (targets as unknown[]).includes(x));
+  if (!companies.length) return c.json({ error: fromCo ? 'Pick NESR' : 'Pick SAPESCO, Gulf Energy or both' }, 400);
   let srcBytes: Uint8Array;
   let src: { file_name: string; revision: number; revision_date: string | null; expires_on: string | null };
   if (given) {
@@ -346,29 +351,31 @@ knowledge.post('/:id/copies', async (c) => {
       WHERE f.doc_id = ? AND f.superseded_at IS NULL AND v.status IN ('draft','review','approval','approved') AND (f.kind = 'source' OR (? AND lower(f.file_name) LIKE '%.pptx'))
       ORDER BY f.revision DESC, f.kind = 'source' DESC LIMIT 1`)
       .bind(d.id, slides ? 1 : 0).first<{ file_name: string; r2_key: string; revision: number; revision_date: string | null; expires_on: string | null }>();
-    if (!f) return c.json({ error: `Company copies are made from the NESR ${what}. Add it as the editable version, or pick the .${ext} file here.`, needsWord: true }, 400);
+    if (!f) return c.json({ error: `Company copies are made from the ${fromCo ?? 'NESR'} ${what}. Add it as the editable version, or pick the .${ext} file here.`, needsWord: true }, 400);
     if (!new RegExp(`\\.${ext}$`, 'i').test(f.file_name)) {
       return c.json({ error: slides
         ? `The editable version is “${f.file_name}”, not a .pptx PowerPoint file. Open it in PowerPoint, Save As › PowerPoint Presentation (.pptx), and pick that file here.`
         : `The editable version is “${f.file_name}”, not a .docx Word file. Open it in Word, Save As › Word Document (.docx), and pick that file here.`, needsWord: true }, 400);
     }
     const obj = await c.env.FILES.get(f.r2_key);
-    if (!obj) return c.json({ error: `The NESR file is missing from storage. Pick the .${ext} file here.`, needsWord: true }, 404);
+    if (!obj) return c.json({ error: `The ${fromCo ?? 'NESR'} file is missing from storage. Pick the .${ext} file here.`, needsWord: true }, 404);
     srcBytes = new Uint8Array(await obj.arrayBuffer());
     src = f;
   }
   const [settings, periods] = await Promise.all([copySettings(c.env), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS)]);
   const pad = (n: number) => String(n).padStart(2, '0');
-  const made: { company: CopyCompany; id: string; doc_no: string | null; revision: number; changes: { label: string; n: number }[]; leftovers: string[] }[] = [];
-  const skipped: { company: CopyCompany; reason: string }[] = [];
+  const made: { company: CopyTarget; id: string; doc_no: string | null; revision: number; changes: { label: string; n: number }[]; leftovers: string[] }[] = [];
+  const skipped: { company: CopyTarget; reason: string }[] = [];
 
   for (const co of companies) {
-    const t = settings.companies[co];
-    const tpl = slides ? t.slides : t.template;
+    // for a NESR version, the rules come from the lesson's own company, read the other way round
+    const toNesr = co === 'NESR';
+    const t = settings.companies[toNesr ? fromCo! : co];
+    const tpl = toNesr ? settings.nesrSlides : slides ? t.slides : t.template;
     if (!tpl) { skipped.push({ company: co, reason: `Add the ${co} ${slides ? 'slides ' : ''}template in Knowledge Hub › Doc Control › Settings first` }); continue; }
     const tplObj = await c.env.FILES.get(tpl.key);
     if (!tplObj) { skipped.push({ company: co, reason: `The ${co} template is missing from storage: upload it again in Settings` }); continue; }
-    const copyNo = copyNumber(d.doc_no, t.prefix);
+    const copyNo = toNesr ? nesrNumber(d.doc_no, t.prefix) : copyNumber(d.doc_no, t.prefix);
     const existing = await c.env.DB.prepare('SELECT id, revision, published_at FROM knowledge_docs WHERE copy_of = ? AND company = ? AND retired_at IS NULL')
       .bind(d.id, co).first<{ id: string; revision: number; published_at: string | null }>();
     const open = existing ? await openRev(c.env, existing.id) : null;
@@ -379,7 +386,7 @@ knowledge.post('/:id/copies', async (c) => {
     try {
       const tb = new Uint8Array(await tplObj.arrayBuffer());
       out = slides
-        ? await makeCompanySlides(srcBytes, tb, { t, nesrColours: settings.nesrColours })
+        ? await makeCompanySlides(srcBytes, tb, { t, nesrColours: settings.nesrColours, toNesr })
         : await makeCompanyCopy(srcBytes, tb, { t, nesrColours: settings.nesrColours, copyNo, revision: pad(src.revision), date: printedDate(src.revision_date) });
     } catch (e) { skipped.push({ company: co, reason: (e as Error).message }); continue; }
 
