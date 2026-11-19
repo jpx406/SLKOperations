@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_COPY_SETTINGS, copyKind, copyTargets, makeCompanySlides, mayHaveCopies, nesrNumber } from '../src/shared/companyCopy';
+import { DEFAULT_COPY_SETTINGS, checkCopySettings, copyKind, copyTargets, makeCompanySlides, mayHaveCopies, nesrNumber, slideKindOf, slideTemplate } from '../src/shared/companyCopy';
 import { checkDoc, filterLibrary, nextQaf, qafNumber, type KnowledgeDoc } from '../src/shared/knowledge';
 import { deletableDraft, editableAccept, editableProblem, guessType, mayDeleteDraft, splitBase, submitProblems } from '../src/shared/knowledgeControl';
 import { zip } from '../src/shared/xlsx';
@@ -212,5 +212,30 @@ describe('lessons by company (6z.31)', () => {
     expect(filterLibrary(docs, {}).companies).toEqual([{ value: 'NESR', n: 2 }, { value: 'Gulf Energy', n: 1 }, { value: 'SAPESCO', n: 1 }]);
     // the countries follow the company picked
     expect(filterLibrary(docs, { company: 'SAPESCO' }).places).toEqual([{ value: 'Saudi Arabia', n: 1 }]);
+  });
+});
+
+describe('best practice slides templates (6z.32)', () => {
+  const f = (name: string) => ({ key: name, file_name: name, uploaded_at: '2026-11-19T00:00:00Z', uploaded_by: 'x' });
+  it('a best practice uses its company’s best practice slides, else the lessons slides; a lesson always the lessons slides', () => {
+    const s = structuredClone(DEFAULT_COPY_SETTINGS);
+    expect(slideKindOf({ doc_type: 'best_practice' })).toBe('bp');
+    expect(slideKindOf({ doc_type: 'lesson_learnt' })).toBe('slides');
+    expect(slideTemplate(s, 'SAPESCO', 'bp')).toBeNull();
+    s.companies.SAPESCO.slides = f('sap-lessons.pptx');
+    expect(slideTemplate(s, 'SAPESCO', 'bp')).toEqual({ file: f('sap-lessons.pptx'), kind: 'slides' });
+    s.companies.SAPESCO.slidesBp = f('sap-bp.pptx');
+    expect(slideTemplate(s, 'SAPESCO', 'bp')).toEqual({ file: f('sap-bp.pptx'), kind: 'bp' });
+    expect(slideTemplate(s, 'SAPESCO', 'slides')?.file.file_name).toBe('sap-lessons.pptx');
+    s.nesrSlidesBp = f('nesr-bp.pptx');
+    expect(slideTemplate(s, 'NESR', 'bp')?.file.file_name).toBe('nesr-bp.pptx');
+    expect(slideTemplate(s, 'NESR', 'slides')).toBeNull();
+    expect(slideTemplate(s, 'Gulf Energy', 'bp')).toBeNull();
+  });
+  it('saving the company settings keeps the uploaded templates', () => {
+    const s = structuredClone(DEFAULT_COPY_SETTINGS);
+    s.companies['Gulf Energy'].slidesBp = f('ge-bp.pptx'); s.nesrSlidesBp = f('nesr-bp.pptx'); s.nesrSlides = f('nesr.pptx');
+    const r = checkCopySettings({ nesrColours: ['024800'] }, s);
+    expect(r).toMatchObject({ value: { nesrSlidesBp: { file_name: 'nesr-bp.pptx' }, nesrSlides: { file_name: 'nesr.pptx' }, companies: { 'Gulf Energy': { slidesBp: { file_name: 'ge-bp.pptx' } } } } });
   });
 });

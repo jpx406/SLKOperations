@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, Download, Plus, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
 import {
-  APPROVER_LABEL, APPROVER_ROLES, COPY_COMPANIES, COPY_STATE, copyKind, copyNumber, copyState, copyTargets, isCopyCompany, mayHaveCopies, nesrNumber, type CopyCompany, type CopySettings, type CopyState, type CopyTarget,
+  APPROVER_LABEL, APPROVER_ROLES, COPY_COMPANIES, COPY_STATE, SLIDE_KIND_LABEL, copyKind, copyNumber, copyState, copyTargets, isCopyCompany, mayHaveCopies, nesrNumber, slideKindOf, slideTemplate, type CopyCompany, type CopySettings, type CopyState, type CopyTarget, type SlideKind, type TemplateFile,
 } from '../../../shared/companyCopy';
 import type { KnowledgeDoc } from '../../../shared/knowledge';
 import { ApiError, api, formatDate } from '../../api';
@@ -116,7 +116,10 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
   // a NESR document's SAPESCO and Gulf Energy copies, or a SAPESCO or Gulf Energy lesson's NESR version (6z.28)
   const targets = copyTargets(doc);
   const from = isCopyCompany(doc.company) ? doc.company : null;
-  const ready = (co: CopyTarget) => !!(co === 'NESR' ? copies?.nesrSlides : kind === 'slides' ? copies?.companies[co].slides : copies?.companies[co].template);
+  // a best practice uses the best practice slides, else the lessons slides (6z.32)
+  const sk = slideKindOf(doc);
+  const used = (co: CopyTarget) => (copies && kind === 'slides' ? slideTemplate(copies, co, sk) : null);
+  const ready = (co: CopyTarget) => !!(kind === 'slides' ? used(co) : co !== 'NESR' && copies?.companies[co].template);
   const chosen = targets.filter((co) => pick[co] && ready(co));
   // when the stored editable version isn't a .docx, the Word file can be picked here, for the copies only
   const [needsWord, setNeedsWord] = useState(false);
@@ -136,7 +139,7 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
     if (!file) return;
     setAdding(co); setError(null);
     try {
-      await api(`/knowledge/settings/copies/${encodeURIComponent(co)}/template${kind === 'slides' ? '?kind=slides' : ''}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
+      await api(`/knowledge/settings/copies/${encodeURIComponent(co)}/template${kind === 'slides' ? `?kind=${sk}` : ''}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
       await qc.invalidateQueries({ queryKey: ['knowledge-settings'] });
       setPick((p) => ({ ...p, [co]: true }));
     } catch (e) { setError((e as ApiError).message); } finally { setAdding(null); }
@@ -163,12 +166,13 @@ export function MakeCopiesDialog({ doc, onClose, onOpen }: { doc: KnowledgeDoc; 
                     {ready(co) ? (
                       <p className="text-xs text-text-muted">
                         {kind === 'slides' ? 'Slides' : 'Word'} copy <span className="font-mono">{no ?? doc.title}</span> in {kind === 'slides' ? `Lessons › ${doc.country}` : `${doc.section === 'swi' ? 'SWI' : 'SOP'} › Global › ${co}`}
+                        {kind === 'slides' && used(co) && <span className="block">With {co}’s {SLIDE_KIND_LABEL[used(co)!.kind].toLowerCase()} template{sk === 'bp' && used(co)!.kind === 'slides' ? ' (no best practice template yet)' : ''}.</span>}
                         {kind === 'word' && noNames && <span className="block">Cover names: kept from the NESR document until an admin sets {co}’s in Settings.</span>}
                       </p>
                     ) : admin ? (
                       <>
                         <p className="text-xs text-text-muted">No {co} {kind === 'slides' ? 'slides ' : ''}template yet. Add {K.tpl.replace('the company’s', `${co}’s`)}.</p>
-                        <label className={cx(linkBtn, 'mt-2 cursor-pointer')}><Upload aria-hidden className="size-3.5" />{adding === co ? 'Saving the template…' : `Add the ${co} ${kind === 'slides' ? 'slides ' : ''}template (${K.ext})`}
+                        <label className={cx(linkBtn, 'mt-2 cursor-pointer')}><Upload aria-hidden className="size-3.5" />{adding === co ? 'Saving the template…' : `Add the ${co} ${kind === 'slides' ? (sk === 'bp' ? 'best practice ' : 'lessons ') : ''}template (${K.ext})`}
                           <input type="file" accept={K.ext} className="sr-only" disabled={!!adding} onChange={(e) => addTemplate(co, e.target.files?.[0])} /></label>
                       </>
                     ) : <p className="text-xs text-text-muted">No {co} {kind === 'slides' ? 'slides ' : ''}template yet. Ask an admin to add it in Knowledge Hub › Doc Control › Settings › Company templates.</p>}
@@ -228,18 +232,18 @@ function TemplatesForm({ data, onSaved }: { data: SettingsReply; onSaved: () => 
     try { await api('/knowledge/settings/copies', { method: 'PUT', json: v }); setMsg({ tone: 'success', text: 'Company templates saved' }); onSaved(); }
     catch (e) { setMsg({ tone: 'danger', text: (e as ApiError).message }); } finally { setBusy(null); }
   };
-  const upload = async (co: CopyTarget, file: File | undefined, slides = false) => {
+  const upload = async (co: CopyTarget, file: File | undefined, slides?: SlideKind) => {
     if (!file) return;
-    setBusy(slides ? `${co}-slides` : co); setMsg(null);
+    setBusy(slides ? `${co}-${slides}` : co); setMsg(null);
     try {
-      await api(`/knowledge/settings/copies/${encodeURIComponent(co)}/template${slides ? '?kind=slides' : ''}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
-      setMsg({ tone: 'success', text: `${co} ${slides ? 'slides ' : ''}template saved` }); onSaved();
+      await api(`/knowledge/settings/copies/${encodeURIComponent(co)}/template${slides ? `?kind=${slides}` : ''}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
+      setMsg({ tone: 'success', text: `${co} ${slides ? `${SLIDE_KIND_LABEL[slides].toLowerCase()} slides ` : ''}template saved` }); onSaved();
     } catch (e) { setMsg({ tone: 'danger', text: (e as ApiError).message }); } finally { setBusy(null); }
   };
   return (
     <Card>
       <h2 className="font-display text-base font-bold">Company templates</h2>
-      <p className="mt-1 text-sm text-text-muted">For SAPESCO and Gulf Energy copies of global NESR SOPs and SWIs (Word template: one of the company’s own SOPs, for its header, footer and logo) and of lessons (PowerPoint template: one of the company’s own presentations, for its slide masters, layouts, theme and logo). The colour replaces the NESR colour, the prefix replaces NESR in document numbers, and the name replaces NESR in the text. Cover names left blank keep the names in the NESR document.</p>
+      <p className="mt-1 text-sm text-text-muted">For SAPESCO and Gulf Energy copies of global NESR SOPs and SWIs (Word template: one of the company’s own SOPs, for its header, footer and logo) and of lessons (PowerPoint templates: the company’s own presentations, for their slide masters, layouts, theme and logo; one for lessons learnt and learnings from incidents, and one for best practices, which use the lessons one until it is added). The colour replaces the NESR colour, the prefix replaces NESR in document numbers, and the name replaces NESR in the text. Cover names left blank keep the names in the NESR document.</p>
       {msg && <div className="mt-2"><Banner tone={msg.tone}>{msg.text}</Banner></div>}
       <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {COPY_COMPANIES.map((co) => {
@@ -255,14 +259,8 @@ function TemplatesForm({ data, onSaved }: { data: SettingsReply; onSaved: () => 
                 {admin && <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{busy === co ? 'Saving…' : t.template ? 'Replace' : 'Add the Word template'}
                   <input type="file" accept=".docx" className="sr-only" disabled={!!busy} onChange={(e) => upload(co, e.target.files?.[0])} /></label>}
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2 text-sm">
-                {t.slides
-                  ? <><span className="min-w-0 flex-1 basis-48 break-words"><span className="label-caps mr-1 text-text-muted">Slides</span>{t.slides.file_name}<span className="block text-xs text-text-muted">Added {formatDate(t.slides.uploaded_at.slice(0, 10))}</span></span>
-                    <a className={linkBtn} href={`/api/knowledge/settings/copies/${encodeURIComponent(co)}/template?kind=slides`} download={t.slides.file_name}><Download aria-hidden className="size-3.5" />Download</a></>
-                  : <span className="flex-1 text-warning">No slides template yet: lesson copies can’t be made for {co}.</span>}
-                {admin && <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{busy === `${co}-slides` ? 'Saving…' : t.slides ? 'Replace' : 'Add the PowerPoint template'}
-                  <input type="file" accept=".pptx" className="sr-only" disabled={!!busy} onChange={(e) => upload(co, e.target.files?.[0], true)} /></label>}
-              </div>
+              <SlidesRow co={co} kind="slides" file={t.slides} admin={admin} busy={busy} upload={(f) => upload(co, f, 'slides')} />
+              <SlidesRow co={co} kind="bp" file={t.slidesBp} admin={admin} busy={busy} upload={(f) => upload(co, f, 'bp')} />
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Field id={`ct-${co}-prefix`} label="Number prefix" hint={`NESR-8000-SOP-11 → ${copyNumber('NESR-8000-SOP-11', t.prefix || '?')}`}>
                   <input id={`ct-${co}-prefix`} className={inputClass} disabled={!admin} value={t.prefix} onChange={(e) => set(co, { prefix: e.target.value.toUpperCase() })} />
@@ -296,8 +294,8 @@ function TemplatesForm({ data, onSaved }: { data: SettingsReply; onSaved: () => 
           );
         })}
       </div>
+      <div className="mt-4 lg:max-w-[calc(50%-0.5rem)]"><NesrSlides v={v} admin={admin} busy={busy} upload={(f, k) => upload('NESR', f, k)} /></div>
       <div className="mt-3 max-w-sm">
-        <NesrSlides v={v} admin={admin} busy={busy} upload={(f) => upload('NESR', f, true)} />
         <Field id="ct-nesr" label="NESR colours to replace (hex, comma separated)" hint="The cover blocks and table borders of NESR documents use 024800">
           <input id="ct-nesr" className={inputClass} disabled={!admin} value={v.nesrColours.join(', ')} onChange={(e) => setV({ ...v, nesrColours: e.target.value.split(',').map((x) => x.trim().replace('#', '').toUpperCase()).filter(Boolean) })} />
         </Field>
@@ -308,20 +306,30 @@ function TemplatesForm({ data, onSaved }: { data: SettingsReply; onSaved: () => 
 }
 
 /** NESR's own presentation (6z.28): NESR versions of SAPESCO and Gulf Energy lessons are built in it. */
-function NesrSlides({ v, admin, busy, upload }: { v: CopySettings; admin: boolean; busy: string | null; upload: (f: File | undefined) => void }) {
-  const t = v.nesrSlides;
+function NesrSlides({ v, admin, busy, upload }: { v: CopySettings; admin: boolean; busy: string | null; upload: (f: File | undefined, k: SlideKind) => void }) {
   return (
     <section className="mb-3 rounded-md border border-border border-t-4 p-3" style={{ borderTopColor: `#${v.nesrColours[0] ?? '024800'}` }} aria-label="NESR slides template">
       <h3 className="font-display text-sm font-bold">NESR</h3>
-      <p className="mt-1 text-xs text-text-muted">For NESR versions of SAPESCO and Gulf Energy lessons: one of NESR’s own presentations. The company’s name, number prefix and colour (set above) change back to NESR.</p>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-        {t
-          ? <><span className="min-w-0 flex-1 basis-48 break-words"><span className="label-caps mr-1 text-text-muted">Slides</span>{t.file_name}<span className="block text-xs text-text-muted">Added {formatDate(t.uploaded_at.slice(0, 10))}</span></span>
-            <a className={linkBtn} href="/api/knowledge/settings/copies/NESR/template?kind=slides" download={t.file_name}><Download aria-hidden className="size-3.5" />Download</a></>
-          : <span className="flex-1 text-warning">No NESR slides template yet: NESR versions of lessons can’t be made.</span>}
-        {admin && <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{busy === 'NESR-slides' ? 'Saving…' : t ? 'Replace' : 'Add the PowerPoint template'}
-          <input type="file" accept=".pptx" className="sr-only" disabled={!!busy} onChange={(e) => upload(e.target.files?.[0])} /></label>}
-      </div>
+      <p className="mt-1 text-xs text-text-muted">For NESR versions of SAPESCO and Gulf Energy lessons and best practices: NESR’s own presentations. The company’s name, number prefix and colour (set above) change back to NESR.</p>
+      <SlidesRow co="NESR" kind="slides" file={v.nesrSlides} admin={admin} busy={busy} upload={(f) => upload(f, 'slides')} />
+      <SlidesRow co="NESR" kind="bp" file={v.nesrSlidesBp} admin={admin} busy={busy} upload={(f) => upload(f, 'bp')} />
     </section>
+  );
+}
+
+/** One slides template of a company (6z.32): lessons learnt and learnings from incidents, or best practices. */
+function SlidesRow({ co, kind, file, admin, busy, upload }: { co: CopyTarget; kind: SlideKind; file?: TemplateFile | null; admin: boolean; busy: string | null; upload: (f: File | undefined) => void }) {
+  const what = kind === 'bp' ? 'best practice' : 'lessons';
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2 text-sm">
+      {file
+        ? <><span className="min-w-0 flex-1 basis-48 break-words"><span className="label-caps mr-1 text-text-muted">{SLIDE_KIND_LABEL[kind]} slides</span>{file.file_name}<span className="block text-xs text-text-muted">Added {formatDate(file.uploaded_at.slice(0, 10))}</span></span>
+          <a className={linkBtn} href={`/api/knowledge/settings/copies/${encodeURIComponent(co)}/template?kind=${kind}`} download={file.file_name}><Download aria-hidden className="size-3.5" />Download</a></>
+        : <span className={cx('flex-1', kind === 'bp' ? 'text-text-muted' : 'text-warning')}>
+          <span className="label-caps mr-1">{SLIDE_KIND_LABEL[kind]} slides</span>
+          {kind === 'bp' ? 'None yet: best practices use the lessons slides.' : `None yet: ${co === 'NESR' ? 'NESR versions of lessons' : `${co} copies of lessons`} can’t be made.`}</span>}
+      {admin && <label className={cx(linkBtn, 'cursor-pointer')}><Upload aria-hidden className="size-3.5" />{busy === `${co}-${kind}` ? 'Saving…' : file ? 'Replace' : `Add the ${what} template (.pptx)`}
+        <input type="file" accept=".pptx" className="sr-only" disabled={!!busy} onChange={(e) => upload(e.target.files?.[0])} /></label>}
+    </div>
   );
 }

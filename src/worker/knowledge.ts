@@ -10,7 +10,7 @@ import { costMicroUsd, limitCheck } from '../shared/ai';
 import { analysisPrompt, answerSchema, cleanSuggestion, extractText } from '../shared/docAnalysis';
 import { cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
 import { ADD_TYPES, type AddType } from '../shared/knowledge';
-import { COPY_COMPANIES, DEFAULT_COPY_SETTINGS, checkCopySettings, copyKind, copyNumber, copySettingsOf, copyTargets, nesrNumber, isCopyCompany, makeCompanyCopy, makeCompanySlides, mayHaveCopies, type CopySettings, type CopyTarget } from '../shared/companyCopy';
+import { COPY_COMPANIES, DEFAULT_COPY_SETTINGS, checkCopySettings, copyKind, copyNumber, copySettingsOf, copyTargets, nesrNumber, slideKindOf, slideTemplate, isCopyCompany, makeCompanyCopy, makeCompanySlides, mayHaveCopies, type CopySettings, type CopyTarget } from '../shared/companyCopy';
 
 const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -260,8 +260,10 @@ knowledge.post('/settings/copies/:company/template', async (c) => {
   if (user.role !== 'admin') return c.json({ error: 'Only an admin changes the company templates' }, 403);
   if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
   const co = c.req.param('company');
-  const slides = c.req.query('kind') === 'slides';
-  // NESR has a slides template too, for NESR versions of SAPESCO and Gulf Energy lessons (6z.28)
+  // ?kind=slides for lessons, ?kind=bp for best practices (6z.32), else the Word template
+  const kind = c.req.query('kind') === 'bp' ? 'bp' : c.req.query('kind') === 'slides' ? 'slides' : 'word';
+  const slides = kind !== 'word';
+  // NESR has slides templates too, for NESR versions of SAPESCO and Gulf Energy lessons (6z.28)
   if (!isCopyCompany(co) && !(co === 'NESR' && slides)) return c.json({ error: 'Pick SAPESCO or Gulf Energy' }, 400);
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   const ok = checkUpload(decodeURIComponent(c.req.header('x-file-name') ?? ''), bytes.length);
@@ -280,9 +282,10 @@ knowledge.post('/settings/copies/:company/template', async (c) => {
   await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username } });
   const s = await copySettings(c.env);
   const file = { key, file_name: ok.name, uploaded_at: now(), uploaded_by: user.username };
-  if (isCopyCompany(co)) s.companies[co] = { ...s.companies[co], ...(slides ? { slides: file } : { template: file }) };
+  if (isCopyCompany(co)) s.companies[co] = { ...s.companies[co], ...(kind === 'bp' ? { slidesBp: file } : kind === 'slides' ? { slides: file } : { template: file }) };
+  else if (kind === 'bp') s.nesrSlidesBp = file;
   else s.nesrSlides = file;
-  await c.env.DB.batch([putSetting(c.env, user, 'copies', s), audit(c.env, user, 'upload', 'copies', `${co} ${slides ? 'slides ' : ''}template “${ok.name}”`, 'knowledge_settings')]);
+  await c.env.DB.batch([putSetting(c.env, user, 'copies', s), audit(c.env, user, 'upload', 'copies', `${co} ${kind === 'bp' ? 'best practice slides ' : slides ? 'slides ' : ''}template “${ok.name}”`, 'knowledge_settings')]);
   return c.json({ ok: true, copies: s });
 });
 
@@ -290,10 +293,11 @@ knowledge.get('/settings/copies/:company/template', async (c) => {
   const p = await controller(c.env, c.get('user'));
   if (!isStaff(p)) return c.json({ error: 'Templates are for editors, reviewers and approvers' }, 403);
   const co = c.req.param('company');
-  const slides = c.req.query('kind') === 'slides';
+  const kind = c.req.query('kind') === 'bp' ? 'bp' : c.req.query('kind') === 'slides' ? 'slides' : 'word';
+  const slides = kind !== 'word';
   const all = await copySettings(c.env);
   const cs = isCopyCompany(co) ? all.companies[co] : null;
-  const t = co === 'NESR' && slides ? all.nesrSlides : cs ? (slides ? cs.slides : cs.template) : null;
+  const t = co === 'NESR' && slides ? (kind === 'bp' ? all.nesrSlidesBp : all.nesrSlides) : cs ? (kind === 'bp' ? cs.slidesBp : slides ? cs.slides : cs.template) : null;
   if (!t || !c.env.FILES) return c.json({ error: 'No template yet' }, 404);
   const obj = await c.env.FILES.get(t.key);
   if (!obj) return c.json({ error: 'The template is missing from storage' }, 404);
@@ -371,8 +375,9 @@ knowledge.post('/:id/copies', async (c) => {
     // for a NESR version, the rules come from the lesson's own company, read the other way round
     const toNesr = co === 'NESR';
     const t = settings.companies[toNesr ? fromCo! : co];
-    const tpl = toNesr ? settings.nesrSlides : slides ? t.slides : t.template;
-    if (!tpl) { skipped.push({ company: co, reason: `Add the ${co} ${slides ? 'slides ' : ''}template in Knowledge Hub › Doc Control › Settings first` }); continue; }
+    // a best practice uses its company's best practice slides, else the lessons slides (6z.32)
+    const tpl = slides ? slideTemplate(settings, co, slideKindOf(d))?.file : t.template;
+    if (!tpl) { skipped.push({ company: co, reason: `Add the ${co} ${slides ? (slideKindOf(d) === 'bp' ? 'best practice or lessons slides ' : 'lessons slides ') : ''}template in Knowledge Hub › Doc Control › Settings first` }); continue; }
     const tplObj = await c.env.FILES.get(tpl.key);
     if (!tplObj) { skipped.push({ company: co, reason: `The ${co} template is missing from storage: upload it again in Settings` }); continue; }
     const copyNo = toNesr ? nesrNumber(d.doc_no, t.prefix) : copyNumber(d.doc_no, t.prefix);

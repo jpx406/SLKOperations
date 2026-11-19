@@ -31,12 +31,16 @@ export interface CompanyTemplate {
   template: TemplateFile | null;
   /** The company presentation (.pptx) whose slide masters, layouts, theme and logo are used for lesson copies (6z.27). */
   slides?: TemplateFile | null;
+  /** The company presentation for best practices (6z.32); without one, best practices use the lessons template. */
+  slidesBp?: TemplateFile | null;
 }
 export interface TemplateFile { key: string; file_name: string; uploaded_at: string; uploaded_by: string }
 export interface CopySettings {
   nesrColours: string[]; companies: Record<CopyCompany, CompanyTemplate>;
   /** NESR's own presentation, for NESR versions of SAPESCO and Gulf Energy lessons (6z.28). */
   nesrSlides?: TemplateFile | null;
+  /** NESR's own presentation for best practices (6z.32). */
+  nesrSlidesBp?: TemplateFile | null;
 }
 /** Who a copy is for: SAPESCO or Gulf Energy from NESR, or NESR from a SAPESCO or Gulf Energy lesson (6z.28). */
 export type CopyTarget = CopyCompany | 'NESR';
@@ -72,18 +76,18 @@ export function checkCopySettings(b: unknown, current: CopySettings = DEFAULT_CO
     const ap = (g.approvers ?? cur.approvers) as Record<string, unknown>;
     const words = (Array.isArray(g.words) ? g.words : cur.words).map((w) => ({ from: str((w as Record<string, unknown>).from, 120), to: str((w as Record<string, unknown>).to, 120) })).filter((w) => w.from).slice(0, 40);
     companies[co] = {
-      prefix, name, colour, longName: str(g.longName ?? cur.longName, 120), words, template: cur.template, slides: cur.slides ?? null,
+      prefix, name, colour, longName: str(g.longName ?? cur.longName, 120), words, template: cur.template, slides: cur.slides ?? null, slidesBp: cur.slidesBp ?? null,
       approvers: Object.fromEntries(APPROVER_ROLES.map((k) => [k, str(ap?.[k], 120)])) as Record<ApproverRole, string>,
     };
   }
-  return { value: { nesrColours: [...new Set(nesr)], companies, nesrSlides: current.nesrSlides ?? null } };
+  return { value: { nesrColours: [...new Set(nesr)], companies, nesrSlides: current.nesrSlides ?? null, nesrSlidesBp: current.nesrSlidesBp ?? null } };
 }
 
 export function copySettingsOf(raw: unknown): CopySettings {
   const r = (raw ?? {}) as Partial<CopySettings>;
   const companies = { ...DEFAULT_COPY_SETTINGS.companies };
   for (const co of COPY_COMPANIES) if (r.companies?.[co]) companies[co] = { ...DEFAULT_COPY_SETTINGS.companies[co], ...r.companies[co] };
-  return { nesrColours: r.nesrColours?.length ? r.nesrColours : DEFAULT_COPY_SETTINGS.nesrColours, companies, nesrSlides: r.nesrSlides ?? null };
+  return { nesrColours: r.nesrColours?.length ? r.nesrColours : DEFAULT_COPY_SETTINGS.nesrColours, companies, nesrSlides: r.nesrSlides ?? null, nesrSlidesBp: r.nesrSlidesBp ?? null };
 }
 
 /**
@@ -95,6 +99,18 @@ export const mayHaveCopies = (d: { section: string; country: string; company: st
 /** A NESR document gets SAPESCO and Gulf Energy copies; a SAPESCO or Gulf Energy lesson gets a NESR version (6z.28). */
 export const copyTargets = (d: { section: string; company: string | null }): CopyTarget[] =>
   d.section === 'lesson' && isCopyCompany(d.company) ? ['NESR'] : [...COPY_COMPANIES];
+/** The two slides templates: lessons learnt and learnings from incidents, and best practices (6z.32). */
+export type SlideKind = 'slides' | 'bp';
+export const SLIDE_KIND_LABEL: Record<SlideKind, string> = { slides: 'Lessons', bp: 'Best practice' };
+export const slideKindOf = (d: { doc_type?: string | null }): SlideKind => (d.doc_type === 'best_practice' ? 'bp' : 'slides');
+/** The slides template for a company (or NESR) and kind; a best practice falls back to the lessons template. */
+export function slideTemplate(s: CopySettings, co: CopyTarget, kind: SlideKind): { file: TemplateFile; kind: SlideKind } | null {
+  const lessons = co === 'NESR' ? s.nesrSlides : s.companies[co].slides;
+  const bp = co === 'NESR' ? s.nesrSlidesBp : s.companies[co].slidesBp;
+  if (kind === 'bp' && bp) return { file: bp, kind: 'bp' };
+  return lessons ? { file: lessons, kind: 'slides' } : null;
+}
+
 /** Which template a document's copies are made with: slides for lessons, Word for SOPs and SWIs. */
 export const copyKind = (d: { section: string }): 'slides' | 'word' => (d.section === 'lesson' ? 'slides' : 'word');
 
