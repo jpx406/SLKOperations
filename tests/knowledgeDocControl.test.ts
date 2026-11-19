@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_COPY_SETTINGS, copyKind, copyTargets, makeCompanySlides, mayHaveCopies, nesrNumber } from '../src/shared/companyCopy';
 import { checkDoc, nextQaf, qafNumber } from '../src/shared/knowledge';
-import { editableAccept, editableProblem, guessType, splitBase, submitProblems } from '../src/shared/knowledgeControl';
+import { deletableDraft, editableAccept, editableProblem, guessType, mayDeleteDraft, splitBase, submitProblems } from '../src/shared/knowledgeControl';
 import { zip } from '../src/shared/xlsx';
 import { unzip } from '../src/shared/xlsxRead';
-import { readAllowed } from '../src/worker/permissions';
+import { readAllowed, ruleFor } from '../src/worker/permissions';
 
 // 6z.27: client procedures without an editable version, QAF numbers for forms, lessons as slides and their company copies
 
@@ -176,5 +176,24 @@ describe('lesson copies in PowerPoint (6z.27)', () => {
   it('refuses files that are not presentations', async () => {
     await expect(makeCompanySlides(new Uint8Array([1, 2, 3]), sapDeck(), { t: DEFAULT_COPY_SETTINGS.companies.SAPESCO, nesrColours: [] })).rejects.toThrow('not a PowerPoint file');
     await expect(makeCompanySlides(nesrDeck(), pkg({ 'word/document.xml': '<w:document/>' }), { t: DEFAULT_COPY_SETTINGS.companies.SAPESCO, nesrColours: [] })).rejects.toThrow('company template');
+  });
+});
+
+describe('deleting drafts (6z.29)', () => {
+  it('only a document never published, with drafts alone, is deleted; others are retired', () => {
+    expect(deletableDraft({ published_at: null }, ['draft'])).toBe(true);
+    expect(deletableDraft({ published_at: null }, ['discarded', 'draft'])).toBe(true);
+    expect(deletableDraft({ published_at: null }, ['review'])).toBe(false);
+    expect(deletableDraft({ published_at: null }, ['approval'])).toBe(false);
+    expect(deletableDraft({ published_at: '2026-11-01T00:00:00Z' }, ['approved', 'draft'])).toBe(false);
+  });
+  it('admins, approvers, editors or the delete right may delete; a reviewer alone may not', () => {
+    const base = { username: 'x', admin: false, editor: false, reviewer: false, approver: false };
+    expect(mayDeleteDraft({ ...base, admin: true })).toBe(true);
+    expect(mayDeleteDraft({ ...base, approver: true })).toBe(true);
+    expect(mayDeleteDraft({ ...base, editor: true })).toBe(true);
+    expect(mayDeleteDraft({ ...base, reviewer: true })).toBe(false);
+    expect(mayDeleteDraft({ ...base, reviewer: true }, true)).toBe(true);
+    expect(ruleFor('DELETE', '/api/knowledge/abc')).toMatchObject({ menu: 'knowledge_hub', action: 'view' });
   });
 });

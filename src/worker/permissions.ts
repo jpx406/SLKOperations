@@ -124,6 +124,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(submit|discard)$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(review|approve|send-back)$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/(retire|restore)$/, menu: 'knowledge_hub', action: 'view' },
+  // deleting a draft that was never published (6z.29): admins, approvers, editors or the delete right, checked in the route
+  { method: 'DELETE', re: /^\/api\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'PUT', re: /^\/api\/knowledge\/(settings|people\/[^/]+)$/, menu: 'knowledge_hub', action: 'view' },
   // company copies (6z.21): editors make them; the routes keep the templates to admins
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/copies$/, menu: 'knowledge_hub', action: 'edit' },

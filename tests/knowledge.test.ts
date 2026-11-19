@@ -97,6 +97,7 @@ describe('knowledge hub', () => {
     expect(ruleFor('POST', '/api/knowledge/abc/lesson-of-week')).toMatchObject({ menu: 'knowledge_hub', action: 'edit' });
     expect(ruleFor('POST', '/api/knowledge/abc/files')).toMatchObject({ menu: 'knowledge_hub', action: 'edit' });
     expect(ruleFor('POST', '/api/knowledge/abc/retire')).toMatchObject({ menu: 'knowledge_hub', action: 'view' });
-    expect(ruleFor('DELETE', '/api/knowledge/abc')).toBeUndefined();
+    // drafts that were never published can be deleted (6z.29); the route checks the role and the draft
+    expect(ruleFor('DELETE', '/api/knowledge/abc')).toMatchObject({ menu: 'knowledge_hub', action: 'view' });
   });
 });

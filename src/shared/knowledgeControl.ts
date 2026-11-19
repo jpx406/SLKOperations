@@ -44,6 +44,14 @@ export function mayAct(p: Controller, rev: Pick<Revision, 'status' | 'reviewer' 
 /** Retiring (with a reason) and restoring are for admins and approvers, as in Document Control. */
 export const mayRetire = (p: Controller) => p.admin || p.approver;
 
+/**
+ * A draft that was never published is deleted outright instead of archived (6z.29): no revision of it was ever in
+ * review, approved or published. Admins, approvers, editors and anyone with the tab's delete right may do it.
+ */
+export const deletableDraft = (doc: { published_at?: string | null }, statuses: RevStatus[]) =>
+  !doc.published_at && statuses.every((s) => s === 'draft' || s === 'discarded');
+export const mayDeleteDraft = (p: Controller, deleteRight = false) => p.admin || p.approver || p.editor || deleteRight;
+
 export interface FileInfo { kind: 'published' | 'source'; content_type: string; file_name: string }
 
 /**

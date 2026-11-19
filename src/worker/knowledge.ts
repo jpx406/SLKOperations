@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono';
 import { checkUpload } from '../shared/attachments';
 import { GLOBAL, checkDoc, fileKey, folderName, nextQaf, type KbFile, type KnowledgeDoc } from '../shared/knowledge';
 import {
-  DEFAULT_NUMBERING, DEFAULT_PERIODS, REV_STATUS, addMonths, checkNumbering, checkPeriods, isStaff, mayAct, mayOpen, mayRetire, nextRevision, numberPrefix,
+  DEFAULT_NUMBERING, DEFAULT_PERIODS, REV_STATUS, addMonths, checkNumbering, checkPeriods, deletableDraft, isStaff, mayAct, mayDeleteDraft, mayOpen, mayRetire, nextRevision, numberPrefix,
   editableProblem, submitProblems, type Controller, type FlowAction, type Numbering, type Periods, type RevStatus, type Revision,
 } from '../shared/knowledgeControl';
 import type Anthropic from '@anthropic-ai/sdk';
@@ -128,7 +128,7 @@ knowledge.get('/', async (c) => {
     staff ? c.env.DB.prepare(`SELECT id, doc_id, revision, status, reviewer, approver, sent_back_reason FROM knowledge_revisions WHERE status IN ('draft','review','approval')`).all<{ id: string; doc_id: string; revision: number; status: 'draft' | 'review' | 'approval'; reviewer: string | null; approver: string | null; sent_back_reason: string | null }>() : null,
     placesFor(c.env, user),
     c.env.DB.prepare(`SELECT DISTINCT client FROM knowledge_docs WHERE client IS NOT NULL UNION SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND deleted_at IS NULL ORDER BY 1 LIMIT 500`).all<{ client: string }>(),
-    setting<Numbering>(c.env, 'numbering', DEFAULT_NUMBERING),
+    numberingOf(c.env),
     staff ? c.env.DB.prepare(`SELECT * FROM (SELECT ${PERSON_FLAGS} FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1)
       WHERE can_review = 1 OR can_approve = 1 ORDER BY full_name`).all<{ username: string; full_name: string; can_review: number; can_approve: number }>() : null,
     staff ? c.env.DB.prepare(`SELECT count(*) AS n FROM knowledge_revisions WHERE (status = 'review' AND reviewer = ?1) OR (status = 'approval' AND approver = ?1)
@@ -744,7 +744,7 @@ knowledge.post('/', async (c) => {
   const r = checkDoc(b, [...(await placesFor(c.env, user))]);
   if ('error' in r) return c.json({ error: r.error }, 400);
   const d = r.doc;
-  const [numbering, periods] = await Promise.all([setting<Numbering>(c.env, 'numbering', DEFAULT_NUMBERING), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS)]);
+  const [numbering, periods] = await Promise.all([numberingOf(c.env), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS)]);
   // a form keeps the QAF number it was given, or takes the next free one
   if (d.section === 'form' && !d.doc_no) d.doc_no = await nextFormNumber(c.env);
   if (numbering.mode === 'manual' && !d.doc_no) return c.json({ error: 'Numbering is manual: type the document number' }, 400);
@@ -821,6 +821,48 @@ knowledge.post('/:id/lesson-of-week', async (c) => {
     audit(c.env, user, 'lesson_of_week', cur.id, `${cur.title} from ${today}`),
   ]);
   return c.json({ ok: true, from: today });
+});
+
+/**
+ * Deletes a draft that was never published (6z.29): the record, its revisions, files, support files and mind map,
+ * and the files in storage. The audit line stays. A published document is retired instead; a draft with company
+ * copies waits until they are deleted.
+ */
+knowledge.delete('/:id', async (c) => {
+  const user = c.get('user');
+  const p = await controller(c.env, user);
+  if (!mayDeleteDraft(p, !!user.menus.knowledge_hub?.delete)) return c.json({ error: 'Your role cannot delete drafts' }, 403);
+  const cur = await find(c.env, c.req.param('id'));
+  if (!cur) return c.json({ error: 'Document not found' }, 404);
+  const [revs, copies] = await c.env.DB.batch([
+    c.env.DB.prepare('SELECT status FROM knowledge_revisions WHERE doc_id = ?').bind(cur.id),
+    c.env.DB.prepare('SELECT doc_no, title, company FROM knowledge_docs WHERE copy_of = ?').bind(cur.id),
+  ]);
+  const statuses = (revs.results as { status: RevStatus }[]).map((r) => r.status);
+  if (!deletableDraft(cur, statuses)) {
+    return c.json({ error: cur.published_at || statuses.some((s) => s === 'approved' || s === 'superseded')
+      ? 'This document was published: retire it instead, so its record is kept'
+      : 'This draft is in review or approval: send it back first, then delete it' }, 400);
+  }
+  const cs = copies.results as { doc_no: string | null; title: string; company: string | null }[];
+  if (cs.length) return c.json({ error: `Delete its copies first: ${cs.map((x) => `${x.company} ${x.doc_no ?? x.title}`).join(', ')}` }, 400);
+  const [files, support] = await c.env.DB.batch([
+    c.env.DB.prepare('SELECT r2_key FROM knowledge_files WHERE doc_id = ?').bind(cur.id),
+    c.env.DB.prepare(`SELECT r2_key FROM attachments WHERE entity_type = 'knowledge' AND entity_id = ?`).bind(cur.id),
+  ]);
+  const keys = [...(files.results as { r2_key: string }[]), ...(support.results as { r2_key: string }[])].map((r) => r.r2_key);
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM attachments WHERE entity_type = 'knowledge' AND entity_id = ?`).bind(cur.id),
+    c.env.DB.prepare('UPDATE knowledge_docs SET duplicate_of = NULL WHERE duplicate_of = ?').bind(cur.id),
+    c.env.DB.prepare('DELETE FROM knowledge_digests WHERE doc_id = ?').bind(cur.id),
+    c.env.DB.prepare('DELETE FROM knowledge_files WHERE doc_id = ?').bind(cur.id),
+    c.env.DB.prepare('DELETE FROM knowledge_revisions WHERE doc_id = ?').bind(cur.id),
+    c.env.DB.prepare('DELETE FROM knowledge_docs WHERE id = ?').bind(cur.id),
+    audit(c.env, user, 'delete', cur.id, `Draft deleted: ${cur.doc_no ?? ''} ${cur.title} (${cur.section}, never published; ${keys.length} file${keys.length === 1 ? '' : 's'} removed)`),
+  ]);
+  // the files go last: a storage hiccup leaves an orphan file, never a record pointing at nothing
+  if (c.env.FILES && keys.length) { for (let i = 0; i < keys.length; i += 1000) await c.env.FILES.delete(keys.slice(i, i + 1000)).catch(() => undefined); }
+  return c.json({ ok: true, files: keys.length });
 });
 
 /** Retire (reason required) moves the entry to the archive; restore brings it back. Admins and approvers. */

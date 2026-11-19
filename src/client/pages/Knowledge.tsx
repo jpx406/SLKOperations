@@ -1,6 +1,6 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive as ArchiveIcon, BookOpen, Download, ExternalLink, FileText, Files, Info, Network, Pencil, Plus, QrCode, RotateCcw, Search, Sparkles, Star } from 'lucide-react';
+import { Archive as ArchiveIcon, BookOpen, Download, ExternalLink, FileText, Files, Info, Network, Pencil, Plus, QrCode, RotateCcw, Search, Sparkles, Star, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
@@ -356,6 +356,7 @@ function Reader({ id, lib, onClose, onEdit, refresh, onOpen, onMakeCopies }: { i
   const [qr, setQr] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [retiring, setRetiring] = useState(false);
+  const [deleting, setDeleting] = useState<'idle' | 'confirm' | 'busy'>('idle');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -373,6 +374,17 @@ function Reader({ id, lib, onClose, onEdit, refresh, onOpen, onMakeCopies }: { i
       setRetiring(false); refresh(); qc.invalidateQueries({ queryKey: ['knowledge-archive'] }); qc.invalidateQueries({ queryKey: ['knowledge-doc', id] });
       if (on) onClose();
     } catch (e) { setError((e as ApiError).message); }
+  };
+  // a draft that was never published is deleted, not archived (6z.29); the server checks again
+  const draftOnly = !doc.published_at && (!doc.open || doc.open.status === 'draft');
+  const mayDelete = draftOnly && (lib.me.admin || lib.me.approver || lib.me.editor);
+  const remove = async () => {
+    setDeleting('busy'); setError(null);
+    try {
+      await api(`/knowledge/${doc.id}`, { method: 'DELETE' });
+      refresh(); qc.invalidateQueries({ queryKey: ['knowledge-archive'] }); qc.invalidateQueries({ queryKey: ['knowledge-forms-record'] });
+      onClose();
+    } catch (e) { setError((e as ApiError).message); setDeleting('idle'); }
   };
   const meta = [ADD_TYPES[addTypeOf(doc)].label, doc.country, doc.company, doc.client, doc.category, doc.author && `Author ${doc.author}`, doc.published_on && formatDate(doc.published_on), doc.rilr_ref].filter(Boolean).join(' · ');
   return (
@@ -410,7 +422,15 @@ function Reader({ id, lib, onClose, onEdit, refresh, onOpen, onMakeCopies }: { i
         {doc.source_ref && <a href={doc.source_ref} target="_blank" rel="noreferrer noopener" className="inline-flex h-(--layout-control-md) items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2"><ExternalLink aria-hidden className="size-4" />Open the source link</a>}
         <Button onClick={() => setQr(!qr)}><QrCode aria-hidden className="size-4" />QR code</Button>
         {lib.canEdit && !doc.retired_at && <Button onClick={() => onEdit(doc)}><Pencil aria-hidden className="size-4" />Edit details</Button>}
-        {mayRetire && (doc.retired_at
+        {mayDelete ? (
+          deleting === 'idle'
+            ? <Button variant="danger" className="ml-auto" onClick={() => setDeleting('confirm')}><Trash2 aria-hidden className="size-4" />Delete draft</Button>
+            : <span className="ml-auto flex flex-wrap items-center gap-2">
+              <span className="text-xs text-text-muted">Never published: it is removed with its files, not archived.</span>
+              <Button variant="danger" loading={deleting === 'busy'} onClick={remove}><Trash2 aria-hidden className="size-4" />Delete {doc.doc_no ?? 'this draft'}</Button>
+              <Button variant="ghost" onClick={() => setDeleting('idle')}>Keep</Button>
+            </span>
+        ) : mayRetire && (doc.retired_at
           ? <Button className="ml-auto" onClick={() => retire(false)}><RotateCcw aria-hidden className="size-4" />Restore</Button>
           : <Button variant="danger" className="ml-auto" onClick={() => setRetiring(!retiring)}><ArchiveIcon aria-hidden className="size-4" />Retire</Button>)}
       </div>
