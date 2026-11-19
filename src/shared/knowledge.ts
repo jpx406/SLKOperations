@@ -78,7 +78,9 @@ export function checkDoc(b: DocInput, countries: string[]): { error: string } | 
   if (country === GLOBAL ? section === 'client' : !countries.includes(country)) {
     return { error: section === 'client' ? 'Pick the country of the client' : 'Pick a country or Global' };
   }
-  const company = hasCompany(section) ? text(b.company, 40) : '';
+  // lessons have no company of their own, except a SAPESCO or Gulf Energy copy (6z.27), which keeps it
+  const given = text(b.company, 40);
+  const company = hasCompany(section) ? given : section === 'lesson' && (SOP_COMPANIES as readonly string[]).includes(given) && given !== 'NESR' ? given : '';
   if (hasCompany(section) && !(SOP_COMPANIES as readonly string[]).includes(company)) return { error: 'Pick the company: NESR, SAPESCO or Gulf Energy' };
   const client = section === 'client' ? text(b.client, 120) : '';
   if (section === 'client' && !client) return { error: 'Name the client' };
@@ -92,8 +94,14 @@ export function checkDoc(b: DocInput, countries: string[]): { error: string } | 
   if (review && !isDate(review)) return { error: 'The review date must be a date' };
   const link = text(b.source_ref, 1000);
   if (link && !/^https?:\/\/[^\s]+$/i.test(link)) return { error: 'The link must start with https://' };
-  const docNo = text(b.doc_no, 40).toUpperCase();
+  let docNo = text(b.doc_no, 40).toUpperCase();
   if (docNo && !/^[A-Z0-9][A-Z0-9 ._/-]*$/.test(docNo)) return { error: 'The document number may use letters, numbers, - . / and spaces' };
+  // forms carry their QAF number (6z.27): the one already assigned, written QAF14009, or blank for the next one
+  if (section === 'form' && docNo) {
+    const q = qafNumber(docNo);
+    if (!q || q.length !== docNo.replace(/[-_ ]/g, '').length) return { error: 'Form numbers are QAF numbers, like QAF14009. Leave it blank to get the next one.' };
+    docNo = q;
+  }
   const lesson = section === 'lesson';
   const types = lesson && Array.isArray(b.failure_types) ? [...new Set(b.failure_types.map((x) => text(x, 60)).filter(Boolean))].slice(0, 20) : [];
   return {
@@ -105,6 +113,24 @@ export function checkDoc(b: DocInput, countries: string[]): { error: string } | 
       origin: b.origin === 'external' ? 'external' : 'internal', author: text(b.author, 120) || null, is_form: section === 'form' ? 1 : section !== 'lesson' && (b.is_form === true || b.is_form === 1 || b.is_form === '1') ? 1 : 0,
     },
   };
+}
+
+// ---- QAF numbers for forms (6z.27) ------------------------------------------------------------------------------
+
+/** QAF14009, QAF-14009 or "QAF 14009 Pre-job checklist" → QAF14009; null when it does not start with a QAF number. */
+export function qafNumber(s: string | null | undefined): string | null {
+  const m = /^\s*QAF[-_ ]?(\d{3,7})(?![0-9])/i.exec(s ?? '');
+  return m ? `QAF${m[1]}` : null;
+}
+
+/** The next free QAF number after the highest in use, as wide as it (QAF14009 → QAF14010); QAF00001 when none is used yet. */
+export function nextQaf(numbers: (string | null | undefined)[]): string {
+  let max = 0, width = 5;
+  for (const n of numbers) {
+    const m = /^QAF(\d{3,7})$/.exec(n ?? '');
+    if (m && Number(m[1]) >= max) { max = Number(m[1]); width = Math.max(width, m[1].length); }
+  }
+  return `QAF${String(max + 1).padStart(width, '0')}`;
 }
 
 /** Short code for a place in a document number: Global GL, Saudi Arabia SA, Bahrain BAH. */

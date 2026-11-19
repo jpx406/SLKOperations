@@ -50,7 +50,7 @@ export function Queue({ onOpen }: { onOpen: (id: string) => void }) {
             <p className="text-xs text-text-subtle">
               {r.status === 'review' && `With ${r.reviewer_name} for review, sent by ${r.submitted_by_name}`}
               {r.status === 'approval' && `With ${r.approver_name} for approval, reviewed by ${r.reviewer_name}`}
-              {r.status === 'draft' && (r.sent_back_reason ? `Sent back: ${r.sent_back_reason}` : r.copy_of_no && !r.has_pdf ? 'Word copy made: waiting for an admin to add the PDF' : `Draft by ${r.created_by_name}`)}
+              {r.status === 'draft' && (r.sent_back_reason ? `Sent back: ${r.sent_back_reason}` : r.copy_of_no && !r.has_pdf ? `${r.section === 'lesson' ? 'Slides' : 'Word'} copy made: waiting for an admin to add the PDF` : `Draft by ${r.created_by_name}`)}
               {r.change_note && ` · ${r.change_note}`}
             </p>
           </div>
@@ -459,8 +459,8 @@ export function BatchAdd({ lib, section, onClose }: { lib: Library; section: Sec
       const pdf = g.files.find((f) => /\.pdf$/i.test(f.name)) ?? g.files.find((f) => !isEditable(f.name));
       const found = g.files.find((f) => isEditable(f.name) && f !== pdf);
       // editable versions are Word .docx only (6z.24): an older .doc or an Excel file is left out, and said so
-      const source = found && (sec === 'form' || !editableProblem({}, found.name)) ? found : undefined;
-      const leftOut = found && !source ? `, editable “${found.name}” left out (Word .docx only)` : '';
+      const source = found && (sec === 'form' || !editableProblem({ section: sec }, found.name)) ? found : undefined;
+      const leftOut = found && !source ? `, editable “${found.name}” left out (${sec === 'lesson' ? 'PowerPoint .pptx or Word .docx' : 'Word .docx'} only)` : '';
       try {
         if (sec === 'client' && (!shared.client.trim() || shared.country === GLOBAL)) throw new ApiError(400, 'Client procedures need a country and a client', {});
         const r = await api<{ id: string; doc_no: string }>('/knowledge', { method: 'POST', json: { type: t, title, doc_no: doc_no ?? '', country: shared.country, company: shared.company, client: shared.client,

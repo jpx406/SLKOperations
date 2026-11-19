@@ -18,6 +18,7 @@ import { MindMapDialog, MindMapPanel } from './knowledge/Digest';
 import { Revisions } from './knowledge/Revisions';
 import { CopiesPanel, CopyLines, CopyNote, MakeCopiesDialog, copiesOf } from './knowledge/Copies';
 import { mayHaveCopies } from '../../shared/companyCopy';
+import { FormsRecordPanel, formDuplicate, useFormsRecord } from './knowledge/Forms';
 
 /** Read opens the PDF itself, in a new tab (stamped, as every download). Null when there is no PDF to open. */
 const pdfHref = (d: KnowledgeDoc) => (d.file && d.file.content_type === 'application/pdf' ? fileUrl(d.id, d.file, true) : null);
@@ -26,11 +27,13 @@ const pdfHref = (d: KnowledgeDoc) => (d.file && d.file.content_type === 'applica
 // document control (draft, review, approval, published revision, history, stamped downloads), plus the reference
 // manuals library, and for staff the approval queue, the register, the archive and the settings.
 
-type View = Section | 'manuals' | 'dashboard' | 'queue' | 'register' | 'archive' | 'settings';
+type View = Section | 'manuals' | 'control';
 const VIEWS: Record<View, string> = {
-  lesson: SECTIONS.lesson, sop: SECTIONS.sop, swi: SECTIONS.swi, form: SECTIONS.form, client: SECTIONS.client, manuals: 'Reference manuals',
-  dashboard: 'Dashboard', queue: 'Queue', register: 'Register', archive: 'Archive', settings: 'Settings',
+  lesson: SECTIONS.lesson, sop: SECTIONS.sop, swi: SECTIONS.swi, form: SECTIONS.form, client: SECTIONS.client, manuals: 'Reference manuals', control: 'Doc Control',
 };
+// Doc Control (6z.27): the staff screens under one tab
+type ControlView = 'dashboard' | 'queue' | 'register' | 'archive' | 'settings';
+const CONTROL_VIEWS: Record<ControlView, string> = { dashboard: 'Dashboard', queue: 'Queue', register: 'Register', archive: 'Archive', settings: 'Settings' };
 
 export function KnowledgeHub() {
   const [params, setParams] = useSearchParams();
@@ -40,9 +43,14 @@ export function KnowledgeHub() {
   const lib = q.data;
   const me = lib?.me;
   const staff = !!me && (me.admin || me.editor || me.reviewer || me.approver);
-  const views: View[] = ['lesson', 'sop', 'swi', 'form', 'client', 'manuals', ...(staff ? (['dashboard', 'queue', 'register'] as View[]) : []), ...(me && (me.admin || me.approver) ? (['archive'] as View[]) : []), ...(staff ? (['settings'] as View[]) : [])];
+  const views: View[] = ['lesson', 'sop', 'swi', 'form', 'client', 'manuals', ...(staff ? (['control'] as View[]) : [])];
+  const controls: ControlView[] = ['dashboard', 'queue', 'register', ...(me && (me.admin || me.approver) ? (['archive'] as ControlView[]) : []), 'settings'];
   const raw = params.get('s') ?? params.get('view') ?? 'lesson';
-  const view: View = (views as string[]).includes(raw) ? (raw as View) : 'lesson';
+  // old links (?view=queue in the review emails) open the same screen under Doc Control
+  const rawControl = raw in CONTROL_VIEWS ? raw : params.get('c') ?? 'dashboard';
+  const view: View = staff && raw in CONTROL_VIEWS ? 'control' : (views as string[]).includes(raw) ? (raw as View) : 'lesson';
+  const control: ControlView = (controls as string[]).includes(rawControl) ? (rawControl as ControlView) : 'dashboard';
+  const pickControl = (v: ControlView) => { const n = new URLSearchParams(); n.set('s', 'control'); if (v !== 'dashboard') n.set('c', v); setParams(n, { replace: true }); };
   const section: Section = isSection(view) ? view : 'lesson';
   const all = lib?.docs ?? [];
   const reading = params.get('doc');
@@ -81,10 +89,10 @@ export function KnowledgeHub() {
         {views.map((k) => (
           <button key={k} role="tab" aria-selected={view === k} onClick={() => pick(k)}
             className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', view === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text',
-              k === 'dashboard' && 'ml-0 sm:ml-2')}>
+              k === 'control' && 'ml-0 sm:ml-2')}>
             {VIEWS[k]}
             {isSection(k) && lib && <span className="ml-1 font-mono font-normal opacity-80">{counts(k)}</span>}
-            {k === 'queue' && !!lib?.queueCount && <span className="ml-1 rounded-pill bg-warning px-1.5 font-mono text-xs text-on-accent">{lib.queueCount}</span>}
+            {k === 'control' && !!lib?.queueCount && <span className="ml-1 rounded-pill bg-warning px-1.5 font-mono text-xs text-on-accent" aria-label={`${lib.queueCount} in the queue`}>{lib.queueCount}</span>}
           </button>
         ))}
       </div>
@@ -95,11 +103,24 @@ export function KnowledgeHub() {
           {view === 'lesson' && <Lessons all={all.filter((d) => d.section === 'lesson')} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onEdit={setEditing} onQr={setQr} onQrFile={onQrFile} onMap={setMap} refresh={refresh} />}
           {isSection(view) && view !== 'lesson' && <Controlled section={view} all={all.filter((d) => d.section === view)} everything={all} canEdit={canEdit} params={params} set={set} onRead={(d) => open(d.id)} onQr={setQr} onQrFile={onQrFile} onMap={setMap} />}
           {view === 'manuals' && <ManualsView />}
-          {view === 'dashboard' && <Dashboard onOpen={open} />}
-          {view === 'queue' && <Queue onOpen={open} />}
-          {view === 'register' && <Register onOpen={open} />}
-          {view === 'archive' && <Archive onOpen={open} onChange={refresh} />}
-          {view === 'settings' && <Settings />}
+          {view === 'control' && <>
+            <div role="tablist" aria-label="Doc Control" className="mb-4 flex flex-wrap gap-1 border-b border-border">
+              {controls.map((k) => (
+                <button key={k} role="tab" aria-selected={control === k} onClick={() => pickControl(k)}
+                  className={cx('-mb-px h-(--layout-control-sm) border-b-2 px-3 text-sm font-semibold', control === k ? 'border-accent-text text-text' : 'border-transparent text-text-muted hover:text-text')}>
+                  {CONTROL_VIEWS[k]}
+                  {k === 'queue' && !!lib.queueCount && <span className="ml-1 rounded-pill bg-warning px-1.5 font-mono text-xs text-on-accent">{lib.queueCount}</span>}
+                </button>
+              ))}
+            </div>
+            <div role="tabpanel" aria-label={CONTROL_VIEWS[control]}>
+              {control === 'dashboard' && <Dashboard onOpen={open} />}
+              {control === 'queue' && <Queue onOpen={open} />}
+              {control === 'register' && <Register onOpen={open} />}
+              {control === 'archive' && <Archive onOpen={open} onChange={refresh} />}
+              {control === 'settings' && <Settings />}
+            </div>
+          </>}
         </div>
       )}
       {reading && lib && <Reader id={reading} lib={lib} onClose={() => set('doc', '')} onEdit={(d) => setEditing(d)} refresh={refresh} onOpen={open} onMakeCopies={(d) => setCopiesFor(d.id)} />}
@@ -177,7 +198,7 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
         {lib.docs.map((d) => (
           <li key={d.id}>
             <Card className={cx('flex h-full flex-col', (d.duplicate_of || !d.published_at) && 'opacity-80')}>
-              <p className="label-caps flex flex-wrap items-center gap-1.5 text-text-muted">{d.doc_type && DOC_TYPES[d.doc_type]} · {d.country}{d.duplicate_of && ' · duplicate'} <DocState d={d} /></p>
+              <p className="label-caps flex flex-wrap items-center gap-1.5 text-text-muted">{d.doc_type && DOC_TYPES[d.doc_type]} · {d.country}{d.copy_of && ` · ${d.company} copy`}{d.duplicate_of && ' · duplicate'} <DocState d={d} /></p>
               <h3 className="mt-1 font-display text-base font-bold"><button type="button" className="text-left hover:underline" onClick={() => onRead(d)}>{d.title}</button></h3>
               {d.summary && <p className="mt-1 line-clamp-3 text-sm text-text-muted">{d.summary}</p>}
               {d.failure_types.length > 0 && <p className="mt-2 flex flex-wrap gap-1">{d.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
@@ -235,9 +256,10 @@ function Controlled({ section, all, everything, canEdit, params, set, onRead, on
   const shown = all.filter((d) => matches(d, qText) && (!company || d.company === company) && (!place || d.country === place));
   const groups = groupByPlace(shown);
   const chip = (on: boolean) => cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
-  if (!all.length) return <EmptyState title={EMPTY[section][0]}>{canEdit ? EMPTY[section][1] : 'Nothing has been published yet.'}</EmptyState>;
+  if (!all.length) return <>{section === 'form' && <FormsRecordPanel />}<EmptyState title={EMPTY[section][0]}>{canEdit ? EMPTY[section][1] : 'Nothing has been published yet.'}</EmptyState></>;
   return (
     <>
+      {section === 'form' && <FormsRecordPanel />}
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <SearchBox value={qText} onChange={(v) => set('q', v)} placeholder={section === 'client' ? 'Search procedures and clients' : 'Search titles and numbers'} />
         <Select aria-label="Country" className={inputSized('w-44')} value={place} onChange={(e) => set('place', e.target.value)}>
@@ -405,6 +427,7 @@ type Suggested = Suggestion & Record<string, unknown>;
  * checks and corrects them before saving. Editing an existing entry goes straight to the fields.
  */
 function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib: Library; section: Section; onClose: (changed: boolean, openId?: string, askCopies?: boolean) => void }) {
+  const qc = useQueryClient();
   const startType: AddType = doc ? addTypeOf(doc) : section === 'lesson' ? 'lesson_learnt' : section;
   const [f, setF] = useState({
     type: startType, country: doc?.country ?? (section === 'client' ? lib.places[0] ?? '' : GLOBAL), company: doc?.company ?? 'NESR', client: doc?.client ?? '',
@@ -425,7 +448,8 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
   const places = sec === 'client' ? lib.places : [GLOBAL, ...lib.places];
   const placeOptions = doc && !places.includes(doc.country) ? [doc.country, ...places] : places;
   const categories = [...new Set(lib.docs.filter((d) => d.section === sec).map((d) => d.category).filter((c): c is string => !!c))].sort();
-  const manual = lib.numbering.mode === 'manual';
+  const manual = lib.numbering.mode === 'manual' && sec !== 'form';
+  const forms = useFormsRecord(sec === 'form');
   const setType = (type: AddType) => {
     const next = ADD_TYPES[type].section;
     setF({ ...f, type, country: next === 'client' && f.country === GLOBAL ? lib.places[0] ?? '' : f.country });
@@ -458,24 +482,30 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
 
   const save = async () => {
     // editable versions are Word .docx only (6z.24); checked before anything is saved
-    const bad = source && sec !== 'form' ? editableProblem({ is_form: f.is_form }, source.name) : null;
+    const bad = source && sec !== 'form' ? editableProblem({ is_form: f.is_form, section: sec }, source.name) : null;
     if (bad) { setError(bad); return; }
     setBusy(true); setError(null);
+    // a form: its QAF number must be free and its files not already filed under another form (6z.27)
+    if (sec === 'form') {
+      const dup = await formDuplicate(forms.data, doc && f.doc_no === doc.doc_no ? '' : f.doc_no, doc ? [] : [file, source], doc?.id);
+      if (dup) { setError(dup); setBusy(false); return; }
+    }
     const body = { ...f, failure_types: f.failure_types.split(',').map((x) => x.trim()).filter(Boolean) };
     try {
-      if (doc) { await api(`/knowledge/${doc.id}`, { method: 'PUT', json: body }); onClose(true); return; }
+      if (doc) { await api(`/knowledge/${doc.id}`, { method: 'PUT', json: body }); qc.invalidateQueries({ queryKey: ['knowledge-forms-record'] }); onClose(true); return; }
       const { id } = await api<{ id: string }>('/knowledge', { method: 'POST', json: body });
       if (file) await uploadFile(id, file, 'published');
       if (source) await uploadFile(id, source, 'source');
-      // a global NESR SOP or SWI with its Word file: offer the SAPESCO and Gulf Energy copies (6z.21)
-      onClose(true, id, mayHaveCopies({ section: sec, country: f.country, company: f.company }) && !!source && /\.docx$/i.test(source.name));
+      qc.invalidateQueries({ queryKey: ['knowledge-forms-record'] });
+      // a global NESR SOP or SWI with its Word file, or a lesson with its slides: offer the SAPESCO and Gulf Energy copies (6z.21, 6z.27)
+      onClose(true, id, mayHaveCopies({ section: sec, country: f.country, company: lesson ? null : f.company }) && !!source && (lesson ? /\.pptx$/i : /\.docx$/i).test(source.name));
     } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   const hint = (k: string, h?: string) => (read?.filled.has(k) ? `Read from the document${h ? `. ${h}` : ''}` : h);
   const input = (k: keyof typeof f, label: string, props: Record<string, unknown> = {}, h?: string) => (
     <Field id={`kd-${k}`} label={label} hint={hint(k, h)}><input id={`kd-${k}`} className={cx(inputClass, read?.filled.has(k) && 'border-accent-text')} value={String(f[k])} onChange={(e) => setF({ ...f, [k]: e.target.value })} {...props} /></Field>
   );
-  const nextNo = formatNumber(numberPrefix({ section: sec, country: f.country || GLOBAL, company: f.company }, lib.numbering), 1, lib.numbering.digits).replace(/\d+$/, (m) => 'N'.repeat(m.length));
+  const nextNo = sec === 'form' ? forms.data?.next ?? 'the next QAF number' : formatNumber(numberPrefix({ section: sec, country: f.country || GLOBAL, company: f.company }, lib.numbering), 1, lib.numbering.digits).replace(/\d+$/, (m) => 'N'.repeat(m.length));
   const isFormish = sec === 'form' || f.is_form;
 
   if (step === 'upload') {
@@ -486,8 +516,8 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
           <Field id="kd-file" label="Document" hint="PDF, or for a form its Excel, Word or PowerPoint file">
             <input id="kd-file" type="file" accept={ACCEPT} className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </Field>
-          <Field id="kd-source" label="Editable version (optional)" hint="Word file (.docx). Needed before review for SOPs, SWIs and client procedures">
-            <input id="kd-source" type="file" accept={sec === 'form' ? EDITABLE_ACCEPT : editableAccept({ is_form: f.is_form })} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
+          <Field id="kd-source" label="Editable version (optional)" hint="Word file (.docx); PowerPoint (.pptx) for a lesson. Needed before review for SOPs and SWIs; optional for client procedures">
+            <input id="kd-source" type="file" accept={sec === 'form' ? EDITABLE_ACCEPT : editableAccept({ is_form: f.is_form, section: sec })} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
           </Field>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -520,7 +550,9 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
         )}
         {sec === 'client' && <>{input('client', 'Client', { list: 'kd-clients', placeholder: 'e.g. Saudi Aramco' }, 'Shown on jobs in this country, this client first')}<datalist id="kd-clients">{lib.clients.map((c) => <option key={c} value={c} />)}</datalist></>}
         <div className="sm:col-span-2">{input('title', 'Title')}</div>
-        {input('doc_no', manual ? 'Document number' : 'Document number (optional)', { placeholder: doc ? '' : manual ? 'Numbering is manual: type it' : `Leave blank for ${nextNo}` }, doc || manual ? undefined : 'The official number, or blank for the next one')}
+        {sec === 'form'
+          ? input('doc_no', 'QAF number', { placeholder: doc ? '' : `Leave blank for ${nextNo}` }, doc ? 'Each QAF number is used once' : 'The QAF number already assigned to this form, or blank for the next free one')
+          : input('doc_no', manual ? 'Document number' : 'Document number (optional)', { placeholder: doc ? '' : manual ? 'Numbering is manual: type it' : `Leave blank for ${nextNo}` }, doc || manual ? undefined : 'The official number, or blank for the next one')}
         {input('category', lesson ? 'Category' : 'Category (optional)', { list: 'kd-cats', placeholder: 'e.g. Wireline, Pressure control' })}
         <datalist id="kd-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist>
         {input('author', 'Author')}
@@ -550,7 +582,7 @@ function Editor({ doc, lib, section, onClose }: { doc: KnowledgeDoc | null; lib:
             {input('revision_date', 'Revision date', { type: 'date' })}
             {input('expires_on', 'Expires (blank: the usual period)', { type: 'date' })}
             {!file && <Field id="kd-file2" label="Document" hint={isFormish ? 'The form in its original format, or a PDF' : 'PDF'}><input id="kd-file2" type="file" accept={isFormish ? ACCEPT : '.pdf'} className="text-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></Field>}
-            {!source && <Field id="kd-source2" label={f.is_form ? 'Fillable form' : 'Editable version'} hint={f.is_form ? 'Word (.docx) or Excel (.xlsx)' : 'Word file (.docx)'}><input id="kd-source2" type="file" accept={sec === 'form' ? EDITABLE_ACCEPT : editableAccept({ is_form: f.is_form })} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} /></Field>}
+            {!source && <Field id="kd-source2" label={f.is_form ? 'Fillable form' : sec === 'client' || lesson ? 'Editable version (optional)' : 'Editable version'} hint={f.is_form ? 'Word (.docx) or Excel (.xlsx)' : lesson ? 'PowerPoint (.pptx) or Word (.docx)' : 'Word file (.docx)'}><input id="kd-source2" type="file" accept={sec === 'form' ? EDITABLE_ACCEPT : editableAccept({ is_form: f.is_form, section: sec })} className="text-sm" onChange={(e) => setSource(e.target.files?.[0] ?? null)} /></Field>}
           </div>
         )}
       </div>

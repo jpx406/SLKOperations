@@ -2,7 +2,7 @@
 // review and approval, revision numbers, who may open which file, numbering settings, review and expiry dates,
 // the document register and batch upload. Pure rules, used by the Worker and the page.
 
-import { ADD_TYPES, COMPANY_CODE, hasCompany, placeCode, type AddType, type KnowledgeDoc, type Section } from './knowledge';
+import { ADD_TYPES, COMPANY_CODE, hasCompany, placeCode, qafNumber, type AddType, type KnowledgeDoc, type Section } from './knowledge';
 
 export const REV_STATUS = {
   draft: 'Draft', review: 'In review', approval: 'Awaiting approval', approved: 'Published', superseded: 'Superseded', discarded: 'Discarded',
@@ -48,8 +48,8 @@ export interface FileInfo { kind: 'published' | 'source'; content_type: string; 
 
 /**
  * What a revision needs before it goes to review, after Document Control's required formats:
- * SOPs and client procedures a PDF and the editable version (Word or Excel); a form its fillable file;
- * a lesson a file or a written summary.
+ * SOPs and SWIs a PDF and the editable version (Word); client procedures a PDF, the editable version optional (6z.27);
+ * a form its fillable file; a lesson a file or a written summary.
  */
 export function submitProblems(doc: Pick<KnowledgeDoc, 'section' | 'summary'> & { is_form?: number | boolean }, files: FileInfo[]): string[] {
   const doc_ = files.find((f) => f.kind === 'published');
@@ -65,7 +65,7 @@ export function submitProblems(doc: Pick<KnowledgeDoc, 'section' | 'summary'> & 
   }
   if (!doc_) out.push('Add the document file (PDF)');
   else if (!doc.is_form && doc_.content_type !== 'application/pdf') out.push('The document file must be a PDF');
-  if (!source) out.push(doc.is_form ? 'Add the fillable form (Word .docx or Excel .xlsx)' : 'Add the editable version (Word .docx)');
+  if (!source) { if (doc.section !== 'client' || doc.is_form) out.push(doc.is_form ? 'Add the fillable form (Word .docx or Excel .xlsx)' : 'Add the editable version (Word .docx)'); }
   else { const bad = editableProblem(doc, source.file_name); if (bad) out.push(bad); }
   return out;
 }
@@ -74,8 +74,10 @@ export function submitProblems(doc: Pick<KnowledgeDoc, 'section' | 'summary'> & 
  * Editable versions are Word .docx files (6z.24), so they open everywhere and company copies can be made from them.
  * A fillable form may also be an Excel .xlsx. Forms filed under Forms keep their original format (that is their document file).
  */
-export const editableAccept = (doc: { is_form?: number | boolean | null }) => (doc.is_form ? '.docx,.xlsx' : '.docx');
-export function editableProblem(doc: { is_form?: number | boolean | null }, name: string): string | null {
+export const editableAccept = (doc: { is_form?: number | boolean | null; section?: string }) => (doc.section === 'lesson' ? '.pptx,.docx' : doc.is_form ? '.docx,.xlsx' : '.docx');
+export function editableProblem(doc: { is_form?: number | boolean | null; section?: string }, name: string): string | null {
+  // lessons are usually slides (6z.27): PowerPoint .pptx, so SAPESCO and Gulf Energy copies can be made from them, or Word .docx
+  if (doc.section === 'lesson') return /\.(pptx|docx)$/i.test(name) ? null : `The editable version of a lesson must be a PowerPoint (.pptx) or Word (.docx) file, not “${name}”. Open it and use Save As to change the format.`;
   if (doc.is_form) return /\.(docx|xlsx)$/i.test(name) ? null : `The fillable form must be a Word (.docx) or Excel (.xlsx) file, not “${name}”. Open it and use Save As to change the format.`;
   return /\.docx$/i.test(name) ? null : `The editable version must be a Word file (.docx), not “${name}”. Open it in Word and use Save As › Word Document (.docx).`;
 }
@@ -220,7 +222,7 @@ export function guessType(base: string, fallback: AddType): AddType {
   const b = base.toUpperCase();
   if (/^SOP\b|^SOP[-_ ]/.test(b)) return 'sop';
   if (/^SWI[-_ ]/.test(b)) return 'swi';
-  if (/^(FRM|FORM)[-_ ]/.test(b)) return 'form';
+  if (/^(FRM|FORM)[-_ ]/.test(b) || qafNumber(b)) return 'form';
   if (/^CP[-_ ]/.test(b)) return 'client';
   if (/^LFI[-_ ]/.test(b)) return 'learning_from_incident';
   if (/^BP[-_ ]/.test(b)) return 'best_practice';
@@ -230,6 +232,9 @@ export function guessType(base: string, fallback: AddType): AddType {
 
 /** A number at the start of the name (SOP-GL-NESR-012 Rig up → SOP-GL-NESR-012) and the title after it. */
 export function splitBase(base: string): { doc_no: string | null; title: string } {
+  // a form's QAF number: QAF14009 Pre-job checklist → QAF14009 (6z.27)
+  const qaf = qafNumber(base);
+  if (qaf) return { doc_no: qaf, title: base.trim().replace(/^QAF[-_ ]?\d{3,7}[\s_-]*/i, '').replace(/[_]+/g, ' ').trim() || qaf };
   const m = /^([A-Z]{1,8}(?:-[A-Z0-9]{1,8})*-\d{2,6})[\s_-]+(.+)$/i.exec(base.trim());
   if (m) return { doc_no: m[1].toUpperCase(), title: m[2].replace(/[_]+/g, ' ').trim() };
   // a type code without a number (BP-Spooling the drum) only says the type: drop it from the title

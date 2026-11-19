@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { checkUpload } from '../shared/attachments';
-import { GLOBAL, checkDoc, fileKey, folderName, type KbFile, type KnowledgeDoc } from '../shared/knowledge';
+import { GLOBAL, checkDoc, fileKey, folderName, nextQaf, type KbFile, type KnowledgeDoc } from '../shared/knowledge';
 import {
   DEFAULT_NUMBERING, DEFAULT_PERIODS, REV_STATUS, addMonths, checkNumbering, checkPeriods, isStaff, mayAct, mayOpen, mayRetire, nextRevision, numberPrefix,
   editableProblem, submitProblems, type Controller, type FlowAction, type Numbering, type Periods, type RevStatus, type Revision,
@@ -10,7 +10,10 @@ import { costMicroUsd, limitCheck } from '../shared/ai';
 import { analysisPrompt, answerSchema, cleanSuggestion, extractText } from '../shared/docAnalysis';
 import { cleanDigest, digestPrompt, digestSchema, type Digest } from '../shared/docDigest';
 import { ADD_TYPES, type AddType } from '../shared/knowledge';
-import { COPY_COMPANIES, DEFAULT_COPY_SETTINGS, checkCopySettings, copyNumber, copySettingsOf, makeCompanyCopy, mayHaveCopies, type CopyCompany, type CopySettings } from '../shared/companyCopy';
+import { COPY_COMPANIES, DEFAULT_COPY_SETTINGS, checkCopySettings, copyKind, copyNumber, copySettingsOf, makeCompanyCopy, makeCompanySlides, mayHaveCopies, type CopyCompany, type CopySettings } from '../shared/companyCopy';
+
+const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 import { unzip } from '../shared/xlsxRead';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
@@ -186,6 +189,33 @@ knowledge.get('/register', async (c) => {
   return c.json({ rows: (docs.results as Record<string, unknown>[]).map((r) => { const d = toDoc(r); return { doc: d, open: open.get(d.id) ?? null, priorRevisions: n.get(d.id) ?? 0 }; }) });
 });
 
+/**
+ * The QAF number record (6z.27): every form number in use, retired ones included (a number is never given twice),
+ * what file each holds and its fingerprint, so a form already uploaded is spotted before it is added again.
+ */
+knowledge.get('/forms-record', async (c) => {
+  const p = await controller(c.env, c.get('user'));
+  const [docs, files] = await c.env.DB.batch([
+    c.env.DB.prepare(`SELECT d.id, d.doc_no, d.title, d.country, d.company, d.revision, d.published_at, d.retired_at,
+      (SELECT status FROM knowledge_revisions v WHERE v.doc_id = d.id AND v.status IN ('draft','review','approval') LIMIT 1) AS open_status
+      FROM knowledge_docs d WHERE d.section = 'form' ORDER BY d.doc_no`),
+    c.env.DB.prepare(`SELECT f.doc_id, f.kind, f.file_name, f.sha256, f.revision, f.uploaded_at, coalesce(u.full_name, f.uploaded_by) AS uploaded_by_name
+      FROM knowledge_files f JOIN knowledge_docs d ON d.id = f.doc_id LEFT JOIN user_roles u ON u.username = f.uploaded_by
+      WHERE d.section = 'form' AND f.superseded_at IS NULL ORDER BY f.uploaded_at`),
+  ]);
+  type Row = { id: string; doc_no: string | null; title: string; country: string; company: string | null; revision: number; published_at: string | null; retired_at: string | null; open_status: RevStatus | null };
+  type F = { doc_id: string; kind: string; file_name: string; sha256: string; revision: number; uploaded_at: string; uploaded_by_name: string };
+  const byDoc = new Map<string, F[]>();
+  for (const f of files.results as F[]) byDoc.set(f.doc_id, [...(byDoc.get(f.doc_id) ?? []), f]);
+  const rows = (docs.results as Row[]).map((d) => ({
+    ...d,
+    // readers see the numbers and titles; who uploaded what is for document control staff
+    files: (isStaff(p) ? byDoc.get(d.id) ?? [] : []).map(({ doc_id: _, ...f }) => f),
+    hashes: (byDoc.get(d.id) ?? []).map((f) => f.sha256),
+  }));
+  return c.json({ next: nextQaf(rows.map((r) => r.doc_no)), rows });
+});
+
 /** Retired entries (the archive), for admins and approvers. */
 knowledge.get('/archive', async (c) => {
   const p = await controller(c.env, c.get('user'));
@@ -225,7 +255,7 @@ knowledge.put('/settings/copies', async (c) => {
   return c.json({ ok: true, copies: r.value });
 });
 
-/** The company's template: one of its own SOPs in Word (raw body, X-File-Name). Admins. */
+/** The company's template (raw body, X-File-Name): one of its own SOPs in Word, or with ?kind=slides one of its presentations for lesson copies (6z.27). Admins. */
 knowledge.post('/settings/copies/:company/template', async (c) => {
   const user = c.get('user');
   if (user.role !== 'admin') return c.json({ error: 'Only an admin changes the company templates' }, 403);
@@ -235,15 +265,23 @@ knowledge.post('/settings/copies/:company/template', async (c) => {
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   const ok = checkUpload(decodeURIComponent(c.req.header('x-file-name') ?? ''), bytes.length);
   if ('error' in ok) return c.json({ error: ok.error }, 400);
-  if (!/\.docx$/i.test(ok.name)) return c.json({ error: 'The template is a Word file (.docx): one of the company’s own SOPs' }, 400);
+  const slides = c.req.query('kind') === 'slides';
   const parts = await unzip(bytes).catch(() => null);
-  if (!parts?.has('word/document.xml')) return c.json({ error: 'This file is not a Word document' }, 400);
-  if (![...parts.keys()].some((k) => /^word\/(header|footer)\d*\.xml$/.test(k))) return c.json({ error: 'This Word file has no header or footer to take the logo from' }, 400);
+  if (slides) {
+    if (!/\.pptx$/i.test(ok.name)) return c.json({ error: 'The slides template is a PowerPoint file (.pptx): one of the company’s own presentations' }, 400);
+    if (!parts?.has('ppt/presentation.xml')) return c.json({ error: 'This file is not a PowerPoint presentation' }, 400);
+    if (![...parts.keys()].some((k) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(k))) return c.json({ error: 'This presentation has no slide layouts to use' }, 400);
+  } else {
+    if (!/\.docx$/i.test(ok.name)) return c.json({ error: 'The template is a Word file (.docx): one of the company’s own SOPs' }, 400);
+    if (!parts?.has('word/document.xml')) return c.json({ error: 'This file is not a Word document' }, 400);
+    if (![...parts.keys()].some((k) => /^word\/(header|footer)\d*\.xml$/.test(k))) return c.json({ error: 'This Word file has no header or footer to take the logo from' }, 400);
+  }
   const key = `knowledge/Templates/${folderName(co)}/${crypto.randomUUID().slice(0, 8)} ${ok.name}`;
   await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username } });
   const s = await copySettings(c.env);
-  s.companies[co] = { ...s.companies[co], template: { key, file_name: ok.name, uploaded_at: now(), uploaded_by: user.username } };
-  await c.env.DB.batch([putSetting(c.env, user, 'copies', s), audit(c.env, user, 'upload', 'copies', `${co} template “${ok.name}”`, 'knowledge_settings')]);
+  const file = { key, file_name: ok.name, uploaded_at: now(), uploaded_by: user.username };
+  s.companies[co] = { ...s.companies[co], ...(slides ? { slides: file } : { template: file }) };
+  await c.env.DB.batch([putSetting(c.env, user, 'copies', s), audit(c.env, user, 'upload', 'copies', `${co} ${slides ? 'slides ' : ''}template “${ok.name}”`, 'knowledge_settings')]);
   return c.json({ ok: true, copies: s });
 });
 
@@ -251,11 +289,13 @@ knowledge.get('/settings/copies/:company/template', async (c) => {
   const p = await controller(c.env, c.get('user'));
   if (!isStaff(p)) return c.json({ error: 'Templates are for editors, reviewers and approvers' }, 403);
   const co = c.req.param('company');
-  const t = isCopyCompany(co) ? (await copySettings(c.env)).companies[co].template : null;
+  const slides = c.req.query('kind') === 'slides';
+  const cs = isCopyCompany(co) ? (await copySettings(c.env)).companies[co] : null;
+  const t = cs ? (slides ? cs.slides : cs.template) : null;
   if (!t || !c.env.FILES) return c.json({ error: 'No template yet' }, 404);
   const obj = await c.env.FILES.get(t.key);
   if (!obj) return c.json({ error: 'The template is missing from storage' }, 404);
-  return fileResponse(obj.body, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', t.file_name, false);
+  return fileResponse(obj.body, slides ? PPTX : DOCX, t.file_name, false);
 });
 
 /** "30th December 2022", as NESR covers print dates. */
@@ -278,7 +318,10 @@ knowledge.post('/:id/copies', async (c) => {
   if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet (R2 bucket slkops-files).' }, 503);
   const d = await find(c.env, c.req.param('id'));
   if (!d || d.retired_at) return c.json({ error: 'Document not found' }, 404);
-  if (!mayHaveCopies(d)) return c.json({ error: 'Only global NESR SOPs and SWIs get SAPESCO and Gulf Energy copies' }, 400);
+  if (!mayHaveCopies(d)) return c.json({ error: 'Only global NESR SOPs and SWIs, and lessons, get SAPESCO and Gulf Energy copies' }, 400);
+  // lessons are copied as slides (6z.27), SOPs and SWIs as Word files
+  const slides = copyKind(d) === 'slides';
+  const ext = slides ? 'pptx' : 'docx', fileType = slides ? PPTX : DOCX, what = slides ? 'PowerPoint file (.pptx)' : 'Word file (.docx)';
   // JSON { companies }, or (6z.23) the NESR Word file itself as the body with ?companies=…, for when the stored
   // editable version is not a .docx (an older .doc, for example): used only to make the copies, the NESR record is untouched
   const given = /octet-stream/.test(c.req.header('content-type') ?? '');
@@ -289,7 +332,7 @@ knowledge.post('/:id/copies', async (c) => {
   let src: { file_name: string; revision: number; revision_date: string | null; expires_on: string | null };
   if (given) {
     const name = decodeURIComponent(c.req.header('x-file-name') ?? '');
-    if (!/\.docx$/i.test(name)) return c.json({ error: 'Pick the Word file saved as .docx' }, 400);
+    if (!new RegExp(`\\.${ext}$`, 'i').test(name)) return c.json({ error: slides ? 'Pick the slides saved as .pptx' : 'Pick the Word file saved as .docx' }, 400);
     srcBytes = new Uint8Array(await c.req.arrayBuffer());
     const ok = checkUpload(name, srcBytes.length);
     if ('error' in ok) return c.json({ error: ok.error }, 400);
@@ -297,17 +340,20 @@ knowledge.post('/:id/copies', async (c) => {
       .bind(d.id).first<{ revision: number; revision_date: string | null; expires_on: string | null }>();
     src = { file_name: ok.name, revision: rev?.revision ?? d.revision, revision_date: rev?.revision_date ?? null, expires_on: rev?.expires_on ?? null };
   } else {
-    // the NESR Word file: the newest revision's editable version
+    // the NESR file: the newest revision's editable version (for a lesson, its document file when that is the .pptx)
     const f = await c.env.DB.prepare(`SELECT f.file_name, f.r2_key, f.revision, v.revision_date, v.expires_on FROM knowledge_files f
       JOIN knowledge_revisions v ON v.doc_id = f.doc_id AND v.revision = f.revision
-      WHERE f.doc_id = ? AND f.kind = 'source' AND f.superseded_at IS NULL AND v.status IN ('draft','review','approval','approved') ORDER BY f.revision DESC LIMIT 1`)
-      .bind(d.id).first<{ file_name: string; r2_key: string; revision: number; revision_date: string | null; expires_on: string | null }>();
-    if (!f) return c.json({ error: 'Company copies are made from the NESR Word file (.docx). Add it as the editable version, or pick the .docx file here.', needsWord: true }, 400);
-    if (!/\.docx$/i.test(f.file_name)) {
-      return c.json({ error: `The editable version is “${f.file_name}”, not a .docx Word file. Open it in Word, Save As › Word Document (.docx), and pick that file here.`, needsWord: true }, 400);
+      WHERE f.doc_id = ? AND f.superseded_at IS NULL AND v.status IN ('draft','review','approval','approved') AND (f.kind = 'source' OR (? AND lower(f.file_name) LIKE '%.pptx'))
+      ORDER BY f.revision DESC, f.kind = 'source' DESC LIMIT 1`)
+      .bind(d.id, slides ? 1 : 0).first<{ file_name: string; r2_key: string; revision: number; revision_date: string | null; expires_on: string | null }>();
+    if (!f) return c.json({ error: `Company copies are made from the NESR ${what}. Add it as the editable version, or pick the .${ext} file here.`, needsWord: true }, 400);
+    if (!new RegExp(`\\.${ext}$`, 'i').test(f.file_name)) {
+      return c.json({ error: slides
+        ? `The editable version is “${f.file_name}”, not a .pptx PowerPoint file. Open it in PowerPoint, Save As › PowerPoint Presentation (.pptx), and pick that file here.`
+        : `The editable version is “${f.file_name}”, not a .docx Word file. Open it in Word, Save As › Word Document (.docx), and pick that file here.`, needsWord: true }, 400);
     }
     const obj = await c.env.FILES.get(f.r2_key);
-    if (!obj) return c.json({ error: 'The NESR Word file is missing from storage. Pick the .docx file here.', needsWord: true }, 404);
+    if (!obj) return c.json({ error: `The NESR file is missing from storage. Pick the .${ext} file here.`, needsWord: true }, 404);
     srcBytes = new Uint8Array(await obj.arrayBuffer());
     src = f;
   }
@@ -318,8 +364,9 @@ knowledge.post('/:id/copies', async (c) => {
 
   for (const co of companies) {
     const t = settings.companies[co];
-    if (!t.template) { skipped.push({ company: co, reason: `Add the ${co} template in Knowledge Hub › Settings first` }); continue; }
-    const tplObj = await c.env.FILES.get(t.template.key);
+    const tpl = slides ? t.slides : t.template;
+    if (!tpl) { skipped.push({ company: co, reason: `Add the ${co} ${slides ? 'slides ' : ''}template in Knowledge Hub › Doc Control › Settings first` }); continue; }
+    const tplObj = await c.env.FILES.get(tpl.key);
     if (!tplObj) { skipped.push({ company: co, reason: `The ${co} template is missing from storage: upload it again in Settings` }); continue; }
     const copyNo = copyNumber(d.doc_no, t.prefix);
     const existing = await c.env.DB.prepare('SELECT id, revision, published_at FROM knowledge_docs WHERE copy_of = ? AND company = ? AND retired_at IS NULL')
@@ -330,7 +377,10 @@ knowledge.post('/:id/copies', async (c) => {
 
     let out;
     try {
-      out = await makeCompanyCopy(srcBytes, new Uint8Array(await tplObj.arrayBuffer()), { t, nesrColours: settings.nesrColours, copyNo, revision: pad(src.revision), date: printedDate(src.revision_date) });
+      const tb = new Uint8Array(await tplObj.arrayBuffer());
+      out = slides
+        ? await makeCompanySlides(srcBytes, tb, { t, nesrColours: settings.nesrColours })
+        : await makeCompanyCopy(srcBytes, tb, { t, nesrColours: settings.nesrColours, copyNo, revision: pad(src.revision), date: printedDate(src.revision_date) });
     } catch (e) { skipped.push({ company: co, reason: (e as Error).message }); continue; }
 
     const docId = existing?.id ?? crypto.randomUUID();
@@ -340,26 +390,27 @@ knowledge.post('/:id/copies', async (c) => {
     const stmts: D1PreparedStatement[] = [];
     if (!existing) {
       stmts.push(c.env.DB.prepare(`INSERT INTO knowledge_docs (id, section, country, company, client, doc_type, category, title, summary, key_action, failure_types, doc_no, created_by, revision,
-          origin, author, is_form, expires_on, copy_of, copy_of_revision) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(docId, d.section, d.country, co, d.category, d.title, d.summary, copyNo, user.username, rev, d.origin ?? 'internal', d.author ?? null, d.is_form ?? 0, expires, d.id, src.revision));
+          origin, author, is_form, expires_on, copy_of, copy_of_revision) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(docId, d.section, d.country, co, d.doc_type ?? null, d.category, d.title, d.summary, d.key_action ?? null, JSON.stringify(d.failure_types ?? []), copyNo, user.username, rev,
+          d.origin ?? 'internal', d.author ?? null, d.is_form ?? 0, expires, d.id, src.revision));
     } else stmts.push(c.env.DB.prepare('UPDATE knowledge_docs SET copy_of_revision = ?, title = ? WHERE id = ?').bind(src.revision, d.title, docId));
     if (!open) {
       stmts.push(c.env.DB.prepare(`INSERT INTO knowledge_revisions (id, doc_id, revision, status, change_note, author, revision_date, expires_on, created_by) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?)`)
         .bind(crypto.randomUUID(), docId, rev, `${co} copy of ${d.doc_no ?? d.title} Rev ${src.revision}`, d.author ?? null, revDate, expires, user.username));
     }
     const fileId = crypto.randomUUID();
-    const name = `${copyNo ?? co} ${d.title} Rev ${pad(rev)}.docx`.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').slice(0, 180);
+    const name = `${copyNo ?? co} ${d.title} Rev ${pad(rev)}.${ext}`.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').slice(0, 180);
     const key = fileKey({ section: d.section, country: d.country, company: co, client: null, doc_no: copyNo, title: d.title }, rev, 'source', fileId, name);
     const bytes = out.bytes;
     const sha = hex(await crypto.subtle.digest('SHA-256', bytes));
     stmts.push(
       c.env.DB.prepare(`UPDATE knowledge_files SET superseded_at = ? WHERE doc_id = ? AND kind = 'source' AND revision = ? AND superseded_at IS NULL`).bind(now(), docId, rev),
       c.env.DB.prepare('INSERT INTO knowledge_files (id, doc_id, kind, revision, file_name, content_type, size_bytes, sha256, r2_key, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(fileId, docId, 'source', rev, name, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', bytes.length, sha, key, user.username),
-      audit(c.env, user, existing ? 'revise' : 'create', docId, `${co} Word copy ${copyNo ?? d.title} Rev ${rev} made from ${d.doc_no ?? d.title} Rev ${src.revision}: ${out.changes.map((x) => `${x.label} ×${x.n}`).join(', ')}${out.leftovers.length ? `. Still says NESR in ${out.leftovers.length} places` : ''}`),
+        .bind(fileId, docId, 'source', rev, name, fileType, bytes.length, sha, key, user.username),
+      audit(c.env, user, existing ? 'revise' : 'create', docId, `${co} ${slides ? 'slides' : 'Word'} copy ${copyNo ?? d.title} Rev ${rev} made from ${d.doc_no ?? d.title} Rev ${src.revision}: ${out.changes.map((x) => `${x.label} ×${x.n}`).join(', ')}${out.leftovers.length ? `. Still says NESR in ${out.leftovers.length} places` : ''}`),
     );
     try {
-      await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, customMetadata: { name, by: user.username, sha256: sha, doc: docId, revision: String(rev), from: d.id } });
+      await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: fileType }, customMetadata: { name, by: user.username, sha256: sha, doc: docId, revision: String(rev), from: d.id } });
       await c.env.DB.batch(stmts);
     } catch (e) {
       const m = (e as Error).message;
@@ -656,6 +707,19 @@ const uniqueError = (e: unknown) => {
   return /doc_no/.test(m) ? 'Another document already has that number' : 'Another document already uses that link';
 };
 
+/** The document already holding a number, named, so a duplicate is refused with who has it (6z.27). */
+async function numberTaken(env: Env, docNo: string | null, notId?: string): Promise<string | null> {
+  if (!docNo) return null;
+  const r = await env.DB.prepare('SELECT title, retired_at FROM knowledge_docs WHERE doc_no = ? AND id IS NOT ? LIMIT 1').bind(docNo, notId ?? null).first<{ title: string; retired_at: string | null }>();
+  return r ? `${docNo} is already used by “${r.title}”${r.retired_at ? ' (retired)' : ''}` : null;
+}
+
+/** The next free QAF number for a new form. */
+async function nextFormNumber(env: Env): Promise<string> {
+  const { results } = await env.DB.prepare(`SELECT doc_no FROM knowledge_docs WHERE doc_no GLOB 'QAF[0-9]*'`).all<{ doc_no: string }>();
+  return nextQaf(results.map((r) => r.doc_no));
+}
+
 /** Revision details a person types: what changed, author, revision date, expiry. */
 function revisionFields(b: Record<string, unknown>, periods: Periods) {
   const t = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
@@ -674,7 +738,11 @@ knowledge.post('/', async (c) => {
   if ('error' in r) return c.json({ error: r.error }, 400);
   const d = r.doc;
   const [numbering, periods] = await Promise.all([setting<Numbering>(c.env, 'numbering', DEFAULT_NUMBERING), setting<Periods>(c.env, 'periods', DEFAULT_PERIODS)]);
+  // a form keeps the QAF number it was given, or takes the next free one
+  if (d.section === 'form' && !d.doc_no) d.doc_no = await nextFormNumber(c.env);
   if (numbering.mode === 'manual' && !d.doc_no) return c.json({ error: 'Numbering is manual: type the document number' }, 400);
+  const taken = await numberTaken(c.env, d.doc_no);
+  if (taken) return c.json({ error: taken }, 400);
   if (d.duplicate_of && !(await find(c.env, d.duplicate_of))) return c.json({ error: 'The original document was not found' }, 400);
   const rev = nextRevision(0, false, b.revision);
   if ('error' in rev) return c.json({ error: rev.error }, 400);
@@ -715,6 +783,8 @@ knowledge.put('/:id', async (c) => {
   if (d.country !== cur.country && !(d.country === GLOBAL || places.includes(d.country))) return c.json({ error: 'Pick one of your countries or Global' }, 400);
   if (d.duplicate_of === cur.id) return c.json({ error: 'A document can’t repeat itself' }, 400);
   if (d.duplicate_of && !(await find(c.env, d.duplicate_of))) return c.json({ error: 'The original document was not found' }, 400);
+  const taken = d.doc_no && d.doc_no !== cur.doc_no ? await numberTaken(c.env, d.doc_no, cur.id) : null;
+  if (taken) return c.json({ error: taken }, 400);
   // the review date follows approval; only an admin may move it by hand
   const review = p.admin ? d.review_due : cur.review_due;
   try {
@@ -949,6 +1019,12 @@ knowledge.post('/:id/files', async (c) => {
   const id = crypto.randomUUID();
   const key = fileKey(d, v.revision, kind, id, ok.name);
   const sha = hex(await crypto.subtle.digest('SHA-256', bytes));
+  // a form file already uploaded under another form is refused, so the same form is not filed twice (6z.27)
+  if (d.section === 'form') {
+    const dup = await c.env.DB.prepare(`SELECT d.doc_no, d.title FROM knowledge_files f JOIN knowledge_docs d ON d.id = f.doc_id
+      WHERE f.sha256 = ? AND f.doc_id <> ? AND f.superseded_at IS NULL AND d.section = 'form' AND d.retired_at IS NULL LIMIT 1`).bind(sha, d.id).first<{ doc_no: string | null; title: string }>();
+    if (dup) return c.json({ error: `This file is already uploaded as ${dup.doc_no ? `${dup.doc_no} ` : ''}“${dup.title}”. Open that form instead of adding it again.` }, 400);
+  }
   // the file being replaced stays in storage and in the record (superseded), named in the audit line
   const prev = live ? await c.env.DB.prepare(`SELECT file_name FROM knowledge_files WHERE doc_id = ? AND kind = 'source' AND revision = ? AND superseded_at IS NULL`).bind(d.id, v.revision).first<{ file_name: string }>() : null;
   await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: ok.type }, customMetadata: { name: ok.name, by: user.username, sha256: sha, doc: d.id, revision: String(v.revision) } });

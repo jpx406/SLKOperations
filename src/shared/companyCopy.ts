@@ -28,8 +28,11 @@ export interface CompanyTemplate {
   /** More words to replace, in order, exactly as written. */
   words: { from: string; to: string }[];
   /** The company SOP in Word whose header, footer and logo are used. */
-  template: { key: string; file_name: string; uploaded_at: string; uploaded_by: string } | null;
+  template: TemplateFile | null;
+  /** The company presentation (.pptx) whose slide masters, layouts, theme and logo are used for lesson copies (6z.27). */
+  slides?: TemplateFile | null;
 }
+export interface TemplateFile { key: string; file_name: string; uploaded_at: string; uploaded_by: string }
 export interface CopySettings { nesrColours: string[]; companies: Record<CopyCompany, CompanyTemplate> }
 
 const noApprovers = (): Record<ApproverRole, string> => ({ prepared: '', reviewed: '', segment: '', corporate: '' });
@@ -62,7 +65,7 @@ export function checkCopySettings(b: unknown, current: CopySettings = DEFAULT_CO
     const ap = (g.approvers ?? cur.approvers) as Record<string, unknown>;
     const words = (Array.isArray(g.words) ? g.words : cur.words).map((w) => ({ from: str((w as Record<string, unknown>).from, 120), to: str((w as Record<string, unknown>).to, 120) })).filter((w) => w.from).slice(0, 40);
     companies[co] = {
-      prefix, name, colour, longName: str(g.longName ?? cur.longName, 120), words, template: cur.template,
+      prefix, name, colour, longName: str(g.longName ?? cur.longName, 120), words, template: cur.template, slides: cur.slides ?? null,
       approvers: Object.fromEntries(APPROVER_ROLES.map((k) => [k, str(ap?.[k], 120)])) as Record<ApproverRole, string>,
     };
   }
@@ -76,9 +79,14 @@ export function copySettingsOf(raw: unknown): CopySettings {
   return { nesrColours: r.nesrColours?.length ? r.nesrColours : DEFAULT_COPY_SETTINGS.nesrColours, companies };
 }
 
-/** Only global NESR SOPs and SWIs have company copies, and a copy has none of its own. */
+/**
+ * Global NESR SOPs and SWIs have company copies (Word), and so do lessons, best practices and learnings from incidents
+ * from any country (PowerPoint, 6z.27). A copy has none of its own.
+ */
 export const mayHaveCopies = (d: { section: string; country: string; company: string | null; copy_of?: string | null }) =>
-  (d.section === 'sop' || d.section === 'swi') && d.country === 'Global' && d.company === 'NESR' && !d.copy_of;
+  !d.copy_of && (d.section === 'lesson' ? !d.company || d.company === 'NESR' : (d.section === 'sop' || d.section === 'swi') && d.country === 'Global' && d.company === 'NESR');
+/** Which template a document's copies are made with: slides for lessons, Word for SOPs and SWIs. */
+export const copyKind = (d: { section: string }): 'slides' | 'word' => (d.section === 'lesson' ? 'slides' : 'word');
 
 /** NESR-8000-SOP-11 → SAP-8000-SOP-11; SOP-GL-NESR-004 → SOP-GL-SAP-004; anything else gets the prefix in front. */
 export function copyNumber(no: string | null, prefix: string): string | null {
@@ -99,14 +107,21 @@ interface Run { s: number; e: number; text: string }
 interface Para { runs: Run[]; texts: string[] }
 export interface Edit { start: number; end: number; to: string }
 
+/** Word paragraphs are w:p with w:t runs; PowerPoint and drawing text is a:p with a:t runs (6z.27). */
+type Ns = 'w' | 'a';
+const PARA_RE: Record<Ns, RegExp> = {
+  w: /<w:p(?=[\s>/])[^>]*>|<\/w:p>|<w:t(?=[\s>])[^>]*>([^<]*)<\/w:t>/g,
+  a: /<a:p(?=[\s>/])[^>]*>|<\/a:p>|<a:t(?=[\s>])[^>]*>([^<]*)<\/a:t>/g,
+};
+
 /** The innermost paragraphs of a part (text boxes have paragraphs inside paragraphs), in document order. */
-function paragraphs(xml: string): Para[] {
+function paragraphs(xml: string, ns: Ns = 'w'): Para[] {
   const out: Para[] = [];
   const stack: Run[][] = [];
-  for (const m of xml.matchAll(/<w:p(?=[\s>/])[^>]*>|<\/w:p>|<w:t(?=[\s>])[^>]*>([^<]*)<\/w:t>/g)) {
+  for (const m of xml.matchAll(PARA_RE[ns])) {
     const tag = m[0];
-    if (tag.startsWith('<w:p')) { if (!tag.endsWith('/>')) stack.push([]); }
-    else if (tag === '</w:p>') { const runs = stack.pop(); if (runs?.length) out.push({ runs, texts: runs.map((r) => r.text) }); }
+    if (tag.startsWith(`<${ns}:p`)) { if (!tag.endsWith('/>')) stack.push([]); }
+    else if (tag === `</${ns}:p>`) { const runs = stack.pop(); if (runs?.length) out.push({ runs, texts: runs.map((r) => r.text) }); }
     else if (stack.length) stack[stack.length - 1].push({ s: m.index!, e: m.index! + tag.length, text: unesc(m[1]) });
   }
   return out.sort((a, b) => a.runs[0].s - b.runs[0].s);
@@ -136,10 +151,10 @@ export function applyEdits(texts: string[], edits: Edit[]): string[] {
 const joined = (p: Para) => p.texts.join('');
 
 /** Writes back every run whose text changed. */
-function rebuild(xml: string, paras: Para[]): string {
+function rebuild(xml: string, paras: Para[], ns: Ns = 'w'): string {
   const changes = paras.flatMap((p) => p.runs.map((r, k) => ({ r, t: p.texts[k] })).filter(({ r, t }) => t !== r.text)).sort((a, b) => a.r.s - b.r.s);
   let out = '', at = 0;
-  for (const { r, t } of changes) { out += xml.slice(at, r.s) + `<w:t xml:space="preserve">${esc(t)}</w:t>`; at = r.e; }
+  for (const { r, t } of changes) { out += xml.slice(at, r.s) + (ns === 'w' ? `<w:t xml:space="preserve">${esc(t)}</w:t>` : `<a:t>${esc(t)}</a:t>`); at = r.e; }
   return out + xml.slice(at);
 }
 
@@ -368,4 +383,177 @@ export function copyState(copy: { published_at?: string | null; revision: number
   if (copy.open) return copy.open.status;
   if (!copy.published_at) return 'draft';
   return source.published_at && (copy.copy_of_revision ?? copy.revision) < source.revision ? 'behind' : 'current';
+}
+
+// ---- the PowerPoint package (6z.27) -----------------------------------------------------------------------------
+// Lessons learnt are slides. The copy is built inside the company's own presentation (the template): its slide
+// masters, layouts, theme and logo stay; its own slides are taken out and the NESR slides are put in, each on the
+// template layout of the same kind (title, title and content …). Pictures, charts and other parts the slides use
+// are copied along. Speaker notes and comments are left out. Text and colours change as in the Word copies.
+
+const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const SLIDE_CT = 'application/vnd.openxmlformats-officedocument.presentationml.slide+xml';
+interface RelEntry { id: string; type: string; target: string; external: boolean; xml: string }
+
+const attr = (tag: string, name: string) => new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1];
+function relsIn(xml: string): RelEntry[] {
+  return [...xml.matchAll(/<Relationship\b[^>]*\/?>/g)].map((m) => ({
+    id: attr(m[0], 'Id') ?? '', type: attr(m[0], 'Type') ?? '', target: attr(m[0], 'Target') ?? '', external: attr(m[0], 'TargetMode') === 'External', xml: m[0],
+  }));
+}
+const dirOf = (part: string) => part.slice(0, part.lastIndexOf('/'));
+const baseOf = (part: string) => part.slice(part.lastIndexOf('/') + 1);
+const relsPath = (part: string) => `${dirOf(part)}/_rels/${baseOf(part)}.rels`;
+/** A relationship target as a package path. */
+function resolvePart(fromPart: string, target: string): string {
+  if (target.startsWith('/')) return target.slice(1);
+  const out = dirOf(fromPart).split('/').filter(Boolean);
+  for (const seg of target.split('/')) { if (seg === '..') out.pop(); else if (seg && seg !== '.') out.push(seg); }
+  return out.join('/');
+}
+/** A package path as a target relative to a part. */
+function relativeTo(fromPart: string, to: string): string {
+  const a = dirOf(fromPart).split('/'), b = to.split('/');
+  let i = 0;
+  while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+  return [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/');
+}
+const layoutInfo = (xml: string) => ({ type: /<p:sldLayout\b[^>]*\btype="([^"]+)"/.exec(xml)?.[1] ?? '', name: (/<p:cSld\b[^>]*\bname="([^"]*)"/.exec(xml)?.[1] ?? '').toLowerCase() });
+const partNo = (p: string) => Number(/(\d+)\.xml$/.exec(p)?.[1] ?? 0);
+
+/**
+ * Makes the company PowerPoint file. `source` is the NESR .pptx, `template` one of the company's own presentations.
+ */
+export async function makeCompanySlides(source: Uint8Array, template: Uint8Array, opts: { t: CompanyTemplate; nesrColours: string[] }): Promise<CopyResult> {
+  let files: Map<string, Uint8Array>, out: Map<string, Uint8Array>;
+  try { files = await unzip(source, true); } catch { throw new Error('The editable file is not a PowerPoint file (.pptx)'); }
+  try { out = await unzip(template, true); } catch { throw new Error('The company template is not a PowerPoint file (.pptx)'); }
+  if (!files.has('ppt/presentation.xml')) throw new Error('The editable file is not a PowerPoint file (.pptx)');
+  if (!out.has('ppt/presentation.xml')) throw new Error('The company template is not a PowerPoint file (.pptx)');
+  const { t } = opts;
+  const counts = new Map<string, number>();
+  const rules = textRules(t);
+  const src = (k: string) => td.decode(files.get(k) ?? new Uint8Array());
+  const get = (k: string) => td.decode(out.get(k) ?? new Uint8Array());
+  let ct = get('[Content_Types].xml');
+  const srcCt = src('[Content_Types].xml');
+  const overrideRe = (part: string) => new RegExp(`<Override\\b[^>]*PartName="/${reEsc(part)}"[^>]*/>`, 'g');
+
+  // 1. take the template's own slides (and their notes) out
+  const presRelsPath = 'ppt/_rels/presentation.xml.rels';
+  let presRels = get(presRelsPath);
+  const drop = (part: string) => { out.delete(part); out.delete(relsPath(part)); ct = ct.replace(overrideRe(part), ''); };
+  for (const r of relsIn(presRels).filter((x) => x.type === `${REL}/slide`)) {
+    const part = resolvePart('ppt/presentation.xml', r.target);
+    for (const nr of relsIn(get(relsPath(part))).filter((x) => x.type === `${REL}/notesSlide`)) drop(resolvePart(part, nr.target));
+    drop(part);
+    presRels = presRels.replace(r.xml, '');
+  }
+  let pres = get('ppt/presentation.xml')
+    .replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>|<p:sldIdLst\/>/, '')
+    .replace(/<p:custShowLst>[\s\S]*?<\/p:custShowLst>/, '')
+    // the slide sections list names the template's slides
+    .replace(/<p:ext uri="\{521415D9-36F7-43E2-AB2F-B90AF26B5E84\}">[\s\S]*?<\/p:ext>/, '');
+
+  // 2. the template's layouts, to put each NESR slide on the same kind
+  const tLayouts = [...out.keys()].filter((k) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(k)).sort((a, b) => partNo(a) - partNo(b)).map((k) => ({ part: k, ...layoutInfo(get(k)) }));
+  if (!tLayouts.length) throw new Error('The company template has no slide layouts');
+  const pickLayout = (srcLayout: string) => {
+    const s = layoutInfo(src(srcLayout));
+    return (s.type && s.type !== 'cust' && tLayouts.find((l) => l.type === s.type))
+      || (s.name && tLayouts.find((l) => l.name === s.name))
+      || tLayouts.find((l) => l.type === 'obj') || tLayouts.find((l) => l.type === 'tx') || tLayouts[0];
+  };
+
+  // 3. the NESR slides, in order
+  const srcPresRels = relsIn(src('ppt/_rels/presentation.xml.rels'));
+  const order = [...src('ppt/presentation.xml').matchAll(/<p:sldId\b[^>]*>/g)]
+    .map((m) => srcPresRels.find((r) => r.id === attr(m[0], 'r:id'))).filter((r): r is RelEntry => !!r)
+    .map((r) => resolvePart('ppt/presentation.xml', r.target)).filter((p) => files.has(p));
+  if (!order.length) throw new Error('The editable file has no slides');
+  let n = 0;
+  const newName = (dir: string, base: string) => { let name = `${dir}/${base}`; while (out.has(name)) name = `${dir}/c${++n}_${base}`; return name; };
+  const slideName = new Map<string, string>();
+  order.forEach((p, i) => { const name = newName('ppt/slides', `slide${i + 1}.xml`); slideName.set(p, name); out.set(name, new Uint8Array()); });
+  const srcOverride = (part: string) => new RegExp(`<Override\\b[^>]*PartName="/${reEsc(part)}"[^>]*/>`).exec(srcCt)?.[0];
+  const addOverride = (part: string, type: string) => { if (type && !ct.includes(`PartName="/${part}"`)) ct = ct.replace('</Types>', `<Override PartName="/${part}" ContentType="${type}"/></Types>`); };
+  const addDefault = (part: string) => {
+    const ext = (/\.([a-z0-9]+)$/i.exec(part)?.[1] ?? '').toLowerCase();
+    if (!ext || new RegExp(`Extension="${ext}"`, 'i').test(ct)) return;
+    const type = attr(new RegExp(`<Default\\b[^>]*Extension="${ext}"[^>]*/>`, 'i').exec(srcCt)?.[0] ?? '', 'ContentType') ?? MEDIA_TYPES[ext];
+    if (type) ct = ct.replace(/(<Types\b[^>]*>)/, `$1<Default Extension="${ext}" ContentType="${type}"/>`);
+  };
+  const editText = (xml: string) => {
+    const coloured = recolour(xml, opts.nesrColours, t.colour, counts);
+    const paras = paragraphs(coloured, 'a');
+    applyRules(paras, rules, counts);
+    return rebuild(coloured, paras, 'a');
+  };
+
+  // any other part a slide uses (pictures, charts, SmartArt, video), copied once under a free name
+  const copied = new Map<string, string>();
+  const copyPart = (part: string): string | null => {
+    if (copied.has(part)) return copied.get(part)!;
+    const bytes = files.get(part);
+    if (!bytes) return null;
+    const dest = newName(dirOf(part), baseOf(part));
+    copied.set(part, dest);
+    out.set(dest, /^ppt\/diagrams\/(data|drawing)\d*\.xml$/.test(part) ? te.encode(editText(td.decode(bytes))) : bytes);
+    const o = srcOverride(part);
+    if (o) addOverride(dest, attr(o, 'ContentType') ?? ''); else addDefault(dest);
+    const rels = files.get(relsPath(part));
+    if (rels) {
+      let x = td.decode(rels);
+      for (const r of relsIn(x)) {
+        if (r.external) continue;
+        const to = copyPart(resolvePart(part, r.target));
+        x = x.replace(r.xml, to ? r.xml.replace(`Target="${r.target}"`, `Target="${relativeTo(dest, to)}"`) : '');
+      }
+      out.set(relsPath(dest), te.encode(x));
+    }
+    return dest;
+  };
+
+  const ids: string[] = [];
+  order.forEach((part, i) => {
+    const dest = slideName.get(part)!;
+    out.set(dest, te.encode(editText(src(part))));
+    let x = src(relsPath(part)) || '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    for (const r of relsIn(x)) {
+      if (r.external) continue;
+      const target = resolvePart(part, r.target);
+      let to: string | null;
+      if (r.type === `${REL}/slideLayout`) to = pickLayout(target).part;
+      else if (r.type === `${REL}/notesSlide` || /comment/i.test(r.type)) to = null;
+      else if (r.type === `${REL}/slide`) to = slideName.get(target) ?? null;
+      else to = copyPart(target);
+      x = x.replace(r.xml, to ? r.xml.replace(`Target="${r.target}"`, `Target="${relativeTo(dest, to)}"`) : '');
+    }
+    out.set(relsPath(dest), te.encode(x));
+    addOverride(dest, SLIDE_CT);
+    const rid = `rIdCopy${i + 1}`;
+    presRels = presRels.replace('</Relationships>', `<Relationship Id="${rid}" Type="${REL}/slide" Target="${relativeTo('ppt/presentation.xml', dest)}"/></Relationships>`);
+    ids.push(`<p:sldId id="${256 + i}" r:id="${rid}"/>`);
+  });
+  pres = pres.replace(/(<p:sldSz\b)/, `<p:sldIdLst>${ids.join('')}</p:sldIdLst>$1`);
+  out.set('ppt/presentation.xml', te.encode(pres));
+  out.set(presRelsPath, te.encode(presRels));
+  out.set('[Content_Types].xml', te.encode(ct));
+  counts.set('Slide masters, layouts, theme and logo from the template', order.length);
+
+  const size = (xml: string) => /<p:sldSz\b[^>]*cx="(\d+)"[^>]*cy="(\d+)"/.exec(xml)?.slice(1).join('x');
+  const leftovers = new Set<string>();
+  if (size(src('ppt/presentation.xml')) !== size(pres)) leftovers.add('The slide size differs from the template: check each slide’s layout');
+  for (const p of slideName.values()) {
+    for (const para of paragraphs(get(p), 'a')) {
+      const s = joined(para);
+      for (const m of s.matchAll(/NESR/gi)) leftovers.add(s.slice(Math.max(0, m.index! - 30), m.index! + 34).trim());
+    }
+  }
+  return {
+    bytes: zip([...out].map(([name, data]) => ({ name, data }))),
+    changes: [...counts].map(([label, c]) => ({ label, n: c })),
+    leftovers: [...leftovers].slice(0, 12),
+    usedTemplate: tLayouts.map((l) => l.part),
+  };
 }
