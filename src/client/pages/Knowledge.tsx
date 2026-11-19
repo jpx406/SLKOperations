@@ -150,8 +150,8 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
   onRead: (d: KnowledgeDoc) => void; onEdit: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void; refresh: () => void;
 }) {
   const f = { q: params.get('q') ?? '', type: params.get('type') ?? '', category: params.get('category') ?? '', failure: params.get('failure') ?? '', place: params.get('place') ?? '',
-    sort: (params.get('sort') === 'az' ? 'az' : 'newest') as 'az' | 'newest', duplicates: params.get('dups') === '1' };
-  const lib = useMemo(() => filterLibrary(all, f), [all, f.q, f.type, f.category, f.failure, f.place, f.sort, f.duplicates]); // eslint-disable-line react-hooks/exhaustive-deps
+    sort: (params.get('sort') === 'az' ? 'az' : 'newest') as 'az' | 'newest', duplicates: params.get('dups') === '1', company: params.get('company') ?? '' };
+  const lib = useMemo(() => filterLibrary(all, f), [all, f.q, f.type, f.category, f.failure, f.place, f.sort, f.duplicates, f.company]); // eslint-disable-line react-hooks/exhaustive-deps
   const published = useMemo(() => all.filter((d) => d.published_at), [all]);
   const hero = useMemo(() => lessonOfWeek(published, today()), [published]);
   const pick = async (d: KnowledgeDoc) => { await api(`/knowledge/${d.id}/lesson-of-week`, { method: 'POST' }); refresh(); };
@@ -184,6 +184,10 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
         </Select>
         <Select aria-label="Sort" className={inputSized('w-32')} value={f.sort} onChange={(e) => set('sort', e.target.value === 'az' ? 'az' : '')}><option value="newest">Newest</option><option value="az">A → Z</option></Select>
         <label className="flex h-(--layout-control-md) items-center gap-2 text-sm"><input type="checkbox" checked={f.duplicates} onChange={(e) => set('dups', e.target.checked ? '1' : '')} />Show duplicates</label>
+      </div>
+      <div role="group" aria-label="Company" className="mb-2 flex flex-wrap gap-1.5">
+        <button type="button" className={chip(!f.company)} onClick={() => set('company', '')}>All companies</button>
+        {SOP_COMPANIES.map((c) => <button key={c} type="button" aria-pressed={f.company === c} className={chip(f.company === c)} onClick={() => set('company', f.company === c ? '' : c)}>{c} ({lib.companies.find((x) => x.value === c)?.n ?? 0})</button>)}
       </div>
       <div role="group" aria-label="Document type" className="mb-2 flex flex-wrap gap-1.5">
         <button type="button" className={chip(!f.type)} onClick={() => set('type', '')}>All types</button>
@@ -256,20 +260,30 @@ function Controlled({ section, all, everything, canEdit, params, set, onRead, on
   const shown = all.filter((d) => matches(d, qText) && (!company || d.company === company) && (!place || d.country === place));
   const groups = groupByPlace(shown);
   const chip = (on: boolean) => cx('h-(--layout-control-sm) rounded-pill border px-3 text-sm font-semibold', on ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text');
+  // client procedures and forms are told apart by country (6z.31): the countries are chips, like the companies
+  const countryChips = section === 'client' || section === 'form';
   if (!all.length) return <>{section === 'form' && <FormsRecordPanel />}<EmptyState title={EMPTY[section][0]}>{canEdit ? EMPTY[section][1] : 'Nothing has been published yet.'}</EmptyState></>;
   return (
     <>
       {section === 'form' && <FormsRecordPanel />}
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <SearchBox value={qText} onChange={(v) => set('q', v)} placeholder={section === 'client' ? 'Search procedures and clients' : 'Search titles and numbers'} />
-        <Select aria-label="Country" className={inputSized('w-44')} value={place} onChange={(e) => set('place', e.target.value)}>
-          <option value="">All countries</option>{places.map((p) => <option key={p} value={p}>{p}</option>)}
-        </Select>
+        {!countryChips && (
+          <Select aria-label="Country" className={inputSized('w-44')} value={place} onChange={(e) => set('place', e.target.value)}>
+            <option value="">All countries</option>{places.map((p) => <option key={p} value={p}>{p}</option>)}
+          </Select>
+        )}
       </div>
       {hasCompany(section) && (
-        <div role="group" aria-label="Company" className="mb-4 flex flex-wrap gap-1.5">
+        <div role="group" aria-label="Company" className={cx(countryChips ? "mb-2" : "mb-4", "flex flex-wrap gap-1.5")}>
           <button type="button" className={chip(!company)} onClick={() => set('company', '')}>All companies</button>
-          {SOP_COMPANIES.map((c) => <button key={c} type="button" aria-pressed={company === c} className={chip(company === c)} onClick={() => set('company', company === c ? '' : c)}>{c} ({all.filter((d) => d.company === c).length})</button>)}
+          {SOP_COMPANIES.map((c) => <button key={c} type="button" aria-pressed={company === c} className={chip(company === c)} onClick={() => set('company', company === c ? '' : c)}>{c} ({all.filter((d) => d.company === c && (!place || d.country === place)).length})</button>)}
+        </div>
+      )}
+      {countryChips && (
+        <div role="group" aria-label="Country" className="mb-4 flex flex-wrap gap-1.5">
+          <button type="button" className={chip(!place)} onClick={() => set('place', '')}>All countries</button>
+          {places.map((p) => <button key={p} type="button" aria-pressed={place === p} className={chip(place === p)} onClick={() => set('place', place === p ? '' : p)}>{p} ({all.filter((d) => d.country === p && (!company || d.company === company)).length})</button>)}
         </div>
       )}
       {!shown.length && <EmptyState title="Nothing matches">Clear a filter or search for something else.</EmptyState>}

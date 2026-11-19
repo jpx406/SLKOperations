@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_COPY_SETTINGS, copyKind, copyTargets, makeCompanySlides, mayHaveCopies, nesrNumber } from '../src/shared/companyCopy';
-import { checkDoc, nextQaf, qafNumber } from '../src/shared/knowledge';
+import { checkDoc, filterLibrary, nextQaf, qafNumber, type KnowledgeDoc } from '../src/shared/knowledge';
 import { deletableDraft, editableAccept, editableProblem, guessType, mayDeleteDraft, splitBase, submitProblems } from '../src/shared/knowledgeControl';
 import { zip } from '../src/shared/xlsx';
 import { unzip } from '../src/shared/xlsxRead';
@@ -199,5 +199,18 @@ describe('deleting drafts (6z.29)', () => {
     expect(mayDeleteDraft({ ...base, reviewer: true })).toBe(false);
     expect(mayDeleteDraft({ ...base, reviewer: true }, true)).toBe(true);
     expect(ruleFor('DELETE', '/api/knowledge/abc')).toMatchObject({ menu: 'knowledge_hub', action: 'view' });
+  });
+});
+
+describe('lessons by company (6z.31)', () => {
+  it('filters lessons by whose they are, a lesson with no company counting as NESR', () => {
+    const l = (id: string, company: string | null, country = 'Global') => ({ id, section: 'lesson', country, company, client: null, doc_type: 'lesson_learnt', category: 'Wireline', title: id, summary: null,
+      key_action: null, failure_types: [], published_on: null, rilr_ref: null, source_ref: null, duplicate_of: null, lesson_of_week_from: null, doc_no: null, revision: 0, review_due: null, retired_at: null }) as KnowledgeDoc;
+    const docs = [l('a', null), l('b', 'NESR'), l('c', 'SAPESCO', 'Saudi Arabia'), l('d', 'Gulf Energy')];
+    expect(filterLibrary(docs, { company: 'NESR' }).docs.map((d) => d.id).sort()).toEqual(['a', 'b']);
+    expect(filterLibrary(docs, { company: 'SAPESCO' }).docs.map((d) => d.id)).toEqual(['c']);
+    expect(filterLibrary(docs, {}).companies).toEqual([{ value: 'NESR', n: 2 }, { value: 'Gulf Energy', n: 1 }, { value: 'SAPESCO', n: 1 }]);
+    // the countries follow the company picked
+    expect(filterLibrary(docs, { company: 'SAPESCO' }).places).toEqual([{ value: 'Saudi Arabia', n: 1 }]);
   });
 });

@@ -201,7 +201,7 @@ export function lessonOfWeek(docs: KnowledgeDoc[], today: string): KnowledgeDoc 
   return [...live].sort((a, b) => (b.published_on ?? '').localeCompare(a.published_on ?? ''))[0] ?? null;
 }
 
-export interface LibraryFilter { q?: string; type?: string; category?: string; failure?: string; place?: string; sort?: 'newest' | 'az'; duplicates?: boolean }
+export interface LibraryFilter { q?: string; type?: string; category?: string; failure?: string; place?: string; sort?: 'newest' | 'az'; duplicates?: boolean; company?: string }
 
 /** Text search over everything a person might type: title, number, summary, client, company, category … */
 export function matches(d: KnowledgeDoc, q: string): boolean {
@@ -221,13 +221,16 @@ export function filterLibrary(docs: KnowledgeDoc[], f: LibraryFilter) {
   const byCat = (d: KnowledgeDoc) => !f.category || d.category === f.category;
   const byFailure = (d: KnowledgeDoc) => !f.failure || d.failure_types.includes(f.failure);
   const byPlace = (d: KnowledgeDoc) => !f.place || d.country === f.place;
-  const docsOut = base.filter((d) => byType(d) && byCat(d) && byFailure(d) && byPlace(d))
+  // whose lesson it is (6z.31); a lesson with no company is NESR's
+  const byCompany = (d: KnowledgeDoc) => !f.company || (d.company ?? 'NESR') === f.company;
+  const docsOut = base.filter((d) => byType(d) && byCat(d) && byFailure(d) && byPlace(d) && byCompany(d))
     .sort(f.sort === 'az' ? (a, b) => a.title.localeCompare(b.title) : (a, b) => (b.published_on ?? '').localeCompare(a.published_on ?? '') || a.title.localeCompare(b.title));
   return {
     docs: docsOut,
-    types: count(base.filter((d) => byCat(d) && byFailure(d) && byPlace(d)), (d) => (d.doc_type ? [d.doc_type] : [])),
-    categories: count(base.filter((d) => byType(d) && byFailure(d) && byPlace(d)), (d) => (d.category ? [d.category] : [])),
-    failures: count(base.filter((d) => byType(d) && byCat(d) && byPlace(d)), (d) => d.failure_types),
-    places: count(base.filter((d) => byType(d) && byCat(d) && byFailure(d)), (d) => [d.country]),
+    types: count(base.filter((d) => byCat(d) && byFailure(d) && byPlace(d) && byCompany(d)), (d) => (d.doc_type ? [d.doc_type] : [])),
+    categories: count(base.filter((d) => byType(d) && byFailure(d) && byPlace(d) && byCompany(d)), (d) => (d.category ? [d.category] : [])),
+    failures: count(base.filter((d) => byType(d) && byCat(d) && byPlace(d) && byCompany(d)), (d) => d.failure_types),
+    places: count(base.filter((d) => byType(d) && byCat(d) && byFailure(d) && byCompany(d)), (d) => [d.country]),
+    companies: count(base.filter((d) => byType(d) && byCat(d) && byFailure(d) && byPlace(d)), (d) => [d.company ?? 'NESR']),
   };
 }
