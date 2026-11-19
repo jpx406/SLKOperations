@@ -35,7 +35,8 @@ export function SignIn() {
     // drop the cached "signed out" answer so the app re-checks instead of bouncing back here
     qc.removeQueries({ queryKey: ['session'] });
     const next = params.get('next');
-    navigate(next && next.startsWith('/') && !next.startsWith('//') ? next : '/operation/schedule', { replace: true });
+    // with no page to go back to, the module picker opens (6z.33)
+    navigate(next && next.startsWith('/') && !next.startsWith('//') && next !== '/' ? next : '/modules', { replace: true });
   }, [qc, params, navigate]);
 
   const submit = async (e: FormEvent) => {

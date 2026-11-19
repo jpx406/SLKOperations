@@ -33,6 +33,7 @@ import { WireDetail, WireKpis, WiresRegister } from './pages/Wires';
 import { Reconciliation } from './pages/Reconciliation';
 import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
+import { ModulePicker } from './pages/Modules';
 import { QrApprove } from './pages/QrApprove';
 import { Stub } from './pages/Stub';
 import './styles.css';
@@ -49,11 +50,13 @@ const router = createBrowserRouter([
   { path: '/signin', element: <SignIn /> },
   // the phone side of QR sign-in: public, it signs another computer in after Face ID on this phone
   { path: '/qr/:id', element: <QrApprove /> },
+  // after signing in: the SLK Operations Hub, the Knowledge Hub or Competency (6z.33)
+  { path: '/modules', element: <RequireAuth><ModulePicker /></RequireAuth> },
   {
     path: '/',
     element: <RequireAuth><AppShell /></RequireAuth>,
     children: [
-      { index: true, element: <Navigate to="/operation/schedule" replace /> },
+      { index: true, element: <Navigate to="/modules" replace /> },
       { path: 'operation/schedule', element: <Schedule /> },
       { path: 'operation/jobs', element: <JobBoard /> },
       { path: 'operation/jobs/:id/jra', element: <JraPage /> },

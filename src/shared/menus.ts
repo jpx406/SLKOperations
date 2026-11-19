@@ -83,6 +83,7 @@ export const MENU_LABELS: Record<string, string> = {
   job_preparation: 'Job · 02 Preparation',
   job_execution: 'Job · 03 Execution',
   job_closure: 'Job · 04 Closure',
+  slk_ops: 'SLK Operations Hub (the whole app, with the Knowledge Hub and Competency)',
 };
 
 /** The job stages sit under Jobs in the rights list. */
@@ -90,14 +91,16 @@ const AFTER: Record<string, string[]> = { jobs: ['job_design', 'job_preparation'
 
 /** Menu keys grouped like the top navigation (Admin Manual 5.1: the grant checklist follows the nav clusters). */
 export function menuClusters(keys: readonly string[]): { label: string; keys: string[] }[] {
-  const seen = new Set<string>();
+  // the module right comes first (6z.33): it decides which of the three modules a role opens
+  const seen = new Set<string>(keys.includes('slk_ops') ? ['slk_ops'] : []);
   const out = NAV.map((g) => {
     const ks = [...new Set(g.pages.flatMap((p) => [p.key, ...(AFTER[p.key] ?? [])]))].filter((k) => keys.includes(k) && !seen.has(k));
     ks.forEach((k) => seen.add(k));
     return { label: g.label, keys: ks };
   }).filter((g) => g.keys.length);
   const other = keys.filter((k) => !seen.has(k));
-  return other.length ? [...out, { label: 'Other', keys: other }] : out;
+  const modules = keys.includes('slk_ops') ? [{ label: 'Modules', keys: ['slk_ops'] }] : [];
+  return [...modules, ...out, ...(other.length ? [{ label: 'Other', keys: other }] : [])];
 }
 
 export const canView = (menus: Record<string, { view: boolean }>, key: string) => !!menus[key]?.view;

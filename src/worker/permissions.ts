@@ -1,5 +1,6 @@
 import type { MenuRight, Role } from '../shared/types';
 import type { Env } from './env';
+import { applyModules } from '../shared/modules';
 
 export const MENU_KEYS = [
   'schedule', 'jobs', 'job_log', 'pre_job_notes', 'database', 'failure_roster', 'eight_min_facts', 'quick_plan',
@@ -7,6 +8,8 @@ export const MENU_KEYS = [
   'inventory_explosive', 'inventory_hardware', 'inventory_mcr', 'wires', 'knowledge_hub', 'users', 'audit', 'ai_assistant',
   'bonus', 'sales_dashboard', 'headcount_roster', 'ai_agent',
   'job_design', 'job_preparation', 'job_execution', 'job_closure', 'form_templates', 'companies',
+  // the module right (6z.33): the whole SLK Operations Hub, which includes the Knowledge Hub and Competency
+  'slk_ops',
 ] as const;
 const STAGE_KEYS = ['job_design', 'job_preparation', 'job_execution', 'job_closure'];
 
@@ -22,11 +25,12 @@ export async function loadMenus(env: Env, role: Role, username: string): Promise
     env.DB.prepare('SELECT menu_key, effect, can_edit FROM tab_grants WHERE username = ?').bind(username),
     env.DB.prepare('SELECT 1 FROM employees WHERE wg_username = ? AND is_slk_contact = 1 AND active = 1 LIMIT 1').bind(username),
   ]);
-  return effectiveMenus(
+  // without the SLK Operations Hub right only the Knowledge Hub and Competency stay open (6z.33)
+  return applyModules(effectiveMenus(
     perms.results as { menu_key: string; can_view: number; can_edit: number; can_delete: number }[],
     grants.results as { menu_key: string; effect: 'grant' | 'deny'; can_edit: number }[],
     contact.results.length > 0,
-  );
+  ))
 }
 
 /**

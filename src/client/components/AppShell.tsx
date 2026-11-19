@@ -1,9 +1,11 @@
 import { Select } from './Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown, ChevronRight, ClipboardList, Clock, Database, Fingerprint, Gauge, Info, KeyRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, Sun, X, type LucideIcon } from 'lucide-react';
+import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown, ChevronRight, ClipboardList, Clock, Database, Fingerprint, Gauge, Info, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, Sun, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav, type Group } from '../../shared/menus';
+import { MODULES, currentModule, moduleAccess, moduleNav } from '../../shared/modules';
+import { pickModule, pickedModule } from '../pages/Modules';
 import { roleLabel } from '../../shared/roles';
 import type { WgStatus } from '../../shared/types';
 import { api, countryScope, setCountryScope } from '../api';
@@ -127,7 +129,7 @@ function NavDrawer({ nav, current, onClose, status }: { nav: Group[]; current: s
 
 const GROUP_ICONS: Record<string, LucideIcon> = {
   Operation: ClipboardList, 'Service Quality': Gauge, Bonus: Award, 'SLK Activity Dashboard': ChartColumn, Attendance: CalendarCheck,
-  Inventory: Boxes, Wires: Cable, 'Knowledge Hub': BookOpen, Administration: ShieldCheck,
+  Inventory: Boxes, Wires: Cable, 'Knowledge Hub': BookOpen, Administration: ShieldCheck, Competency: Award,
 };
 const readStore = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeStore = (k: string, v: string | null) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode: this visit only */ } };
@@ -210,8 +212,12 @@ export function AppShell() {
   const { data: me } = useMe();
   const config = useQuery({ queryKey: ['config'], queryFn: () => api<{ wireguardUrl: string }>('/config'), staleTime: Infinity });
   const display = useDisplay();
-  const nav = visibleNav(me?.menus ?? {});
   const loc = useLocation();
+  // the module picked after signing in shows only its own menu; the SLK Operations Hub shows everything (6z.33)
+  const access = moduleAccess(me?.menus ?? {});
+  const mod = currentModule(pickedModule(), loc.pathname, access);
+  useEffect(() => { if (me) pickModule(mod); }, [me, mod]);
+  const nav = moduleNav(visibleNav(me?.menus ?? {}), mod);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const group = nav.find((g) => g.pages.some((p) => loc.pathname.startsWith(p.path))) ?? nav[0];
@@ -249,6 +255,10 @@ export function AppShell() {
             {me && <span className="hidden sm:inline-flex"><CountrySwitch countries={me.allCountries ?? me.countries} /></span>}
             <span className="hidden sm:inline-flex"><SyncStatus canSync={!!me?.menus.schedule?.edit} /></span>
             <RiyadhClock />
+            <NavLink to="/modules" title="Switch module" aria-label={`Module: ${MODULES.find((m) => m.key === mod)?.label}. Switch module`}
+              className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md px-2 text-sm font-semibold text-text-muted hover:bg-surface-2 hover:text-text">
+              <LayoutGrid aria-hidden className="size-4" /><span className="hidden lg:inline">{MODULES.find((m) => m.key === mod)?.label}</span>
+            </NavLink>
             <HelpButton />
             <AssistantLauncher />
             {me && <AccountMenu name={me.fullName} role={roleLabel(me.role)} admin={me.role === 'admin'} countries={me.allCountries ?? me.countries} passwordUrl={config.data?.wireguardUrl} display={display} onAbout={() => setAbout(true)} onSignOut={signOut} />}

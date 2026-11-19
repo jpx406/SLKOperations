@@ -384,7 +384,8 @@ function RoleMatrix() {
         <caption className="sr-only">Rights of the {roleLabel(role)} role per tab</caption>
         <thead><tr className="label-caps text-left text-text-muted"><th scope="col" className="py-1">Tab</th><th scope="col">View</th><th scope="col">Edit</th><th scope="col">Delete</th></tr></thead>
         <tbody>
-          {m.data.menus.filter((k) => k !== 'users').map((k) => {
+          {/* the module right first (6z.33): it decides which modules the role opens after signing in */}
+          {['slk_ops', ...m.data.menus.filter((k) => k !== 'users' && k !== 'slk_ops')].filter((k) => m.data.menus.includes(k)).map((k) => {
             const r = rights(k);
             const put = (patch: Partial<{ can_view: boolean; can_edit: boolean; can_delete: boolean }>) => {
               const next = { can_view: !!r.can_view, can_edit: !!r.can_edit, can_delete: !!r.can_delete, ...patch };
@@ -392,12 +393,23 @@ function RoleMatrix() {
               set.mutate({ menu_key: k, ...next });
             };
             return (
+              k === 'slk_ops' ? (
+                <tr key={k} className="bg-surface-2">
+                  <th scope="row" className="px-2 py-2 text-left font-normal">
+                    <span className="font-semibold">Opens the SLK Operations Hub</span>
+                    <span className="block text-xs text-text-muted">After signing in, people pick a module. With this ticked the role opens the whole hub, and the Knowledge Hub and Competency with it. Without it, the role opens only the Knowledge Hub and Competency, if ticked below; the other modules are greyed out.</span>
+                  </th>
+                  <td className="align-top pt-2"><input type="checkbox" aria-label="Opens the SLK Operations Hub" checked={!!r.can_view} disabled={set.isPending} onChange={(e) => put({ can_view: e.target.checked })} /></td>
+                  <td /><td />
+                </tr>
+              ) : (
               <tr key={k} className="border-t border-border">
                 <th scope="row" className="py-1.5 text-left font-normal">{menuLabel(k)}</th>
                 <td><input type="checkbox" aria-label={`${menuLabel(k)}: view`} checked={!!r.can_view} disabled={set.isPending} onChange={(e) => put({ can_view: e.target.checked })} /></td>
                 <td><input type="checkbox" aria-label={`${menuLabel(k)}: edit`} checked={!!r.can_edit} disabled={set.isPending} onChange={(e) => put({ can_edit: e.target.checked })} /></td>
                 <td><input type="checkbox" aria-label={`${menuLabel(k)}: delete`} checked={!!r.can_delete} disabled={set.isPending} onChange={(e) => put({ can_delete: e.target.checked })} /></td>
               </tr>
+              )
             );
           })}
         </tbody>

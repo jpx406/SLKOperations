@@ -4,6 +4,7 @@ import type { Role } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { exportPackage, importApply, importDryRun } from './dataPackage';
 import { MENU_KEYS, effectiveMenus } from './permissions';
+import { applyModules } from '../shared/modules';
 import { syncPeople } from './people';
 import { roleKeys } from './rules';
 import { cleanEmployee } from './roster';
@@ -77,7 +78,7 @@ admin.get('/users', async (c) => {
     const g = byUser.get(key) ?? [];
     const menus = u.role === 'admin'
       ? Object.fromEntries(MENU_KEYS.map((k) => [k, { view: true, edit: true, delete: true }]))
-      : effectiveMenus((perms.results as P[]).filter((p) => p.role === u.role), g, contactSet.has(key));
+      : applyModules(effectiveMenus((perms.results as P[]).filter((p) => p.role === u.role), g, contactSet.has(key)));
     return {
       ...u,
       countries: JSON.parse((u.countries as string) || '[]'),

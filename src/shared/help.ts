@@ -8,6 +8,8 @@ export const HELP_SECTIONS: HelpSection[] = [
     id: 'start', title: 'Signing in and moving around', menus: 'any',
     body: `Sign in with your WIREGUARD username and password; SLK Operations Hub has no passwords of its own, so change yours in WIREGUARD (the "Change password" link in the header). You are signed out after a period without activity.
 
+After signing in you pick a module: the SLK Operations Hub (everything, with the Knowledge Hub and Competency), the Knowledge Hub alone or Competency alone. A module your role doesn't open is greyed out; ask an admin. The NESR mark at the top of any page, or the module name next to the clock, brings you back to choose again. A link to a page (in an email, say) opens that page straight away.
+
 Face ID, Touch ID, a fingerprint or Windows Hello can replace the password. Set it up once on each phone or computer: sign in with your password, open the account menu (your name, top right) and choose "Set up Face ID / fingerprint & QR sign-in", then "Set up on this device". SLK Operations Hub also offers it after a password sign-in. From then on use "Sign in with Face ID / fingerprint" on the sign-in page. On a laptop without either, choose "Sign in with your phone (QR code)", scan the code with a phone that has Face ID set up and approve there; the laptop signs in by itself. An administrator can switch Face ID off for a person in Users & Roles.
 
 The header shows the WIREGUARD sync time (green when recent, amber after 30 minutes, red after an error), the Riyadh clock, Help, Ask (the help assistant) and your name and role. If you cover more than one country, the country switch narrows every page to one of them (on a phone it is in the account menu).
@@ -98,7 +100,7 @@ SAPESCO and Gulf Energy copies: when a Global NESR SOP or SWI is saved with its 
   },
   {
     id: 'admin', title: 'Administration', menus: ['users'], adminOnly: true,
-    body: `Users & Roles: accounts live in WIREGUARD; here you set each person's SLK Operations Hub role and countries, switch access off, and add or remove tabs per person. The role × tab matrix sets the defaults. Admins keep every right.
+    body: `Users & Roles: accounts live in WIREGUARD; here you set each person's SLK Operations Hub role and countries, switch access off, and add or remove tabs per person. The role × tab matrix sets the defaults. Admins keep every right. Its first line, Opens the SLK Operations Hub, decides the modules: ticked, the role opens the whole hub and with it the Knowledge Hub and Competency; not ticked, the role opens only the Knowledge Hub and Competency if those are ticked, and the rest of the app is closed to it. Every role that had rights when modules came in (6z.33) keeps the hub.
 
 Data export & import (the Data link in the header): Export downloads the whole board as a package plus a spreadsheet per table, and counts as the backup an import needs. Import takes a package, shows a dry run (new, changed, unchanged, refused) and applies only after you type IMPORT within 15 minutes of a backup. It never deletes, and history tables only take new rows.
 
