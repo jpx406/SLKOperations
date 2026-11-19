@@ -128,6 +128,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(submit|discard)$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/revisions\/\d+\/(review|approve|send-back)$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'POST', re: /^\/api\/knowledge\/[^/]+\/(retire|restore)$/, menu: 'knowledge_hub', action: 'view' },
+  // the Competency module's storage (6z.34): personal keys for anyone with the tab, shared keys checked for edit in the route
+  { method: 'PUT', re: /^\/api\/competency\/kv$/, menu: 'competency', action: 'view' },
+  { method: 'DELETE', re: /^\/api\/competency\/kv$/, menu: 'competency', action: 'view' },
   // deleting a draft that was never published (6z.29): admins, approvers, editors or the delete right, checked in the route
   { method: 'DELETE', re: /^\/api\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'PUT', re: /^\/api\/knowledge\/(settings|people\/[^/]+)$/, menu: 'knowledge_hub', action: 'view' },
@@ -224,6 +227,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/knowledge\/manuals\/files\/[^/]+$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/knowledge\/settings\/copies\/[^/]+\/template$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/quick-plan$/, menus: ['quick_plan'] },
+  { re: /^\/api\/competency\/(kv|kv-list|slk-seed)$/, menus: ['competency'] },
   { re: /^\/api\/attachments\/job\/[^/]+(\/[^/]+)?$/, menus: ['jobs'] },
   { re: /^\/api\/attachments\/knowledge\/[^/]+(\/[^/]+)?$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/signatures\/(jra|bonus)\/[^/]+$/, menus: ['jobs'] },

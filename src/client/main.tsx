@@ -13,7 +13,8 @@ import { JobLog } from './pages/JobLog';
 import { EightMinFactsEditor, EightMinFactsList } from './pages/EightMinFacts';
 import { FailureRoster } from './pages/FailureRoster';
 import { NptAnalysis, Statistics } from './pages/Statistics';
-import { Competency, Utilization } from './pages/People';
+import { Utilization } from './pages/People';
+import { CompetencyModule } from './pages/CompetencyModule';
 import { Attendance } from './pages/Attendance';
 import { Inventory } from './pages/Inventory';
 import { PreJobNoteEditor, PreJobNotesList, PreJobNotesPrint } from './pages/PreJobNotes';
@@ -73,7 +74,8 @@ const router = createBrowserRouter([
       { path: 'quality/statistics', element: <Statistics /> },
       { path: 'quality/npt', element: <NptAnalysis /> },
       { path: 'quality/utilization', element: <Utilization /> },
-      { path: 'quality/competency', element: <Competency /> },
+      // the Competency Framework System, converted to slickline (6z.34)
+      { path: 'quality/competency', element: <CompetencyModule /> },
       { path: 'quality/wire-kpis', element: <WireKpis /> },
       { path: 'wires', element: <WiresRegister /> },
       { path: 'bonus/report', element: <BonusReport /> },

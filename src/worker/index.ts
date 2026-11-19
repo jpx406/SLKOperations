@@ -20,6 +20,7 @@ import { inventory } from './inventory';
 import { preJobNotes } from './preJobNotes';
 import { jra } from './jra';
 import { knowledge } from './knowledge';
+import { competency } from './competency';
 import { quickPlan } from './quickPlan';
 import { signatures } from './signatures';
 import { attachments } from './attachments';
@@ -243,6 +244,8 @@ app.route('/pre-job-notes', preJobNotes);
 app.route('/jra', jra);
 app.route('/wires', wires);
 app.route('/knowledge', knowledge);
+// the Competency module's storage (6z.34)
+app.route('/competency', competency);
 app.route('/quick-plan', quickPlan);
 app.route('/signatures', signatures);
 app.route('/attachments', attachments);
