@@ -40,6 +40,10 @@ describe('forms: QAF numbers (6z.27)', () => {
     expect(checkDoc({ ...base, doc_no: '' }, [])).toMatchObject({ doc: { doc_no: null } });
     expect(checkDoc({ ...base, doc_no: 'FRM-001' }, [])).toEqual({ error: 'Form numbers are QAF numbers, like QAF14009. Leave it blank to get the next one.' });
     expect(checkDoc({ ...base, doc_no: 'QAF14009X' }, [])).toHaveProperty('error');
+    // a form keeps the number it already has when its details are edited (6z.30)
+    expect(checkDoc({ ...base, doc_no: 'QAF-14110-GL-NESR-001' }, [], 'QAF-14110-GL-NESR-001')).toMatchObject({ doc: { doc_no: 'QAF-14110-GL-NESR-001' } });
+    expect(checkDoc({ ...base, doc_no: 'FRM-GL-NESR-005' }, [], 'FRM-GL-NESR-005')).toMatchObject({ doc: { doc_no: 'FRM-GL-NESR-005' } });
+    expect(checkDoc({ ...base, doc_no: 'FRM-GL-NESR-006' }, [], 'FRM-GL-NESR-005')).toHaveProperty('error');
   });
 
   it('Add several reads the QAF number from the file name and files it as a form', () => {

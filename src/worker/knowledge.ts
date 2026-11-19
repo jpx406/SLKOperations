@@ -784,7 +784,7 @@ knowledge.put('/:id', async (c) => {
   const cur = await find(c.env, c.req.param('id'));
   if (!cur || cur.retired_at) return c.json({ error: 'Document not found' }, 404);
   const places = await placesFor(c.env, user);
-  const r = checkDoc(await c.req.json().catch(() => ({})), [...places, cur.country]);
+  const r = checkDoc(await c.req.json().catch(() => ({})), [...places, cur.country], cur.doc_no);
   if ('error' in r) return c.json({ error: r.error }, 400);
   const d = r.doc;
   if (d.country !== cur.country && !(d.country === GLOBAL || places.includes(d.country))) return c.json({ error: 'Pick one of your countries or Global' }, 400);

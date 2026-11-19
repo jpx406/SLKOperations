@@ -69,7 +69,7 @@ const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
  * Cleans an entry. `countries` are the places it may be filed under (Global is added for lessons and SOPs).
  * The old lesson form sent `doc_type` without `type`; that still works. The link must be a web address.
  */
-export function checkDoc(b: DocInput, countries: string[]): { error: string } | { doc: CleanDoc } {
+export function checkDoc(b: DocInput, countries: string[], currentNo?: string | null): { error: string } | { doc: CleanDoc } {
   const type = typeof b.type === 'string' ? b.type : b.doc_type;
   if (!(typeof type === 'string' && type in ADD_TYPES)) return { error: 'Pick the document type' };
   const t = type as AddType;
@@ -97,7 +97,8 @@ export function checkDoc(b: DocInput, countries: string[]): { error: string } | 
   let docNo = text(b.doc_no, 40).toUpperCase();
   if (docNo && !/^[A-Z0-9][A-Z0-9 ._/-]*$/.test(docNo)) return { error: 'The document number may use letters, numbers, - . / and spaces' };
   // forms carry their QAF number (6z.27): the one already assigned, written QAF14009, or blank for the next one
-  if (section === 'form' && docNo) {
+  // a number a form already has (an older FRM- number, say) is kept as it is when its details are edited (6z.30)
+  if (section === 'form' && docNo && docNo !== (currentNo ?? '').toUpperCase()) {
     const q = qafNumber(docNo);
     if (!q || q.length !== docNo.replace(/[-_ ]/g, '').length) return { error: 'Form numbers are QAF numbers, like QAF14009. Leave it blank to get the next one.' };
     docNo = q;
