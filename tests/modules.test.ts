@@ -37,6 +37,7 @@ describe('modules after sign-in (6z.33)', () => {
   it('the module follows the page opened from a link, and a picked module while its pages are open', () => {
     const all = { slk: true, knowledge: true, competency: true };
     expect(moduleOfPath('/knowledge')).toBe('knowledge');
+    expect(moduleOfPath('/competency')).toBe('competency');
     expect(moduleOfPath('/quality/competency')).toBe('competency');
     expect(moduleOfPath('/operation/jobs/x')).toBe('slk');
     expect(currentModule('knowledge', '/knowledge', all)).toBe('knowledge');

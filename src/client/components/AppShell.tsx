@@ -1,6 +1,6 @@
 import { Select } from './Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown, ChevronRight, ClipboardList, Clock, Database, Fingerprint, Gauge, Info, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, Sun, X, type LucideIcon } from 'lucide-react';
+import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown, ChevronRight, ClipboardList, Clock, Database, Fingerprint, Gauge, GraduationCap, Info, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, Sun, Wrench, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav, type Group } from '../../shared/menus';
@@ -129,7 +129,7 @@ function NavDrawer({ nav, current, onClose, status }: { nav: Group[]; current: s
 
 const GROUP_ICONS: Record<string, LucideIcon> = {
   Operation: ClipboardList, 'Service Quality': Gauge, Bonus: Award, 'SLK Activity Dashboard': ChartColumn, Attendance: CalendarCheck,
-  Inventory: Boxes, Wires: Cable, 'Knowledge Hub': BookOpen, Administration: ShieldCheck, Competency: Award,
+  Inventory: Boxes, Wires: Cable, Equipment: Wrench, 'Knowledge Hub': BookOpen, Administration: ShieldCheck, Competency: GraduationCap,
 };
 const readStore = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeStore = (k: string, v: string | null) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode: this visit only */ } };

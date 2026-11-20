@@ -2,6 +2,9 @@
 @import "../../replica/design/tokens.css";
 @import "../../replica/design/tailwind.theme.css";
 
+/* the condensed headings of the Competency and SLK Knowledge Hub headers (6z.35) */
+@theme { --font-condensed: "Barlow Condensed", var(--font-display); }
+
 @layer base {
   html, body, #root { height: 100%; }
   body {

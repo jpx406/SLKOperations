@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Component, Suspense, lazy, type ReactNode } from 'react';
+import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import type { CompetencyHost } from '../competency/App';
 import { installCompetencyStorage } from '../competency/storage';
 import { api } from '../api';
@@ -22,15 +22,32 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
   }
 }
 
+/** SLK Ops' theme, followed as it changes (6z.35): the switch is in the account menu, not in Competency. */
+function useAppTheme(): 'light' | 'dark' {
+  const read = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+  const [theme, setTheme] = useState<'light' | 'dark'>(read);
+  useEffect(() => {
+    const mo = new MutationObserver(() => setTheme(read()));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => mo.disconnect();
+  }, []);
+  return theme;
+}
+
 export function CompetencyModule() {
   const { data: me } = useMe();
+  const theme = useAppTheme();
   const seed = useQuery({ queryKey: ['competency-seed'], queryFn: () => api<CompetencyHost['seed']>('/competency/slk-seed'), staleTime: Infinity });
-  if (!me || seed.isPending) return <Skeleton className="h-96" />;
+  // Competency users and their roles are set in Users & Roles (6z.35)
+  const people = useQuery({ queryKey: ['competency-users'], queryFn: () => api<{ profiles: NonNullable<CompetencyHost['people']> }>('/competency/users') });
+  if (!me || seed.isPending || people.isPending) return <Skeleton className="h-96" />;
   if (seed.isError) return <Banner tone="danger">{seed.error.message}</Banner>;
+  if (people.isError) return <Banner tone="danger">{people.error.message}</Banner>;
+  const mine = people.data.profiles.find((p) => p.username.toLowerCase() === me.username.toLowerCase());
   installCompetencyStorage();
   const host: CompetencyHost = {
     user: me.username, name: me.fullName, admin: me.role === 'admin', canEdit: !!me.menus.competency?.edit,
-    theme: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark', seed: seed.data,
+    theme, seed: seed.data, competencyRole: mine?.role, people: people.data.profiles,
   };
   return (
     // the module brings its own header and tabs, full width under the SLK Ops bar

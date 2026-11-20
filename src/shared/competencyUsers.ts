@@ -1,0 +1,65 @@
+// Competency users (6z.35): who uses the Competency system and as what is set in SLK Ops Users & Roles, on the
+// person's main SLK Ops user. The Competency role is separate from the SLK Ops role: the SLK Ops role decides which
+// tabs of the app open, the Competency role decides what the person can see and do inside the Competency system
+// (its role definitions, edited in Competency › Administration › Users & Roles). The profile also carries what the
+// Competency employee register needs about the person, and is copied into that register when Competency opens.
+
+export const COMPETENCY_POSITIONS = ['Trainee', 'Assistant Operator', 'Slickline Operator', 'Slickline Supervisor', 'Senior Supervisor', 'Field Specialist', 'Operator', 'FSM', 'SQC', 'Tech Manager', 'SME'] as const;
+export const COMPETENCY_GRADES = [6, 7, 8, 9, 10, 11, 12] as const;
+export const COMPETENCY_SEGMENTS = ['SLK', 'WL', 'UNC', 'CTU', 'DF'] as const;
+export const COMPETENCY_STATUSES = ['Active', 'Inactive', 'Transferred', 'Resigned'] as const;
+/** The Competency system's own roles when its dataset has not changed them; `edit` is whether the role may change data. */
+export const DEFAULT_COMPETENCY_ROLES = [
+  { name: 'Super Admin', edit: true }, { name: 'Admin', edit: true }, { name: 'Manager', edit: true },
+  { name: 'Trainer', edit: true }, { name: 'Operator', edit: true }, { name: 'Viewer', edit: false },
+] as const;
+export type CompetencyRoleDef = { name: string; edit: boolean };
+
+export interface CompetencyProfile {
+  username: string;
+  /** The role in the Competency system. */
+  role: string;
+  /** Whether that role may change Competency data (from its role definition when it was set). */
+  can_edit: number;
+  /** The record in the Competency employee register; blank means the same as the username. */
+  employee_id: string | null;
+  position: string | null; grade: number | null; segment: string; location: string | null; hire_date: string | null; mentor: string | null; status: string;
+  updated_by?: string; updated_at?: string;
+}
+
+const str = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+
+/** A profile as Users & Roles saves it, checked against the Competency roles in use. */
+export function checkProfile(b: Record<string, unknown>, roles: readonly CompetencyRoleDef[]): { error: string } | { value: Omit<CompetencyProfile, 'username'> } {
+  const role = str(b.role, 60);
+  const def = roles.find((r) => r.name === role);
+  if (!def) return { error: `Pick one of the Competency roles: ${roles.map((r) => r.name).join(', ')}` };
+  const employee = str(b.employee_id, 40);
+  if (employee && !/^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/.test(employee)) return { error: 'The employee record ID may use letters, numbers, - . / and spaces' };
+  const position = str(b.position, 60);
+  if (position && !(COMPETENCY_POSITIONS as readonly string[]).includes(position)) return { error: 'Pick a position from the list' };
+  const grade = b.grade === '' || b.grade === null || b.grade === undefined ? null : Number(b.grade);
+  if (grade !== null && !(COMPETENCY_GRADES as readonly number[]).includes(grade)) return { error: 'The grade is 6 to 12' };
+  const segment = str(b.segment, 10) || 'SLK';
+  if (!(COMPETENCY_SEGMENTS as readonly string[]).includes(segment)) return { error: 'Pick a segment from the list' };
+  const status = str(b.status, 20) || 'Active';
+  if (!(COMPETENCY_STATUSES as readonly string[]).includes(status)) return { error: 'Pick a status from the list' };
+  const hire = str(b.hire_date, 10);
+  if (hire && !/^\d{4}-\d{2}-\d{2}$/.test(hire)) return { error: 'The hire date must be a date' };
+  return {
+    value: {
+      role, can_edit: def.edit ? 1 : 0, employee_id: employee || null, position: position || null, grade, segment,
+      location: str(b.location, 60) || null, hire_date: hire || null, mentor: str(b.mentor, 40) || null, status,
+    },
+  };
+}
+
+/** The Competency roles from the saved dataset's role definitions, else the defaults. */
+export function rolesFromDataset(json: string | null): CompetencyRoleDef[] {
+  try {
+    const defs = json ? (JSON.parse(json) as { roleDefs?: { name?: unknown; edit?: unknown }[] }).roleDefs : null;
+    const out = (defs ?? []).filter((r) => typeof r?.name === 'string' && r.name).map((r) => ({ name: String(r.name), edit: !!r.edit }));
+    if (out.length) return out;
+  } catch { /* a dataset that doesn't read keeps the defaults */ }
+  return DEFAULT_COMPETENCY_ROLES.map((r) => ({ ...r }));
+}

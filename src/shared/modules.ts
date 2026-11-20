@@ -15,7 +15,7 @@ const ALWAYS = ['ai_assistant'];
 export const MODULES: { key: ModuleKey; label: string; blurb: string; home: string }[] = [
   { key: 'slk', label: 'SLK Operations Hub', blurb: 'Schedule, jobs from design to closure, quality, attendance, inventory, wires and bonus. Includes the Knowledge Hub and Competency.', home: '/operation/schedule' },
   { key: 'knowledge', label: 'Knowledge Hub', blurb: 'Lessons and best practices, SOPs, work instructions, forms, client procedures and reference manuals.', home: '/knowledge' },
-  { key: 'competency', label: 'Competency', blurb: 'Experience per person and service, from completed jobs: Basic, Intermediate, Advance and Expert levels.', home: '/quality/competency' },
+  { key: 'competency', label: 'Competency', blurb: 'Experience per person and service, from completed jobs: Basic, Intermediate, Advance and Expert levels.', home: '/competency' },
 ];
 
 type Rights = Record<string, { view: boolean; edit: boolean; delete: boolean }>;
@@ -42,7 +42,7 @@ export function moduleAccess(menus: Record<string, { view: boolean }>): Record<M
 /** The module a page belongs to when it is opened from a link: the Knowledge Hub, Competency, or the rest. */
 export function moduleOfPath(path: string): ModuleKey {
   if (path === '/knowledge' || path.startsWith('/knowledge/')) return 'knowledge';
-  if (path.startsWith('/quality/competency')) return 'competency';
+  if (path === '/competency' || path.startsWith('/competency/') || path.startsWith('/quality/competency')) return 'competency';
   return 'slk';
 }
 

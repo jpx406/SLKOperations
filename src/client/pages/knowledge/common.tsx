@@ -12,6 +12,8 @@ import { Button, Card, cx } from '../../components/ui';
 export interface Person { username: string; full_name: string; can_review: number; can_approve: number }
 export interface Library {
   docs: KnowledgeDoc[]; canEdit: boolean; isAdmin: boolean; me: Controller; places: string[]; clients: string[]; numbering: Numbering; people: Person[]; queueCount: number;
+  /** The newest change in the Knowledge Hub, for its header (6z.35). */
+  lastEdit?: { at: string; by: string } | null;
 }
 export interface FileRow extends KbFile { kind: 'published' | 'source'; superseded_at: string | null; change_note: string | null }
 

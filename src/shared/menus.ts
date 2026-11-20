@@ -24,42 +24,35 @@ export const NAV: Group[] = [
       { key: 'statistics', label: 'Statistics', path: '/quality/statistics', screen: 'S13', milestone: '2i' },
       { key: 'npt_analysis', label: 'NPT Analysis', path: '/quality/npt', screen: 'S14', milestone: '2i' },
       { key: 'utilization', label: 'Utilization', path: '/quality/utilization', screen: 'S15', milestone: '3' },
-      { key: 'competency', label: 'Competency', path: '/quality/competency', screen: 'S16', milestone: '3' },
       { key: 'statistics', label: 'Wire KPIs', path: '/quality/wire-kpis', screen: 'D3', milestone: '3' },
     ],
   },
+  // 6z.35 (owner request 2026-11-20): the Knowledge Hub under Service Quality and Competency, its own menu, under it
+  { label: 'Knowledge Hub', pages: [{ key: 'knowledge_hub', label: 'Knowledge Hub', path: '/knowledge', screen: 'S21', milestone: '3' }] },
+  { label: 'Competency', pages: [{ key: 'competency', label: 'Competency', path: '/competency', screen: 'S16', milestone: '3' }] },
   {
     label: 'Bonus',
     pages: [
       { key: 'bonus', label: 'Bonus Report', path: '/bonus/report', screen: 'S32', milestone: '4' },
       { key: 'bonus', label: 'Bonus Analysis', path: '/bonus/analysis', screen: 'S32', milestone: '4' },
       { key: 'bonus', label: 'Bonus Rules', path: '/bonus/rules', screen: 'S32', milestone: '4' },
+      // attendance sits under Bonus (6z.35)
+      { key: 'attendance', label: 'Attendance', path: '/attendance', screen: 'S17', milestone: '2j' },
     ],
   },
   { label: 'SLK Activity Dashboard', pages: [{ key: 'sales_dashboard', label: 'SLK Activity Dashboard', path: '/sales', screen: 'S33', milestone: '4' }] },
   {
-    label: 'Attendance',
-    pages: [
-      { key: 'attendance', label: 'Attendance', path: '/attendance', screen: 'S17', milestone: '2j' },
-    ],
-  },
-  {
-    label: 'Inventory',
+    // the inventories and the wires together (6z.35)
+    label: 'Equipment',
     pages: [
       { key: 'inventory_explosive', label: 'Explosive', path: '/inventory/explosive', screen: 'S18', milestone: '2k' },
       { key: 'inventory_hardware', label: 'Hardware', path: '/inventory/hardware', screen: 'S19', milestone: '3' },
       { key: 'inventory_mcr', label: 'MCR', path: '/inventory/mcr', screen: 'S29', milestone: '3' },
-    ],
-  },
-  {
-    label: 'Wires',
-    pages: [
       { key: 'wires', label: 'Wires', path: '/wires', screen: 'S30', milestone: '3' },
       // checks SLK Ops jobs against WIREGUARD's runs (moved here from Operation, owner request 2026-10-26)
       { key: 'reconciliation', label: 'Reconciliation', path: '/wires/reconciliation', screen: 'S46', milestone: '2e' },
     ],
   },
-  { label: 'Knowledge Hub', pages: [{ key: 'knowledge_hub', label: 'Knowledge Hub', path: '/knowledge', screen: 'S21', milestone: '3' }] },
   {
     label: 'Administration',
     pages: [

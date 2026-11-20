@@ -1017,7 +1017,7 @@ const normalizeServiceName = s => {
 
 export const _constants = { TRAIN, CERTS, CORE, ADV };
 /* for the SLK Ops tests (6z.34) */
-export const _slk = { slkSeedState: s => slkSeedState(s), SERVICE_SRC, CATALOG_SRC, L };
+export const _slk = { slkSeedState: s => slkSeedState(s), syncSlkPeople: (s, p) => syncSlkPeople(s, p), SERVICE_SRC, CATALOG_SRC, L };
 
 /* ---------------- seed data (mirrors the workbook worked examples) ---------------- */
 const SEED = {
@@ -1102,6 +1102,32 @@ function slkSeedState(seed) {
   const services = (seed.services || []).length ? seed.services.map(([name, domain]) => ({ name, domain: domain || "", elements: [] })) : base.services;
   const countries = (seed.countries || []).length ? [...seed.countries] : base.countries;
   return normalizeReq({ ...base, employees, services, countries });
+}
+
+/* SLK Ops Users & Roles (6z.35) is where Competency users are set: their role here, the employee record they are
+   linked to, position, grade, segment, location, hire date, mentor and status. On load those win over the register;
+   someone set up there with no record yet gets one. Returns the same object when nothing changed (no save). */
+function syncSlkPeople(s, people) {
+  let changed = false;
+  const emps = [...(s.employees || [])];
+  for (const p of people || []) {
+    const id = p.employee_id || p.username;
+    if (!id) continue;
+    const patch = { role: p.role };
+    if (p.grade !== null && p.grade !== undefined && p.grade !== "") patch.grade = Number(p.grade);
+    for (const [from, to] of [["position","position"],["segment","segment"],["location","location"],["hire_date","hire"],["mentor","mentor"],["status","status"],["email","email"]]) if (p[from]) patch[to] = p[from];
+    const i = emps.findIndex(e => e.id === id);
+    if (i < 0) {
+      const position = patch.position || "Trainee";
+      emps.push({ id, name: p.name || id, country: p.country || "", location: "", position, grade: "", segment: "SLK", hire: "",
+        stepStart: "", mentor: "", status: "Active", notes: "Added from SLK Ops Users & Roles", email: "", ...patch, step: CDP_STEP_MAP[position] || "" });
+      changed = true;
+      continue;
+    }
+    const cur = emps[i];
+    if (Object.keys(patch).some(k => cur[k] !== patch[k])) { emps[i] = { ...cur, ...patch }; changed = true; }
+  }
+  return changed ? { ...s, employees: emps } : s;
 }
 
 const STORE_KEY = "nesr_wl_competency_team_v1";  // SHARED dataset - visible to every user of this app
@@ -4847,7 +4873,7 @@ function DataTab({ state, set, saveState, storageOK, lastBackupAt, backupList, r
 }
 
 function AccessPanel({ state, set }) {
-  const { role, can, roster, setRole, removeUser, user } = usePerm();
+  const { role, can, roster, setRole, removeUser, user, hostManaged } = usePerm();
   const [openMail, setOpenMail] = useState(null);   // which reset request has its message open
   const [copyMsg, setCopyMsg] = useState("");
   const names = Object.keys(roster || {}).sort();
@@ -4904,6 +4930,15 @@ function AccessPanel({ state, set }) {
   const uEmpLogin = (empId, patch) => set(s => ({ ...s, employees: s.employees.map(e => e.id === empId ? { ...e, ...patch } : e) }));
 
   return <>
+    {hostManaged && <Section title="Users" sub="Set in SLK Operations Hub">
+      <p style={{ fontSize:13, color:C.dim, lineHeight:1.6, margin:0 }}>
+        Who uses this system, their role here, the employee record they are linked to, position, grade, segment, location,
+        hire date, mentor and status are set in SLK Operations Hub › Administration › Users &amp; Roles (each person’s
+        Competency section, and the Competency users tab). People sign in to SLK Operations Hub, not here. The roles below
+        decide what each Competency role can see and do.
+      </p>
+    </Section>}
+    {!hostManaged && <>
     {(() => {
       const reqs = (state.resetRequests || []);
       const pending = reqs.filter(r => !r.sent);
@@ -5078,6 +5113,7 @@ function AccessPanel({ state, set }) {
       </T></Scroll> : <p style={{ fontSize:13, color:C.dim }}>Only Admin and Super Admin can view or manage standalone users.</p>}
     </Section>
 
+    </>}
     <Section title="Roles — permissions & tab visibility" sub={can.manageRoles
       ? "Super Admin only. Edit/Approve/Admin control what a role can do within a tab (matches every action already gated across the app). Manage Roles lets a role edit this page itself — grant sparingly. Tabs control which of the six main tabs a role can even see; unchecked tabs disappear from that role's menu entirely. '+ Add role' creates a fully custom role."
       : "Editable by Super Admin only."}>
@@ -6873,7 +6909,8 @@ export default function App({ host } = {}) {
      username is (window.storage with shared:false), never in browser localStorage
      (disabled in this environment) and never shared with other users of the app. */
   const [theme, setTheme] = useState(host?.theme === "dark" ? "dark" : "light");
-  useEffect(() => { (async () => {
+  useEffect(() => { if (host?.theme) setTheme(host.theme === "dark" ? "dark" : "light"); }, [host?.theme]);
+  useEffect(() => { if (host) return; (async () => {
     try { const r = await window.storage.get(THEME_KEY); if (r?.value === "dark" || r?.value === "light") setTheme(r.value); } catch (e) {}
   })(); }, []);
   const toggleTheme = () => {
@@ -6903,11 +6940,14 @@ export default function App({ host } = {}) {
   const dirty = useRef(null);                      // latest unsaved snapshot
   const timer = useRef(null);
   const set = fn => setStateRaw(s => (typeof fn === "function" ? fn(s) : fn));
+  const peopleRef = useRef(host?.people || []);
+  peopleRef.current = host?.people || [];
 
   const applyRemote = payload => {
     const p = JSON.parse(payload);
     const { meta: m, ...data } = p;
-    setStateRaw(normalizeReq({ ...JSON.parse(JSON.stringify(EMPTY)), ...data }));
+    // the people from SLK Ops Users & Roles win over the saved register every time data is loaded (6z.35)
+    setStateRaw(syncSlkPeople(normalizeReq({ ...JSON.parse(JSON.stringify(EMPTY)), ...data }), peopleRef.current));
     const rev = m?.rev || 0;
     loadedRev.current = rev;
     setMeta({ rev, updatedBy: m?.updatedBy || "", updatedAt: m?.updatedAt || "" });
@@ -6925,6 +6965,10 @@ export default function App({ host } = {}) {
       finally { setLoaded(true); }
     })();
   }, []);
+
+  // again whenever the people from SLK Ops change (a profile saved in Users & Roles while Competency is open)
+  const peopleKey = JSON.stringify(host?.people || []);
+  useEffect(() => { if (loaded && host?.people?.length) set(s => syncSlkPeople(s, host.people)); }, [loaded, peopleKey]);
 
   const saveRoster = async next => {
     setRoster(next);
@@ -6962,12 +7006,11 @@ export default function App({ host } = {}) {
   // SLK Ops (6z.34): admins are Super Admin; without the Competency edit right a person only reads (Viewer);
   // with it, the role set here (their employee record or the roster), else Manager
   const ownRole = empForUser ? (empForUser.role || "Viewer") : ((user && roster[user]) || "Viewer");
-  const role = !host ? ownRole : host.admin ? "Super Admin" : !host.canEdit ? "Viewer"
-    : (empForUser?.role || (user && roster[user]) || "Manager");
+  const role = !host ? ownRole : host.competencyRole || (host.admin ? "Super Admin" : host.canEdit ? "Manager" : "Viewer");
   const roleDef = resolveRole(state.roleDefs, role);
   const can = { edit: roleDef.edit, approve: roleDef.approve, admin: roleDef.admin, manageRoles: roleDef.manageRoles };
   const visibleTabs = ALL_TABS.filter(t => (roleDef.tabs || ALL_TABS).includes(t));
-  const perm = { role, can, roster, user, tabs: visibleTabs,
+  const perm = { role, can, roster, user, tabs: visibleTabs, hostManaged: !!host,
     setRole: (n, r) => saveRoster({ ...roster, [n]: r }),
     removeUser: n => { const next = { ...roster }; delete next[n]; saveRoster(next); } };
   useEffect(() => { if (visibleTabs.length && !visibleTabs.includes(tab)) setTab(visibleTabs[0]); }, [visibleTabs.join("|")]);
@@ -7290,7 +7333,7 @@ export default function App({ host } = {}) {
               </span>
             </div>
           <div style={{ display:"flex", gap:0, flexWrap:"wrap", marginTop:6, border:"1px solid #3C4A42", borderRadius:"4px 4px 0 0", overflow:"hidden" }}>
-            {[["COMPANY","NESR",true,false],["SEGMENT","Slickline",true,false],["YOU", user ? (empForUser ? `${user} — ${empForUser.name}` : user) : "—",false,false],["ROLE", role,false,false],["REV", `#${meta.rev}`,true,true],["LAST EDIT", meta.updatedAt ? `${fmtStamp(meta.updatedAt)} · ${meta.updatedBy}` : "—",true,true],["SAVED", saveTick || "—",false,true]].map(([k, v, hideTablet, hideMobile]) =>
+            {[["SEGMENT","Slickline",true,false],["ID", user || "—",false,false],["NAME", empForUser?.name || host?.name || "—",false,false],["ROLE", role,false,false],["GRADE", empForUser?.grade ? `G${empForUser.grade}` : "—",false,true],["LAST EDIT", meta.updatedAt ? `${fmtStamp(meta.updatedAt)} · ${meta.updatedBy}` : "—",true,true]].map(([k, v, hideTablet, hideMobile]) =>
               <div key={k} className={`nesr-hdr-meta-item${hideTablet ? " hide-tablet" : ""}${hideMobile ? " hide-mobile" : ""}`} style={{ padding:"4px 10px", borderRight:"1px solid #3C4A42", background:"#212B26" }}>
                 <div style={{ fontSize:9, letterSpacing:"0.14em", color:"#88958D" }}>{k}</div>
                 <div className="v" style={{ fontFamily:"'IBM Plex Mono', monospace", fontSize:11.5, whiteSpace:"nowrap" }}>{v}</div>
@@ -7301,12 +7344,12 @@ export default function App({ host } = {}) {
         <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:8 }}>
           <span style={{ display:"flex", gap:6 }}>
             <NotificationBell state={state} role={role} empForUser={empForUser} user={user} setTab={setTab} />
-            <button onClick={toggleTheme} title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} style={{ border:"1px solid #3C4A42", background:"#212B26", color:"#B9C4BC", borderRadius:5, padding:"7px 11px", cursor:"pointer", fontSize:14, lineHeight:1 }}>{theme === "dark" ? "☀" : "🌙"}</button>
+            {!host && <button onClick={toggleTheme} title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} style={{ border:"1px solid #3C4A42", background:"#212B26", color:"#B9C4BC", borderRadius:5, padding:"7px 11px", cursor:"pointer", fontSize:14, lineHeight:1 }}>{theme === "dark" ? "☀" : "🌙"}</button>}
             <button onClick={refresh} title="Pull the latest team data" style={{ border:"1px solid #3C4A42", background:"#212B26", color:"#B9C4BC", borderRadius:5, padding:"7px 12px", cursor:"pointer", fontFamily:"'Barlow Condensed', sans-serif", fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", fontSize:12 }}>⟳ Refresh</button>
             {!host && <button onClick={() => { setUser(null); setLoginPass(""); }} title="Log out" style={{ border:"1px solid #3C4A42", background:"#212B26", color:"#B9C4BC", borderRadius:5, padding:"7px 12px", cursor:"pointer", fontFamily:"'Barlow Condensed', sans-serif", fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", fontSize:12 }}>Log out</button>}
           </span>
-          <img src={NESR_LOGO_WHITE} alt="NESR"
-            style={{ height:40, width:"auto", display:"block", background:"transparent", marginTop:2 }} />
+          {!host && <img src={NESR_LOGO_WHITE} alt="NESR"
+            style={{ height:40, width:"auto", display:"block", background:"transparent", marginTop:2 }} />}
         </div>
       </div>
       <nav style={{ display:"flex", gap:4, overflowX:"auto", paddingTop:10, WebkitOverflowScrolling:"touch" }}>

@@ -12,6 +12,7 @@ import type { RuleGroup } from '../../shared/approvalRules';
 import { FILL_SCOPE_LABEL, type Category, type FillScope } from '../../shared/attendanceSheets';
 import { CODES, CODE_LIST } from '../../shared/attendance';
 import type { Role, WgStatus } from '../../shared/types';
+import { COMPETENCY_GRADES, COMPETENCY_POSITIONS, COMPETENCY_SEGMENTS, COMPETENCY_STATUSES, type CompetencyProfile, type CompetencyRoleDef } from '../../shared/competencyUsers';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
@@ -40,7 +41,7 @@ function useConfig() {
 export function AdminUsers() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'people';
-  const tabs = [['people', 'People'], ['roles', 'Roles'], ['matrix', 'Role permissions'], ['approvals', 'Approvals'], ['attendance', 'Attendance categories'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
+  const tabs = [['people', 'People'], ['roles', 'Roles'], ['matrix', 'Role permissions'], ['competency', 'Competency users'], ['approvals', 'Approvals'], ['attendance', 'Attendance categories'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
   return (
     <section aria-labelledby="admin-title">
       <PageTitle><span id="admin-title">Users &amp; roles</span></PageTitle>
@@ -60,6 +61,7 @@ export function AdminUsers() {
         {tab === 'people' && <People />}
         {tab === 'roles' && <RolesPanel />}
         {tab === 'matrix' && <RoleMatrix />}
+        {tab === 'competency' && <CompetencyUsers />}
         {tab === 'approvals' && <ApprovalsPanel />}
         {tab === 'attendance' && <AttendanceCategories />}
         {tab === 'sync' && <SyncPanel />}
@@ -295,11 +297,14 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
           <h2 id="person-title" className="flex-1 font-display text-lg font-bold">{user.full_name} <span className="font-mono text-sm font-normal text-text-muted">{user.username}</span></h2>
           <Button size="sm" variant="ghost" onClick={() => onClose()} aria-label="Close"><X aria-hidden className="size-4" /></Button>
         </div>
-        <p className="mb-4 text-sm text-text-muted">Role: {roleLabel(user.role)}. Changes apply on the person’s next click.</p>
+        <p className="mb-4 text-sm text-text-muted">SLK Ops role: {roleLabel(user.role)}. Changes apply on the person’s next click.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <WgDetails user={user} />
         <PersonAttendance user={user} />
         <PersonPasskeys user={user} self={self} />
+        <PersonCompetency username={user.username} name={user.full_name} />
+
+        <p className="label-caps mb-2 text-text-muted">SLK Ops app: countries and tabs</p>
 
         {user.role === 'admin'
           ? <p id="admin-tabs-note" className="mb-4 text-sm text-text-muted">Admins see every country and every tab; tab changes do not apply to them.</p>
@@ -944,5 +949,125 @@ function ApprovalsPanel() {
         })}
       </div>
     </div>
+  );
+}
+
+// ---- Competency users (6z.35) ----------------------------------------------------------------------------------------
+// The Competency role is separate from the SLK Ops role: the SLK Ops role (and the Role permissions tab) opens the
+// app's tabs; the Competency role decides what the person can see and do inside the Competency system. The rest is
+// what the Competency employee register needs about them, copied into it whenever Competency opens.
+
+interface CompetencyRow extends CompetencyProfile { name: string; email: string | null; country: string; active: number }
+interface CompetencyUsersReply { roles: CompetencyRoleDef[]; profiles: CompetencyRow[] }
+const useCompetencyUsers = () => useQuery({ queryKey: ['competency-users'], queryFn: () => api<CompetencyUsersReply>('/competency/users') });
+
+function PersonCompetency({ username, name, onSaved }: { username: string; name: string; onSaved?: (msg: string) => void }) {
+  const qc = useQueryClient();
+  const q = useCompetencyUsers();
+  const cur = q.data?.profiles.find((p) => p.username.toLowerCase() === username.toLowerCase());
+  const blank = { role: 'Viewer', employee_id: '', position: '', grade: '', segment: 'SLK', location: '', hire_date: '', mentor: '', status: 'Active' };
+  const [f, setF] = useState<typeof blank | null>(null);
+  const v = f ?? (cur ? { role: cur.role, employee_id: cur.employee_id ?? '', position: cur.position ?? '', grade: cur.grade ? String(cur.grade) : '', segment: cur.segment, location: cur.location ?? '',
+    hire_date: cur.hire_date ?? '', mentor: cur.mentor ?? '', status: cur.status } : blank);
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const set = (k: keyof typeof blank, val: string) => { setMsg(null); setF({ ...v, [k]: val }); };
+  const done = (text: string) => { setMsg({ tone: 'success', text }); setF(null); qc.invalidateQueries({ queryKey: ['competency-users'] }); onSaved?.(text); };
+  const save = useMutation({
+    mutationFn: () => api(`/competency/users/${encodeURIComponent(username)}`, { method: 'PUT', json: { ...v, grade: v.grade ? Number(v.grade) : null } }),
+    onSuccess: () => done(`Competency profile saved for ${name}`),
+    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
+  });
+  const remove = useMutation({
+    mutationFn: () => api(`/competency/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
+    onSuccess: () => done(`${name} is no longer a Competency user`),
+    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
+  });
+  if (q.isPending) return <Skeleton className="mb-5 h-40" />;
+  if (q.isError) return <div className="mb-5"><Banner tone="danger">{q.error.message}</Banner></div>;
+  const roles = q.data.roles;
+  const edits = roles.find((r) => r.name === v.role)?.edit;
+  const id = (k: string) => `comp-${k}-${username}`;
+  return (
+    <div className="mb-5 rounded-md border border-border border-l-4 border-l-accent-text p-3">
+      <p className="label-caps mb-1 text-text-muted">Competency system {cur ? '' : '· not a user yet'}</p>
+      <p className="mb-3 text-xs text-text-subtle">Separate from the SLK Ops role: that one opens the app’s tabs, this one decides what {name} can see and do in Competency. Copied into the Competency employee register when Competency opens.</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field id={id('role')} label="Competency role" hint={edits ? 'Can change Competency data' : 'Reads only'}>
+          <Select id={id('role')} className={inputClass} value={v.role} onChange={(e) => set('role', e.target.value)}>{roles.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}</Select>
+        </Field>
+        <Field id={id('emp')} label="Employee record" hint="Their ID in the Competency employee register">
+          <input id={id('emp')} className={inputClass} value={v.employee_id} placeholder={username} onChange={(e) => set('employee_id', e.target.value)} />
+        </Field>
+        <Field id={id('pos')} label="Position">
+          <Select id={id('pos')} className={inputClass} value={v.position} onChange={(e) => set('position', e.target.value)}><option value="">Not set</option>{COMPETENCY_POSITIONS.map((p) => <option key={p}>{p}</option>)}</Select>
+        </Field>
+        <Field id={id('grade')} label="Grade">
+          <Select id={id('grade')} className={inputClass} value={v.grade} onChange={(e) => set('grade', e.target.value)}><option value="">Not set</option>{COMPETENCY_GRADES.map((g) => <option key={g} value={g}>G{g}</option>)}</Select>
+        </Field>
+        <Field id={id('seg')} label="Segment">
+          <Select id={id('seg')} className={inputClass} value={v.segment} onChange={(e) => set('segment', e.target.value)}>{COMPETENCY_SEGMENTS.map((x) => <option key={x}>{x}</option>)}</Select>
+        </Field>
+        <Field id={id('loc')} label="Location"><input id={id('loc')} className={inputClass} value={v.location} placeholder="e.g. DMM" onChange={(e) => set('location', e.target.value)} /></Field>
+        <Field id={id('hire')} label="Hire date"><input id={id('hire')} type="date" className={inputClass} value={v.hire_date} onChange={(e) => set('hire_date', e.target.value)} /></Field>
+        <Field id={id('mentor')} label="Mentor" hint="Their employee record ID">
+          <input id={id('mentor')} className={inputClass} value={v.mentor} list={id('mentors')} onChange={(e) => set('mentor', e.target.value)} />
+          <datalist id={id('mentors')}>{q.data.profiles.filter((p) => p.username !== username).map((p) => <option key={p.username} value={p.employee_id || p.username}>{p.name}</option>)}</datalist>
+        </Field>
+        <Field id={id('status')} label="Status">
+          <Select id={id('status')} className={inputClass} value={v.status} onChange={(e) => set('status', e.target.value)}>{COMPETENCY_STATUSES.map((x) => <option key={x}>{x}</option>)}</Select>
+        </Field>
+      </div>
+      {msg && <div className="mt-2"><Banner tone={msg.tone}>{msg.text}</Banner></div>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" variant="primary" loading={save.isPending} onClick={() => save.mutate()}>{cur ? 'Save Competency profile' : 'Make a Competency user'}</Button>
+        {cur && <Button size="sm" variant="ghost" loading={remove.isPending} onClick={() => remove.mutate()}>Remove from Competency</Button>}
+      </div>
+    </div>
+  );
+}
+
+/** Users & Roles › Competency users: everyone set up for the Competency system, and adding someone. */
+function CompetencyUsers() {
+  const q = useCompetencyUsers();
+  const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api<UserRow[]>('/admin/users') });
+  const [open, setOpen] = useState<string | null>(null);
+  const [adding, setAdding] = useState('');
+  if (q.isPending) return <Skeleton className="h-64" />;
+  if (q.isError) return <Banner tone="danger">{q.error.message}</Banner>;
+  const listed = new Set(q.data.profiles.map((p) => p.username.toLowerCase()));
+  const candidates = (users.data ?? []).filter((u) => u.active && !listed.has(u.username.toLowerCase()));
+  const pick = candidates.find((u) => u.username === adding);
+  return (
+    <Card>
+      <p className="mb-3 max-w-3xl text-sm text-text-muted">Who uses the Competency system and as what. Each is a SLK Ops user: their SLK Ops role opens the app, their Competency role here decides what they can do in Competency (the roles themselves are defined in Competency › Administration › Users &amp; Roles). Changes reach Competency the next time it opens.</p>
+      <div className="mb-4 flex flex-wrap items-end gap-2">
+        <Field id="comp-add" label="Add a person">
+          <SearchSelect id="comp-add" className="w-72" value={adding} onChange={setAdding} searchPlaceholder="Search people…" placeholder="Pick a SLK Ops user"
+            options={candidates.map((u) => ({ value: u.username, label: u.full_name, hint: u.username }))} />
+        </Field>
+      </div>
+      {pick && <PersonCompetency username={pick.username} name={pick.full_name} onSaved={() => setAdding('')} />}
+      {!q.data.profiles.length ? <EmptyState title="No Competency users yet">Add the first person above, or open someone under People and fill in their Competency section.</EmptyState> : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[42rem] text-sm">
+            <thead><tr className="label-caps text-left text-text-muted">{['Name', 'Competency role', 'Position', 'Grade', 'Employee record', 'Status', ''].map((h) => <th key={h} scope="col" className="py-1 pr-3">{h}</th>)}</tr></thead>
+            <tbody>
+              {q.data.profiles.map((p) => (
+                <tr key={p.username} className="border-t border-border align-top">
+                  <td className="py-2 pr-3"><span className="font-semibold">{p.name}</span> <span className="font-mono text-xs text-text-subtle">{p.username}</span>{!p.active && <span className="ml-1 text-xs text-warning">SLK Ops access off</span>}</td>
+                  <td className="py-2 pr-3">{p.role}{p.can_edit ? '' : <span className="ml-1 text-xs text-text-subtle">(reads)</span>}</td>
+                  <td className="py-2 pr-3">{p.position ?? '—'}</td>
+                  <td className="py-2 pr-3">{p.grade ? `G${p.grade}` : '—'}</td>
+                  <td className="py-2 pr-3 font-mono text-xs">{p.employee_id || p.username}</td>
+                  <td className="py-2 pr-3">{p.status}</td>
+                  <td className="py-2 text-right"><Button size="sm" variant="ghost" onClick={() => setOpen(open === p.username ? null : p.username)}>{open === p.username ? 'Close' : 'Edit'}</Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {open && <div className="mt-3"><PersonCompetency username={open} name={q.data.profiles.find((p) => p.username === open)?.name ?? open} /></div>}
+        </div>
+      )}
+    </Card>
   );
 }

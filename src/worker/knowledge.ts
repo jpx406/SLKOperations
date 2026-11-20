@@ -156,6 +156,9 @@ knowledge.get('/', async (c) => {
     }),
     canEdit: p.editor || p.admin, isAdmin: p.admin, me: p, places, clients: clients.results.map((r) => r.client), numbering,
     people: people?.results ?? [], queueCount: queue?.n ?? 0,
+    // the newest change in the Knowledge Hub, for its header (6z.35); downloads are not changes
+    lastEdit: await c.env.DB.prepare(`SELECT a.occurred_at AS at, coalesce(u.full_name, a.username) AS by FROM audit_log a LEFT JOIN user_roles u ON u.username = a.username
+      WHERE a.entity_type IN ('knowledge_docs', 'knowledge_settings', 'knowledge_manual_files') AND a.action <> 'download' ORDER BY a.occurred_at DESC LIMIT 1`).first<{ at: string; by: string }>(),
   });
 });
 

@@ -39,7 +39,7 @@ import { QrApprove } from './pages/QrApprove';
 import { Stub } from './pages/Stub';
 import './styles.css';
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/quick-plan']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/quick-plan']);
 
 /** Sends an old address to the page's new one, keeping its filters (?severity=high ...). */
 function MovedTo({ path }: { path: string }) {
@@ -75,7 +75,9 @@ const router = createBrowserRouter([
       { path: 'quality/npt', element: <NptAnalysis /> },
       { path: 'quality/utilization', element: <Utilization /> },
       // the Competency Framework System, converted to slickline (6z.34)
-      { path: 'quality/competency', element: <CompetencyModule /> },
+      { path: 'competency', element: <CompetencyModule /> },
+      // the old address, from before Competency had its own menu (6z.35)
+      { path: 'quality/competency', element: <MovedTo path="/competency" /> },
       { path: 'quality/wire-kpis', element: <WireKpis /> },
       { path: 'wires', element: <WiresRegister /> },
       { path: 'bonus/report', element: <BonusReport /> },

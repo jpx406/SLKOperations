@@ -131,6 +131,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   // the Competency module's storage (6z.34): personal keys for anyone with the tab, shared keys checked for edit in the route
   { method: 'PUT', re: /^\/api\/competency\/kv$/, menu: 'competency', action: 'view' },
   { method: 'DELETE', re: /^\/api\/competency\/kv$/, menu: 'competency', action: 'view' },
+  // Competency users are set in Users & Roles (6z.35)
+  { method: 'PUT', re: /^\/api\/competency\/users\/[^/]+$/, menu: 'users', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/competency\/users\/[^/]+$/, menu: 'users', action: 'edit' },
   // deleting a draft that was never published (6z.29): admins, approvers, editors or the delete right, checked in the route
   { method: 'DELETE', re: /^\/api\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'PUT', re: /^\/api\/knowledge\/(settings|people\/[^/]+)$/, menu: 'knowledge_hub', action: 'view' },
@@ -228,6 +231,9 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/knowledge\/settings\/copies\/[^/]+\/template$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/quick-plan$/, menus: ['quick_plan'] },
   { re: /^\/api\/competency\/(kv|kv-list|slk-seed)$/, menus: ['competency'] },
+  { re: /^\/api\/competency\/users$/, menus: ['users', 'competency'] },
+  // a person's own Competency profile, shown in the Knowledge Hub header too
+  { re: /^\/api\/competency\/me$/, menus: 'any' },
   { re: /^\/api\/attachments\/job\/[^/]+(\/[^/]+)?$/, menus: ['jobs'] },
   { re: /^\/api\/attachments\/knowledge\/[^/]+(\/[^/]+)?$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/signatures\/(jra|bonus)\/[^/]+$/, menus: ['jobs'] },

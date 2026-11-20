@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { checkProfile, rolesFromDataset, type CompetencyProfile } from '../shared/competencyUsers';
 
 // Storage for the Competency module (6z.34): the NESR Competency Framework System keeps its data through a
 // four-call key/value contract (get, set, delete, list by prefix), here on D1 with large values in the R2 bucket.
@@ -24,6 +25,13 @@ const owner = (shared: boolean, username: string) => (shared ? '' : username);
 const sharedFlag = (v: unknown) => v === true || v === '1' || v === 'true' || v === 1;
 
 type Row = { value: string | null; r2_key: string | null };
+
+/** Changing the team's Competency data: the Competency edit right in SLK Ops, or a Competency role that edits (6z.35). */
+async function mayEdit(env: Env, user: AuthedUser): Promise<boolean> {
+  if (user.menus.competency?.edit) return true;
+  const row = await env.DB.prepare('SELECT can_edit FROM competency_users WHERE username = ?').bind(user.username).first<{ can_edit: number }>();
+  return !!row?.can_edit;
+}
 
 async function readValue(env: Env, row: Row | null): Promise<string | null> {
   if (!row) return null;
@@ -62,7 +70,7 @@ competency.put('/kv', async (c) => {
   if (!isKey(b.key)) return c.json({ error: 'Bad key' }, 400);
   if (typeof b.value !== 'string') return c.json({ error: 'The value must be text' }, 400);
   const shared = sharedFlag(b.shared);
-  if (shared && !user.menus.competency?.edit) return c.json({ error: 'Your role can read Competency but not change it' }, 403);
+  if (shared && !(await mayEdit(c.env, user))) return c.json({ error: 'Your role can read Competency but not change it' }, 403);
   const bytes = new TextEncoder().encode(b.value).length;
   if (bytes > VALUE_MAX) return c.json({ error: `Too large to save (${Math.round(bytes / 1024 / 1024)} MB)` }, 413);
   const who = owner(shared, user.username);
@@ -88,7 +96,7 @@ competency.delete('/kv', async (c) => {
   const key = c.req.query('key');
   if (!isKey(key)) return c.json({ error: 'Bad key' }, 400);
   const shared = sharedFlag(c.req.query('shared'));
-  if (shared && !user.menus.competency?.edit) return c.json({ error: 'Your role can read Competency but not change it' }, 403);
+  if (shared && !(await mayEdit(c.env, user))) return c.json({ error: 'Your role can read Competency but not change it' }, 403);
   const who = owner(shared, user.username);
   const row = await c.env.DB.prepare('SELECT r2_key FROM competency_kv WHERE key = ? AND owner = ?').bind(key, who).first<{ r2_key: string | null }>();
   await c.env.DB.batch([
@@ -119,4 +127,66 @@ competency.get('/slk-seed', async (c) => {
     services: (services.results as { name: string; domain: string | null }[]).map((s) => [s.name.replace(/\s+/g, ' ').trim(), s.domain ?? '']),
     countries: (countries.results as { country: string }[]).map((r) => r.country),
   });
+});
+
+// ---- Competency users (6z.35): set in SLK Ops Users & Roles -------------------------------------------------------
+
+const STORE_KEY = 'nesr_wl_competency_team_v1';
+/** The Competency roles in use: the saved dataset's role definitions, else the defaults. */
+async function competencyRoles(env: Env) {
+  const row = await env.DB.prepare(`SELECT value, r2_key FROM competency_kv WHERE key = ? AND owner = ''`).bind(STORE_KEY).first<Row>();
+  return rolesFromDataset(await readValue(env, row));
+}
+const PROFILE_COLS = 'c.username, c.role, c.can_edit, c.employee_id, c.position, c.grade, c.segment, c.location, c.hire_date, c.mentor, c.status, c.updated_by, c.updated_at';
+
+/** Every Competency user with their SLK Ops name, email and countries, and the Competency roles to pick from. */
+competency.get('/users', async (c) => {
+  const [rows, roles] = await Promise.all([
+    c.env.DB.prepare(`SELECT ${PROFILE_COLS}, u.full_name AS name, u.email, u.countries, u.active FROM competency_users c
+      JOIN user_roles u ON u.username = c.username ORDER BY u.full_name`).all<CompetencyProfile & { name: string; email: string | null; countries: string; active: number }>(),
+    competencyRoles(c.env),
+  ]);
+  return c.json({
+    roles,
+    profiles: rows.results.map(({ countries, ...r }) => ({ ...r, country: (JSON.parse(countries || '[]') as string[])[0] ?? '' })),
+  });
+});
+
+/** The person's own Competency profile (for the Knowledge Hub and Competency headers), or null. */
+competency.get('/me', async (c) => {
+  const user = c.get('user');
+  const row = await c.env.DB.prepare(`SELECT ${PROFILE_COLS} FROM competency_users c WHERE c.username = ?`).bind(user.username).first<CompetencyProfile>();
+  return c.json({ profile: row ?? null });
+});
+
+/** Set a person's Competency profile. Users & Roles (the Users tab's edit right). */
+competency.put('/users/:username', async (c) => {
+  const me = c.get('user');
+  const username = c.req.param('username');
+  const person = await c.env.DB.prepare('SELECT username, full_name FROM user_roles WHERE username = ?').bind(username).first<{ username: string; full_name: string }>();
+  if (!person) return c.json({ error: 'No such user in SLK Ops' }, 404);
+  const r = checkProfile(await c.req.json().catch(() => ({})), await competencyRoles(c.env));
+  if ('error' in r) return c.json({ error: r.error }, 400);
+  const v = r.value;
+  await c.env.DB.batch([
+    c.env.DB.prepare(`INSERT INTO competency_users (username, role, can_edit, employee_id, position, grade, segment, location, hire_date, mentor, status, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (username) DO UPDATE SET role = excluded.role, can_edit = excluded.can_edit, employee_id = excluded.employee_id, position = excluded.position,
+        grade = excluded.grade, segment = excluded.segment, location = excluded.location, hire_date = excluded.hire_date, mentor = excluded.mentor,
+        status = excluded.status, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+      .bind(person.username, v.role, v.can_edit, v.employee_id, v.position, v.grade, v.segment, v.location, v.hire_date, v.mentor, v.status, me.username, now()),
+    audit(c.env, me, 'edit', person.username, `Competency: ${person.full_name} as ${v.role}${v.position ? `, ${v.position}` : ''}${v.grade ? `, G${v.grade}` : ''}, ${v.status}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+/** Take a person out of the Competency users (their employee record in Competency stays). */
+competency.delete('/users/:username', async (c) => {
+  const me = c.get('user');
+  const username = c.req.param('username');
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM competency_users WHERE username = ?').bind(username),
+    audit(c.env, me, 'delete', username, 'Competency user removed'),
+  ]);
+  return c.json({ ok: true });
 });

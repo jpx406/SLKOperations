@@ -11,13 +11,14 @@ import { editableAccept, editableProblem, expiryState, formatNumber, guessType, 
 import type { Suggestion } from '../../shared/docAnalysis';
 import { ApiError, api, formatDate } from '../api';
 import { SupportFiles } from './knowledge/Support';
-import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Banner, Button, Card, EmptyState, Field, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 import { ACCEPT, DocState, Dialog, EDITABLE_ACCEPT, QrBlock, QrDialog, SupportList, fileUrl, linkBtn, supportHref, today, uploadFile, type Library, type SupportBrief } from './knowledge/common';
 import { Archive, BatchAdd, Dashboard, ManualsView, Queue, Register, Settings } from './knowledge/Control';
 import { MindMapDialog, MindMapPanel } from './knowledge/Digest';
 import { Revisions } from './knowledge/Revisions';
 import { CopiesPanel, CopyLines, CopyNote, MakeCopiesDialog, copiesOf } from './knowledge/Copies';
 import { mayHaveCopies } from '../../shared/companyCopy';
+import { BandButton, KnowledgeHeader, bandTab } from './knowledge/Header';
 import { FormsRecordPanel, formDuplicate, useFormsRecord } from './knowledge/Forms';
 
 /** Read opens the PDF itself, in a new tab (stamped, as every download). Null when there is no PDF to open. */
@@ -77,25 +78,23 @@ export function KnowledgeHub() {
 
   return (
     <section aria-labelledby="kh-title">
-      <PageTitle aside={canEdit && (
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => setBatch(true)}><Files aria-hidden className="size-4" />Add several</Button>
-          <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus aria-hidden className="size-4" />Add document</Button>
-        </div>
-      )}>
-        <span id="kh-title">Knowledge Hub</span>
-      </PageTitle>
-      <div role="tablist" aria-label="Knowledge Hub sections" className="mb-4 flex flex-wrap gap-2">
-        {views.map((k) => (
-          <button key={k} role="tab" aria-selected={view === k} onClick={() => pick(k)}
-            className={cx('h-(--layout-control-sm) rounded-pill border px-3.5 text-sm font-semibold', view === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text',
-              k === 'control' && 'ml-0 sm:ml-2')}>
-            {VIEWS[k]}
-            {isSection(k) && lib && <span className="ml-1 font-mono font-normal opacity-80">{counts(k)}</span>}
-            {k === 'control' && !!lib?.queueCount && <span className="ml-1 rounded-pill bg-warning px-1.5 font-mono text-xs text-on-accent" aria-label={`${lib.queueCount} in the queue`}>{lib.queueCount}</span>}
-          </button>
-        ))}
-      </div>
+      {/* the SLK Knowledge Hub header, like Competency's (6z.35) */}
+      <KnowledgeHeader lib={lib}
+        actions={canEdit && <>
+          <BandButton onClick={() => setBatch(true)}><Files aria-hidden className="size-3.5" />Add several</BandButton>
+          <BandButton primary onClick={() => setEditing('new')}><Plus aria-hidden className="size-3.5" />Add document</BandButton>
+        </>}
+        tabs={
+          <div role="tablist" aria-label="Knowledge Hub sections" className="flex gap-1">
+            {views.map((k) => (
+              <button key={k} role="tab" aria-selected={view === k} onClick={() => pick(k)} className={bandTab(view === k)}>
+                {VIEWS[k]}
+                {isSection(k) && lib && <span className="ml-1 font-mono font-normal opacity-70">{counts(k)}</span>}
+                {k === 'control' && !!lib?.queueCount && <span className="ml-1 rounded-pill bg-warning px-1.5 font-mono text-xs text-on-accent" aria-label={`${lib.queueCount} in the queue`}>{lib.queueCount}</span>}
+              </button>
+            ))}
+          </div>
+        } />
       {q.isLoading && <Skeleton className="h-64" />}
       {q.isError && <Banner tone="danger">{q.error.message}</Banner>}
       {lib && (
