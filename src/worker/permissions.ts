@@ -1,6 +1,6 @@
 import type { MenuRight, Role } from '../shared/types';
 import type { Env } from './env';
-import { applyModules } from '../shared/modules';
+import { WG_RIGHT, applyModules, parseUserModules } from '../shared/modules';
 
 export const MENU_KEYS = [
   'schedule', 'jobs', 'job_log', 'pre_job_notes', 'database', 'failure_roster', 'eight_min_facts', 'quick_plan',
@@ -18,19 +18,21 @@ export async function loadMenus(env: Env, role: Role, username: string): Promise
   // admins keep every right: removals never apply to them
   if (role === 'admin') {
     for (const k of MENU_KEYS) menus[k] = { view: true, edit: true, delete: true };
+    menus[WG_RIGHT] = { view: true, edit: false, delete: false };
     return menus;
   }
-  const [perms, grants, contact] = await env.DB.batch([
+  const [perms, grants, contact, mine] = await env.DB.batch([
     env.DB.prepare('SELECT menu_key, can_view, can_edit, can_delete FROM role_permissions WHERE role = ?').bind(role),
     env.DB.prepare('SELECT menu_key, effect, can_edit FROM tab_grants WHERE username = ?').bind(username),
     env.DB.prepare('SELECT 1 FROM employees WHERE wg_username = ? AND is_slk_contact = 1 AND active = 1 LIMIT 1').bind(username),
+    env.DB.prepare('SELECT modules FROM user_roles WHERE username = ?').bind(username),
   ]);
   // without the SLK Operations Hub right only the Knowledge Hub and Competency stay open (6z.33)
   return applyModules(effectiveMenus(
     perms.results as { menu_key: string; can_view: number; can_edit: number; can_delete: number }[],
     grants.results as { menu_key: string; effect: 'grant' | 'deny'; can_edit: number }[],
     contact.results.length > 0,
-  ))
+  ), parseUserModules((mine.results[0] as { modules?: string | null } | undefined)?.modules ?? null));
 }
 
 /**
@@ -86,7 +88,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/wg\/sync$/, menu: 'schedule', action: 'edit' },
   { method: 'POST', re: /^\/api\/admin\/users$/, menu: 'users', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/admin\/users\/[^/]+$/, menu: 'users', action: 'edit' },
-  { method: 'DELETE', re: /^\/api\/admin\/users\/[^/]+$/, menu: 'users', action: 'delete' },
+  { method: 'POST', re: /^\/api\/admin\/users\/[^/]+\/delete$/, menu: 'users', action: 'delete' },
+  { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/modules$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/admin\/reconcile\/fix$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/grants$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/role-permissions$/, menu: 'users', action: 'edit' },
   { method: 'POST', re: /^\/api\/admin\/import\/(dry-run|apply)$/, menu: 'users', action: 'edit' },

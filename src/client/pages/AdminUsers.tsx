@@ -1,6 +1,6 @@
 import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CloudDownload, ExternalLink, FileDown, FileUp, Fingerprint, Plus, Search, Smartphone, Trash2, X } from 'lucide-react';
+import { CloudDownload, ExternalLink, FileDown, FileUp, Fingerprint, Plus, RefreshCw, Search, Smartphone, Trash2, UserCheck, UserX, X } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { MENU_LABELS, menuClusters } from '../../shared/menus';
@@ -14,6 +14,8 @@ import { CODES, CODE_LIST } from '../../shared/attendance';
 import type { Role, WgStatus } from '../../shared/types';
 import { COMPETENCY_GRADES, COMPETENCY_POSITIONS, COMPETENCY_SEGMENTS, COMPETENCY_SHEET_HEADER, COMPETENCY_SHEET_WIDTHS, COMPETENCY_STATUSES, profileRowsFromSheet, type CompetencyProfile, type CompetencyRoleDef, type SheetProfileRow } from '../../shared/competencyUsers';
 import { workbook, type Cell } from '../../shared/xlsx';
+import { USER_MODULES, type UserModuleKey, type UserModules } from '../../shared/modules';
+import { FIX_LABEL, type FixAction, type ReconIssue } from '../../shared/userAdmin';
 import { sheetRows } from '../competency/sheet';
 import { saveFile } from '../components/charts';
 import { ApiError, api } from '../api';
@@ -30,6 +32,7 @@ interface UserRow {
   employee_id: string | null; job_title: string | null; account: string | null; crew_role: string | null; sheet_override: string | null;
   reports_to_id: string | null; self_updated: number | null; is_slk_contact: number | null; contact_mobile: string | null; attendance_country: string | null;
   role_sheet: string | null;
+  modules: UserModules;
 }
 interface Matrix { roles: Role[]; menus: string[]; rows: { role: Role; menu_key: string; can_view: number; can_edit: number; can_delete: number }[] }
 interface AuditRow { occurred_at: string; username: string; action: string; entity_type: string; entity_id: string; summary: string }
@@ -44,7 +47,7 @@ function useConfig() {
 export function AdminUsers() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'people';
-  const tabs = [['people', 'People'], ['roles', 'Roles'], ['matrix', 'Role permissions'], ['competency', 'Competency users'], ['approvals', 'Approvals'], ['attendance', 'Attendance categories'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
+  const tabs = [['people', 'People'], ['roles', 'Roles'], ['matrix', 'Role permissions'], ['competency', 'Competency users'], ['approvals', 'Approvals'], ['attendance', 'Attendance categories'], ['reconcile', 'Reconciliation'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
   return (
     <section aria-labelledby="admin-title">
       <PageTitle><span id="admin-title">Users &amp; roles</span></PageTitle>
@@ -67,6 +70,7 @@ export function AdminUsers() {
         {tab === 'competency' && <CompetencyUsers />}
         {tab === 'approvals' && <ApprovalsPanel />}
         {tab === 'attendance' && <AttendanceCategories />}
+        {tab === 'reconcile' && <Reconciliation />}
         {tab === 'sync' && <SyncPanel />}
         {tab === 'history' && <History />}
       </div>
@@ -95,7 +99,11 @@ function People() {
   const update = useMutation({
     mutationFn: ({ username, patch }: { username: string; patch: { role?: Role; active?: boolean } }) =>
       api(`/admin/users/${encodeURIComponent(username)}`, { method: 'PATCH', json: patch }),
-    onSuccess: (_d, v) => { setNotice({ tone: 'success', text: `Saved ${v.username}` }); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
+    onSuccess: (_d, v) => {
+      const who = users.data?.find((u) => u.username === v.username)?.full_name ?? v.username;
+      setNotice({ tone: 'success', text: v.patch.active === undefined ? `Saved ${who}` : v.patch.active ? `${who} is active again: they can sign in.` : `${who} is deactivated: they can't sign in, and Competency shows them as Inactive.` });
+      qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['competency-users'] });
+    },
     onError: (e: ApiError) => { setNotice({ tone: 'danger', text: e.message }); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
   });
 
@@ -123,9 +131,9 @@ function People() {
           <input className={`${inputClass} pl-8`} placeholder="Name, NESR number, email or role" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
         <SearchSelect className="w-52" ariaLabel="Filter by role" value={roleFilter} onChange={setRoleFilter} options={roleOptions} placeholder="All roles" emptyLabel="All roles" searchPlaceholder="Search roles…" />
-        <label><span className="sr-only">Filter by access</span>
+        <label><span className="sr-only">Filter by status</span>
           <Select className={`${inputClass} w-36`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">Access on and off</option><option value="on">Access on</option><option value="off">Access off</option>
+            <option value="">Active and inactive</option><option value="on">Active</option><option value="off">Inactive</option>
           </Select>
         </label>
         <Button variant="primary" onClick={() => setAdding(true)}><Plus aria-hidden className="size-4" />Add person</Button>
@@ -136,14 +144,14 @@ function People() {
       {adding && <AddPerson onDone={(msg) => { setAdding(false); if (msg) setNotice({ tone: 'success', text: msg }); }} />}
       {users.isPending && <Skeleton className="h-64" />}
       {users.isError && <Banner tone="danger">{users.error.message}</Banner>}
-      {users.data && shown.length === 0 && <EmptyState title={q || roleFilter || statusFilter ? 'Nobody matches' : 'Nobody has signed in yet'}>{q || roleFilter || statusFilter ? 'Try another name, role or access filter.' : 'People appear here after their first sign-in, or when you add them.'}</EmptyState>}
+      {users.data && shown.length === 0 && <EmptyState title={q || roleFilter || statusFilter ? 'Nobody matches' : 'Nobody has signed in yet'}>{q || roleFilter || statusFilter ? 'Try another name, role or status filter.' : 'People appear here after their first sign-in, or when you add them.'}</EmptyState>}
       {shown.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[60rem] text-sm">
             <caption className="sr-only">People with access to SLK Operations Hub</caption>
             <thead className="bg-surface-2">
               <tr className="label-caps text-left text-text-muted">
-                {['Person', 'SLK Ops role', 'Countries', 'Attendance', 'Tabs', 'Face ID', 'Last sign-in', 'Access', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
+                {['Person', 'SLK Ops role', 'Countries', 'Attendance', 'Tabs', 'Face ID', 'Last sign-in', 'Status', ''].map((h) => <th key={h} scope="col" className="px-3 py-2">{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -180,11 +188,16 @@ function People() {
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-text-muted">{when(u.last_login_at)}</td>
                     <td className="px-3 py-2">
-                      <label className="inline-flex items-center gap-2">
-                        <input type="checkbox" checked={!!u.active} disabled={self || update.isPending}
-                          onChange={(e) => update.mutate({ username: u.username, patch: { active: e.target.checked } })} />
-                        <span>{u.active ? 'On' : 'Off'}</span>
-                      </label>
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge active={!!u.active} />
+                        {!self && (
+                          <button type="button" disabled={update.isPending} onClick={() => update.mutate({ username: u.username, patch: { active: !u.active } })}
+                            className="text-xs font-semibold text-text-muted underline hover:text-text disabled:opacity-50"
+                            aria-label={`${u.active ? 'Deactivate' : 'Activate'} ${u.full_name}`}>
+                            {u.active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-right"><Button size="sm" onClick={() => setEditing(u.username)} aria-label={`Edit ${u.full_name}`}>Edit</Button></td>
                   </tr>
@@ -266,7 +279,7 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
   const [countries, setCountries] = useState<string[]>(user.countries);
   const [choice, setChoice] = useState<Record<string, Choice>>(() =>
     Object.fromEntries(user.grants.map((g) => [g.menu_key, g.effect === 'deny' ? 'remove' : g.can_edit ? 'edit' : 'view'])));
-  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keys = (matrix.data?.menus ?? []).filter((k) => k !== 'users');
   const roleRight = (k: string) => {
@@ -286,10 +299,10 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onClose(`Saved ${user.full_name}`); },
     onError: (e: ApiError) => setError(e.message),
   });
-  const remove = useMutation({
-    mutationFn: () => api(`/admin/users/${encodeURIComponent(user.username)}`, { method: 'DELETE' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onClose(`${user.full_name} was removed from SLK Ops`); },
-    onError: (e: ApiError) => { setError(e.message); setConfirmRemove(false); },
+  const setActive = useMutation({
+    mutationFn: (active: boolean) => api(`/admin/users/${encodeURIComponent(user.username)}`, { method: 'PATCH', json: { active } }),
+    onSuccess: (_d, active) => { qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['competency-users'] }); onClose(active ? `${user.full_name} is active again` : `${user.full_name} is deactivated`); },
+    onError: (e: ApiError) => setError(e.message),
   });
 
   return (
@@ -302,6 +315,15 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
         </div>
         <p className="mb-4 text-sm text-text-muted">SLK Ops role: {roleLabel(user.role)}. Changes apply on the person’s next click.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border p-3">
+          <span className="label-caps text-text-muted">Status</span>
+          <StatusBadge active={!!user.active} />
+          <span className="min-w-0 flex-1 basis-48 text-xs text-text-subtle">{user.active ? 'Can sign in and use the modules below.' : 'Cannot sign in. Their records stay.'}</span>
+          {!self && (user.active
+            ? <Button size="sm" loading={setActive.isPending} onClick={() => setActive.mutate(false)}><UserX aria-hidden className="size-4" />Deactivate</Button>
+            : <Button size="sm" variant="primary" loading={setActive.isPending} onClick={() => setActive.mutate(true)}><UserCheck aria-hidden className="size-4" />Activate</Button>)}
+        </div>
+        <PersonModules user={user} />
         <WgDetails user={user} />
         <PersonAttendance user={user} />
         <PersonPasskeys user={user} self={self} />
@@ -349,18 +371,175 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
               Password and account: WIREGUARD <ExternalLink aria-hidden className="size-3.5" />
             </a>
           )}
-          {!self && (
-            <span className="ml-auto">
-              {!confirmRemove
-                ? <Button variant="danger" onClick={() => setConfirmRemove(true)}>Remove from SLK Ops</Button>
-                : <span className="inline-flex items-center gap-2"><span className="text-sm text-danger">Remove their SLK Ops access record?</span>
-                    <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>Yes, remove</Button>
-                    <Button variant="ghost" onClick={() => setConfirmRemove(false)}>No</Button></span>}
-            </span>
-          )}
+          {!self && !deleting && <Button className="ml-auto" variant="danger" onClick={() => setDeleting(true)}><Trash2 aria-hidden className="size-4" />Delete user</Button>}
         </div>
+        {!self && deleting && <DeleteUser user={user} onCancel={() => setDeleting(false)} onDeactivate={() => setActive.mutate(false)} deactivating={setActive.isPending}
+          onDeleted={() => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onClose(`${user.full_name} was deleted`); }} />}
       </div>
     </div>
+  );
+}
+
+function StatusBadge({ active }: { active: boolean }) {
+  return (
+    <span className={cx('inline-flex items-center rounded-pill px-2 py-0.5 text-xs font-semibold', active ? 'bg-success-subtle text-success' : 'bg-surface-3 text-text-muted')}>
+      {active ? 'Active' : 'Inactive'}
+    </span>
+  );
+}
+
+type ModuleChoice = 'default' | 'on' | 'off';
+const MODULE_RIGHT: Record<UserModuleKey, string> = { slk: 'slk_ops', wireguard: 'wireguard', competency: 'competency' };
+
+/** The modules the person may open: SLK Operations Hub, WIREGUARD, Competency (6z.38). The Knowledge Hub is open to all. */
+function PersonModules({ user }: { user: UserRow }) {
+  const qc = useQueryClient();
+  const initial = () => Object.fromEntries(USER_MODULES.map((m) => [m.key, user.modules?.[m.key] === undefined ? 'default' : user.modules[m.key] ? 'on' : 'off'])) as Record<UserModuleKey, ModuleChoice>;
+  const [pick, setPick] = useState<Record<UserModuleKey, ModuleChoice>>(initial);
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const changed = USER_MODULES.some((m) => pick[m.key] !== initial()[m.key]);
+  const opens = (k: UserModuleKey) => user.effective.some((e) => e.menu_key === MODULE_RIGHT[k]);
+  const save = useMutation({
+    mutationFn: () => api(`/admin/users/${encodeURIComponent(user.username)}/modules`, { method: 'PUT', json: { modules: Object.fromEntries(USER_MODULES.map((m) => [m.key, pick[m.key] === 'default' ? null : pick[m.key] === 'on'])) } }),
+    onSuccess: () => { setMsg({ tone: 'success', text: 'Modules saved' }); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
+    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
+  });
+  return (
+    <fieldset className="mb-4 rounded-md border border-border p-3">
+      <legend className="label-caps px-1 text-text-muted">Modules</legend>
+      {user.role === 'admin'
+        ? <p className="text-sm text-text-muted">Admins open every module.</p>
+        : <>
+          <p className="mb-2 text-xs text-text-subtle">Everyone reads the Knowledge Hub; their role may let them do more there. Role default follows the SLK Ops role (WIREGUARD and Competency come with the SLK Operations Hub).</p>
+          <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-3">
+            {USER_MODULES.map((m) => (
+              <label key={m.key} className="flex flex-col gap-1 text-sm">
+                <span className="font-semibold">{m.label} <span className={cx('text-xs font-normal', opens(m.key) ? 'text-success' : 'text-text-subtle')}>({opens(m.key) ? 'opens now' : 'closed now'})</span></span>
+                <Select className={inputClass} value={pick[m.key]} onChange={(e) => setPick((s) => ({ ...s, [m.key]: e.target.value as ModuleChoice }))}>
+                  <option value="default">Role default</option><option value="on">Allowed</option><option value="off">Not allowed</option>
+                </Select>
+              </label>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="primary" disabled={!changed} loading={save.isPending} onClick={() => save.mutate()}>Save modules</Button>
+            {msg && <span className={cx('text-sm', msg.tone === 'danger' ? 'text-danger' : 'text-success')} role="status">{msg.text}</span>}
+          </div>
+        </>}
+    </fieldset>
+  );
+}
+
+interface RecordsReply { blockers: string[] }
+
+/** Delete for good: only someone with no records anywhere, confirmed with the admin's own password (6z.38). */
+function DeleteUser({ user, onCancel, onDeleted, onDeactivate, deactivating }: { user: UserRow; onCancel: () => void; onDeleted: () => void; onDeactivate: () => void; deactivating: boolean }) {
+  const check = useQuery({ queryKey: ['user-records', user.username], queryFn: () => api<RecordsReply>(`/admin/users/${encodeURIComponent(user.username)}/records`), gcTime: 0 });
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const del = useMutation({
+    mutationFn: () => api(`/admin/users/${encodeURIComponent(user.username)}/delete`, { method: 'POST', json: { password } }),
+    onSuccess: onDeleted,
+    onError: (e: ApiError) => { setError(e.message); setPassword(''); },
+  });
+  const submit = (e: FormEvent) => { e.preventDefault(); setError(null); del.mutate(); };
+  return (
+    <div className="mt-4 rounded-md border border-danger/40 bg-danger-subtle/40 p-3 text-sm" role="region" aria-label={`Delete ${user.full_name}`}>
+      <p className="font-semibold">Delete {user.full_name}?</p>
+      {check.isPending && <p className="mt-1 text-text-muted">Checking WIREGUARD, Competency and SLK Ops for their records…</p>}
+      {check.isError && <p className="mt-1 text-danger">{check.error.message}</p>}
+      {check.data && check.data.blockers.length > 0 && (
+        <>
+          <p className="mt-1">They can't be deleted, only deactivated:</p>
+          <ul className="mt-1 list-disc pl-5 text-text-muted">{check.data.blockers.map((b) => <li key={b}>{b}</li>)}</ul>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {user.active ? <Button size="sm" loading={deactivating} onClick={onDeactivate}><UserX aria-hidden className="size-4" />Deactivate instead</Button> : <span className="text-text-muted">They are already inactive.</span>}
+            <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+          </div>
+        </>
+      )}
+      {check.data && check.data.blockers.length === 0 && (
+        <form onSubmit={submit} className="mt-2 flex flex-col gap-2">
+          <p className="text-text-muted">They have no records in WIREGUARD, Competency or SLK Ops. Deleting can't be undone.</p>
+          <Field id="del-password" label="Your WIREGUARD password" hint="To confirm it is you">
+            <input id="del-password" type="password" autoComplete="current-password" className={`${inputClass} max-w-xs`} value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
+          </Field>
+          {error && <Banner tone="danger">{error}</Banner>}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" variant="danger" loading={del.isPending} disabled={!password}>Delete for good</Button>
+            <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+interface ReconReply { issues: ReconIssue[]; counts: { people: number; wireguard: number | null; competency: number; register: number }; wgError: string | null }
+const ISSUE_TITLE: Record<ReconIssue['kind'], string> = {
+  wg_missing: 'Missing from People', not_in_wg: 'Not in WIREGUARD', wg_inactive: 'Switched off in WIREGUARD', details: 'Different details',
+  competency_orphan: 'Competency user without a SLK Ops user', competency_status: 'Still active in Competency', no_competency: 'Not in Competency',
+  register_extra: 'Only in the Competency register',
+};
+
+/** People, Competency users and WIREGUARD compared, with a fix for each difference (6z.38). WIREGUARD is never changed. */
+function Reconciliation() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['admin-reconcile'], queryFn: () => api<ReconReply>('/admin/reconcile') });
+  const [show, setShow] = useState<'problem' | 'all'>('problem');
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const fix = useMutation({
+    mutationFn: (i: ReconIssue) => api<{ done: string }>('/admin/reconcile/fix', { method: 'POST', json: { username: i.username, fix: i.fix } }),
+    onSuccess: (r) => { setMsg({ tone: 'success', text: r.done }); },
+    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
+    onSettled: () => { qc.invalidateQueries({ queryKey: ['admin-reconcile'] }); qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['competency-users'] }); },
+  });
+  const issues = (q.data?.issues ?? []).filter((i) => show === 'all' || i.level === 'problem');
+  const problems = (q.data?.issues ?? []).filter((i) => i.level === 'problem').length;
+  const notes = (q.data?.issues ?? []).length - problems;
+  return (
+    <>
+      <p className="mb-3 max-w-3xl text-sm text-text-muted">
+        People, Competency users and WIREGUARD should list the same people. This compares the three and offers a fix for each difference.
+        Fixes change SLK Ops and Competency only: WIREGUARD is read, never changed, so a person missing there is added in WIREGUARD itself.
+      </p>
+      {q.data && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded-md border border-border px-2.5 py-1">People <b className="font-mono">{q.data.counts.people}</b></span>
+          <span className="rounded-md border border-border px-2.5 py-1">WIREGUARD <b className="font-mono">{q.data.counts.wireguard ?? '—'}</b></span>
+          <span className="rounded-md border border-border px-2.5 py-1">Competency users <b className="font-mono">{q.data.counts.competency}</b></span>
+          <span className="rounded-md border border-border px-2.5 py-1">Competency register <b className="font-mono">{q.data.counts.register}</b></span>
+          <label className="ml-auto"><span className="sr-only">Show</span>
+            <Select className={`${inputClass} w-56`} value={show} onChange={(e) => setShow(e.target.value as 'problem' | 'all')}>
+              <option value="problem">Differences ({problems})</option><option value="all">Differences and notes ({problems + notes})</option>
+            </Select>
+          </label>
+          <Button size="sm" loading={q.isFetching} onClick={() => q.refetch()}><RefreshCw aria-hidden className="size-4" />Check again</Button>
+        </div>
+      )}
+      {q.data?.wgError && <div className="mb-3"><Banner tone="warning">WIREGUARD could not be read, so it is left out of this check: {q.data.wgError}</Banner></div>}
+      {msg && <div className="mb-3"><Banner tone={msg.tone} action={<Button size="sm" variant="ghost" onClick={() => setMsg(null)} aria-label="Dismiss"><X aria-hidden className="size-4" /></Button>}>{msg.text}</Banner></div>}
+      {q.isPending && <Skeleton className="h-64" />}
+      {q.isError && <Banner tone="danger">{q.error.message}</Banner>}
+      {q.data && issues.length === 0 && <EmptyState title={show === 'problem' ? 'The three lists agree' : 'Nothing to show'}>{show === 'problem' && notes ? `${notes} note${notes === 1 ? '' : 's'} to look at under Differences and notes.` : 'Everyone is in People, Competency and WIREGUARD with the same details.'}</EmptyState>}
+      {issues.length > 0 && (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {issues.map((i) => (
+            <li key={`${i.kind}-${i.username}`} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+              <div className="min-w-0 flex-1 basis-64">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-semibold">{i.name}</span>
+                  <span className="font-mono text-xs text-text-subtle">{i.username}</span>
+                  <span className={cx('rounded-pill px-2 py-0.5 text-xs font-semibold', i.level === 'problem' ? 'bg-warning-subtle text-warning' : 'bg-surface-3 text-text-muted')}>{ISSUE_TITLE[i.kind]}</span>
+                </div>
+                <p className="text-sm text-text-muted">{i.detail}</p>
+              </div>
+              {i.fix && <Button size="sm" loading={fix.isPending && fix.variables === i} onClick={() => fix.mutate(i)}>{FIX_LABEL[i.fix as FixAction]}</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 

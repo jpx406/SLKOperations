@@ -133,9 +133,14 @@ competency.get('/slk-seed', async (c) => {
 
 const STORE_KEY = 'nesr_wl_competency_team_v1';
 /** The Competency roles in use: the saved dataset's role definitions, else the defaults. */
-async function competencyRoles(env: Env) {
+export async function competencyRoles(env: Env) {
   const row = await env.DB.prepare(`SELECT value, r2_key FROM competency_kv WHERE key = ? AND owner = ''`).bind(STORE_KEY).first<Row>();
   return rolesFromDataset(await readValue(env, row));
+}
+/** The team's Competency dataset (employee register and records), or null when there is none yet. */
+export async function competencyDataset(env: Env): Promise<Record<string, unknown> | null> {
+  const row = await env.DB.prepare(`SELECT value, r2_key FROM competency_kv WHERE key = ? AND owner = ''`).bind(STORE_KEY).first<Row>();
+  try { const v = await readValue(env, row); return v ? (JSON.parse(v) as Record<string, unknown>) : null; } catch { return null; }
 }
 const PROFILE_COLS = 'c.username, c.role, c.can_edit, c.employee_id, c.position, c.grade, c.segment, c.location, c.hire_date, c.mentor, c.status, c.updated_by, c.updated_at';
 

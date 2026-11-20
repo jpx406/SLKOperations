@@ -4,7 +4,12 @@ import type { Role } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { exportPackage, importApply, importDryRun } from './dataPackage';
 import { MENU_KEYS, effectiveMenus } from './permissions';
-import { applyModules } from '../shared/modules';
+import { USER_MODULES, WG_RIGHT, applyModules, parseUserModules, type UserModules } from '../shared/modules';
+import { FIX_LABEL, competencyRecords, deleteBlockers, reconcileUsers, type FixAction, type PersonRecords, type ReconPerson, type ReconProfile } from '../shared/userAdmin';
+import { checkProfile } from '../shared/competencyUsers';
+import { competencyDataset, competencyRoles } from './competency';
+import { WgError, wgLogin } from './wg';
+import { wgUpsert, wgUsers, type WgListUser } from './wgUsers';
 import { syncPeople } from './people';
 import { roleKeys } from './rules';
 import { cleanEmployee } from './roster';
@@ -56,7 +61,7 @@ admin.get('/users', async (c) => {
     c.env.DB.prepare(
       `SELECT user_roles.username, user_roles.full_name, user_roles.role, user_roles.wg_role, user_roles.countries, user_roles.active,
               user_roles.last_login_at, user_roles.updated_by, user_roles.updated_at, user_roles.email, user_roles.employee_eid,
-              user_roles.wg_active, user_roles.wg_country, user_roles.wg_field, user_roles.wg_synced_at, user_roles.passkey_allowed,
+              user_roles.wg_active, user_roles.wg_country, user_roles.wg_field, user_roles.wg_synced_at, user_roles.passkey_allowed, user_roles.modules,
               (SELECT count(*) FROM passkeys p WHERE p.username = user_roles.username) AS passkeys,
               e.id AS employee_id, e.title AS job_title, e.account, e.crew_role, e.attendance_category AS sheet_override, e.reports_to_id,
               e.self_updated, e.is_slk_contact, e.contact_mobile, e.country AS attendance_country,
@@ -77,11 +82,12 @@ admin.get('/users', async (c) => {
     const key = String(u.username).toLowerCase();
     const g = byUser.get(key) ?? [];
     const menus = u.role === 'admin'
-      ? Object.fromEntries(MENU_KEYS.map((k) => [k, { view: true, edit: true, delete: true }]))
-      : applyModules(effectiveMenus((perms.results as P[]).filter((p) => p.role === u.role), g, contactSet.has(key)));
+      ? Object.fromEntries([...MENU_KEYS, WG_RIGHT].map((k) => [k, { view: true, edit: true, delete: true }]))
+      : applyModules(effectiveMenus((perms.results as P[]).filter((p) => p.role === u.role), g, contactSet.has(key)), parseUserModules(u.modules));
     return {
       ...u,
       countries: JSON.parse((u.countries as string) || '[]'),
+      modules: parseUserModules(u.modules),
       grants: g.map(({ menu_key, effect, can_edit }) => ({ menu_key, effect, can_edit })),
       is_contact: contactSet.has(key),
       effective: Object.entries(menus).filter(([, r]) => r.view).map(([k, r]) => ({ menu_key: k, edit: r.edit })),
@@ -144,25 +150,173 @@ admin.patch('/users/:username', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE user_roles SET role = ?, active = ?, countries = ?, updated_by = ?, updated_at = ? WHERE username = ?')
       .bind(role, active, JSON.stringify(countries), me.username, at, cur.username),
+    // Competency follows (6z.38): deactivated here is Inactive there, and back to Active when reactivated
+    ...(active !== cur.active ? [c.env.DB.prepare(`UPDATE competency_users SET status = ?, updated_by = ?, updated_at = ? WHERE username = ? AND status = ?`)
+      .bind(active ? 'Active' : 'Inactive', me.username, at, cur.username, active ? 'Inactive' : 'Active')] : []),
     audit(c.env, me, 'edit', 'user_role', cur.username, changes),
   ]);
   return c.json({ ok: true });
 });
 
-// Takes the person out of SLK Ops (their WIREGUARD account is untouched). Signing in again
-// starts over with the default role and the countries WIREGUARD shows.
-admin.delete('/users/:username', async (c) => {
-  const me = c.get('user');
-  const cur = await c.env.DB.prepare('SELECT username, role, active FROM user_roles WHERE username = ?').bind(c.req.param('username'))
-    .first<{ username: string; role: Role; active: number }>();
+// ---- delete (6z.38): only someone with no records anywhere; the admin's own WIREGUARD password confirms it ----------
+
+/** What the person has in WIREGUARD, Competency and SLK Ops. */
+async function personRecords(env: Env, username: string): Promise<PersonRecords> {
+  let wireguard: boolean | null;
+  try { wireguard = (await wgUsers(env, true)).some((u) => u.username.toLowerCase() === username.toLowerCase()); } catch { wireguard = null; }
+  const [prof, emp, sig] = await env.DB.batch([
+    env.DB.prepare('SELECT employee_id FROM competency_users WHERE username = ?').bind(username),
+    env.DB.prepare(`SELECT e.eid, (SELECT count(DISTINCT job_id) FROM job_crew j WHERE j.employee_id = e.id) AS crew,
+        (SELECT count(*) FROM attendance_entries a WHERE a.employee_id = e.id) AS attendance,
+        (SELECT count(*) FROM job_bonus_lines b WHERE b.employee_id = e.id) AS bonus
+      FROM employees e WHERE lower(e.wg_username) = lower(?)`).bind(username),
+    env.DB.prepare('SELECT count(*) AS n FROM signatures WHERE lower(username) = lower(?)').bind(username),
+  ]);
+  const p = prof.results[0] as { employee_id: string | null } | undefined;
+  const rows = emp.results as { eid: string | null; crew: number; attendance: number; bonus: number }[];
+  const cr = competencyRecords(await competencyDataset(env), [username, p?.employee_id ?? '', ...rows.map((r) => r.eid ?? '')]);
+  return {
+    wireguard,
+    competency: { profile: !!p, ...cr },
+    slk: {
+      crew: rows.reduce((n, r) => n + r.crew, 0), attendance: rows.reduce((n, r) => n + r.attendance, 0), bonus: rows.reduce((n, r) => n + r.bonus, 0),
+      signatures: (sig.results[0] as { n: number } | undefined)?.n ?? 0,
+    },
+  };
+}
+
+admin.get('/users/:username/records', async (c) => {
+  const cur = await c.env.DB.prepare('SELECT username FROM user_roles WHERE username = ?').bind(c.req.param('username')).first<{ username: string }>();
   if (!cur) return c.json({ error: 'No such user' }, 404);
-  if (cur.username.toLowerCase() === me.username.toLowerCase()) return c.json({ error: 'You cannot remove yourself' }, 400);
+  const records = await personRecords(c.env, cur.username);
+  return c.json({ records, blockers: deleteBlockers(records) });
+});
+
+// Deletes the person from SLK Ops for good: only when they have no records in WIREGUARD, Competency or SLK Ops
+// (else they can only be deactivated), and only after the admin types their own WIREGUARD password.
+admin.post('/users/:username/delete', async (c) => {
+  const me = c.get('user');
+  const cur = await c.env.DB.prepare('SELECT username, full_name, role, active FROM user_roles WHERE username = ?').bind(c.req.param('username'))
+    .first<{ username: string; full_name: string; role: Role; active: number }>();
+  if (!cur) return c.json({ error: 'No such user' }, 404);
+  if (cur.username.toLowerCase() === me.username.toLowerCase()) return c.json({ error: 'You cannot delete yourself' }, 400);
   if (cur.role === 'admin' && cur.active && (await activeAdmins(c.env)) <= 1) return c.json({ error: 'This is the last active admin' }, 400);
+  const { password } = await c.req.json<{ password?: string }>().catch(() => ({} as { password?: string }));
+  if (!password) return c.json({ error: 'Type your password to confirm' }, 400);
+  try {
+    // a sign-in check against WIREGUARD with the admin's own account: nothing in WIREGUARD changes
+    const ok = await wgLogin(c.env, me.username, password);
+    if (ok.user.username.toLowerCase() !== me.username.toLowerCase()) throw new WgError(401, 'Wrong password');
+  } catch (e) {
+    if (e instanceof WgError && e.status >= 500) return c.json({ error: 'WIREGUARD could not be reached to check your password. Try again later.' }, 503);
+    await audit(c.env, me, 'delete_refused', 'user_role', cur.username, `Delete of ${cur.username} refused: wrong admin password`).run();
+    return c.json({ error: 'That password is not right' }, 403);
+  }
+  const blockers = deleteBlockers(await personRecords(c.env, cur.username));
+  if (blockers.length) return c.json({ error: `${cur.full_name} can only be deactivated: ${blockers.join('; ')}.`, blockers }, 409);
   await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE employees SET reports_to_id = NULL WHERE reports_to_id IN (SELECT id FROM employees WHERE lower(wg_username) = lower(?))').bind(cur.username),
+    c.env.DB.prepare('UPDATE pre_job_notes SET main_contact_id = NULL WHERE main_contact_id IN (SELECT id FROM employees WHERE lower(wg_username) = lower(?))').bind(cur.username),
+    c.env.DB.prepare('DELETE FROM employees WHERE lower(wg_username) = lower(?)').bind(cur.username),
+    c.env.DB.prepare('DELETE FROM tab_grants WHERE username = ?').bind(cur.username),
+    c.env.DB.prepare('DELETE FROM passkeys WHERE username = ?').bind(cur.username),
+    c.env.DB.prepare('DELETE FROM knowledge_people WHERE username = ?').bind(cur.username),
     c.env.DB.prepare('DELETE FROM user_roles WHERE username = ?').bind(cur.username),
-    audit(c.env, me, 'delete', 'user_role', cur.username, `Removed from SLK Ops (was ${cur.role})`),
+    audit(c.env, me, 'delete', 'user_role', cur.username, `Deleted ${cur.full_name} (${cur.username}, was ${cur.role}); no records in WIREGUARD, Competency or SLK Ops; confirmed with the admin password`),
   ]);
   return c.json({ ok: true });
+});
+
+// ---- modules per person (6z.38): SLK Operations Hub, WIREGUARD, Competency; not set means the role decides ----------
+
+admin.put('/users/:username/modules', async (c) => {
+  const me = c.get('user');
+  const cur = await c.env.DB.prepare('SELECT username, full_name, modules FROM user_roles WHERE username = ?').bind(c.req.param('username'))
+    .first<{ username: string; full_name: string; modules: string | null }>();
+  if (!cur) return c.json({ error: 'No such user' }, 404);
+  const b = await c.req.json<{ modules?: Record<string, unknown> }>().catch(() => ({} as { modules?: Record<string, unknown> }));
+  const raw = b.modules ?? {};
+  if (Object.entries(raw).some(([k, v]) => !USER_MODULES.some((m) => m.key === k) || (v !== null && typeof v !== 'boolean'))) return c.json({ error: 'Each module is on, off or the role default' }, 400);
+  const next = parseUserModules(raw);
+  const before = parseUserModules(cur.modules);
+  const say = (m: UserModules) => USER_MODULES.map((x) => `${x.label} ${m[x.key] === undefined ? 'role default' : m[x.key] ? 'on' : 'off'}`).join(', ');
+  if (say(next) === say(before)) return c.json({ ok: true });
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE user_roles SET modules = ?, updated_by = ?, updated_at = ? WHERE username = ?')
+      .bind(Object.keys(next).length ? JSON.stringify(next) : null, me.username, new Date().toISOString(), cur.username),
+    audit(c.env, me, 'edit', 'user_role', cur.username, `Modules: ${say(next)}`),
+  ]);
+  return c.json({ ok: true });
+});
+
+// ---- reconciliation (6z.38): People, Competency users and WIREGUARD should list the same people -------------------
+
+async function reconData(env: Env) {
+  await syncPeople(env);
+  let wg: WgListUser[] | null = null;
+  let wgError: string | null = null;
+  try { wg = await wgUsers(env, true); } catch (e) { wgError = (e as Error).message; }
+  const [people, profiles] = await env.DB.batch([
+    env.DB.prepare('SELECT username, full_name, email, employee_eid, active, wg_active FROM user_roles'),
+    env.DB.prepare('SELECT username, employee_id, status FROM competency_users'),
+  ]);
+  const dataset = await competencyDataset(env);
+  const register = (Array.isArray(dataset?.employees) ? dataset.employees : [])
+    .filter((e): e is { id: string; name?: string } => !!e && typeof (e as { id?: unknown }).id === 'string');
+  return { wg, wgError, people: people.results as ReconPerson[], profiles: profiles.results as ReconProfile[], register };
+}
+
+admin.get('/reconcile', async (c) => {
+  const d = await reconData(c.env);
+  return c.json({
+    issues: reconcileUsers(d.people, d.wg, d.profiles, d.register),
+    counts: { people: d.people.length, wireguard: d.wg?.length ?? null, competency: d.profiles.length, register: d.register.length },
+    wgError: d.wgError,
+  });
+});
+
+admin.post('/reconcile/fix', async (c) => {
+  const me = c.get('user');
+  const b = await c.req.json<{ username?: string; fix?: FixAction }>().catch(() => ({} as { username?: string; fix?: FixAction }));
+  if (!b.username || !b.fix) return c.json({ error: 'Pick a person and a fix' }, 400);
+  const d = await reconData(c.env);
+  // the fix must still match a discrepancy found now, so a stale screen can't change the wrong thing
+  const issue = reconcileUsers(d.people, d.wg, d.profiles, d.register).find((i) => i.username.toLowerCase() === b.username!.toLowerCase() && i.fix === b.fix);
+  if (!issue) return c.json({ error: 'That discrepancy is no longer there. The list has been refreshed.' }, 409);
+  const user = issue.username;
+  const t = new Date().toISOString();
+  const say = `${FIX_LABEL[b.fix]}: ${issue.name} (${user}). ${issue.detail}`;
+  const stmts: D1PreparedStatement[] = [];
+  if (b.fix === 'add_from_wg' || b.fix === 'use_wg_details') {
+    const w = d.wg?.find((u) => u.username.toLowerCase() === user.toLowerCase());
+    if (!w) return c.json({ error: 'WIREGUARD no longer lists them' }, 409);
+    stmts.push(wgUpsert(c.env, w, t, me.username));
+    // the WIREGUARD details replace ours, also when WIREGUARD has none for a field
+    if (b.fix === 'use_wg_details') stmts.push(c.env.DB.prepare('UPDATE user_roles SET email = coalesce(?, email), employee_eid = coalesce(?, employee_eid), updated_by = ?, updated_at = ? WHERE username = ?')
+      .bind(w.email ?? null, w.employee_id ?? null, me.username, t, user));
+  } else if (b.fix === 'deactivate') {
+    if (user.toLowerCase() === me.username.toLowerCase()) return c.json({ error: 'You cannot switch off your own access' }, 400);
+    const cur = d.people.find((p) => p.username === user);
+    const role = await c.env.DB.prepare('SELECT role FROM user_roles WHERE username = ?').bind(user).first<{ role: Role }>();
+    if (cur?.active && role?.role === 'admin' && (await activeAdmins(c.env)) <= 1) return c.json({ error: 'This is the last active admin' }, 400);
+    stmts.push(c.env.DB.prepare('UPDATE user_roles SET active = 0, updated_by = ?, updated_at = ? WHERE username = ?').bind(me.username, t, user));
+    stmts.push(c.env.DB.prepare(`UPDATE competency_users SET status = 'Inactive', updated_by = ?, updated_at = ? WHERE username = ? AND status = 'Active'`).bind(me.username, t, user));
+  } else if (b.fix === 'remove_profile') {
+    stmts.push(c.env.DB.prepare('DELETE FROM competency_users WHERE username = ?').bind(user));
+  } else if (b.fix === 'competency_inactive') {
+    stmts.push(c.env.DB.prepare(`UPDATE competency_users SET status = 'Inactive', updated_by = ?, updated_at = ? WHERE username = ?`).bind(me.username, t, user));
+  } else if (b.fix === 'add_profile') {
+    const roles = await competencyRoles(c.env);
+    const viewer = roles.find((r) => r.name === 'Viewer') ?? roles.find((r) => !r.edit);
+    if (!viewer) return c.json({ error: 'Competency has no read-only role to give. Set them up in Competency users.' }, 400);
+    const r = checkProfile({ role: viewer.name }, roles);
+    if ('error' in r) return c.json({ error: r.error }, 400);
+    stmts.push(c.env.DB.prepare(`INSERT INTO competency_users (username, role, can_edit, segment, status, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (username) DO NOTHING`).bind(user, r.value.role, r.value.can_edit, r.value.segment, r.value.status, me.username, t));
+  }
+  await c.env.DB.batch([...stmts, audit(c.env, me, 'reconcile', 'user_role', user, say)]);
+  await syncPeople(c.env);
+  return c.json({ ok: true, done: say });
 });
 
 admin.put('/users/:username/grants', async (c) => {

@@ -120,7 +120,9 @@ describe('admin write rules', () => {
     expect(ruleFor('PATCH', '/api/admin/users/NESR-1')?.menu).toBe('users');
     expect(ruleFor('PUT', '/api/admin/users/NESR-1/grants')?.menu).toBe('users');
     expect(ruleFor('PUT', '/api/admin/role-permissions')?.menu).toBe('users');
-    expect(ruleFor('DELETE', '/api/admin/users/NESR-1')).toMatchObject({ menu: 'users', action: 'delete' });
+    // 6z.38: deleting a person needs the admin's password, so it is a POST with a body
+    expect(ruleFor('POST', '/api/admin/users/NESR-1/delete')).toMatchObject({ menu: 'users', action: 'delete' });
+    expect(ruleFor('DELETE', '/api/admin/users/NESR-1')).toBeUndefined();
     expect(ruleFor('DELETE', '/api/admin/role-permissions')).toBeUndefined();
   });
 });

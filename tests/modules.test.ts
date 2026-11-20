@@ -21,10 +21,11 @@ describe('modules after sign-in (6z.33)', () => {
     const menus = applyModules(effectiveMenus([row('knowledge_hub', 1), row('jobs', 1), row('schedule'), row('ai_assistant')], [], false));
     expect(Object.keys(menus).sort()).toEqual(['ai_assistant', 'knowledge_hub']);
     expect(moduleAccess(menus)).toEqual({ slk: false, knowledge: true, competency: false });
-    expect(moduleAccess(applyModules(effectiveMenus([row('competency')], [], false)))).toEqual({ slk: false, knowledge: false, competency: true });
+    // 6z.38: everyone reads the Knowledge Hub
+    expect(moduleAccess(applyModules(effectiveMenus([row('competency')], [], false)))).toEqual({ slk: false, knowledge: true, competency: true });
     // a person-level grant of the hub opens it for that person; a removal closes it
     expect(moduleAccess(applyModules(effectiveMenus([row('knowledge_hub')], [{ menu_key: 'slk_ops', effect: 'grant', can_edit: 0 }], false))).slk).toBe(true);
-    expect(moduleAccess(applyModules(effectiveMenus([row('slk_ops'), row('jobs')], [{ menu_key: 'slk_ops', effect: 'deny', can_edit: 0 }], false)))).toEqual({ slk: false, knowledge: false, competency: false });
+    expect(moduleAccess(applyModules(effectiveMenus([row('slk_ops'), row('jobs')], [{ menu_key: 'slk_ops', effect: 'deny', can_edit: 0 }], false)))).toEqual({ slk: false, knowledge: true, competency: false });
   });
 
   it('each module shows only its own menu; the hub shows everything', () => {

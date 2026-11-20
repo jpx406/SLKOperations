@@ -1,6 +1,8 @@
 // The three modules a person opens after signing in (6z.33): the whole SLK Operations Hub, the Knowledge Hub on its
 // own, or Competency on its own. Who opens which is set on roles in Users & Roles: the "SLK Operations Hub" right
 // opens everything (and with it the other two), the Knowledge Hub and Competency rights open those alone.
+// 6z.38: each person can also have their own modules set in Users & Roles (SLK Operations Hub, WIREGUARD,
+// Competency), which win over the role; everyone reads the Knowledge Hub, and their role may give them more there.
 
 import type { Group } from './menus';
 
@@ -20,24 +22,63 @@ export const MODULES: { key: ModuleKey; label: string; blurb: string; home: stri
 
 type Rights = Record<string, { view: boolean; edit: boolean; delete: boolean }>;
 
+/** The modules a person can be given one by one. Not set means the role decides. */
+export const USER_MODULES = [
+  { key: 'slk', label: 'SLK Operations Hub' },
+  { key: 'wireguard', label: 'WIREGUARD' },
+  { key: 'competency', label: 'Competency' },
+] as const;
+export type UserModuleKey = (typeof USER_MODULES)[number]['key'];
+export type UserModules = Partial<Record<UserModuleKey, boolean>>;
+/** The right that shows the WIREGUARD tile on the module page (WIREGUARD's own sign-in still decides inside it). */
+export const WG_RIGHT = 'wireguard';
+
+/** A person's modules as stored (JSON), keeping only true or false for the known keys. */
+export function parseUserModules(raw: unknown): UserModules {
+  let v: unknown = raw;
+  if (typeof raw === 'string') { try { v = JSON.parse(raw); } catch { return {}; } }
+  if (!v || typeof v !== 'object') return {};
+  const out: UserModules = {};
+  for (const m of USER_MODULES) { const x = (v as Record<string, unknown>)[m.key]; if (typeof x === 'boolean') out[m.key] = x; }
+  return out;
+}
+
+const viewOf = (r: Rights[string] | undefined) => ({ view: true, edit: r?.edit ?? false, delete: r?.delete ?? false });
+
 /**
  * Rights after the modules are applied: with the SLK right, the Knowledge Hub and Competency open too (at least to
  * read); without it, only the Knowledge Hub and Competency rights stay, so the rest of the app is closed on the server.
  */
-export function applyModules(menus: Rights): Rights {
-  if (menus[SLK_RIGHT]?.view) {
-    const out = { ...menus };
-    for (const k of Object.values(MODULE_RIGHTS)) out[k] = { view: true, edit: out[k]?.edit ?? false, delete: out[k]?.delete ?? false };
-    return out;
+export function applyModules(menus: Rights, modules: UserModules = {}): Rights {
+  const given = { ...menus };
+  // the person's own modules win over the role
+  if (modules.slk === true) given[SLK_RIGHT] = viewOf(given[SLK_RIGHT]);
+  if (modules.slk === false) delete given[SLK_RIGHT];
+  if (modules.competency === true) given.competency = viewOf(given.competency);
+  let out: Rights;
+  if (given[SLK_RIGHT]?.view) {
+    out = { ...given };
+    for (const k of Object.values(MODULE_RIGHTS)) out[k] = viewOf(out[k]);
+  } else {
+    out = Object.fromEntries(Object.entries(given).filter(([k]) => (Object.values(MODULE_RIGHTS) as string[]).includes(k) || ALWAYS.includes(k)));
   }
-  return Object.fromEntries(Object.entries(menus).filter(([k]) => (Object.values(MODULE_RIGHTS) as string[]).includes(k) || ALWAYS.includes(k)));
+  if (modules.competency === false) delete out.competency;
+  // everyone reads the Knowledge Hub; an edit or delete right from the role stays
+  out.knowledge_hub = viewOf(out.knowledge_hub);
+  // WIREGUARD: the person's choice, else whoever opens the whole hub
+  if (modules.wireguard ?? !!out[SLK_RIGHT]?.view) out[WG_RIGHT] = { view: true, edit: false, delete: false };
+  else delete out[WG_RIGHT];
+  return out;
 }
 
 /** Which modules a person may open. */
 export function moduleAccess(menus: Record<string, { view: boolean }>): Record<ModuleKey, boolean> {
   const slk = !!menus[SLK_RIGHT]?.view;
-  return { slk, knowledge: slk || !!menus.knowledge_hub?.view, competency: slk || !!menus.competency?.view };
+  return { slk, knowledge: true, competency: !!menus.competency?.view };
 }
+
+/** Whether the WIREGUARD tile opens for the person. */
+export const wireguardAccess = (menus: Record<string, { view: boolean }>) => !!menus[WG_RIGHT]?.view;
 
 /** The module a page belongs to when it is opened from a link: the Knowledge Hub, Competency, or the rest. */
 export function moduleOfPath(path: string): ModuleKey {
