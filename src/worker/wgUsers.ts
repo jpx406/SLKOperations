@@ -38,9 +38,9 @@ export async function wgUsers(env: Env, fresh = false): Promise<WgListUser[]> {
 }
 
 /** Whether WIREGUARD still lists the person as active: 'yes', 'no' (missing or switched off), or 'unknown' (unreachable). */
-export async function wgUserActive(env: Env, username: string): Promise<'yes' | 'no' | 'unknown'> {
+export async function wgUserActive(env: Env, username: string, fresh = false): Promise<'yes' | 'no' | 'unknown'> {
   try {
-    const u = (await wgUsers(env)).find((x) => x.username.toLowerCase() === username.toLowerCase());
+    const u = (await wgUsers(env, fresh)).find((x) => x.username.toLowerCase() === username.toLowerCase());
     return u && isActive(u) ? 'yes' : 'no';
   } catch {
     return 'unknown';

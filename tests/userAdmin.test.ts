@@ -49,6 +49,12 @@ describe('modules per person', () => {
     expect(ruleFor('POST', '/api/admin/users/NESR-1/delete')).toMatchObject({ menu: 'users', action: 'delete' });
     expect(readAllowed('/api/knowledge', applyModules({}))).toBe(true);
   });
+
+  it('only people allowed WIREGUARD can ask whether their WIREGUARD account is on (6z.39)', () => {
+    expect(readAllowed('/api/wg/account', applyModules({ slk_ops: R() }))).toBe(true);
+    expect(readAllowed('/api/wg/account', applyModules({}, { wireguard: true }))).toBe(true);
+    expect(readAllowed('/api/wg/account', applyModules({ slk_ops: R() }, { wireguard: false }))).toBe(false);
+  });
 });
 
 describe('deleting a person', () => {

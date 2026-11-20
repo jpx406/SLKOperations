@@ -4,7 +4,7 @@ import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown,
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav, type Group } from '../../shared/menus';
-import { MODULES, currentModule, moduleAccess, moduleNav } from '../../shared/modules';
+import { MODULES, currentModule, moduleAccess, moduleNav, wireguardAccess } from '../../shared/modules';
 import { pickModule, pickedModule } from '../pages/Modules';
 import { roleLabel } from '../../shared/roles';
 import type { WgStatus } from '../../shared/types';
@@ -216,6 +216,8 @@ export function AppShell() {
   // the module picked after signing in shows only its own menu; the SLK Operations Hub shows everything (6z.33)
   const access = moduleAccess(me?.menus ?? {});
   const mod = currentModule(pickedModule(), loc.pathname, access);
+  // the module switch shows only when there is more than one module to go to (6z.39)
+  const choices = Object.values(access).filter(Boolean).length + (wireguardAccess(me?.menus ?? {}) ? 1 : 0);
   useEffect(() => { if (me) pickModule(mod); }, [me, mod]);
   const nav = moduleNav(visibleNav(me?.menus ?? {}), mod);
   const navigate = useNavigate();
@@ -255,10 +257,10 @@ export function AppShell() {
             {me && <span className="hidden sm:inline-flex"><CountrySwitch countries={me.allCountries ?? me.countries} /></span>}
             <span className="hidden sm:inline-flex"><SyncStatus canSync={!!me?.menus.schedule?.edit} /></span>
             <RiyadhClock />
-            <NavLink to="/modules" title="Switch module" aria-label={`Module: ${MODULES.find((m) => m.key === mod)?.label}. Switch module`}
+            {choices > 1 && <NavLink to="/modules" title="Switch module" aria-label={`Module: ${MODULES.find((m) => m.key === mod)?.label}. Switch module`}
               className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md px-2 text-sm font-semibold text-text-muted hover:bg-surface-2 hover:text-text">
               <LayoutGrid aria-hidden className="size-4" /><span className="hidden lg:inline">{MODULES.find((m) => m.key === mod)?.label}</span>
-            </NavLink>
+            </NavLink>}
             <HelpButton />
             <AssistantLauncher />
             {me && <AccountMenu name={me.fullName} role={roleLabel(me.role)} admin={me.role === 'admin'} countries={me.allCountries ?? me.countries} passwordUrl={config.data?.wireguardUrl} display={display} onAbout={() => setAbout(true)} onSignOut={signOut} />}

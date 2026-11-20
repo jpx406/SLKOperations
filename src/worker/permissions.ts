@@ -197,6 +197,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
 // so removing a tab from someone really closes its data, not just its menu entry.
 export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/(me|session|config|lookups|sdms|wg\/status|passkeys|roles|rules)$/, menus: 'any' },
+  // 6z.39: whether the person's own WIREGUARD account is on, before the WIREGUARD tile opens it
+  { re: /^\/api\/wg\/account$/, menus: ['wireguard'] },
   { re: /^\/api\/schedule$/, menus: ['schedule'] },
   { re: /^\/api\/audit$/, menus: ['audit'] },
   { re: /^\/api\/companies$/, menus: ['companies'] },

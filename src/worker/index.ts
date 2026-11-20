@@ -5,7 +5,7 @@ import type { AppBindings, Env } from './env';
 import { admin } from './admin';
 import { passkeyAdmin, passkeyAuth, passkeys } from './passkeys';
 import { loadRules, rulesApi, usersFor } from './rules';
-import { importWgUsers } from './wgUsers';
+import { importWgUsers, wgUserActive } from './wgUsers';
 import { syncPeople } from './people';
 import { aiAdminGet, aiAdminPut, aiChat, aiStatus, assistantChat } from './ai';
 import { database } from './database';
@@ -114,6 +114,8 @@ app.get('/me', (c) => {
 });
 
 app.get('/wg/status', async (c) => c.json(await syncStatus(c.env)));
+// The person's own WIREGUARD account (6z.39): 'yes' on, 'no' switched off or missing, 'unknown' unreachable
+app.get('/wg/account', async (c) => c.json({ status: await wgUserActive(c.env, c.get('user').username, true) }));
 app.post('/wg/sync', async (c) => {
   const results = await syncAll(c.env);
   await c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
