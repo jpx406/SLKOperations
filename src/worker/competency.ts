@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthedUser, Env } from './env';
-import { checkProfile, rolesFromDataset, type CompetencyProfile } from '../shared/competencyUsers';
+import { checkProfile, planImport, rolesFromDataset, type CompetencyProfile, type SheetProfileRow } from '../shared/competencyUsers';
 
 // Storage for the Competency module (6z.34): the NESR Competency Framework System keeps its data through a
 // four-call key/value contract (get, set, delete, list by prefix), here on D1 with large values in the R2 bucket.
@@ -189,4 +189,36 @@ competency.delete('/users/:username', async (c) => {
     audit(c.env, me, 'delete', username, 'Competency user removed'),
   ]);
   return c.json({ ok: true });
+});
+
+/**
+ * Upload from Excel (6z.36): { rows, apply }. Without apply it only says what would happen; with it, the people
+ * already set up are updated and the new ones added, in one go. Employee ID (the SLK Ops username) is the key, so
+ * nobody gets a second profile. Users & Roles (the Users tab's edit right).
+ */
+competency.post('/users/import', async (c) => {
+  const me = c.get('user');
+  const b = await c.req.json().catch(() => ({})) as { rows?: unknown; apply?: unknown };
+  if (!Array.isArray(b.rows)) return c.json({ error: 'Nothing to read in the file' }, 400);
+  if (b.rows.length > 2000) return c.json({ error: 'At most 2,000 rows at a time' }, 400);
+  const rows = (b.rows as SheetProfileRow[]).filter((r) => r && typeof r.id === 'string' && typeof r.row === 'number' && r.values && typeof r.values === 'object');
+  const [users, existing, roles] = await Promise.all([
+    c.env.DB.prepare('SELECT username FROM user_roles').all<{ username: string }>(),
+    c.env.DB.prepare('SELECT username, employee_id FROM competency_users').all<{ username: string; employee_id: string | null }>(),
+    competencyRoles(c.env),
+  ]);
+  const plan = planImport(rows, users.results.map((u) => u.username), existing.results, roles);
+  if (b.apply === true && plan.add.length + plan.update.length) {
+    const upsert = c.env.DB.prepare(`INSERT INTO competency_users (username, role, can_edit, employee_id, position, grade, segment, location, hire_date, mentor, status, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (username) DO UPDATE SET role = excluded.role, can_edit = excluded.can_edit, employee_id = excluded.employee_id, position = excluded.position,
+        grade = excluded.grade, segment = excluded.segment, location = excluded.location, hire_date = excluded.hire_date, mentor = excluded.mentor,
+        status = excluded.status, updated_by = excluded.updated_by, updated_at = excluded.updated_at`);
+    const at = now();
+    await c.env.DB.batch([
+      ...[...plan.add, ...plan.update].map(({ username, value: v }) => upsert.bind(username, v.role, v.can_edit, v.employee_id, v.position, v.grade, v.segment, v.location, v.hire_date, v.mentor, v.status, me.username, at)),
+      audit(c.env, me, 'import', 'competency_users', `Competency users from Excel: ${plan.add.length} added, ${plan.update.length} updated, ${plan.skip.length} left out`),
+    ]);
+  }
+  return c.json({ ...plan, applied: b.apply === true });
 });

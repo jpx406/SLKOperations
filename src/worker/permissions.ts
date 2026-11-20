@@ -134,6 +134,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   // Competency users are set in Users & Roles (6z.35)
   { method: 'PUT', re: /^\/api\/competency\/users\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/competency\/users\/[^/]+$/, menu: 'users', action: 'edit' },
+  { method: 'POST', re: /^\/api\/competency\/users\/import$/, menu: 'users', action: 'edit' },
   // deleting a draft that was never published (6z.29): admins, approvers, editors or the delete right, checked in the route
   { method: 'DELETE', re: /^\/api\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'view' },
   { method: 'PUT', re: /^\/api\/knowledge\/(settings|people\/[^/]+)$/, menu: 'knowledge_hub', action: 'view' },

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_COMPETENCY_ROLES, checkProfile, rolesFromDataset } from '../src/shared/competencyUsers';
+import { COMPETENCY_SHEET_HEADER, DEFAULT_COMPETENCY_ROLES, checkProfile, planImport, profileRowsFromSheet, rolesFromDataset, sheetDate } from '../src/shared/competencyUsers';
+import { workbook } from '../src/shared/xlsx';
+import { sheetRows } from '../src/client/competency/sheet';
 import { NAV } from '../src/shared/menus';
 import { readAllowed, ruleFor } from '../src/worker/permissions';
 import { _slk } from '../src/client/competency/App.jsx';
@@ -53,5 +55,47 @@ describe('menus (6z.35)', () => {
     expect(NAV.find((g) => g.label === 'Equipment')!.pages.map((p) => p.label)).toEqual(['Explosive', 'Hardware', 'MCR', 'Wires', 'Reconciliation']);
     expect(NAV.find((g) => g.label === 'Competency')!.pages[0].path).toBe('/competency');
     expect(NAV.find((g) => g.label === 'Service Quality')!.pages.some((p) => p.key === 'competency')).toBe(false);
+  });
+});
+
+describe('Competency users from Excel (6z.36)', () => {
+  const roles = rolesFromDataset(null);
+  it('reads dates as Excel numbers or typed', () => {
+    expect(sheetDate(43709)).toBe('2019-09-01');
+    expect(sheetDate('2019-09-01')).toBe('2019-09-01');
+    expect(sheetDate('1/9/2019')).toBe('2019-09-01');
+    expect(sheetDate('')).toBe('');
+  });
+
+  it('reads a downloaded file back, columns by name, grade as G9 or 9', async () => {
+    const bytes = workbook('Competency users', [...COMPETENCY_SHEET_HEADER], [
+      ['NESR-1', 'One', 'Admin', '', 'Slickline Supervisor', 'G9', 'SLK', 'DMM', 43709, '', 'Active'],
+      ['NESR-2', 'Two', 'Operator', 'EMP-2', 'Assistant Operator', 7, 'SLK', '', '', 'NESR-1', ''],
+      [null, null, null, null, null, null, null, null, null, null, null],
+    ]);
+    const r = profileRowsFromSheet(await sheetRows(bytes));
+    if ('error' in r) throw new Error(r.error);
+    expect(r.rows).toHaveLength(2);
+    expect(r.rows[0]).toMatchObject({ row: 2, id: 'NESR-1', values: { role: 'Admin', grade: 9, position: 'Slickline Supervisor', location: 'DMM', hire_date: '2019-09-01', status: 'Active' } });
+    expect(r.rows[1]).toMatchObject({ row: 3, id: 'NESR-2', values: { employee_id: 'EMP-2', grade: 7, mentor: 'NESR-1', status: 'Active' } });
+    expect(profileRowsFromSheet([['Name', 'Role']])).toHaveProperty('error');
+  });
+
+  it('updates who is set up, adds the rest, never twice for one Employee ID', () => {
+    const row = (n: number, id: string, role = 'Operator', extra = {}) => ({ row: n, id, values: { role, status: 'Active', segment: 'SLK', ...extra } });
+    const plan = planImport([
+      row(2, 'NESR-1', 'Admin'),           // set up already: update
+      row(3, 'nesr-2'),                    // a SLK Ops user, any case: add
+      row(4, 'NESR-2', 'Manager'),         // the same Employee ID again: left out
+      row(5, 'EMP-3'),                     // matches someone's employee record: update that person
+      row(6, 'NESR-9'),                    // not a SLK Ops user
+      row(7, 'NESR-4', 'Boss'),            // a role that does not exist
+      row(8, ''),                          // no ID
+    ], ['NESR-1', 'NESR-2', 'NESR-3', 'NESR-4'], [{ username: 'NESR-1', employee_id: null }, { username: 'NESR-3', employee_id: 'EMP-3' }], roles);
+    expect(plan.update.map((u) => [u.row, u.username, u.value.role])).toEqual([[2, 'NESR-1', 'Admin'], [5, 'NESR-3', 'Operator']]);
+    expect(plan.add.map((u) => [u.row, u.username])).toEqual([[3, 'NESR-2']]);
+    expect(plan.skip.map((x) => [x.row, x.reason.split(':')[0]])).toEqual([
+      [4, 'Same Employee ID as an earlier row'], [6, 'Not a SLK Ops user'], [7, 'Pick one of the Competency roles'], [8, 'No Employee ID'],
+    ]);
   });
 });

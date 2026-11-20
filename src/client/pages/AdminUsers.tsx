@@ -1,6 +1,6 @@
 import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CloudDownload, ExternalLink, Fingerprint, Plus, Search, Smartphone, Trash2, X } from 'lucide-react';
+import { CloudDownload, ExternalLink, FileDown, FileUp, Fingerprint, Plus, Search, Smartphone, Trash2, X } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { MENU_LABELS, menuClusters } from '../../shared/menus';
@@ -12,7 +12,10 @@ import type { RuleGroup } from '../../shared/approvalRules';
 import { FILL_SCOPE_LABEL, type Category, type FillScope } from '../../shared/attendanceSheets';
 import { CODES, CODE_LIST } from '../../shared/attendance';
 import type { Role, WgStatus } from '../../shared/types';
-import { COMPETENCY_GRADES, COMPETENCY_POSITIONS, COMPETENCY_SEGMENTS, COMPETENCY_STATUSES, type CompetencyProfile, type CompetencyRoleDef } from '../../shared/competencyUsers';
+import { COMPETENCY_GRADES, COMPETENCY_POSITIONS, COMPETENCY_SEGMENTS, COMPETENCY_SHEET_HEADER, COMPETENCY_SHEET_WIDTHS, COMPETENCY_STATUSES, profileRowsFromSheet, type CompetencyProfile, type CompetencyRoleDef, type SheetProfileRow } from '../../shared/competencyUsers';
+import { workbook, type Cell } from '../../shared/xlsx';
+import { sheetRows } from '../competency/sheet';
+import { saveFile } from '../components/charts';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
@@ -1046,6 +1049,7 @@ function CompetencyUsers() {
             options={candidates.map((u) => ({ value: u.username, label: u.full_name, hint: u.username }))} />
         </Field>
       </div>
+      <CompetencyExcel profiles={q.data.profiles} users={users.data ?? []} />
       {pick && <PersonCompetency username={pick.username} name={pick.full_name} onSaved={() => setAdding('')} />}
       {!q.data.profiles.length ? <EmptyState title="No Competency users yet">Add the first person above, or open someone under People and fill in their Competency section.</EmptyState> : (
         <div className="overflow-x-auto">
@@ -1071,3 +1075,77 @@ function CompetencyUsers() {
     </Card>
   );
 }
+
+/** Download and upload the Competency users as Excel (6z.36). Employee ID is the key: nobody is added twice. */
+function CompetencyExcel({ profiles, users }: { profiles: CompetencyRow[]; users: UserRow[] }) {
+  const qc = useQueryClient();
+  const [plan, setPlan] = useState<(ImportReply & { rows: SheetProfileRow[]; file: string }) | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const download = () => {
+    const set = new Set(profiles.map((p) => p.username.toLowerCase()));
+    // the people set up first, then every other active SLK Ops user with the Competency columns left blank to fill in
+    const rows: Cell[][] = [
+      ...profiles.map((p) => [p.username, p.name, p.role, p.employee_id ?? '', p.position ?? '', p.grade ?? '', p.segment, p.location ?? '', p.hire_date ?? '', p.mentor ?? '', p.status]),
+      ...users.filter((u) => u.active && !set.has(u.username.toLowerCase())).map((u) => [u.username, u.full_name, '', '', '', '', 'SLK', '', '', '', 'Active']),
+    ];
+    saveFile(`competency-users-${new Date().toISOString().slice(0, 10)}.xlsx`, workbook('Competency users', [...COMPETENCY_SHEET_HEADER], rows, COMPETENCY_SHEET_WIDTHS),
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  };
+  const read = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true); setMsg(null); setPlan(null);
+    try {
+      const parsed = profileRowsFromSheet(await sheetRows(await file.arrayBuffer()));
+      if ('error' in parsed) { setMsg({ tone: 'danger', text: parsed.error }); return; }
+      const reply = await api<ImportReply>('/competency/users/import', { method: 'POST', json: { rows: parsed.rows } });
+      setPlan({ ...reply, rows: parsed.rows, file: file.name });
+    } catch (e) { setMsg({ tone: 'danger', text: e instanceof ApiError ? e.message : `That file could not be read as Excel (.xlsx): ${(e as Error).message}` }); }
+    finally { setBusy(false); }
+  };
+  const apply = async () => {
+    if (!plan) return;
+    setBusy(true);
+    try {
+      const r = await api<ImportReply>('/competency/users/import', { method: 'POST', json: { rows: plan.rows, apply: true } });
+      setMsg({ tone: 'success', text: `${r.add.length} added and ${r.update.length} updated${r.skip.length ? `, ${r.skip.length} left out` : ''}. Competency picks them up the next time it opens.` });
+      setPlan(null);
+      qc.invalidateQueries({ queryKey: ['competency-users'] });
+    } catch (e) { setMsg({ tone: 'danger', text: (e as ApiError).message }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mb-4 rounded-md border border-border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={download}><FileDown aria-hidden className="size-4" />Download Excel</Button>
+        <label className={cx('inline-flex h-(--layout-control-sm) cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold hover:bg-surface-2', busy && 'pointer-events-none opacity-60')}>
+          <FileUp aria-hidden className="size-4" />{busy && !plan ? 'Reading…' : 'Upload Excel'}
+          <input type="file" accept=".xlsx" className="sr-only" disabled={busy} onChange={(e) => { read(e.target.files?.[0]); e.target.value = ''; }} />
+        </label>
+        <p className="min-w-0 flex-1 basis-64 text-xs text-text-subtle">The download lists the people set up, then everyone else in SLK Ops with the Competency columns blank. Fill in or change rows and upload it: Employee ID (the SLK Ops username) is the key, so someone already set up is updated, never added twice.</p>
+      </div>
+      {msg && <div className="mt-2"><Banner tone={msg.tone}>{msg.text}</Banner></div>}
+      {plan && (
+        <div className="mt-3 rounded-md bg-surface-2 p-3 text-sm">
+          <p className="font-semibold">{plan.file}: {plan.add.length} to add, {plan.update.length} to update{plan.skip.length ? `, ${plan.skip.length} left out` : ''}</p>
+          {(plan.add.length > 0 || plan.update.length > 0) && (
+            <p className="mt-1 text-xs text-text-muted">
+              {plan.add.length > 0 && <>Add: {plan.add.map((a) => a.username).join(', ')}. </>}
+              {plan.update.length > 0 && <>Update: {plan.update.map((a) => a.username).join(', ')}.</>}
+            </p>
+          )}
+          {plan.skip.length > 0 && (
+            <ul className="mt-2 max-h-48 list-disc overflow-y-auto pl-5 text-xs text-text-muted">
+              {plan.skip.map((s) => <li key={`${s.row}-${s.id}`}>Row {s.row}{s.id ? ` (${s.id})` : ''}: {s.reason}</li>)}
+            </ul>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="primary" loading={busy} disabled={!plan.add.length && !plan.update.length} onClick={apply}>Apply {plan.add.length + plan.update.length} rows</Button>
+            <Button size="sm" variant="ghost" onClick={() => setPlan(null)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+interface ImportReply { add: { row: number; username: string }[]; update: { row: number; username: string }[]; skip: { row: number; id: string; reason: string }[]; applied: boolean }
