@@ -1,7 +1,7 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive as ArchiveIcon, BookOpen, Download, ExternalLink, FileText, Files, Info, Network, Pencil, Plus, QrCode, RotateCcw, Search, Sparkles, Star, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   ADD_TYPES, DOC_TYPES, GLOBAL, SECTIONS, SOP_COMPANIES, addTypeOf, filterLibrary, groupByPlace, hasCompany, isSection, lessonOfWeek, matches, proceduresForJob, reviewState,
@@ -144,6 +144,12 @@ function ReadButton({ d, onRead, small }: { d: KnowledgeDoc; onRead: (d: Knowled
 
 // ---- section 1: lessons, best practices, learnings from incidents --------------------------------------------
 
+/** The two columns of Lessons & best practices (6z.37). */
+const LESSON_COLUMNS: { key: string; title: string; types: DocType[] }[] = [
+  { key: 'lessons', title: 'Lessons learnt', types: ['lesson_learnt', 'learning_from_incident'] },
+  { key: 'practices', title: 'Best practices', types: ['best_practice'] },
+];
+
 function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, onMap, refresh }: {
   all: KnowledgeDoc[]; canEdit: boolean; params: URLSearchParams; set: (k: string, v: string) => void;
   onRead: (d: KnowledgeDoc) => void; onEdit: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void; refresh: () => void;
@@ -197,34 +203,31 @@ function Lessons({ all, canEdit, params, set, onRead, onEdit, onQr, onQrFile, on
         {lib.categories.map((t) => <button key={t.value} type="button" aria-pressed={f.category === t.value} className={chip(f.category === t.value)} onClick={() => set('category', f.category === t.value ? '' : t.value)}>{t.value} ({t.n})</button>)}
       </div>
       {!lib.docs.length && <EmptyState title="Nothing matches">Clear a filter or search for something else.</EmptyState>}
-      <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {lib.docs.map((d) => (
-          <li key={d.id}>
-            <Card className={cx('flex h-full flex-col', (d.duplicate_of || !d.published_at) && 'opacity-80')}>
-              <p className="label-caps flex flex-wrap items-center gap-1.5 text-text-muted">{d.doc_type && DOC_TYPES[d.doc_type]} · {d.country}{d.copy_of ? ` · ${d.company} copy` : d.company && d.company !== 'NESR' ? ` · ${d.company}` : ''}{d.duplicate_of && ' · duplicate'} <DocState d={d} /></p>
-              <h3 className="mt-1 font-display text-base font-bold"><button type="button" className="text-left hover:underline" onClick={() => onRead(d)}>{d.title}</button></h3>
-              {d.summary && <p className="mt-1 line-clamp-3 text-sm text-text-muted">{d.summary}</p>}
-              {d.failure_types.length > 0 && <p className="mt-2 flex flex-wrap gap-1">{d.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
-              <p className="mt-2 text-xs text-text-subtle">
-                {d.category}{d.category && ' · '}{d.published_on ? formatDate(d.published_on) : 'no date'}
-                {d.doc_no && <> · <span className="font-mono">{d.doc_no}</span></>}{d.published_at && ` · Rev ${d.revision}`}{d.rilr_ref && <> · <span className="font-mono">{d.rilr_ref}</span></>}
-              </p>
-              <div className="mt-auto flex flex-wrap gap-1 pt-3">
-                <ReadButton d={d} onRead={onRead} small />
-                {d.file && <a className={linkBtn} href={fileUrl(d.id, d.file)} download={d.file.file_name} aria-label={`Download ${d.title}`}><Download aria-hidden className="size-3.5" /></a>}
-                {d.published_at && <Button size="sm" variant="ghost" aria-label={`Mind map of ${d.title}`} title="Mind map" onClick={() => onMap(d)}><Network aria-hidden className="size-3.5" /></Button>}
-                <Button size="sm" variant="ghost" aria-label={`Details of ${d.title}`} title="Details" onClick={() => onRead(d)}><Info aria-hidden className="size-3.5" /></Button>
-              </div>
-              <div>
-                <SupportList doc={d} onQr={onQrFile} className="mt-2" />
-                <Button size="sm" variant="ghost" aria-label={`QR code for ${d.title}`} title="QR code" onClick={() => onQr(d)}><QrCode aria-hidden className="size-3.5" /></Button>
-                {canEdit && <Button size="sm" variant="ghost" aria-label={`Edit ${d.title}`} onClick={() => onEdit(d)}><Pencil aria-hidden className="size-3.5" /></Button>}
-                {canEdit && d.published_at && !d.duplicate_of && hero?.id !== d.id && <Button size="sm" variant="ghost" aria-label={`Make ${d.title} the lesson of the week`} title="Make this the lesson of the week" onClick={() => pick(d)}><Star aria-hidden className="size-3.5" /></Button>}
-              </div>
-            </Card>
-          </li>
-        ))}
-      </ul>
+      {/* the same list as the SOPs, by Global and country; lessons learnt and best practices side by side (6z.37) */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+        {LESSON_COLUMNS.map((col) => {
+          const docs = lib.docs.filter((d) => col.types.includes(d.doc_type ?? 'lesson_learnt'));
+          return (
+            <section key={col.key} aria-labelledby={`lc-${col.key}`}>
+              <h2 id={`lc-${col.key}`} className="label-caps mb-2 flex items-baseline gap-2 text-text-muted">{col.title}<span className="font-mono font-normal">{docs.length}</span></h2>
+              {!docs.length ? <p className="rounded-lg border border-dashed border-border-strong px-4 py-6 text-center text-sm text-text-subtle">{all.some((d) => col.types.includes(d.doc_type ?? 'lesson_learnt')) ? 'None match the filters.' : `No ${col.title.toLowerCase()} yet.`}</p> : (
+                <div className="flex flex-col gap-4">
+                  {groupByPlace(docs).map((g) => (
+                    <Card key={g.place} className="p-0">
+                      <h3 className="flex items-baseline gap-2 border-b border-border px-4 py-2.5 font-display text-base font-bold">{g.place}<span className="font-mono text-xs font-normal text-text-muted">{g.docs.length}</span></h3>
+                      <DocList docs={g.docs} all={all} onRead={onRead} onQr={onQr} onQrFile={onQrFile} onMap={onMap}
+                        actions={(d) => <>
+                          {canEdit && <Button size="sm" variant="ghost" aria-label={`Edit ${d.title}`} title="Edit details" onClick={() => onEdit(d)}><Pencil aria-hidden className="size-3.5" /></Button>}
+                          {canEdit && d.published_at && !d.duplicate_of && hero?.id !== d.id && <Button size="sm" variant="ghost" aria-label={`Make ${d.title} the lesson of the week`} title="Make this the lesson of the week" onClick={() => pick(d)}><Star aria-hidden className="size-3.5" /></Button>}
+                        </>} />
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
     </>
   );
 }
@@ -328,7 +331,7 @@ function Flags({ d }: { d: KnowledgeDoc }) {
 
 const extOf = (name: string) => (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? '').toUpperCase();
 
-function DocList({ docs, all, onRead, onQr, onQrFile, onMap }: { docs: KnowledgeDoc[]; all: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void }) {
+function DocList({ docs, all, onRead, onQr, onQrFile, onMap, actions }: { docs: KnowledgeDoc[]; all: KnowledgeDoc[]; onRead: (d: KnowledgeDoc) => void; onQr: (d: KnowledgeDoc) => void; onQrFile: (d: KnowledgeDoc, f: SupportBrief) => void; onMap: (d: KnowledgeDoc) => void; actions?: (d: KnowledgeDoc) => ReactNode }) {
   return (
     <ul className="divide-y divide-border">
       {docs.map((d) => (
@@ -337,10 +340,14 @@ function DocList({ docs, all, onRead, onQr, onQrFile, onMap }: { docs: Knowledge
           <div className="min-w-0 flex-1 basis-56">
             <button type="button" className="text-left font-semibold hover:underline" onClick={() => onRead(d)}>{d.title}</button>
             <p className="text-xs text-text-muted">
+              {/* a lesson says its type and category first (6z.37) */}
+              {d.section === 'lesson' && <>{d.doc_type && DOC_TYPES[d.doc_type]}{d.category && ` · ${d.category}`} · </>}
               {d.doc_no && <span className="font-mono">{d.doc_no}</span>}{d.doc_no && ' · '}{d.published_at ? `Rev ${d.revision}` : 'not published'}
               {d.company && ` · ${d.company}`}{d.copy_of && ' copy'}{d.is_form ? ' · form' : ''}{d.published_on && ` · ${formatDate(d.published_on)}`}
+              {d.duplicate_of && ' · duplicate'}
               <Flags d={d} />
             </p>
+            {d.section === 'lesson' && d.failure_types.length > 0 && <p className="mt-1 flex flex-wrap gap-1">{d.failure_types.map((t) => <span key={t} className="rounded-sm bg-surface-3 px-1.5 text-xs">{t}</span>)}</p>}
           </div>
           <DocState d={d} />
           <div className="flex flex-wrap gap-1">
@@ -350,6 +357,7 @@ function DocList({ docs, all, onRead, onQr, onQrFile, onMap }: { docs: Knowledge
             {d.published_at && <Button size="sm" variant="ghost" aria-label={`Mind map of ${d.title}`} title="Mind map" onClick={() => onMap(d)}><Network aria-hidden className="size-3.5" /></Button>}
             <Button size="sm" variant="ghost" aria-label={`QR code for ${d.title}`} title="QR code" onClick={() => onQr(d)}><QrCode aria-hidden className="size-3.5" /></Button>
             <Button size="sm" variant="ghost" aria-label={`Details of ${d.title}`} onClick={() => onRead(d)}><Info aria-hidden className="size-3.5" />Details</Button>
+            {actions?.(d)}
           </div>
           <SupportList doc={d} onQr={onQrFile} className="ml-7 min-w-0 basis-[calc(100%-1.75rem)]" />
           <CopyLines doc={d} all={all} onOpen={onRead} className="ml-7 min-w-0 basis-[calc(100%-1.75rem)]" />
