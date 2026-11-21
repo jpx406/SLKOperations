@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { COMPETENCY_SHEET_HEADER, DEFAULT_COMPETENCY_ROLES, checkProfile, planImport, profileRowsFromSheet, rolesFromDataset, sheetDate } from '../src/shared/competencyUsers';
 import { workbook } from '../src/shared/xlsx';
 import { sheetRows } from '../src/client/competency/sheet';
-import { NAV } from '../src/shared/menus';
+import { MENU_LABELS, NAV } from '../src/shared/menus';
 import { readAllowed, ruleFor } from '../src/worker/permissions';
 import { _slk } from '../src/client/competency/App.jsx';
 
@@ -52,13 +52,17 @@ describe('menus (6z.35)', () => {
   it('Knowledge Hub then Competency under Service Quality, Attendance in Bonus, the inventories and wires in Equipment', () => {
     // 6z.40: Career Development, its own menu below Competency
     // 6z.43: Q-Incidents and the Incidents Dashboard under Service Quality, the Assets Inventory in Maintenance
-    expect(NAV.map((g) => g.label)).toEqual(['Operation', 'Service Quality', 'Knowledge Hub', 'Competency', 'Career Development', 'Bonus', 'SLK Activity Dashboard', 'Equipment', 'Maintenance', 'Administration']);
+    // 6z.44: the SLK Activity Dashboard first, Equipment after Service Quality, the Assets Inventory inside Equipment
+    expect(NAV.map((g) => g.label)).toEqual(['SLK Activity Dashboard', 'Operation', 'Service Quality', 'Equipment', 'Knowledge Hub', 'Competency', 'Career Development', 'Bonus', 'Administration']);
     expect(NAV.find((g) => g.label === 'Operation')!.pages.map((p) => p.label)).toEqual(['Schedule', 'Jobs', 'Job Log', 'Pre-Job Notes', 'Quick Plan']);
-    expect(NAV.find((g) => g.label === 'Service Quality')!.pages.map((p) => p.label).slice(-2)).toEqual(['Q-Incidents', 'Incidents Dashboard']);
-    expect(NAV.find((g) => g.label === 'Maintenance')!.pages).toEqual([expect.objectContaining({ key: 'database', label: 'Assets Inventory', path: '/operation/database' })]);
+    expect(NAV.find((g) => g.label === 'Service Quality')!.pages.map((p) => p.label)).toEqual(['Statistics', 'NPT Analysis', 'Q-Incidents', 'Incidents Dashboard']);
     expect(NAV.find((g) => g.label === 'Career Development')!.pages[0]).toMatchObject({ key: 'career_development', path: '/career' });
     expect(NAV.find((g) => g.label === 'Bonus')!.pages.map((p) => p.label)).toEqual(['Bonus Report', 'Bonus Analysis', 'Bonus Rules', 'Attendance']);
-    expect(NAV.find((g) => g.label === 'Equipment')!.pages.map((p) => p.label)).toEqual(['Explosive', 'Hardware', 'MCR', 'Wires', 'Reconciliation']);
+    expect(NAV.find((g) => g.label === 'Equipment')!.pages.map((p) => p.label)).toEqual(['Utilization', 'Wire KPIs', 'Hardware', 'Assets Inventory', 'Wires', 'Reconciliation']);
+    // out of the menu but still named in Users & Roles
+    expect(NAV.flatMap((g) => g.pages).some((p) => p.key === 'inventory_explosive' || p.key === 'inventory_mcr')).toBe(false);
+    expect(MENU_LABELS.inventory_explosive).toBe('Explosive inventory');
+    expect(MENU_LABELS.statistics).toBe('Statistics');
     expect(NAV.find((g) => g.label === 'Competency')!.pages[0].path).toBe('/competency');
     expect(NAV.find((g) => g.label === 'Service Quality')!.pages.some((p) => p.key === 'competency')).toBe(false);
   });

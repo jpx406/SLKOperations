@@ -5,6 +5,8 @@ export interface Page { key: string; label: string; path: string; screen: string
 export interface Group { label: string; pages: Page[] }
 
 export const NAV: Group[] = [
+  // 6z.44 (owner request 2026-11-21): the SLK Activity Dashboard first, Equipment after Service Quality
+  { label: 'SLK Activity Dashboard', pages: [{ key: 'sales_dashboard', label: 'SLK Activity Dashboard', path: '/sales', screen: 'S33', milestone: '4' }] },
   {
     label: 'Operation',
     pages: [
@@ -20,15 +22,26 @@ export const NAV: Group[] = [
     pages: [
       { key: 'statistics', label: 'Statistics', path: '/quality/statistics', screen: 'S13', milestone: '2i' },
       { key: 'npt_analysis', label: 'NPT Analysis', path: '/quality/npt', screen: 'S14', milestone: '2i' },
-      { key: 'utilization', label: 'Utilization', path: '/quality/utilization', screen: 'S15', milestone: '3' },
-      { key: 'statistics', label: 'Wire KPIs', path: '/quality/wire-kpis', screen: 'D3', milestone: '3' },
-      // 6z.43 (owner request 2026-11-21): 8 Min. Facts as Q-Incidents and the Failure Roster as the Incidents Dashboard,
-      // moved here from Operation; their addresses stay the same so links keep working
+      // 6z.43: 8 Min. Facts as Q-Incidents and the Failure Roster as the Incidents Dashboard (addresses unchanged)
       { key: 'eight_min_facts', label: 'Q-Incidents', path: '/operation/8-min-facts', screen: 'S11', milestone: '2h' },
       { key: 'failure_roster', label: 'Incidents Dashboard', path: '/operation/failure-roster', screen: 'S10', milestone: '2h' },
     ],
   },
-  // 6z.35 (owner request 2026-11-20): the Knowledge Hub under Service Quality and Competency, its own menu, under it
+  {
+    // 6z.44: Utilization and Wire KPIs first, then Hardware, the Assets Inventory (was its own Maintenance menu), the
+    // wires and the reconciliation. The Explosive and MCR inventories are out of the menu; their pages and rights stay.
+    label: 'Equipment',
+    pages: [
+      { key: 'utilization', label: 'Utilization', path: '/quality/utilization', screen: 'S15', milestone: '3' },
+      { key: 'statistics', label: 'Wire KPIs', path: '/quality/wire-kpis', screen: 'D3', milestone: '3' },
+      { key: 'inventory_hardware', label: 'Hardware', path: '/inventory/hardware', screen: 'S19', milestone: '3' },
+      { key: 'database', label: 'Assets Inventory', path: '/operation/database', screen: 'S24', milestone: '2f' },
+      { key: 'wires', label: 'Wires', path: '/wires', screen: 'S30', milestone: '3' },
+      // checks SLK Ops jobs against WIREGUARD's runs (moved here from Operation, owner request 2026-10-26)
+      { key: 'reconciliation', label: 'Reconciliation', path: '/wires/reconciliation', screen: 'S46', milestone: '2e' },
+    ],
+  },
+  // 6z.35 (owner request 2026-11-20): the Knowledge Hub and Competency, each its own menu
   { label: 'Knowledge Hub', pages: [{ key: 'knowledge_hub', label: 'Knowledge Hub', path: '/knowledge', screen: 'S21', milestone: '3' }] },
   { label: 'Competency', pages: [{ key: 'competency', label: 'Competency', path: '/competency', screen: 'S16', milestone: '3' }] },
   // 6z.40 (owner request 2026-11-21): the Career Development Plan out of Competency, its own menu under it
@@ -43,21 +56,6 @@ export const NAV: Group[] = [
       { key: 'attendance', label: 'Attendance', path: '/attendance', screen: 'S17', milestone: '2j' },
     ],
   },
-  { label: 'SLK Activity Dashboard', pages: [{ key: 'sales_dashboard', label: 'SLK Activity Dashboard', path: '/sales', screen: 'S33', milestone: '4' }] },
-  {
-    // the inventories and the wires together (6z.35)
-    label: 'Equipment',
-    pages: [
-      { key: 'inventory_explosive', label: 'Explosive', path: '/inventory/explosive', screen: 'S18', milestone: '2k' },
-      { key: 'inventory_hardware', label: 'Hardware', path: '/inventory/hardware', screen: 'S19', milestone: '3' },
-      { key: 'inventory_mcr', label: 'MCR', path: '/inventory/mcr', screen: 'S29', milestone: '3' },
-      { key: 'wires', label: 'Wires', path: '/wires', screen: 'S30', milestone: '3' },
-      // checks SLK Ops jobs against WIREGUARD's runs (moved here from Operation, owner request 2026-10-26)
-      { key: 'reconciliation', label: 'Reconciliation', path: '/wires/reconciliation', screen: 'S46', milestone: '2e' },
-    ],
-  },
-  // 6z.43: the Database as the Assets Inventory, in a Maintenance menu of its own (same address)
-  { label: 'Maintenance', pages: [{ key: 'database', label: 'Assets Inventory', path: '/operation/database', screen: 'S24', milestone: '2f' }] },
   {
     label: 'Administration',
     pages: [
@@ -76,6 +74,9 @@ export const MENU_LABELS: Record<string, string> = {
   // the first page with a key names it (Statistics, not the Wire KPIs page that shares its key)
   ...Object.fromEntries(NAV.flatMap((g) => g.pages.map((p) => [p.key, p.key === 'bonus' ? 'Bonus' : p.label])).reverse()),
   audit: 'Audit trail',
+  // out of the menu (6z.44), still rights: the pages open by address and Explosive is used on the job
+  inventory_explosive: 'Explosive inventory',
+  inventory_mcr: 'MCR inventory',
   ai_assistant: 'Help assistant',
   job_design: 'Job · 01 Design',
   job_preparation: 'Job · 02 Preparation',

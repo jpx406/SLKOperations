@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { fmt, type RuleKey, type RuleSet } from '../../../shared/winchData';
-import { BRAIDED_FIELDS, BRAIDED_LABEL, GUIDE_DEFAULTS, braidedText, type LineKind, type SpeedRow, type WinchGuide } from '../../../shared/winchGuide';
+import { BRAIDED_FIELDS, BRAIDED_LABEL, GUIDE_DEFAULTS, braidedText, checkGuide, type LineKind, type SpeedRow, type WinchGuide } from '../../../shared/winchGuide';
 import type { KnowledgeDoc } from '../../../shared/knowledge';
 import { api } from '../../api';
 import { Banner, Button, cx, inputClass, inputSized } from '../../components/ui';
@@ -14,8 +14,34 @@ import { th, td } from './Report';
 // shows the Speed Guidelines by service and the Jarring Guidelines; braided line the seasoning rules for new and
 // seasoned line. The SOP-04 document and its attached guidelines are linked from the Knowledge Hub.
 
-export interface GuideData { guide: WinchGuide; saved: boolean; updatedAt: string | null; updatedBy: string | null; canEdit: boolean }
-export const useGuide = () => useQuery({ queryKey: ['winch-guide'], queryFn: () => api<GuideData>('/winch/guide'), staleTime: 5 * 60_000 });
+export interface GuideData { guide: WinchGuide; saved: boolean; updatedAt: string | null; updatedBy: string | null; canEdit: boolean; version: string }
+
+// 6z.44: the guidelines are kept on the device and used at once; only their version is asked for, and the full
+// guidelines are read again only when it changes. With no copy yet and no answer, the document values are used.
+const CACHE = 'slk-winch-guide';
+const DEFAULT_DATA: GuideData = { guide: GUIDE_DEFAULTS, saved: false, updatedAt: null, updatedBy: null, canEdit: false, version: 'defaults' };
+function readCache(): GuideData | null {
+  try {
+    const o = JSON.parse(localStorage.getItem(CACHE) ?? 'null') as GuideData | null;
+    const g = o && checkGuide(o.guide);
+    return o && g && typeof o.version === 'string' ? { ...o, guide: g } : null;
+  } catch { return null; }
+}
+export function storeGuide(d: GuideData) { try { localStorage.setItem(CACHE, JSON.stringify(d)); } catch { /* private mode: read again next time */ } }
+
+export function useGuide(): { data: GuideData; checking: boolean; offline: boolean } {
+  const [cached, setCached] = useState<GuideData | null>(readCache);
+  const ver = useQuery({ queryKey: ['winch-guide-version'], queryFn: () => api<{ version: string; canEdit: boolean }>('/winch/guide/version'), staleTime: 10 * 60_000, retry: 1 });
+  const want = ver.data?.version;
+  const need = !!want && want !== 'defaults' && cached?.version !== want;
+  const full = useQuery({
+    queryKey: ['winch-guide', want], enabled: need, staleTime: Infinity, retry: 2,
+    queryFn: async () => { const d = await api<GuideData>('/winch/guide'); storeGuide(d); setCached(d); return d; },
+  });
+  // back to the document values when an admin has none saved
+  const base = want === 'defaults' ? DEFAULT_DATA : full.data ?? cached ?? DEFAULT_DATA;
+  return { data: { ...base, canEdit: ver.data?.canEdit ?? base.canEdit }, checking: ver.isLoading || full.isFetching, offline: ver.isError || full.isError };
+}
 
 const small = 'h-(--layout-control-sm) text-sm';
 
@@ -40,13 +66,14 @@ function SourceLinks() {
 }
 
 /** The guidelines for the line in use, and the editor for admins. */
-export function GuidePanel({ kind, data }: { kind: LineKind; data: GuideData }) {
+export function GuidePanel({ kind, data, offline }: { kind: LineKind; data: GuideData; offline?: boolean }) {
   const [editing, setEditing] = useState(false);
   const g = data.guide;
   const w = g.wire;
   return (
     <div className="space-y-3">
       <SourceLinks />
+      {offline && <p className="text-xs text-text-subtle">Could not check for newer guidelines just now: using the ones kept on this device.</p>}
       {kind === 'wire' ? (
         <>
           <div className="overflow-x-auto rounded-md border border-border">
@@ -110,7 +137,7 @@ function GuideEditor({ start, onDone }: { start: WinchGuide; onDone: () => void 
   const [g, setG] = useState<WinchGuide>(() => structuredClone(start));
   const save = useMutation({
     mutationFn: () => api<GuideData>('/winch/guide', { method: 'PUT', body: JSON.stringify({ guide: g }) }),
-    onSuccess: (d) => { qc.setQueryData(['winch-guide'], d); onDone(); },
+    onSuccess: (d) => { storeGuide(d); qc.setQueryData(['winch-guide', d.version], d); qc.setQueryData(['winch-guide-version'], { version: d.version, canEdit: true }); onDone(); },
   });
   const w = g.wire;
   const setW = (patch: Partial<typeof w>) => setG({ ...g, wire: { ...w, ...patch } });

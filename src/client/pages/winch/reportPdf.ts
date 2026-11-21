@@ -23,7 +23,7 @@ export async function buildReportPdf(p: WinchPayload, made: Date, by: string, mo
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica), bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  doc.setTitle(clean(`Winch data analysis ${p.meta.job || ''}`.trim()));
+  doc.setTitle(clean(`Winch data analysis ${p.meta.drss || p.meta.well || ''}`.trim()));
   doc.setAuthor(clean(by)); doc.setCreator('SLK Operations Hub');
   const W = 842, H = 595, M = 32;
   const ink = rgb(0.1, 0.12, 0.14), muted = rgb(0.42, 0.45, 0.5), line = rgb(0.82, 0.84, 0.87), red = rgb(0.8, 0.15, 0.15), green = rgb(0.1, 0.55, 0.3);
@@ -73,7 +73,7 @@ export async function buildReportPdf(p: WinchPayload, made: Date, by: string, mo
   y -= 26;
   text('Winch data analysis', M, y - 6, { size: 18, b: true }); y -= 24;
   const m = p.meta;
-  text(`Well ${m.well || '-'} · Stage ${m.stage || '-'} · Unit ${m.unit || '-'} · ${m.job || ''}${m.date ? ` · ${m.date}` : ''}`, M, y - 10, { size: 10, b: true }); y -= 16;
+  text(`Well ${m.well || '-'} · ${m.field || 'field not set'} · Unit ${m.unit || '-'}${m.drss ? ` · DRSS ${m.drss}` : ''}${m.date ? ` · job date ${m.date}` : ''} · ${p.reports.length} run${p.reports.length === 1 ? '' : 's'}`, M, y - 10, { size: 10, b: true }); y -= 16;
   text(`${LINE_LABEL[p.kind]}${p.kind === 'braided' ? (p.seasoned ? ', seasoned line' : ', new line (seasoning)') : ''}${m.cable ? ` · line ${m.cable}` : ''} · ${p.fileName} · ${p.source}${m.by ? ` · checked by ${m.by}` : ''}`, M, y - 8, { size: 8, color: muted, maxW: W - 2 * M });
   y -= 22;
   heading('Scorecard');
@@ -166,7 +166,7 @@ export async function buildReportPdf(p: WinchPayload, made: Date, by: string, mo
     } else { text('No jarring found on this run.', M, y - 8, { size: 8, color: muted }); y -= 16; }
   }
 
-  pages.forEach((pg, i) => pg.drawText(clean(`Page ${i + 1} of ${pages.length} · Winch data analysis · ${m.job || ''}`), { x: M, y: 16, size: 7, font, color: muted }));
+  pages.forEach((pg, i) => pg.drawText(clean(`Page ${i + 1} of ${pages.length} · Winch data analysis · ${m.drss || m.well || ''}`), { x: M, y: 16, size: 7, font, color: muted }));
   return doc.save();
 }
 
@@ -177,7 +177,7 @@ export async function saveReport(p: WinchPayload, by: string, mode: 'print' | 's
   if (!p.jobId) throw new Error('Open this from a job to save the report.');
   const made = new Date();
   const bytes = await buildReportPdf(p, made, by, mode);
-  const name = `Winch analysis ${(p.meta.job || p.meta.well || 'job').replace(/[\\/:*?"<>|]+/g, '-')} ${stampOf(made)} ${mode === 'print' ? 'printed' : 'saved'}.pdf`;
+  const name = `Winch analysis ${(p.meta.drss || p.meta.well || 'job').replace(/[\\/:*?"<>|]+/g, '-')} ${stampOf(made)} ${mode === 'print' ? 'printed' : 'saved'}.pdf`;
   const saved = await api<SavedReport>(`/attachments/job/${encodeURIComponent(p.jobId)}?category=report&note=${encodeURIComponent(`Winch data analysis, ${mode === 'print' ? 'printed' : 'saved'}`)}`, {
     method: 'POST', headers: { 'X-File-Name': encodeURIComponent(name) }, body: bytes as unknown as BodyInit,
   });

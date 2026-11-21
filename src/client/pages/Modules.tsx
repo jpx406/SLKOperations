@@ -40,7 +40,9 @@ export function ModulePicker() {
     if (!me) return;
     pickModule(m);
     // the hub opens on the first page the person may see (the schedule for most)
-    const home = m === 'slk' ? visibleNav(me.menus)[0]?.pages[0]?.path ?? '/operation/schedule' : MODULES.find((x) => x.key === m)!.home;
+    // 6z.44: the dashboard is now the first menu, but the hub still opens on the Schedule when the person has it
+    const pages = visibleNav(me.menus).flatMap((g) => g.pages);
+    const home = m === 'slk' ? (pages.find((p) => p.path === '/operation/schedule') ?? pages[0])?.path ?? '/operation/schedule' : MODULES.find((x) => x.key === m)!.home;
     navigate(home, { replace });
   };
   // nothing to choose: someone who only reads the Knowledge Hub goes straight there

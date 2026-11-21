@@ -10,12 +10,18 @@ import { getJob } from './jobs';
 const KEY = 'winch-guide';
 export const winch = new Hono<AppBindings>();
 
+/** The guidelines' version only (6z.44): the page keeps the guidelines and reads them again only when this changes. */
+winch.get('/guide/version', async (c) => {
+  const row = await c.env.DB.prepare('SELECT updated_at FROM knowledge_settings WHERE key = ?').bind(KEY).first<{ updated_at: string }>();
+  return c.json({ version: row?.updated_at ?? 'defaults', canEdit: c.get('user').role === 'admin' });
+});
+
 winch.get('/guide', async (c) => {
   const row = await c.env.DB.prepare(`SELECT s.value, s.updated_at, coalesce(u.full_name, s.updated_by) AS by FROM knowledge_settings s
     LEFT JOIN user_roles u ON u.username = s.updated_by WHERE s.key = ?`).bind(KEY).first<{ value: string; updated_at: string; by: string | null }>();
   let guide = GUIDE_DEFAULTS;
   if (row) { try { guide = checkGuide(JSON.parse(row.value)) ?? GUIDE_DEFAULTS; } catch { /* keep the defaults */ } }
-  return c.json({ guide, saved: !!row, updatedAt: row?.updated_at ?? null, updatedBy: row?.by ?? null, canEdit: c.get('user').role === 'admin' });
+  return c.json({ guide, saved: !!row, updatedAt: row?.updated_at ?? null, updatedBy: row?.by ?? null, canEdit: c.get('user').role === 'admin', version: row?.updated_at ?? 'defaults' });
 });
 
 winch.put('/guide', async (c) => {
@@ -32,7 +38,7 @@ winch.put('/guide', async (c) => {
     c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(), user.username, 'edit', 'winch_guide', KEY, `winch guidelines: ${guide.wire.groups.length} speed rows, braided seasoned after ${guide.braided.seasonedRuns} runs`),
   ]);
-  return c.json({ guide, saved: true, updatedAt: now, updatedBy: user.fullName, canEdit: true });
+  return c.json({ guide, saved: true, updatedAt: now, updatedBy: user.fullName, canEdit: true, version: now });
 });
 
 /**

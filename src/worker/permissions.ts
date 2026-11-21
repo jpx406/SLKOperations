@@ -212,7 +212,9 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/jobs(\/[^/]+)?$/, menus: ['jobs', 'schedule'] },
   { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options|events)$/, menus: ['jobs'] },
   // the winch guidelines and the job's line, for the winch data on the Closure tab (6z.42)
-  { re: /^\/api\/winch\/(guide|line\/[^/]+)$/, menus: ['jobs', 'users'] },
+  // the guidelines are reference values from SOP-04: anyone signed in reads them (6z.44)
+  { re: /^\/api\/winch\/guide(\/version)?$/, menus: 'any' },
+  { re: /^\/api\/winch\/line\/[^/]+$/, menus: ['jobs', 'schedule'] },
   { re: /^\/api\/winch\/state\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },

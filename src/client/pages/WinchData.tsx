@@ -39,7 +39,7 @@ type JoinAnswers = Record<string, JoinAnswer>;
 interface SavedState {
   v: 1; files: { id: string; attId: string; name: string }[]; answers: JoinAnswers; format: Format;
   lm: LmOpts | null; map: Mapping | null; keepCols: number[]; kindPick: LineKind | null; seasonPick: boolean | null; newLine: RuleSet | null;
-  limits: { mbs: string; mat: string; spang: boolean }; restr: string; meta: Meta; services: string[]; checked: boolean;
+  limits: { mbs: string; mat: string; spang: boolean }; restr: string; services: string[]; checked: boolean;
 }
 interface AttRow { id: string; file_name: string; note: string | null; uploaded_at: string; uploaded_by_name: string; category: string }
 
@@ -136,21 +136,21 @@ export function WinchDataCard({ job }: { job: Job }) {
   const [newLine, setNewLine] = useState<RuleSet | null>(null);
   const [limits, setLimits] = useState<{ mbs: string; mat: string; spang: boolean }>({ mbs: '', mat: '', spang: false });
   const [restr, setRestr] = useState('');
-  const [meta, setMeta] = useState<Meta>({
-    job: job.ticket_no ?? job.location ?? '', well: job.well ?? '', stage: '', unit: job.unit_number ?? '',
+  // the job details come from the job itself (6z.44): filled in earlier in the job, so they are shown, not typed
+  const meta = useMemo<Meta>(() => ({
+    drss: job.drss_no ?? '', field: job.field ?? '', well: job.well ?? '', unit: job.unit_number ?? '',
     cable: job.wire_serial_number ?? '', date: job.start_date?.slice(0, 10) ?? '', by: me?.fullName ?? '',
-  });
+  }), [job.drss_no, job.field, job.well, job.unit_number, job.wire_serial_number, job.start_date, me?.fullName]);
   const [base, setBase] = useState<Base | null>(null);
   const [services, setServices] = useState<string[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const latest = useRef<WinchPayload | null>(null);
   const windowPick = useRef(0);
 
-  useEffect(() => { if (me?.fullName) setMeta((m) => (m.by ? m : { ...m, by: me.fullName })); }, [me?.fullName]);
   // the breaking strength comes from the job's wire in WIREGUARD unless typed
   useEffect(() => { const mbl = lineQ.data?.mbl; if (mbl) setLimits((l) => (l.mbs ? l : { ...l, mbs: String(mbl) })); }, [lineQ.data?.mbl]);
 
-  const g = guideQ.data?.guide ?? null;
+  const g = guideQ.data.guide;
   const fileKind = useMemo(() => { const f = files.find((x) => x.kind === 'lineminder'); return f && f.kind === 'lineminder' ? lineKind(null, f.f.job['Wire Type']) : null; }, [files]);
   const detectedKind = lineQ.data?.kind ?? fileKind;
   const kind: LineKind = kindPick ?? detectedKind ?? 'wire';
@@ -172,11 +172,7 @@ export function WinchDataCard({ job }: { job: Job }) {
     return () => window.removeEventListener('message', onMsg);
   }, []);
 
-  const guessMeta = (fileName: string) => setMeta((m) => {
-    // the file name often carries the well and stage, e.g. ...W12_STG-28.txt
-    const w = fileName.match(/W(\d{2})/i), st = fileName.match(/STG[-_ ]?(\d+)(?!.*STG)/i);
-    return { ...m, well: m.well || (w?.[1] ?? ''), stage: m.stage || (st?.[1] ?? '') };
-  });
+
 
   const addFile = (buf: ArrayBuffer, name: string, list: WFile[]): WFile[] | string => {
     const id = `${name}-${Date.now().toString(36)}-${list.length}-${buf.byteLength}`;
@@ -187,8 +183,6 @@ export function WinchDataCard({ job }: { job: Job }) {
         setLm({ units: 'imperial', step: 0.5, depth: gc.depth, tension: gc.tension, speed: gc.speed, keep: f.channels.filter((c) => c.status === 'series' && [0, 1, 3].includes(c.type)).map((c) => c.index) });
         if (gc.depth < 0 || gc.tension < 0) setProblem('The recording has no depth or no tension channel: pick them below.');
       }
-      const order = f.job['(Job) Order'];
-      setMeta((m) => ({ ...m, job: m.job || order || '', cable: m.cable || f.job['Wire Type'] || '' }));
       setFormat('lineminder');
       return [...list, { id, name, kind: 'lineminder', f }];
     }
@@ -222,7 +216,7 @@ export function WinchDataCard({ job }: { job: Job }) {
     const bufs = new Map<string, ArrayBuffer>();
     const errs: string[] = [];
     for (const p of picked) {
-      try { const r = addFile(p.buf, p.name, list); if (typeof r === 'string') errs.push(r); else { list = r; bufs.set(r[r.length - 1].id, p.buf); guessMeta(p.name); } }
+      try { const r = addFile(p.buf, p.name, list); if (typeof r === 'string') errs.push(r); else { list = r; bufs.set(r[r.length - 1].id, p.buf); } }
       catch (e) { errs.push(`${p.name}: ${(e as Error).message}`); }
     }
     setFiles(list);
@@ -296,7 +290,7 @@ export function WinchDataCard({ job }: { job: Job }) {
     if (!base || !g || !setup) return null;
     const reports = base.runs.map((r, i) => checkRun(base, r, g, setup, services[i] ?? ''));
     return {
-      meta: base.meta, fileName: base.fileName, reports, channels: base.channels, restrictions: setup.restrictions, source: base.source,
+      meta, fileName: base.fileName, reports, channels: base.channels, restrictions: setup.restrictions, source: base.source,
       kind: setup.kind, seasoned: setup.seasoned, services: [...new Set([...listedServices(g.wire), ...(job.services ?? [])])], jobId: job.id, by: me?.fullName ?? '',
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -321,7 +315,7 @@ export function WinchDataCard({ job }: { job: Job }) {
       }
       if (gone) return;
       setFiles(list); setAnswers(st.answers ?? {}); setFormat(st.format ?? 'lineminder'); setLm(st.lm); setMap(st.map); setKeepCols(st.keepCols ?? []);
-      setKindPick(st.kindPick); setSeasonPick(st.seasonPick); setNewLine(st.newLine); setLimits(st.limits); setRestr(st.restr ?? ''); setMeta(st.meta);
+      setKindPick(st.kindPick); setSeasonPick(st.seasonPick); setNewLine(st.newLine); setLimits(st.limits); setRestr(st.restr ?? '');
       setServices(st.services ?? []);
       setRestoreNote(missing.length ? `Could not open ${missing.join(', ')} from the attachments: add ${missing.length > 1 ? 'them' : 'it'} again.` : null);
       pendingRun.current = !!st.checked && list.length > 0;
@@ -343,10 +337,10 @@ export function WinchDataCard({ job }: { job: Job }) {
   const stateJson = useMemo(() => {
     const st: SavedState = {
       v: 1, files: files.filter((x) => x.attId).map((x) => ({ id: x.id, attId: x.attId!, name: x.name })), answers, format, lm, map, keepCols,
-      kindPick, seasonPick, newLine, limits, restr, meta, services, checked: !!base,
+      kindPick, seasonPick, newLine, limits, restr, services, checked: !!base,
     };
     return JSON.stringify(st);
-  }, [files, answers, format, lm, map, keepCols, kindPick, seasonPick, newLine, limits, restr, meta, services, base]);
+  }, [files, answers, format, lm, map, keepCols, kindPick, seasonPick, newLine, limits, restr, services, base]);
   const lastSaved = useRef<string | null>(null);
   useEffect(() => {
     if (!restored) return;
@@ -387,7 +381,7 @@ export function WinchDataCard({ job }: { job: Job }) {
     // the demos start from no files
     let list: WFile[] = [];
     const bufs = new Map<string, ArrayBuffer>();
-    for (const p of picked) { const r = addFile(p.buf, p.name, list); if (typeof r !== 'string') { list = r; bufs.set(r[r.length - 1].id, p.buf); } guessMeta(p.name); }
+    for (const p of picked) { const r = addFile(p.buf, p.name, list); if (typeof r !== 'string') { list = r; bufs.set(r[r.length - 1].id, p.buf); } }
     // demo files are not kept with the job
     setFiles(list.map((x) => ({ ...x, demo: true }))); setBase(null); setProblem(null);
     void bufs;
@@ -561,17 +555,22 @@ export function WinchDataCard({ job }: { job: Job }) {
       </Step>
 
       <Step n={4} title={kind === 'wire' ? 'Speed and Jarring Guidelines' : 'Seasoning rules'} note={kind === 'wire' ? 'Each run takes the speeds for its service' : 'New or seasoned line'}>
-        {guideQ.data ? <GuidePanel kind={kind} data={guideQ.data} /> : guideQ.isError ? <Banner tone="danger">The guidelines could not be read.</Banner> : <Skeleton className="h-32" />}
+        <GuidePanel kind={kind} data={guideQ.data} offline={guideQ.offline} />
       </Step>
 
-      <Step n={5} title="Run details" note="For the heading and the printout only">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          {([['job', 'Job or pad'], ['well', 'Well'], ['stage', 'Stage'], ['unit', 'Unit'], ['cable', 'Line'], ['date', 'Run date'], ['by', 'Checked by']] as const).map(([k, l]) => (
-            <Field key={k} id={`wd-${k}`} label={l}>
-              <input id={`wd-${k}`} className={inputClass} type={k === 'date' ? 'date' : 'text'} value={meta[k]} onChange={(e) => setMeta((m) => ({ ...m, [k]: e.target.value }))} />
-            </Field>
+      <Step n={5} title="Job details" note="From the job: change them on the job's earlier steps">
+        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {([['drss', 'DRSS'], ['field', 'Field'], ['well', 'Well'], ['unit', 'Unit'], ['cable', 'Line'], ['date', 'Job date'], ['by', 'Checked by']] as const).map(([k, l]) => (
+            <div key={k} className="rounded-sm border border-border bg-surface-2 px-3 py-1.5">
+              <dt className="font-mono text-label font-semibold tracking-wide text-text-muted uppercase">{l}</dt>
+              <dd className={cx('text-sm', !meta[k] && 'text-text-subtle')}>{meta[k] || 'Not on the job'}</dd>
+            </div>
           ))}
-        </div>
+          <div className="rounded-sm border border-border bg-surface-2 px-3 py-1.5">
+            <dt className="font-mono text-label font-semibold tracking-wide text-text-muted uppercase">Runs</dt>
+            <dd className={cx("text-sm", !services.length && "text-text-subtle")}>{services.length ? `${services.length} found in the files` : "Found from the files when checked"}</dd>
+          </div>
+        </dl>
       </Step>
 
       {problem && <Banner tone="danger">{problem}</Banner>}

@@ -14,7 +14,8 @@ import { Button, cx, inputSized } from '../../components/ui';
 // 6z.42: wire runs are checked against the Speed Guidelines for their service (the default speeds are flagged) and the
 // tension against static; braided-line runs against the seasoning rules (new or seasoned line) with no horizontal rules.
 
-export type Meta = { job: string; well: string; stage: string; unit: string; cable: string; date: string; by: string };
+/** The job details on the report (6z.44: from the job, not typed). */
+export type Meta = { drss: string; field: string; well: string; unit: string; cable: string; date: string; by: string };
 /**
  * One run: the trip analysis (with the seasoning findings on braided line), the speed and tension findings, the
  * jarring, the rules it was checked with and, on wire, its service and the static tension against depth.
@@ -83,7 +84,7 @@ export function RunsView({ p, wide, onEdit, onWindow, onSeason, onService }: {
   const r = reports[Math.min(pick, reports.length - 1)];
   const days = new Set(reports.flatMap((x) => [dayOf(x.run.t0), dayOf(x.run.t1)])).size > 1;
   const date = meta.date ? new Date(`${meta.date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
-  const sub = [meta.job, date, LINE_LABEL[p.kind] + (p.kind === 'braided' ? `, ${seasonLabel(p.seasoned).toLowerCase()}` : ''), meta.cable && `line ${meta.cable}`, p.fileName, meta.by && `checked by ${meta.by}`].filter(Boolean).join(' · ');
+  const sub = [meta.drss && `DRSS ${meta.drss}`, date && `job date ${date}`, `${reports.length} run${reports.length === 1 ? '' : 's'} found`, LINE_LABEL[p.kind] + (p.kind === 'braided' ? `, ${seasonLabel(p.seasoned).toLowerCase()}` : ''), meta.cable && `line ${meta.cable}`, p.fileName, meta.by && `checked by ${meta.by}`].filter(Boolean).join(' · ');
   const csv = () => {
     const guide = reports.map((x) => findingsCsv(x.a).split('\n').map((l, i) => (i === 0 ? `Run,${l}` : `${x.run.n},${l}`))).flatMap((rows, i) => (i === 0 ? rows : rows.slice(1))).join('\n');
     const sop = sopCsv(reports.map((x) => ({ n: x.run.n, findings: [...x.speed, ...x.jar.findings] })), hms);
@@ -94,7 +95,7 @@ export function RunsView({ p, wide, onEdit, onWindow, onSeason, onService }: {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="font-display text-lg font-bold">Well {meta.well || '—'} · Stage {meta.stage || '—'} · {meta.unit || '—'}</h3>
+          <h3 className="font-display text-lg font-bold">Well {meta.well || '—'} · {meta.field || 'field not set'} · {meta.unit || '—'}</h3>
           <p className="text-xs break-words text-text-muted">{sub}{p.source && ` · ${p.source}`}</p>
         </div>
         <div className="flex flex-wrap gap-1 print:hidden">
