@@ -1712,3 +1712,11 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Kept:** demo files are kept like any other file; the demo buttons show only on an empty card, so a demo never replaces loaded files. A file that is already in the job's attachments (same name and size) is linked instead of uploaded again.
 - **From the attachments:** under the drop zone, "Or add one from the job's attachments" lists the job's winch files (.da_tdat, .dat, .csv, .txt, .tsv, .log, .prn) not loaded yet, one of each, with Add; it reads the file from the attachment without uploading it again.
 - **Verified:** tests 462; type check clean. In the local app: a demo loaded on an empty job, Closure left for Execution and back: the file and check came back; on the first job the report came back the same way; a file removed from the card was offered from the attachments and added back with no second copy (1 attachment); 390 px with no sideways scroll; a fresh tab with no console errors.
+
+
+## 6z.46 — Ask to load the winch files found in the job's attachments
+
+- **Owner request (2026-11-21):** when winch data is found in the attachments, ask whether to load it, and show all the files so they can be picked.
+- **What the live job showed:** its saved check pointed to the demo export (demo-run.txt), which had then been deleted from the attachments, so nothing could be brought back; the recording itself was still in the attachments (four copies from earlier tries).
+- **Change:** on an empty card, "Winch data found in this job's attachments: N files. Load them?" lists every winch file in the attachments (.da_tdat, .dat, .csv, .txt, .tsv, .log, .prn) not loaded yet, each with a tick box, all ticked, with Load selected, Tick or Untick all, and Not now. Copies with the same name and size are listed once ("4 copies, one is loaded"). Once files are loaded, the same list stays as "Add from the job's attachments", nothing ticked. Several files load in one go, in order, each read from its attachment without uploading it again.
+- **Verified:** tests 462; type check clean. In the local app: both recordings removed from the card, the question listed both, ticked; Load 2 selected loaded them and asked about the 2-day gap; with one loaded, the other stayed offered unticked; 390 px with no sideways scroll; no console errors.

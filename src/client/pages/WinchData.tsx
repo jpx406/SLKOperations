@@ -382,19 +382,24 @@ export function WinchDataCard({ job }: { job: Job }) {
     setTimeout(() => loadFilesFresh([{ buf: new TextEncoder().encode(d.text).buffer as ArrayBuffer, name: d.fileName }]), 0);
     setKindPick('braided');
   };
-  /** Adds a winch file already in the job's attachments, without uploading it again (6z.45). */
-  const addFromAttachment = async (a: AttRow) => {
+  /** Adds winch files already in the job's attachments, without uploading them again (6z.45, several at once 6z.46). */
+  const addFromAttachments = async (rows: AttRow[]) => {
     setProblem(null);
-    try {
-      const res = await fetch(`/api/attachments/job/${encodeURIComponent(job.id)}/${encodeURIComponent(a.id)}`, { credentials: 'same-origin' });
-      if (!res.ok) throw new Error(`could not be opened (${res.status})`);
-      const buf = await res.arrayBuffer();
-      const r = addFile(buf, a.file_name, files);
-      if (typeof r === 'string') { setProblem(r); return; }
-      const added = r[r.length - 1];
-      setFiles(r.map((x) => (x.id === added.id ? { ...x, attId: a.id } : x)));
-      setBase(null);
-    } catch (e) { setProblem(`${a.file_name} ${(e as Error).message}.`); }
+    let list = files;
+    const errs: string[] = [];
+    for (const a of rows) {
+      try {
+        const res = await fetch(`/api/attachments/job/${encodeURIComponent(job.id)}/${encodeURIComponent(a.id)}`, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(`could not be opened (${res.status})`);
+        const r = addFile(await res.arrayBuffer(), a.file_name, list);
+        if (typeof r === 'string') { errs.push(r); continue; }
+        const added = r[r.length - 1];
+        list = r.map((x) => (x.id === added.id ? { ...x, attId: a.id } : x));
+      } catch (e) { errs.push(`${a.file_name} ${(e as Error).message}.`); }
+    }
+    setFiles(list);
+    setBase(null);
+    if (errs.length) setProblem(errs.join(' '));
   };
   const loadFilesFresh = (picked: { buf: ArrayBuffer; name: string }[]) => {
     // the demos start from no files
@@ -451,26 +456,19 @@ export function WinchDataCard({ job }: { job: Job }) {
           label={files.length ? 'Add another file' : format === 'lineminder' ? 'Choose the Lineminder recordings' : 'Choose the winch exports'} onFiles={loadFiles}
           status={files.length ? `${files.length} file${files.length > 1 ? 's' : ''}` : 'No file yet'} />
         {(() => {
-          const loaded = new Set(files.map((x) => x.attId).filter(Boolean));
-          const seen = new Set<string>();
-          // one of each file (same name and size), newest first, not already loaded
-          const offer = (atts.data?.files ?? []).filter((a) => WINCH_FILE.test(a.file_name) && !loaded.has(a.id))
-            .filter((a) => { const k = `${a.file_name}|${a.size_bytes}`; if (seen.has(k)) return false; seen.add(k); return true; });
+          const loadedIds = new Set(files.map((x) => x.attId).filter(Boolean));
+          const loadedNames = new Set(files.map((x) => x.name));
+          // each file once (copies with the same name and size counted), newest first, not loaded yet
+          const groups = new Map<string, { row: AttRow; copies: number }>();
+          for (const a of atts.data?.files ?? []) {
+            if (!WINCH_FILE.test(a.file_name) || loadedIds.has(a.id) || loadedNames.has(a.file_name)) continue;
+            const k = `${a.file_name}|${a.size_bytes}`;
+            const g = groups.get(k);
+            if (g) g.copies++; else groups.set(k, { row: a, copies: 1 });
+          }
+          const offer = [...groups.values()];
           if (!offer.length) return null;
-          return (
-            <div className="mt-2 rounded-md border border-border px-3 py-2 text-xs">
-              <p className="mb-1 font-semibold">Or add one from the job's attachments</p>
-              <ul className="space-y-1">
-                {offer.map((a) => (
-                  <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="min-w-0 break-all">{a.file_name}</span>
-                    <span className="text-text-subtle">{sizeText(a.size_bytes)} · {a.uploaded_by_name} · {new Date(a.uploaded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                    <Button size="sm" variant="ghost" className="ml-auto" onClick={() => addFromAttachment(a)}><Paperclip aria-hidden className="size-3.5" />Add</Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
+          return <AttachmentOffer key={offer.map((o) => o.row.id).join()} offer={offer} empty={!files.length} onLoad={addFromAttachments} />;
         })()}
         {files.length > 0 && (
           <ul className="mt-2 divide-y divide-border rounded-md border border-border text-xs" aria-label="Files">
@@ -619,6 +617,43 @@ export function WinchDataCard({ job }: { job: Job }) {
       {problem && <Banner tone="danger">{problem}</Banner>}
       <div className="flex justify-end">
         <Button variant="primary" onClick={() => run()}>Find the runs and check them</Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Winch files found in the job's attachments (6z.46). On an empty card it asks whether to load them, every file
+ * ticked; once files are loaded it stays as a short list to add more. Each can be ticked or not.
+ */
+function AttachmentOffer({ offer, empty, onLoad }: { offer: { row: AttRow; copies: number }[]; empty: boolean; onLoad: (rows: AttRow[]) => Promise<void> }) {
+  const [pick, setPick] = useState<Set<string>>(() => new Set(empty ? offer.map((o) => o.row.id) : []));
+  const [later, setLater] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ask = empty && !later;
+  const chosen = offer.filter((o) => pick.has(o.row.id)).map((o) => o.row);
+  const load = async () => { setBusy(true); await onLoad(chosen); setBusy(false); };
+  return (
+    <div className={cx('mt-2 rounded-md border px-3 py-2 text-xs', ask ? 'border-accent bg-accent/10' : 'border-border')} role={ask ? 'region' : undefined} aria-label="Winch files in the job's attachments">
+      <p className="mb-1.5 text-sm font-semibold">{ask
+        ? `Winch data found in this job's attachments: ${offer.length} file${offer.length > 1 ? 's' : ''}. Load ${offer.length > 1 ? 'them' : 'it'}?`
+        : "Add from the job's attachments"}</p>
+      <ul className="space-y-1">
+        {offer.map(({ row: a, copies }) => (
+          <li key={a.id}>
+            <label className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              <input type="checkbox" checked={pick.has(a.id)} onChange={(e) => setPick((p) => { const n = new Set(p); if (e.target.checked) n.add(a.id); else n.delete(a.id); return n; })} />
+              <span className="min-w-0 font-semibold break-all">{a.file_name}</span>
+              <span className="text-text-subtle">{sizeText(a.size_bytes)} · {a.uploaded_by_name} · {new Date(a.uploaded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}{copies > 1 ? ` · ${copies} copies, one is loaded` : ''}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button size="sm" variant={ask ? 'primary' : 'ghost'} disabled={!chosen.length || busy} onClick={load}>
+          <Paperclip aria-hidden className="size-3.5" />{busy ? 'Loading…' : `Load ${chosen.length ? `${chosen.length} ` : ''}selected`}</Button>
+        {offer.length > 1 && <Button size="sm" variant="ghost" onClick={() => setPick(new Set(chosen.length === offer.length ? [] : offer.map((o) => o.row.id)))}>{chosen.length === offer.length ? 'Untick all' : 'Tick all'}</Button>}
+        {ask && <Button size="sm" variant="ghost" onClick={() => { setLater(true); setPick(new Set()); }}>Not now</Button>}
       </div>
     </div>
   );
