@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Award, BookOpen, ChevronRight, ExternalLink, LayoutDashboard, Lock, LogOut, Waypoints } from 'lucide-react';
+import { Award, BookOpen, ChevronRight, ExternalLink, LayoutDashboard, Lock, LogOut, TrendingUp, Waypoints } from 'lucide-react';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { visibleNav } from '../../shared/menus';
@@ -9,7 +9,7 @@ import { useMe } from '../auth';
 import { NesrLogo, Wordmark } from '../components/Brand';
 import { Button, Skeleton, cx } from '../components/ui';
 
-// After signing in (6z.33): pick the SLK Operations Hub, the Knowledge Hub, Competency or WIREGUARD (6z.38).
+// After signing in (6z.33): pick the SLK Operations Hub, the Knowledge Hub, Competency, Career Development (6z.40) or WIREGUARD (6z.38).
 // 6z.39: only the modules the person may open are shown (no greyed-out tiles); with the Knowledge Hub alone it opens
 // straight away. The WIREGUARD tile first checks the person's WIREGUARD account is on. The pick is kept for this
 // browser tab; the NESR mark at the top of any page comes back here.
@@ -20,7 +20,7 @@ export function pickedModule(): ModuleKey | null {
 }
 export function pickModule(m: ModuleKey) { try { sessionStorage.setItem(KEY, m); } catch { /* private mode: the page decides */ } }
 
-const ICON: Record<ModuleKey, typeof BookOpen> = { slk: LayoutDashboard, knowledge: BookOpen, competency: Award };
+const ICON: Record<ModuleKey, typeof BookOpen> = { slk: LayoutDashboard, knowledge: BookOpen, competency: Award, career: TrendingUp };
 const TILE = 'group flex h-full w-full flex-col rounded-lg border p-4 text-left shadow-card';
 const TILE_ON = 'border-card-edge bg-surface hover:border-accent-text focus-visible:border-accent-text';
 const TILE_OFF = 'cursor-not-allowed border-dashed border-border-strong bg-surface-2';

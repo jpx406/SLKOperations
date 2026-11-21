@@ -9,6 +9,8 @@ import { Banner, Skeleton } from '../components/ui';
 // Competency (6z.34): the NESR Competency Framework System, converted to slickline, in place of the earlier
 // experience page. It keeps its own screens and saves through SLK Ops (D1 and the R2 bucket); the person signed in
 // to SLK Ops is its user, and their Competency rights decide whether they read or change it. Loaded only here.
+// 6z.40: the same module opens as SLK Career Development (mode "career"): only the Career Development Plan, under its
+// own header, on the same data and Competency users; Competency itself no longer shows the plan.
 
 const CompetencyApp = lazy(() => import('../competency/App'));
 
@@ -17,7 +19,7 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
   static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
     return this.state.error
-      ? <Banner tone="danger">Competency stopped with an error: {this.state.error.message}. Reload the page; if it happens again, tell an admin what you were doing.</Banner>
+      ? <Banner tone="danger">This module stopped with an error: {this.state.error.message}. Reload the page; if it happens again, tell an admin what you were doing.</Banner>
       : this.props.children;
   }
 }
@@ -34,7 +36,7 @@ function useAppTheme(): 'light' | 'dark' {
   return theme;
 }
 
-export function CompetencyModule() {
+export function CompetencyModule({ mode = 'competency' }: { mode?: 'competency' | 'career' }) {
   const { data: me } = useMe();
   const theme = useAppTheme();
   const seed = useQuery({ queryKey: ['competency-seed'], queryFn: () => api<CompetencyHost['seed']>('/competency/slk-seed'), staleTime: Infinity });
@@ -46,7 +48,7 @@ export function CompetencyModule() {
   const mine = people.data.profiles.find((p) => p.username.toLowerCase() === me.username.toLowerCase());
   installCompetencyStorage();
   const host: CompetencyHost = {
-    user: me.username, name: me.fullName, admin: me.role === 'admin', canEdit: !!me.menus.competency?.edit,
+    user: me.username, name: me.fullName, admin: me.role === 'admin', canEdit: !!(mode === 'career' ? me.menus.career_development?.edit : me.menus.competency?.edit), mode,
     theme, seed: seed.data, competencyRole: mine?.role, people: people.data.profiles,
   };
   return (
@@ -54,7 +56,7 @@ export function CompetencyModule() {
     <div className="-mx-4 -my-5 md:-mx-5">
       <Boundary>
         <Suspense fallback={<div className="p-5"><Skeleton className="h-96" /></div>}>
-          <CompetencyApp host={host} />
+          <CompetencyApp key={mode} host={host} />
         </Suspense>
       </Boundary>
     </div>

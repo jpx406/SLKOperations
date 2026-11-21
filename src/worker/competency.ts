@@ -28,7 +28,8 @@ type Row = { value: string | null; r2_key: string | null };
 
 /** Changing the team's Competency data: the Competency edit right in SLK Ops, or a Competency role that edits (6z.35). */
 async function mayEdit(env: Env, user: AuthedUser): Promise<boolean> {
-  if (user.menus.competency?.edit) return true;
+  // Career Development (6z.40) works on the same data: its edit right changes it too
+  if (user.menus.competency?.edit || user.menus.career_development?.edit) return true;
   const row = await env.DB.prepare('SELECT can_edit FROM competency_users WHERE username = ?').bind(user.username).first<{ can_edit: number }>();
   return !!row?.can_edit;
 }
@@ -64,8 +65,12 @@ competency.get('/kv-list', async (c) => {
 });
 
 /** PUT { key, value, shared } → { key, value, shared }. Shared keys need the Competency edit right. */
+/** Competency or Career Development (6z.40): either opens the Competency data; personal keys need one of them too. */
+const opensData = (user: AuthedUser) => !!(user.menus.competency?.view || user.menus.career_development?.view);
+
 competency.put('/kv', async (c) => {
   const user = c.get('user');
+  if (!opensData(user)) return c.json({ error: 'Your role cannot open Competency or Career Development' }, 403);
   const b = await c.req.json().catch(() => ({})) as { key?: unknown; value?: unknown; shared?: unknown };
   if (!isKey(b.key)) return c.json({ error: 'Bad key' }, 400);
   if (typeof b.value !== 'string') return c.json({ error: 'The value must be text' }, 400);
@@ -93,6 +98,7 @@ competency.put('/kv', async (c) => {
 /** DELETE ?key=&shared=1 → { key, deleted: true, shared }. The module deletes old backups this way. */
 competency.delete('/kv', async (c) => {
   const user = c.get('user');
+  if (!opensData(user)) return c.json({ error: 'Your role cannot open Competency or Career Development' }, 403);
   const key = c.req.query('key');
   if (!isKey(key)) return c.json({ error: 'Bad key' }, 400);
   const shared = sharedFlag(c.req.query('shared'));

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { sheetRows, XLSX } from '../src/client/competency/sheet';
 import { INLINE_MAX, isKey } from '../src/worker/competency';
-import { readAllowed, ruleFor } from '../src/worker/permissions';
+import { isOpenWrite, readAllowed, ruleFor } from '../src/worker/permissions';
 import { workbook } from '../src/shared/xlsx';
 // the module itself (JSX), for its slickline catalog and the SLK seed
 import { _constants, _slk } from '../src/client/competency/App.jsx';
@@ -23,8 +23,10 @@ describe('Competency storage on SLK Ops', () => {
     const view = { competency: { view: true, edit: false, delete: false } };
     for (const p of ['/api/competency/kv', '/api/competency/kv-list', '/api/competency/slk-seed']) expect(readAllowed(p, view)).toBe(true);
     expect(readAllowed('/api/competency/kv', { jobs: { view: true, edit: true, delete: false } })).toBe(false);
-    expect(ruleFor('PUT', '/api/competency/kv')).toMatchObject({ menu: 'competency', action: 'view' });
-    expect(ruleFor('DELETE', '/api/competency/kv')).toMatchObject({ menu: 'competency', action: 'view' });
+    // 6z.40: Competency and Career Development share the store, so the route checks either right
+    expect(isOpenWrite('PUT', '/api/competency/kv')).toBe(true);
+    expect(isOpenWrite('DELETE', '/api/competency/kv')).toBe(true);
+    expect(readAllowed('/api/competency/kv', { career_development: { view: true, edit: false, delete: false } })).toBe(true);
     expect(ruleFor('POST', '/api/competency/kv')).toBeUndefined();
   });
 });

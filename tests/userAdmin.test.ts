@@ -18,7 +18,7 @@ describe('modules per person', () => {
   it('everyone reads the Knowledge Hub, and an edit right from the role stays', () => {
     const none = applyModules(effectiveMenus([row('jobs', 1)], [], false));
     expect(none.knowledge_hub).toEqual(R());
-    expect(moduleAccess(none)).toEqual({ slk: false, knowledge: true, competency: false });
+    expect(moduleAccess(none)).toEqual({ slk: false, knowledge: true, competency: false, career: false });
     expect(applyModules(effectiveMenus([row('knowledge_hub', 1)], [], false)).knowledge_hub.edit).toBe(true);
   });
 
@@ -32,11 +32,11 @@ describe('modules per person', () => {
   it('the person’s modules win over the role, both ways', () => {
     // role without the hub, person allowed it: the whole app opens
     const up = applyModules(effectiveMenus([row('jobs', 1)], [], false), { slk: true });
-    expect(moduleAccess(up)).toEqual({ slk: true, knowledge: true, competency: true });
+    expect(moduleAccess(up)).toEqual({ slk: true, knowledge: true, competency: true, career: true });
     expect(up.jobs).toEqual(R(true, true));
     // role with the hub, person not allowed it: only the Knowledge Hub (and Competency if the role gives it)
     const down = applyModules(effectiveMenus([row('slk_ops'), row('jobs')], [], false), { slk: false });
-    expect(moduleAccess(down)).toEqual({ slk: false, knowledge: true, competency: false });
+    expect(moduleAccess(down)).toEqual({ slk: false, knowledge: true, competency: false, career: false });
     expect(down.jobs).toBeUndefined();
     // Competency off stays off even with the hub
     expect(moduleAccess(applyModules({ slk_ops: R() }, { competency: false })).competency).toBe(false);
@@ -48,6 +48,15 @@ describe('modules per person', () => {
     expect(ruleFor('POST', '/api/admin/reconcile/fix')).toMatchObject({ menu: 'users', action: 'edit' });
     expect(ruleFor('POST', '/api/admin/users/NESR-1/delete')).toMatchObject({ menu: 'users', action: 'delete' });
     expect(readAllowed('/api/knowledge', applyModules({}))).toBe(true);
+  });
+
+  it('Career Development is its own module: with the hub unless set on the person, or by its own right (6z.40)', () => {
+    expect(moduleAccess(applyModules({ slk_ops: R() })).career).toBe(true);
+    expect(moduleAccess(applyModules({ slk_ops: R() }, { career: false })).career).toBe(false);
+    expect(moduleAccess(applyModules({ career_development: R() })).career).toBe(true);
+    expect(moduleAccess(applyModules({ competency: R() })).career).toBe(false);
+    expect(moduleAccess(applyModules({}, { career: true })).career).toBe(true);
+    expect(parseUserModules('{"career":true}')).toEqual({ career: true });
   });
 
   it('only people allowed WIREGUARD can ask whether their WIREGUARD account is on (6z.39)', () => {

@@ -3948,24 +3948,27 @@ function CdpProgressSection({ state, set, d }) {
 }
 
 
-function CDP({ state, set, d }) {
+/* The Career Development Plan. 6z.40: it opens on its own as SLK Career Development, where the header's tabs pick the
+   sub-tab (sub); Competency no longer shows it. */
+const FULL_CDP_SUBS = ["CDP Progress", "Reference", "CDP Promotion Tracker"];
+function CDP({ state, set, d, sub }) {
   const { role } = usePerm();
   const roleDef = resolveRole(state.roleDefs, role);
-  const FULL_CDP_SUBS = ["CDP Progress", "Reference", "CDP Promotion Tracker"];
   const CDP_SUBS = allowedSubTabs(roleDef, "CDP", FULL_CDP_SUBS);
-  const [cdpSub, setCdpSub] = useState(CDP_SUBS[0] || "CDP Progress");
+  const [ownSub, setCdpSub] = useState(CDP_SUBS[0] || "CDP Progress");
+  const cdpSub = sub || ownSub;
   useEffect(() => { if (CDP_SUBS.length && !CDP_SUBS.includes(cdpSub)) setCdpSub(CDP_SUBS[0]); }, [CDP_SUBS.join("|")]);
 
   const setCheck = (i, check, v) => set(s => { const arr = [...s.cdp]; arr[i] = { ...arr[i], checks: { ...arr[i].checks, [check]: v } }; return { ...s, cdp: arr }; });
   const u = upd(set, "cdp");
   return <>
-    <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+    {!sub && <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
       {CDP_SUBS.map(s => <button key={s} onClick={() => setCdpSub(s)} style={{
         border:`1px solid ${cdpSub === s ? C.green : C.line}`, cursor:"pointer", borderRadius:20,
         background: cdpSub === s ? C.green : C.card, color: cdpSub === s ? "#fff" : C.ink,
         fontFamily:"'Barlow Condensed', sans-serif", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase",
         fontSize:12.5, padding:"7px 16px" }}>{s}</button>)}
-    </div>
+    </div>}
     {cdpSub === "CDP Progress" && <CdpProgressSection state={state} set={set} d={d} />}
     {cdpSub === "Reference" && <Section title="Step requirements reference — NESR CDP" sub="What each promotion step requires. Use this to judge the seven checks in the Promotion Tracker.">
       <Scroll><T minW={1100} heads={["Requirement","Step 1 · T → E1 (12 m)","Step 2 · E1 → E2 (12 m min)","Step 3 · E2 → E3 (12 m min)","Step 4 · E3 → E4 (18 m)"]}>
@@ -6901,8 +6904,10 @@ function Tools({ state, set, d }) {
 
 /* host (6z.34): { user, name, admin, canEdit, theme, seed } from SLK Ops. Without it the app runs as it did standalone. */
 export default function App({ host } = {}) {
+  /* 6z.40: SLK Career Development is this module with only the Career Development Plan, under its own header */
+  const career = host?.mode === "career";
   const [state, setStateRaw] = useState(() => host?.seed ? slkSeedState(host.seed) : JSON.parse(JSON.stringify(SEED)));
-  const [tab, setTab] = useState("Dashboard");
+  const [tab, setTab] = useState(career ? FULL_CDP_SUBS[0] : "Dashboard");
   const [loaded, setLoaded] = useState(false);
   const [storageOK, setStorageOK] = useState(true);
   /* Light/dark theme — a personal preference, stored the same way the last-used
@@ -7009,7 +7014,10 @@ export default function App({ host } = {}) {
   const role = !host ? ownRole : host.competencyRole || (host.admin ? "Super Admin" : host.canEdit ? "Manager" : "Viewer");
   const roleDef = resolveRole(state.roleDefs, role);
   const can = { edit: roleDef.edit, approve: roleDef.approve, admin: roleDef.admin, manageRoles: roleDef.manageRoles };
-  const visibleTabs = ALL_TABS.filter(t => (roleDef.tabs || ALL_TABS).includes(t));
+  // Competency without the plan (it has its own menu now); Career Development shows the plan's sections as its tabs
+  const visibleTabs = career
+    ? allowedSubTabs(roleDef, "CDP", FULL_CDP_SUBS)
+    : ALL_TABS.filter(t => (roleDef.tabs || ALL_TABS).includes(t) && !(host && t === "CDP"));
   const perm = { role, can, roster, user, tabs: visibleTabs, hostManaged: !!host,
     setRole: (n, r) => saveRoster({ ...roster, [n]: r }),
     removeUser: n => { const next = { ...roster }; delete next[n]; saveRoster(next); } };
@@ -7323,13 +7331,15 @@ export default function App({ host } = {}) {
     <header style={{ background:C.brandDark, color:"#fff", padding:"12px 14px 0" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8 }}>
         <div style={{ display:"flex", alignItems:"flex-start", gap:16 }}>
+          {career ? <img className="nesr-team-logo" src="/brand/career-development.png" alt="Growth, training, learning, success" width={358} height={200}
+            style={{ height:78, width:"auto", display:"block", background:"transparent", flexShrink:0, borderRadius:4 }} /> :
           <img className="nesr-team-logo" src={TEAM_LOGO} alt="TEAM — Training, Experience, Assessment, Monitoring and Improvement"
             title="TEAM — Training (obtain knowledge and skills) · Experience (reinforce training and improve skills) · Assessment (validate knowledge and skills acquired) · Monitoring and Improvement (ensure quality and consistency)"
-            style={{ height:78, width:"auto", display:"block", background:"transparent", flexShrink:0 }} />
+            style={{ height:78, width:"auto", display:"block", background:"transparent", flexShrink:0 }} />}
           <div>
             <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
               <span className="nesr-hdr-title" style={{ fontFamily:"'Barlow Condensed', sans-serif", fontWeight:700, fontSize:22, letterSpacing:"0.05em", textTransform:"uppercase" }}>
-                SLK Competency Framework <span style={{ color:"#8FC08A" }}>System</span>
+                {career ? <>SLK Career <span style={{ color:"#8FC08A" }}>Development</span></> : <>SLK Competency Framework <span style={{ color:"#8FC08A" }}>System</span></>}
               </span>
             </div>
           <div style={{ display:"flex", gap:0, flexWrap:"wrap", marginTop:6, border:"1px solid #3C4A42", borderRadius:"4px 4px 0 0", overflow:"hidden" }}>
@@ -7376,6 +7386,8 @@ export default function App({ host } = {}) {
         {!storageOK && <div style={{ background:C.dangerBg, border:`1px solid ${C.s1}`, borderRadius:6, padding:"8px 12px", fontSize:13, marginBottom:14 }}>
           <b>Cloud save failed</b> — {saveError || "changes are in memory only"}. Retrying automatically in the background; use Data → Export JSON to back up now if this persists.
         </div>}
+        {career && <CDP state={state} set={set} d={d} sub={tab} />}
+        {!career && <>
         {tab === "Dashboard" && <Dashboard state={state} d={d} />}
         {tab === "Administration" && <Administration state={state} set={set} saveState={saveShared} storageOK={storageOK} lastBackupAt={lastBackupAt} backupList={backupList} runBackup={() => runBackupIfDue(true)} restoreBackup={restoreBackup} />}
         {tab === "Progression" && <Progression state={state} set={set} d={d} recalc={recalc} />}
@@ -7383,6 +7395,7 @@ export default function App({ host } = {}) {
         {tab === "Matrix" && <MatrixView state={state} d={d} recalc={recalc} />}
         {tab === "CDP" && <CDP state={state} set={set} d={d} />}
         {tab === "Tools" && <Tools state={state} set={set} d={d} />}
+        </>}
         <datalist id="elements">{[...new Set(state.catalog.map(r => r.element).filter(Boolean))].map(c => <option key={c} value={c} />)}</datalist>
       </>}
     </main>

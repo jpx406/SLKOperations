@@ -9,7 +9,7 @@ const row = (menu_key: string, can_edit = 0) => ({ menu_key, can_view: 1, can_ed
 describe('modules after sign-in (6z.33)', () => {
   it('the SLK Operations Hub right opens all three modules, and the Knowledge Hub and Competency with it', () => {
     const m = applyModules({ slk_ops: R(), jobs: R(true, true) });
-    expect(moduleAccess(m)).toEqual({ slk: true, knowledge: true, competency: true });
+    expect(moduleAccess(m)).toEqual({ slk: true, knowledge: true, competency: true, career: true });
     expect(m.knowledge_hub).toEqual(R());
     expect(m.competency).toEqual(R());
     expect(m.jobs).toEqual(R(true, true));
@@ -20,12 +20,12 @@ describe('modules after sign-in (6z.33)', () => {
   it('without it, only the Knowledge Hub and Competency stay open, also on the server', () => {
     const menus = applyModules(effectiveMenus([row('knowledge_hub', 1), row('jobs', 1), row('schedule'), row('ai_assistant')], [], false));
     expect(Object.keys(menus).sort()).toEqual(['ai_assistant', 'knowledge_hub']);
-    expect(moduleAccess(menus)).toEqual({ slk: false, knowledge: true, competency: false });
+    expect(moduleAccess(menus)).toEqual({ slk: false, knowledge: true, competency: false, career: false });
     // 6z.38: everyone reads the Knowledge Hub
-    expect(moduleAccess(applyModules(effectiveMenus([row('competency')], [], false)))).toEqual({ slk: false, knowledge: true, competency: true });
+    expect(moduleAccess(applyModules(effectiveMenus([row('competency')], [], false)))).toEqual({ slk: false, knowledge: true, competency: true, career: false });
     // a person-level grant of the hub opens it for that person; a removal closes it
     expect(moduleAccess(applyModules(effectiveMenus([row('knowledge_hub')], [{ menu_key: 'slk_ops', effect: 'grant', can_edit: 0 }], false))).slk).toBe(true);
-    expect(moduleAccess(applyModules(effectiveMenus([row('slk_ops'), row('jobs')], [{ menu_key: 'slk_ops', effect: 'deny', can_edit: 0 }], false)))).toEqual({ slk: false, knowledge: true, competency: false });
+    expect(moduleAccess(applyModules(effectiveMenus([row('slk_ops'), row('jobs')], [{ menu_key: 'slk_ops', effect: 'deny', can_edit: 0 }], false)))).toEqual({ slk: false, knowledge: true, competency: false, career: false });
   });
 
   it('each module shows only its own menu; the hub shows everything', () => {
@@ -36,7 +36,7 @@ describe('modules after sign-in (6z.33)', () => {
   });
 
   it('the module follows the page opened from a link, and a picked module while its pages are open', () => {
-    const all = { slk: true, knowledge: true, competency: true };
+    const all = { slk: true, knowledge: true, competency: true, career: true };
     expect(moduleOfPath('/knowledge')).toBe('knowledge');
     expect(moduleOfPath('/competency')).toBe('competency');
     expect(moduleOfPath('/quality/competency')).toBe('competency');
@@ -45,7 +45,7 @@ describe('modules after sign-in (6z.33)', () => {
     expect(currentModule('knowledge', '/operation/jobs', all)).toBe('slk');
     expect(currentModule('slk', '/knowledge', all)).toBe('slk');
     expect(currentModule(null, '/knowledge', all)).toBe('knowledge');
-    expect(currentModule(null, '/knowledge', { slk: false, knowledge: true, competency: false })).toBe('knowledge');
+    expect(currentModule(null, '/knowledge', { slk: false, knowledge: true, competency: false, career: false })).toBe('knowledge');
   });
 
   it('Users & Roles lists the module right first', () => {

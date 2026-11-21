@@ -11,6 +11,9 @@ export interface CompetencyHost {
   /** Without the Competency edit right the person only reads. */
   canEdit: boolean;
   theme: 'light' | 'dark';
+  /** competency: the Competency Framework System without the Career Development Plan; career: SLK Career Development,
+   *  the plan alone under its own header (6z.40). */
+  mode?: 'competency' | 'career';
   /** The person's Competency role, set in SLK Ops Users & Roles (6z.35); absent: from the SLK rights. */
   competencyRole?: string;
   /** Competency users from SLK Ops Users & Roles, copied into the employee register on load (6z.35). */

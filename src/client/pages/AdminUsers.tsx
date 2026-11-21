@@ -389,7 +389,7 @@ function StatusBadge({ active }: { active: boolean }) {
 }
 
 type ModuleChoice = 'default' | 'on' | 'off';
-const MODULE_RIGHT: Record<UserModuleKey, string> = { slk: 'slk_ops', wireguard: 'wireguard', competency: 'competency' };
+const MODULE_RIGHT: Record<UserModuleKey, string> = { slk: 'slk_ops', wireguard: 'wireguard', competency: 'competency', career: 'career_development' };
 
 /** The modules the person may open: SLK Operations Hub, WIREGUARD, Competency (6z.38). The Knowledge Hub is open to all. */
 function PersonModules({ user }: { user: UserRow }) {
@@ -410,8 +410,8 @@ function PersonModules({ user }: { user: UserRow }) {
       {user.role === 'admin'
         ? <p className="text-sm text-text-muted">Admins open every module.</p>
         : <>
-          <p className="mb-2 text-xs text-text-subtle">Everyone reads the Knowledge Hub; their role may let them do more there. Role default follows the SLK Ops role (WIREGUARD and Competency come with the SLK Operations Hub).</p>
-          <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-3">
+          <p className="mb-2 text-xs text-text-subtle">Everyone reads the Knowledge Hub; their role may let them do more there. Role default follows the SLK Ops role (WIREGUARD, Competency and Career Development come with the SLK Operations Hub).</p>
+          <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-2">
             {USER_MODULES.map((m) => (
               <label key={m.key} className="flex flex-col gap-1 text-sm">
                 <span className="font-semibold">{m.label} <span className={cx('text-xs font-normal', opens(m.key) ? 'text-success' : 'text-text-subtle')}>({opens(m.key) ? 'opens now' : 'closed now'})</span></span>

@@ -30,6 +30,8 @@ export const NAV: Group[] = [
   // 6z.35 (owner request 2026-11-20): the Knowledge Hub under Service Quality and Competency, its own menu, under it
   { label: 'Knowledge Hub', pages: [{ key: 'knowledge_hub', label: 'Knowledge Hub', path: '/knowledge', screen: 'S21', milestone: '3' }] },
   { label: 'Competency', pages: [{ key: 'competency', label: 'Competency', path: '/competency', screen: 'S16', milestone: '3' }] },
+  // 6z.40 (owner request 2026-11-21): the Career Development Plan out of Competency, its own menu under it
+  { label: 'Career Development', pages: [{ key: 'career_development', label: 'Career Development', path: '/career', screen: 'S16b', milestone: '3' }] },
   {
     label: 'Bonus',
     pages: [
@@ -76,7 +78,7 @@ export const MENU_LABELS: Record<string, string> = {
   job_preparation: 'Job · 02 Preparation',
   job_execution: 'Job · 03 Execution',
   job_closure: 'Job · 04 Closure',
-  slk_ops: 'SLK Operations Hub (the whole app, with the Knowledge Hub and Competency)',
+  slk_ops: 'SLK Operations Hub (the whole app, with the Knowledge Hub, Competency and Career Development)',
 };
 
 /** The job stages sit under Jobs in the rights list. */
