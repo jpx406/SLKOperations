@@ -106,6 +106,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PATCH', re: /^\/api\/admin\/roles\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/admin\/roles\/[^/]+$/, menu: 'users', action: 'delete' },
   { method: 'PUT', re: /^\/api\/admin\/rules$/, menu: 'users', action: 'edit' },
+  // the winch guidelines (6z.42): admins only, checked again in the route
+  { method: 'PUT', re: /^\/api\/winch\/guide$/, menu: 'users', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/admin\/rules\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/attendance$/, menu: 'users', action: 'edit' },
   // Users & Roles: someone's Face ID devices, their Face ID switch, and the WIREGUARD user import
@@ -207,6 +209,8 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/job-forms\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/jobs(\/[^/]+)?$/, menus: ['jobs', 'schedule'] },
   { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options|events)$/, menus: ['jobs'] },
+  // the winch guidelines and the job's line, for the winch data on the Closure tab (6z.42)
+  { re: /^\/api\/winch\/(guide|line\/[^/]+)$/, menus: ['jobs', 'users'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
   { re: /^\/api\/database$/, menus: ['database'] },

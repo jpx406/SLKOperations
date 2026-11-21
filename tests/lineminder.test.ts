@@ -88,7 +88,7 @@ describe('runs and SOP-04', () => {
     expect(sopSpeedFindings(run1, SOP_DEFAULTS, [])).toEqual([]);
     const f2 = sopSpeedFindings(run2, SOP_DEFAULTS, []);
     expect(f2.map((f) => f.rule)).toEqual(['surfaceSpeed']);
-    expect(f2[0]).toMatchObject({ dir: 'POOH', limit: 30, source: 'SOP-04 6.2' });
+    expect(f2[0]).toMatchObject({ dir: 'POOH', limit: 30, source: 'Speed Guidelines' });
     expect(Math.round(f2[0].worst)).toBe(60);
     const near = sopSpeedFindings(run1, SOP_DEFAULTS, parseRestrictions('3000 X nipple'));
     expect(near.map((f) => [f.rule, f.note])).toEqual([['restrictionSpeed', 'X nipple at 3000 ft'], ['restrictionSpeed', 'X nipple at 3000 ft']]);
@@ -103,7 +103,7 @@ describe('runs and SOP-04', () => {
     expect(j.cycles.map((c) => c.up)).toEqual([100, 160, 80, 50]);
     // cycle 1 peaks over 1,450 lbs and slacks to 300 lbs (more than 20% under 560); cycle 2 lasts 16 min; 4 min of
     // rest before cycle 3; cycle 4 is one too many at the same depth
-    expect(j.findings.map((f) => f.rule)).toEqual(['jarSpang', 'jarDown', 'jarCycle', 'jarRest', 'jarCycles']);
+    expect(j.findings.map((f) => f.rule)).toEqual(['jarSpang', 'jarHeavy', 'jarDown', 'jarCycle', 'jarRest', 'jarCycles']);
     // 60% of 3,000 lbs is 1,800: the 1,650 lbs peak is under it
     expect(j.findings.some((f) => f.rule === 'jarMat')).toBe(false);
     expect(detectJarring(run2, { ...SOP_DEFAULTS, mat: 1500 }).findings.filter((f) => f.rule === 'jarMat')).toHaveLength(1);

@@ -2,10 +2,11 @@
 // gauge run to 5,000 ft. Run 2 goes to 6,000 ft and jars there, breaking SOP-04 on purpose: jar-up peaks over the
 // spang jar limit, a jar-down that loses more than 20% of the normal tension, a cycle longer than 15 minutes, a rest
 // shorter than 10 minutes and a fourth cycle; it also pulls the last 200 ft faster than 30 ft/min.
+// 6z.42: demoLineminderPair() writes the same job as two recordings, the second two days later, to try joining files.
 
 import { G_PER_LB, MM_PER_FT, UMS_PER_FTMIN, writeTdat } from './lineminder';
 
-export function demoLineminder(): { buffer: ArrayBuffer; fileName: string } {
+function demoRecords() {
   const channels = [
     { name: 'Depth Corrected', type: 1, engineering: true },
     { name: 'Tension', type: 0, engineering: true },
@@ -38,6 +39,7 @@ export function demoLineminder(): { buffer: ArrayBuffer; fileName: string } {
   const hold = (sec: number) => { for (let i = 0; i < sec; i++) push(normal(depth) + Math.sin(i) * 5, 0); };
   // run 1: a clean gauge run
   hold(60); move(5000, 150); hold(120); move(0, 180); hold(600);
+  const split = records.length;
   // run 2: down to 6,000 ft and jar
   move(6000, 160); hold(60);
   const cycle = (minutes: number, peak: number, low: number) => {
@@ -54,8 +56,25 @@ export function demoLineminder(): { buffer: ArrayBuffer; fileName: string } {
   cycle(8, 1300, 500); hold(10 * 60);    // cycle 3
   cycle(5, 1300, 500); hold(60);         // cycle 4: one too many at this depth
   move(250, 200); move(0, 60, 60); hold(60); // pulls the last 200 ft at 60 ft/min
-  return {
-    buffer: writeTdat({ channels, job: { '(Job) Order': 'DEMO-0001', 'Measuring Head': 'MH-21', 'Wire Type': '0.125 in' }, start: Date.UTC(2026, 10, 18, 6, 0, 0) / 1000, periodMs: 100, records }),
-    fileName: 'DEMO_W12_LINEMINDER.da_tdat',
-  };
+  return { channels, records, split };
+}
+
+const JOB = { '(Job) Order': 'DEMO-0001', 'Measuring Head': 'MH-21', 'Wire Type': '0.125 in' };
+const START = Date.UTC(2026, 10, 18, 6, 0, 0) / 1000;
+
+export function demoLineminder(): { buffer: ArrayBuffer; fileName: string } {
+  const { channels, records } = demoRecords();
+  return { buffer: writeTdat({ channels, job: JOB, start: START, periodMs: 100, records }), fileName: 'DEMO_W12_LINEMINDER.da_tdat' };
+}
+
+/** The demo job as two recordings: run 1, and run 2 starting two days after the first file ends. */
+export function demoLineminderPair(): { buffer: ArrayBuffer; fileName: string }[] {
+  const { channels, records, split } = demoRecords();
+  const a = records.slice(0, split), b = records.slice(split);
+  const t0 = b[0].t;
+  const endA = START + a[a.length - 1].t / 1000;
+  return [
+    { buffer: writeTdat({ channels, job: JOB, start: START, periodMs: 100, records: a }), fileName: 'DEMO_W12_DAY1.da_tdat' },
+    { buffer: writeTdat({ channels, job: JOB, start: Math.round(endA + 2 * 86400), periodMs: 100, records: b.map((r) => ({ ...r, t: r.t - t0 })) }), fileName: 'DEMO_W12_DAY3.da_tdat' },
+  ];
 }

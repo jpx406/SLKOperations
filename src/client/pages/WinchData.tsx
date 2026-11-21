@@ -1,50 +1,41 @@
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, CircleCheck, CircleX, FileDown, FileUp, RotateCcw, Upload } from 'lucide-react';
+import { CircleCheck, CircleX, Upload, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import {
-  RULE_DEFAULTS, RULE_FIELDS, RULE_SET_LABEL, TIME_MODES, UNIT_DEPTH, UNIT_SPEED, UNIT_TENSION,
-  analyse, buildSamples, checkRules, demoRun, fileSurvey, fmt, guessMapping, guessSurveyMapping,
-  manualSurvey, mappingProblems, num, parseTable, parseTime, resolvedTimeMode, ruleText, verticalSurvey,
-  type Mapping, type RuleKey, type RuleSetKey, type Rules, type SpeedSign, type SurveyMapping, type Table, type TimeMode,
+  CHECK_KEYS, TIME_MODES, UNIT_DEPTH, UNIT_SPEED, UNIT_TENSION, analyse, buildSamples, demoRun, fmt, guessMapping, mappingProblems, num,
+  parseTable, parseTime, resolvedTimeMode, verticalSurvey,
+  type Analysis, type CheckKey, type Mapping, type RuleKey, type RuleSet, type Sample, type SpeedSign, type Table, type TimeMode,
 } from '../../shared/winchData';
 import { channelTable, guessChannels, isTdat, parseTdat, tdatChecks, tdatSummary, tdatTable, type Tdat, type Units } from '../../shared/lineminder';
-import { SOP_DEFAULTS, checkSopRules, detectJarring, parseRestrictions, sopSpeedFindings, splitRuns, type Run, type SopRules } from '../../shared/winchRuns';
-import { demoLineminder } from '../../shared/winchDemo';
-import type { KnowledgeDoc } from '../../shared/knowledge';
+import { detectJarring, parseRestrictions, sopSpeedFindings, sopTensionFindings, splitRuns, type Run } from '../../shared/winchRuns';
+import {
+  BRAIDED_CHECKS, LINE_LABEL, braidedSop, gapText, joinPlan, lineKind, listedServices, seasonedFromRuns, speedsFor, staticAt, staticTension, wireSop,
+  type FileSpan, type JobLimits, type JoinAnswer, type LineKind, type WinchGuide, type WinchLine,
+} from '../../shared/winchGuide';
+import { demoLineminder, demoLineminderPair } from '../../shared/winchDemo';
 import type { Job } from '../../shared/types';
 import { api } from '../api';
 import { useMe } from '../auth';
-import { saveFile } from '../components/charts';
-import { Banner, Button, Field, cx, inputClass, inputSized } from '../components/ui';
-import { fileUrl } from './knowledge/common';
-import { RunsView, type ChannelSeries, type Meta, type RunReport, type WinchPayload } from './winch/Report';
+import { Banner, Button, Field, Skeleton, cx, inputClass } from '../components/ui';
+import { GuidePanel, RuleFields, useGuide } from './winch/Guide';
+import { RunsView, seasonLabel, type ChannelSeries, type Meta, type RunReport, type WinchPayload } from './winch/Report';
 
 // Winch data: plots and guidelines check, on the job's Closure tab (6z.26). Everything runs in the browser; nothing is
-// saved to the job yet. The rule limits are kept on this device.
+// saved to the job yet.
 // 6z.41: Lineminder recordings (.da_tdat) are read directly (channels and units from the file), a recording is split
-// into runs with a tab each, every run is checked against SOP-04 speed and jarring rules, and the report opens in a
-// window of its own for analysis.
-
-const RULES_KEY = 'slk-winch-rules';
-const SOP_KEY = 'slk-winch-sop';
-const loadRules = (): Rules => {
-  try { const r = checkRules(JSON.parse(localStorage.getItem(RULES_KEY) ?? 'null')); if (r) return r; } catch { /* not saved yet */ }
-  return structuredClone(RULE_DEFAULTS);
-};
-const storeRules = (r: Rules) => { try { localStorage.setItem(RULES_KEY, JSON.stringify(r)); } catch { /* private mode: kept for this visit */ } };
-const loadSop = (): SopRules => {
-  try { const r = checkSopRules(JSON.parse(localStorage.getItem(SOP_KEY) ?? 'null')); if (r) return r; } catch { /* not saved yet */ }
-  return structuredClone(SOP_DEFAULTS);
-};
-const storeSop = (r: SopRules) => { try { localStorage.setItem(SOP_KEY, JSON.stringify(r)); } catch { /* private mode */ } };
+// into runs with a tab each, and the report opens in a window of its own for analysis.
+// 6z.42: several files can be joined into one job (a gap of over a day asks whether it is the same job); the line is
+// told from the job's wire (slickline wire or braided line); wire runs are checked against the Speed Guidelines for
+// their service and the Jarring Guidelines, braided line against the seasoning rules for new or seasoned line, with
+// no horizontal-well rules. The guidelines are kept by an admin for everyone.
 
 type Format = 'lineminder' | 'csv';
-type SurveyMode = 'vertical' | 'manual' | 'file';
 /** Lineminder choices: units, step, the channels kept and which are depth, tension and speed. */
 type LmOpts = { units: Units; step: number; keep: number[]; depth: number; tension: number; speed: number };
+type WFile = { id: string; name: string } & ({ kind: 'lineminder'; f: Tdat } | { kind: 'csv'; t: Table });
 
-const small = 'h-(--layout-control-sm) text-sm';
 const uniq = (a: number[]) => [...new Set(a.filter((i) => i >= 0))];
+const stamp = (t: number) => (Number.isFinite(t) ? new Date(t * 1000).toISOString().slice(0, 16).replace('T', ' ') : '—');
 
 /** The table and mapping a Lineminder recording gives with these choices. */
 function lmTable(f: Tdat, o: LmOpts): { t: Table; m: Mapping; cols: number[] } {
@@ -78,38 +69,82 @@ function channelSeries(t: Table, m: Mapping, cols: number[]): ChannelSeries[] {
   });
 }
 
+const signature = (w: WFile) => (w.kind === 'lineminder' ? w.f.channels.map((c) => `${c.index}:${c.type}:${c.name}`).join('|') : w.t.header.join('|'));
+/** Several tables with the same columns as one, rows in file order (the samples are sorted by time later). */
+const joinTables = (ts: Table[]): Table => ({ ...ts[0], data: ts.flatMap((t) => t.data) });
+
+/** What a check needs that is not in the files: the line, the limits for the job and the restrictions. */
+interface Setup { kind: LineKind; seasoned: boolean; newLine: RuleSet; limits: JobLimits; restrictions: ReturnType<typeof parseRestrictions> }
+/** The joined samples and the runs found in them. */
+interface Base { S: Sample[]; runs: Run[]; channels: ChannelSeries[]; fileName: string; source: string; meta: Meta; minDepth: number }
+
+/** One run checked: wire against the service speeds, static tension and jarring; braided line against the seasoning rules. */
+function checkRun(base: Base, r: Run, g: WinchGuide, st: Setup, service: string): RunReport {
+  const Sr = base.S.slice(r.i0, r.i1 + 1);
+  const Sa = Sr.filter((s) => s.depth >= base.minDepth);
+  const survey = verticalSurvey(r.maxD);
+  const rules = { post: g.braided.seasoned, seasoning: st.newLine };
+  const a0 = analyse(Sa.length >= 20 ? Sa : Sr, survey, rules, st.seasoned ? 'post' : 'seasoning');
+  if (st.kind === 'braided') {
+    const viol = a0.viol.filter((v) => BRAIDED_CHECKS.includes(v.rule));
+    const a: Analysis = { ...a0, viol, advice: [], kpi: { ...a0.kpi, nViol: viol.length } };
+    const sop = braidedSop(g, st.limits);
+    return { run: r, a, speed: sopSpeedFindings(Sr, sop, st.restrictions), jar: detectJarring(Sr, sop), sop, service: '', group: null, isDefault: false, stat: null };
+  }
+  const a: Analysis = { ...a0, viol: [], advice: [], ruleCounts: Object.fromEntries(CHECK_KEYS.map((k) => [k, 0])) as Record<CheckKey, number>, kpi: { ...a0.kpi, nViol: 0 } };
+  const { speeds, group, isDefault } = speedsFor(g.wire, service);
+  const sop = wireSop(g, speeds, st.limits);
+  const stat = staticTension(Sr);
+  const speed = [...sopSpeedFindings(Sr, sop, st.restrictions), ...sopTensionFindings(Sr, sop, (d) => staticAt(stat, d))].sort((x, y) => x.t0 - y.t0);
+  return { run: r, a, speed, jar: detectJarring(Sr, sop), sop, service, group, isDefault, stat };
+}
+
 export function WinchDataCard({ job }: { job: Job }) {
   const { data: me } = useMe();
+  const guideQ = useGuide();
+  const lineQ = useQuery({ queryKey: ['winch-line', job.id], queryFn: () => api<WinchLine>(`/winch/line/${encodeURIComponent(job.id)}`), staleTime: 5 * 60_000, retry: false });
   const [format, setFormat] = useState<Format>('lineminder');
-  const [wd, setWd] = useState<(Table & { fileName: string }) | null>(null);
+  const [files, setFiles] = useState<WFile[]>([]);
+  const [answers, setAnswers] = useState<Record<string, JoinAnswer>>({});
   const [map, setMap] = useState<Mapping | null>(null);
   const [keepCols, setKeepCols] = useState<number[]>([]);
-  const [tdat, setTdat] = useState<{ f: Tdat; fileName: string } | null>(null);
   const [lm, setLm] = useState<LmOpts | null>(null);
-  const [svMode, setSvMode] = useState<SurveyMode>('vertical');
-  const [depths, setDepths] = useState({ kop: '', p30: '', lat: '', td: job.target_depth_ft ? String(job.target_depth_ft) : '' });
-  const [sv, setSv] = useState<(Table & { fileName: string }) | null>(null);
-  const [svMap, setSvMap] = useState<SurveyMapping | null>(null);
-  const [rules, setRules] = useState<Rules>(loadRules);
-  const [set, setSet] = useState<RuleSetKey>('post');
-  const [sop, setSop] = useState<SopRules>(loadSop);
+  const [kindPick, setKindPick] = useState<LineKind | null>(null);
+  const [seasonPick, setSeasonPick] = useState<boolean | null>(null);
+  const [newLine, setNewLine] = useState<RuleSet | null>(null);
+  const [limits, setLimits] = useState<{ mbs: string; mat: string; spang: boolean }>({ mbs: '', mat: '', spang: false });
   const [restr, setRestr] = useState('');
   const [meta, setMeta] = useState<Meta>({
     job: job.ticket_no ?? job.location ?? '', well: job.well ?? '', stage: '', unit: job.unit_number ?? '',
     cable: job.wire_serial_number ?? '', date: job.start_date?.slice(0, 10) ?? '', by: me?.fullName ?? '',
   });
-  const [payload, setPayload] = useState<WinchPayload | null>(null);
+  const [base, setBase] = useState<Base | null>(null);
+  const [services, setServices] = useState<string[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const latest = useRef<WinchPayload | null>(null);
-  latest.current = payload;
+  const windowPick = useRef(0);
 
   useEffect(() => { if (me?.fullName) setMeta((m) => (m.by ? m : { ...m, by: me.fullName })); }, [me?.fullName]);
+  // the breaking strength comes from the job's wire in WIREGUARD unless typed
+  useEffect(() => { const mbl = lineQ.data?.mbl; if (mbl) setLimits((l) => (l.mbs ? l : { ...l, mbs: String(mbl) })); }, [lineQ.data?.mbl]);
+
+  const g = guideQ.data?.guide ?? null;
+  const fileKind = useMemo(() => { const f = files.find((x) => x.kind === 'lineminder'); return f && f.kind === 'lineminder' ? lineKind(null, f.f.job['Wire Type']) : null; }, [files]);
+  const detectedKind = lineQ.data?.kind ?? fileKind;
+  const kind: LineKind = kindPick ?? detectedKind ?? 'wire';
+  const detectedSeason = g ? seasonedFromRuns(lineQ.data?.runs ?? null, g.braided) : null;
+  const seasoned = seasonPick ?? detectedSeason ?? false;
+  const newLineRules = newLine ?? g?.braided.newLine ?? null;
+  const setup: Setup | null = g && newLineRules ? {
+    kind, seasoned, newLine: newLineRules, restrictions: parseRestrictions(restr),
+    limits: { mbs: Number(limits.mbs) || 0, mat: Number(limits.mat) || 0, spang: limits.spang },
+  } : null;
 
   // the analysis window asks for the report when it opens; only this site's own windows are answered
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.origin !== window.location.origin || e.data?.type !== 'slk-winch-ready' || !latest.current) return;
-      (e.source as Window | null)?.postMessage({ type: 'slk-winch', payload: latest.current }, window.location.origin);
+      (e.source as Window | null)?.postMessage({ type: 'slk-winch', payload: { ...latest.current, pick: windowPick.current } }, window.location.origin);
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
@@ -121,137 +156,231 @@ export function WinchDataCard({ job }: { job: Job }) {
     return { ...m, well: m.well || (w?.[1] ?? ''), stage: m.stage || (st?.[1] ?? '') };
   });
 
-  const loadText = (text: string, fileName: string) => {
-    const t = parseTable(text);
-    setTdat(null); setLm(null);
-    setWd({ ...t, fileName });
-    const g = guessMapping(t);
-    setMap(g);
-    // every numeric column is kept for the channel plot unless the user takes it out
-    setKeepCols(t.header.map((_, i) => i).filter((i) => i !== g.time && i !== g.date && !Number.isNaN(num(t.data[0]?.[i]))));
-    setPayload(null);
-    setProblem(t.data.length ? null : `${fileName} has no rows of numbers.`);
-    guessMeta(fileName);
-  };
-  const loadTdat = (buf: ArrayBuffer, fileName: string) => {
-    try {
+  const addFile = (buf: ArrayBuffer, name: string, list: WFile[]): WFile[] | string => {
+    const id = `${name}-${list.length}-${buf.byteLength}`;
+    if (isTdat(buf)) {
       const f = parseTdat(buf);
-      const g = guessChannels(f);
-      setTdat({ f, fileName });
-      setLm({ units: 'imperial', step: 0.5, depth: g.depth, tension: g.tension, speed: g.speed, keep: f.channels.filter((c) => c.status === 'series' && [0, 1, 3].includes(c.type)).map((c) => c.index) });
-      setWd(null); setMap(null); setPayload(null);
-      setProblem(g.depth < 0 || g.tension < 0 ? 'The recording has no depth or no tension channel: pick them below.' : null);
+      if (!lm && !list.some((x) => x.kind === 'lineminder')) {
+        const gc = guessChannels(f);
+        setLm({ units: 'imperial', step: 0.5, depth: gc.depth, tension: gc.tension, speed: gc.speed, keep: f.channels.filter((c) => c.status === 'series' && [0, 1, 3].includes(c.type)).map((c) => c.index) });
+        if (gc.depth < 0 || gc.tension < 0) setProblem('The recording has no depth or no tension channel: pick them below.');
+      }
       const order = f.job['(Job) Order'];
       setMeta((m) => ({ ...m, job: m.job || order || '', cable: m.cable || f.job['Wire Type'] || '' }));
-      guessMeta(fileName);
-    } catch (e) { setProblem((e as Error).message); }
-  };
-  const loadFile = (buf: ArrayBuffer, fileName: string) => {
-    if (isTdat(buf)) { if (format !== 'lineminder') setFormat('lineminder'); loadTdat(buf, fileName); return; }
-    if (format === 'lineminder' && /\.da_tdat$|\.dat$/i.test(fileName) && !/[\t,;]/.test(new TextDecoder().decode(buf.slice(0, 400)))) {
-      setProblem(`${fileName} is not a Lineminder recording (it does not start with DTS / da_tdat). If it is a text export, choose CSV.`); return;
+      setFormat('lineminder');
+      return [...list, { id, name, kind: 'lineminder', f }];
     }
-    if (format === 'lineminder') setFormat('csv');
-    loadText(new TextDecoder().decode(buf), fileName);
+    if (format === 'lineminder' && /\.da_tdat$|\.dat$/i.test(name) && !/[\t,;]/.test(new TextDecoder().decode(buf.slice(0, 400)))) {
+      return `${name} is not a Lineminder recording (it does not start with DTS / da_tdat). If it is a text export, choose CSV.`;
+    }
+    const t = parseTable(new TextDecoder().decode(buf));
+    if (!t.data.length) return `${name} has no rows of numbers.`;
+    if (!list.some((x) => x.kind === 'csv')) {
+      const gm = guessMapping(t);
+      setMap(gm);
+      // every numeric column is kept for the channel plot unless the user takes it out
+      setKeepCols(t.header.map((_, i) => i).filter((i) => i !== gm.time && i !== gm.date && !Number.isNaN(num(t.data[0]?.[i]))));
+    }
+    setFormat('csv');
+    return [...list, { id, name, kind: 'csv', t }];
   };
-  const loadSv = (buf: ArrayBuffer, fileName: string) => { const t = parseTable(new TextDecoder().decode(buf)); setSv({ ...t, fileName }); setSvMap(guessSurveyMapping(t)); };
+  const loadFiles = (picked: { buf: ArrayBuffer; name: string }[]) => {
+    let list = files;
+    const errs: string[] = [];
+    for (const p of picked) {
+      try { const r = addFile(p.buf, p.name, list); if (typeof r === 'string') errs.push(r); else { list = r; guessMeta(p.name); } }
+      catch (e) { errs.push(`${p.name}: ${(e as Error).message}`); }
+    }
+    setFiles(list);
+    setBase(null);
+    setProblem(errs.length ? errs.join(' ') : null);
+  };
+  const removeFile = (id: string) => {
+    const left = files.filter((f) => f.id !== id);
+    setFiles(left);
+    setBase(null);
+    if (!left.some((f) => f.kind === 'lineminder')) setLm(null);
+    if (!left.some((f) => f.kind === 'csv')) setMap(null);
+  };
 
-  const lmBuilt = useMemo(() => (tdat && lm && lm.depth >= 0 && lm.tension >= 0 ? lmTable(tdat.f, lm) : null), [tdat, lm]);
-  const checks = useMemo(() => (tdat ? tdatChecks(tdat.f) : []), [tdat]);
-  const table = format === 'lineminder' ? lmBuilt?.t ?? null : wd;
-  const mapping = format === 'lineminder' ? lmBuilt?.m ?? null : map;
-  const fileName = format === 'lineminder' ? tdat?.fileName ?? '' : wd?.fileName ?? '';
+  // each file's time span, for ordering and the gap check
+  const spans = useMemo<FileSpan[]>(() => files.map((w) => {
+    if (w.kind === 'lineminder') {
+      const n = w.f.times.length;
+      return { id: w.id, name: w.name, format: 'lineminder', signature: signature(w), t0: w.f.start + (n ? w.f.times[0] / 1000 : 0), t1: w.f.start + (n ? w.f.times[n - 1] / 1000 : 0) };
+    }
+    let t0 = NaN, t1 = NaN;
+    if (map && !mappingProblems(w.t, map).length) {
+      const S = buildSamples(w.t, map);
+      if (S.length) { t0 = S[0].t; t1 = S[S.length - 1].t; }
+    }
+    return { id: w.id, name: w.name, format: 'csv', signature: signature(w), t0: Number.isFinite(t0) ? t0 : 0, t1: Number.isFinite(t1) ? t1 : 0 };
+  }), [files, map]);
+  const plan = useMemo(() => joinPlan(spans, answers), [spans, answers]);
+  const used = useMemo(() => plan.use.map((id) => files.find((f) => f.id === id)!).filter(Boolean), [plan, files]);
 
-  const manual = useMemo(() => svMode === 'file'
-    ? sv && svMap ? fileSurvey(sv, svMap, sv.fileName) : null
-    : svMode === 'manual' ? manualSurvey(parseFloat(depths.kop), parseFloat(depths.p30), parseFloat(depths.lat), parseFloat(depths.td)) : null,
-  [svMode, sv, svMap, depths]);
-  const mapProblems = table && mapping ? mappingProblems(table, mapping) : [];
+  const built = useMemo(() => {
+    if (!used.length || plan.problems.length) return null;
+    if (used[0].kind === 'lineminder') {
+      if (!lm || lm.depth < 0 || lm.tension < 0) return null;
+      const parts = used.map((w) => lmTable((w as Extract<WFile, { kind: 'lineminder' }>).f, lm));
+      return { t: joinTables(parts.map((x) => x.t)), m: parts[0].m, cols: parts[0].cols };
+    }
+    if (!map) return null;
+    return { t: joinTables(used.map((w) => (w as Extract<WFile, { kind: 'csv' }>).t)), m: map, cols: keepCols };
+  }, [used, plan.problems.length, lm, map, keepCols]);
+  const firstTdat = files.find((f) => f.kind === 'lineminder') as Extract<WFile, { kind: 'lineminder' }> | undefined;
+  const firstCsv = files.find((f) => f.kind === 'csv') as Extract<WFile, { kind: 'csv' }> | undefined;
+  const checks = useMemo(() => (firstTdat ? tdatChecks(firstTdat.f) : []), [firstTdat]);
+  const mapProblems = firstCsv && map ? mappingProblems(firstCsv.t, map) : [];
 
-  const run = (useSet = set) => {
-    if (!table || !mapping) { setProblem('Add the winch data file first, or try a demo.'); return; }
+  const run = () => {
+    if (!files.length) { setProblem('Add the winch data file first, or try a demo.'); return; }
+    if (plan.problems.length) { setProblem(plan.problems.join('. ') + '.'); return; }
+    if (plan.ask.length) { setProblem('Say whether each file after a gap of more than a day is the same job.'); return; }
     if (mapProblems.length) { setProblem(mapProblems.join('. ') + '.'); return; }
-    if (svMode !== 'vertical' && !manual) { setProblem(svMode === 'file' ? 'The survey file does not give the KOP and the 30° point: check its columns.' : 'Enter the four depths, each deeper than the last (KOP, 30° point, lateral start, TD).'); return; }
-    const S = buildSamples(table, { ...mapping, minDepth: 0 });
+    if (!built) { setProblem('Pick the depth and tension channels.'); return; }
+    if (!g) { setProblem('The guidelines have not loaded yet: try again in a moment.'); return; }
+    const S = buildSamples(built.t, { ...built.m, minDepth: 0 });
     if (S.length < 20) { setProblem('Fewer than 20 usable rows: check which column is which.'); return; }
-    // a recording can hold several runs: each from surface down and back to surface gets its own tab
+    // the files can hold several runs: each from surface down and back to surface gets its own tab
     let runs: Run[] = splitRuns(S);
     if (!runs.length) runs = [{ n: 1, i0: 0, i1: S.length - 1, t0: S[0].t, t1: S[S.length - 1].t, maxD: Math.max(...S.map((s) => s.depth)), partial: true }];
-    const restrictions = parseRestrictions(restr);
-    const reports: RunReport[] = runs.map((r) => {
-      const Sr = S.slice(r.i0, r.i1 + 1);
-      const Sa = Sr.filter((s) => s.depth >= mapping.minDepth);
-      const survey = svMode === 'vertical' ? verticalSurvey(Math.max(r.maxD, parseFloat(depths.td) || 0)) : manual!;
-      return { run: r, a: analyse(Sa.length >= 20 ? Sa : Sr, survey, rules, useSet), speed: sopSpeedFindings(Sr, sop, restrictions), jar: detectJarring(Sr, sop) };
-    });
-    const cols = format === 'lineminder' ? lmBuilt!.cols : keepCols;
-    const source = format === 'lineminder' && tdat ? `Lineminder recording, ${tdat.f.periodMs} ms, read every ${lm!.step} s` : `${table.delim} separated export`;
+    const names = used.map((f) => f.name);
+    const source = used[0].kind === 'lineminder'
+      ? `Lineminder recording${used.length > 1 ? `s (${used.length} joined)` : ''}, read every ${lm!.step} s`
+      : `${built.t.delim} separated export${used.length > 1 ? `s (${used.length} joined)` : ''}`;
+    setBase({ S, runs, channels: channelSeries(built.t, built.m, built.cols), fileName: names.length > 1 ? `${names[0]} + ${names.length - 1} more` : names[0], source, meta: { ...meta }, minDepth: built.m.minDepth });
+    // each run starts with the job's services in order, the last one repeated
+    const js = (job.services ?? []).filter(Boolean);
+    setServices(runs.map((_, i) => js[Math.min(i, js.length - 1)] ?? ''));
     setProblem(null);
-    setPayload({ meta, fileName, reports, channels: channelSeries(table, mapping, cols), restrictions, sop, source });
   };
+
+  const payload = useMemo<WinchPayload | null>(() => {
+    if (!base || !g || !setup) return null;
+    const reports = base.runs.map((r, i) => checkRun(base, r, g, setup, services[i] ?? ''));
+    return {
+      meta: base.meta, fileName: base.fileName, reports, channels: base.channels, restrictions: setup.restrictions, source: base.source,
+      kind: setup.kind, seasoned: setup.seasoned, services: [...new Set([...listedServices(g.wire), ...(job.services ?? [])])],
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, g, services, setup?.kind, setup?.seasoned, setup?.newLine, setup?.limits.mbs, setup?.limits.mat, setup?.limits.spang, restr]);
+  latest.current = payload;
 
   const demoText = () => {
     const d = demoRun();
+    setFiles([]); setLm(null); setMap(null); setAnswers({});
     setFormat('csv');
-    loadText(d.text, d.fileName);
-    setSvMode('manual');
-    setDepths({ kop: String(d.survey.kop), p30: String(d.survey.p30), lat: String(d.survey.lat), td: String(d.survey.td) });
-    setSet('post');
+    setTimeout(() => loadFilesFresh([{ buf: new TextEncoder().encode(d.text).buffer as ArrayBuffer, name: d.fileName }]), 0);
+    setKindPick('braided');
   };
-  const demoLm = () => { const d = demoLineminder(); setFormat('lineminder'); loadTdat(d.buffer, d.fileName); setSvMode('vertical'); setRestr(''); };
+  const loadFilesFresh = (picked: { buf: ArrayBuffer; name: string }[]) => {
+    // the demos start from no files
+    let list: WFile[] = [];
+    for (const p of picked) { const r = addFile(p.buf, p.name, list); if (typeof r !== 'string') list = r; guessMeta(p.name); }
+    setFiles(list); setBase(null); setProblem(null);
+  };
+  const demoLm = () => { setLm(null); setMap(null); setAnswers({}); setKindPick('wire'); setRestr(''); const d = demoLineminder(); setTimeout(() => loadFilesFresh([{ buf: d.buffer, name: d.fileName }]), 0); };
+  const demoPair = () => { setLm(null); setMap(null); setAnswers({}); setKindPick('wire'); setRestr(''); setTimeout(() => loadFilesFresh(demoLineminderPair().map((d) => ({ buf: d.buffer, name: d.fileName }))), 0); };
 
-  const openWindow = () => {
+  const openWindow = (pick: number) => {
+    windowPick.current = pick;
     const w = window.open('/winch-window', 'slk-winch-analysis', 'popup,width=1400,height=900');
     if (!w) setProblem('The browser blocked the new window: allow pop-ups for this site and try again.');
   };
 
   if (payload) {
-    return <RunsView p={payload} onEdit={() => setPayload(null)} onWindow={openWindow} onSet={(s) => { setSet(s); run(s); }} />;
+    return (
+      <div className="space-y-3">
+        {problem && <Banner tone="danger">{problem}</Banner>}
+        <RunsView p={payload} onEdit={() => setBase(null)} onWindow={openWindow}
+          onSeason={(s) => setSeasonPick(s)} onService={(i, sv) => setServices((a) => a.map((x, k) => (k === i ? sv : x)))} />
+      </div>
+    );
   }
 
+  const line = lineQ.data;
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-0 flex-1 text-sm text-text-muted">Add the Lineminder recording or a winch export, the well and the rules. The app finds each run, checks every sample against the guidelines and SOP-04, finds the jarring and shows the plots and findings.</p>
+        <p className="min-w-0 flex-1 text-sm text-text-muted">Add the Lineminder recordings or winch exports for the job. The app joins them, finds each run, and checks it against the Speed and Jarring Guidelines (slickline wire) or the seasoning rules (braided line).</p>
         <Button size="sm" variant="ghost" onClick={demoLm}>Demo recording</Button>
+        <Button size="sm" variant="ghost" onClick={demoPair}>Demo: two recordings</Button>
         <Button size="sm" variant="ghost" onClick={demoText}>Demo export</Button>
       </div>
 
-      <Step n={1} title="Winch data file">
+      <Step n={1} title="Winch data files" note="One or more for the same job">
         <div role="radiogroup" aria-label="File type" className="mb-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
           {([['lineminder', 'Lineminder recording (.da_tdat)'], ['csv', 'CSV or text export (TXT, CSV, TSV, LOG)']] as const).map(([v, l]) => (
             <label key={v} className="flex items-center gap-2"><input type="radio" name="wd-format" checked={format === v} onChange={() => setFormat(v)} />{l}</label>
           ))}
         </div>
         <DropZone id="wd-file" accept={format === 'lineminder' ? '.da_tdat,.dat' : '.txt,.csv,.tsv,.log,.dat,.prn'}
-          label={format === 'lineminder' ? 'Choose the Lineminder recording' : 'Choose the winch export'} onFile={loadFile}
-          status={format === 'lineminder'
-            ? tdat ? `${tdat.fileName} · ${tdatSummary(tdat.f).records.toLocaleString()} records · ${fmt(tdatSummary(tdat.f).minutes)} min from ${tdatSummary(tdat.f).start}` : 'No recording yet'
-            : wd ? `${wd.fileName} · ${wd.data.length.toLocaleString()} rows · ${wd.header.length} columns` : 'No file yet'} />
-        {format === 'csv' && wd && (
+          label={files.length ? 'Add another file' : format === 'lineminder' ? 'Choose the Lineminder recordings' : 'Choose the winch exports'} onFiles={loadFiles}
+          status={files.length ? `${files.length} file${files.length > 1 ? 's' : ''}` : 'No file yet'} />
+        {files.length > 0 && (
+          <ul className="mt-2 divide-y divide-border rounded-md border border-border text-xs" aria-label="Files">
+            {[...spans].sort((a, b) => a.t0 - b.t0).map((sp) => {
+              const w = files.find((f) => f.id === sp.id)!;
+              const ask = plan.ask.find((x) => x.id === sp.id);
+              const out = plan.out.includes(sp.id);
+              const after = ask ? files.find((f) => f.id === ask.after)?.name : null;
+              const gapAns = answers[sp.id];
+              return (
+                <li key={sp.id} className={cx('px-3 py-2', out && 'opacity-60')}>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="min-w-0 font-semibold break-all">{w.name}</span>
+                    <span className="text-text-muted">
+                      {w.kind === 'lineminder' ? `${tdatSummary(w.f).records.toLocaleString()} records` : `${w.t.data.length.toLocaleString()} rows`} · {stamp(sp.t0)} to {stamp(sp.t1)}
+                    </span>
+                    {out && <span className="font-semibold text-warning">Left out: a different job</span>}
+                    {gapAns === 'same' && <span className="text-success">Same job, joined</span>}
+                    <Button size="sm" variant="ghost" className="ml-auto" aria-label={`Remove ${w.name}`} onClick={() => removeFile(sp.id)}><X aria-hidden className="size-3.5" /></Button>
+                  </div>
+                  {(ask || gapAns) && (
+                    <fieldset className="mt-1.5 rounded-sm bg-warning-subtle/50 px-2 py-1.5">
+                      <legend className="sr-only">Same job?</legend>
+                      <p className="mb-1">{ask ? `${gapText(ask.gapSec)} after ${after}. Is this the same job?` : 'More than a day after the file before.'}</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <label className="flex items-center gap-1.5"><input type="radio" name={`gap-${sp.id}`} checked={gapAns === 'same'} onChange={() => { setAnswers((a) => ({ ...a, [sp.id]: 'same' })); setBase(null); }} />Same job: join it and find the runs across the files</label>
+                        <label className="flex items-center gap-1.5"><input type="radio" name={`gap-${sp.id}`} checked={gapAns === 'different'} onChange={() => { setAnswers((a) => ({ ...a, [sp.id]: 'different' })); setBase(null); }} />Different job: leave it out</label>
+                      </div>
+                    </fieldset>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {plan.problems.length > 0 && <div className="mt-2"><Banner tone="danger">These files cannot be joined: {plan.problems.join('. ')}.</Banner></div>}
+        {used.length > 1 && !plan.problems.length && !plan.ask.length && (
+          <p className="mt-2 text-xs text-success" role="status">{used.length} files joined: {stamp(spans.find((s) => s.id === plan.use[0])!.t0)} to {stamp(spans.find((s) => s.id === plan.use[plan.use.length - 1])!.t1)}.</p>
+        )}
+        {firstCsv && (
           <details className="mt-2 text-xs">
-            <summary className="cursor-pointer text-text-muted">First lines of the file ({wd.delim} separated, {wd.hasHeader ? 'with a header row' : 'no header row: columns are numbered'})</summary>
-            <pre className="mt-1 max-h-36 overflow-auto rounded-sm bg-surface-2 p-2 font-mono text-[0.6875rem]">{wd.preview}</pre>
+            <summary className="cursor-pointer text-text-muted">First lines of {firstCsv.name} ({firstCsv.t.delim} separated, {firstCsv.t.hasHeader ? 'with a header row' : 'no header row: columns are numbered'})</summary>
+            <pre className="mt-1 max-h-36 overflow-auto rounded-sm bg-surface-2 p-2 font-mono text-[0.6875rem]">{firstCsv.t.preview}</pre>
           </details>
         )}
       </Step>
 
-      {format === 'lineminder' && tdat && lm && (
+      {firstTdat && lm && (
         <Step n={2} title="Channels and units" note="Units come from each channel's type in the file">
-          <LineminderForm f={tdat.f} o={lm} onChange={(o) => { setLm(o); setPayload(null); }} checks={checks} />
+          <LineminderForm f={firstTdat.f} o={lm} onChange={(o) => { setLm(o); setBase(null); }} checks={checks} />
         </Step>
       )}
-      {format === 'csv' && wd && map && (
+      {firstCsv && map && (
         <Step n={2} title="Columns, units and channels">
-          <MappingForm t={wd} m={map} onChange={(m) => { setMap(m); setPayload(null); }} />
+          <MappingForm t={firstCsv.t} m={map} onChange={(m) => { setMap(m); setBase(null); }} />
           <p className={cx('mt-2 text-xs', mapProblems.length ? 'text-danger' : 'text-success')} role="status">
             {mapProblems.length ? mapProblems.join('. ') + '.'
-              : `Time read as ${TIME_MODES.find((x) => x.value === resolvedTimeMode(wd, map))?.label.toLowerCase()}. First row: depth ${wd.data[0][map.depth]}, tension ${wd.data[0][map.tension]}.`}
+              : `Time read as ${TIME_MODES.find((x) => x.value === resolvedTimeMode(firstCsv.t, map))?.label.toLowerCase()}. First row: depth ${firstCsv.t.data[0][map.depth]}, tension ${firstCsv.t.data[0][map.tension]}.`}
           </p>
           <fieldset className="mt-3">
             <legend className="mb-1 text-xs font-semibold text-text-muted">Channels to keep for the channel plot</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-              {wd.header.map((h, i) => (i === map.time || i === map.date ? null : (
+              {firstCsv.t.header.map((h, i) => (i === map.time || i === map.date ? null : (
                 <label key={i} className="flex items-center gap-1.5">
                   <input type="checkbox" checked={keepCols.includes(i)} onChange={(e) => setKeepCols((s) => (e.target.checked ? [...s, i] : s.filter((x) => x !== i)))} />{h}
                 </label>
@@ -261,51 +390,66 @@ export function WinchDataCard({ job }: { job: Job }) {
         </Step>
       )}
 
-      <Step n={3} title="Well" note="Vertical, or the zones of a deviated well">
-        <div role="radiogroup" aria-label="Where the zones come from" className="mb-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-          {([['vertical', 'Vertical well'], ['manual', 'Deviated: enter the four depths'], ['file', 'Deviated: load a directional survey']] as const).map(([v, l]) => (
-            <label key={v} className="flex items-center gap-2"><input type="radio" name="sv-mode" checked={svMode === v} onChange={() => setSvMode(v)} />{l}</label>
-          ))}
-        </div>
-        {svMode === 'manual' && (
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {([['kop', 'KOP'], ['p30', '30° point'], ['lat', 'Lateral start (≈89°)'], ['td', 'TD']] as const).map(([k, l]) => (
-              <Field key={k} id={`sv-${k}`} label={l} unit="ft MD">
-                <input id={`sv-${k}`} className={cx(inputClass, 'pr-14')} type="number" inputMode="decimal" min={0} value={depths[k]}
-                  onChange={(e) => setDepths((d) => ({ ...d, [k]: e.target.value }))} />
-              </Field>
-            ))}
+      <Step n={3} title="Line and job limits">
+        <div className="space-y-3">
+          <div>
+            <div role="radiogroup" aria-label="Line" className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+              {(['wire', 'braided'] as const).map((k) => (
+                <label key={k} className="flex items-center gap-2"><input type="radio" name="wd-kind" checked={kind === k} onChange={() => { setKindPick(k); setBase(null); }} />{LINE_LABEL[k]}</label>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-text-subtle">
+              {lineQ.isLoading ? 'Reading the job\'s wire…'
+                : line?.serial ? `Job wire ${line.serial}${line.grade ? `, ${line.grade}` : ''}${line.size ? `, ${line.size} in` : ''}: ${line.kind ? `${LINE_LABEL[line.kind].toLowerCase()} (found from the size)` : 'size not known'}.`
+                  : fileKind ? `From the recording: ${LINE_LABEL[fileKind].toLowerCase()}.` : 'No wire on the job: pick the line.'}
+              {detectedKind && kindPick && kindPick !== detectedKind && ' You picked a different line.'}
+            </p>
           </div>
-        )}
-        {svMode === 'file' && (
-          <>
-            <DropZone id="sv-file" accept=".txt,.csv,.tsv,.las,.dat" label="Choose the survey file" onFile={loadSv}
-              status={sv ? `${sv.fileName} · ${sv.data.length} stations` : 'No survey yet'} />
-            {sv && svMap && <SurveyForm t={sv} m={svMap} onChange={setSvMap} />}
-          </>
-        )}
-        {svMode !== 'vertical' && (
-          <p className={cx('mt-2 text-xs', manual ? 'text-success' : 'text-text-subtle')} role="status">
-            {manual ? `KOP ${fmt(manual.kop)} ft · 30° ${fmt(manual.p30)} ft · lateral ${fmt(manual.lat)} ft · TD ${fmt(manual.td)} ft`
-              : svMode === 'file' && sv ? 'The KOP and the 30° point could not be found from these columns.' : 'Each depth must be deeper than the one before.'}
-          </p>
-        )}
-        <Field id="wd-restr" label="Restrictions" hint="Depth in ft and what it is, e.g. 650 SSSV, 7450 X nipple. Speed is checked 100 ft either side.">
-          <input id="wd-restr" className={inputClass} value={restr} onChange={(e) => setRestr(e.target.value)} placeholder="650 SSSV, 7450 X nipple" />
-        </Field>
+          {kind === 'braided' && g && (
+            <div className="space-y-2 rounded-md border border-border p-3">
+              <div role="radiogroup" aria-label="Line condition" className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                <label className="flex items-center gap-2"><input type="radio" name="wd-season" checked={!seasoned} onChange={() => setSeasonPick(false)} />{seasonLabel(false)}</label>
+                <label className="flex items-center gap-2"><input type="radio" name="wd-season" checked={seasoned} onChange={() => setSeasonPick(true)} />Seasoned line ({g.braided.seasonedRuns} runs or more)</label>
+              </div>
+              <p className="text-xs text-text-subtle">{line?.runs != null ? `${line.runs} run${line.runs === 1 ? '' : 's'} on this line in WIREGUARD up to the job: ${detectedSeason ? 'seasoned' : 'new line'}.` : 'The run count on this line is not known: pick.'}</p>
+              {!seasoned && newLineRules && (
+                <details open={!!newLine}>
+                  <summary className="cursor-pointer text-sm font-semibold">Speeds for this new line</summary>
+                  <p className="mt-1 text-xs text-text-subtle">Start from the guideline values; changes are used for this check only.</p>
+                  <RuleFields R={newLineRules} only={['nearSurface', 'maxPooh'] as RuleKey[]} onChange={(key, f, v, tier) => {
+                    const next = structuredClone(newLineRules);
+                    if (tier) next.nearSurface.tiers[tier[0]][tier[1]] = v; else (next[key] as unknown as Record<string, number>)[f] = v;
+                    setNewLine(next);
+                  }} />
+                  {newLine && <Button size="sm" variant="ghost" onClick={() => setNewLine(null)}>Back to the guideline speeds</Button>}
+                </details>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Field id="wd-mbs" label="Wire breaking strength" unit="lbs" hint={line?.mbl ? 'From WIREGUARD' : '0 or empty: not known'}>
+              <input id="wd-mbs" className={cx(inputClass, 'pr-12')} type="number" min={0} value={limits.mbs} onChange={(e) => setLimits((l) => ({ ...l, mbs: e.target.value }))} />
+            </Field>
+            <Field id="wd-mat" label="MAT (if set)" unit="lbs" hint="Wins over the % of the breaking strength">
+              <input id="wd-mat" className={cx(inputClass, 'pr-12')} type="number" min={0} value={limits.mat} onChange={(e) => setLimits((l) => ({ ...l, mat: e.target.value }))} />
+            </Field>
+            <div className="col-span-2 flex items-end pb-2">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={limits.spang} onChange={(e) => setLimits((l) => ({ ...l, spang: e.target.checked }))} />Spang jars in the string</label>
+            </div>
+          </div>
+          <Field id="wd-restr" label="Restrictions" hint="Depth in ft and what it is, e.g. 650 SSSV, 7450 X nipple. Speed is checked 100 ft either side.">
+            <input id="wd-restr" className={inputClass} value={restr} onChange={(e) => setRestr(e.target.value)} placeholder="650 SSSV, 7450 X nipple" />
+          </Field>
+        </div>
       </Step>
 
-      <Step n={4} title="SOP-04 speed and jarring">
-        <SopEditor sop={sop} onChange={(s) => { setSop(s); storeSop(s); setPayload(null); }} />
+      <Step n={4} title={kind === 'wire' ? 'Speed and Jarring Guidelines' : 'Seasoning rules'} note={kind === 'wire' ? 'Each run takes the speeds for its service' : 'New or seasoned line'}>
+        {guideQ.data ? <GuidePanel kind={kind} data={guideQ.data} /> : guideQ.isError ? <Banner tone="danger">The guidelines could not be read.</Banner> : <Skeleton className="h-32" />}
       </Step>
 
-      <Step n={5} title="Guidelines" note="Cable rules by well zone">
-        <RulesEditor rules={rules} set={set} onSet={setSet} onChange={(r) => { setRules(r); storeRules(r); }} />
-      </Step>
-
-      <Step n={6} title="Run details" note="For the heading and the printout only">
+      <Step n={5} title="Run details" note="For the heading and the printout only">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          {([['job', 'Job or pad'], ['well', 'Well'], ['stage', 'Stage'], ['unit', 'Unit'], ['cable', 'Cable'], ['date', 'Run date'], ['by', 'Checked by']] as const).map(([k, l]) => (
+          {([['job', 'Job or pad'], ['well', 'Well'], ['stage', 'Stage'], ['unit', 'Unit'], ['cable', 'Line'], ['date', 'Run date'], ['by', 'Checked by']] as const).map(([k, l]) => (
             <Field key={k} id={`wd-${k}`} label={l}>
               <input id={`wd-${k}`} className={inputClass} type={k === 'date' ? 'date' : 'text'} value={meta[k]} onChange={(e) => setMeta((m) => ({ ...m, [k]: e.target.value }))} />
             </Field>
@@ -315,7 +459,7 @@ export function WinchDataCard({ job }: { job: Job }) {
 
       {problem && <Banner tone="danger">{problem}</Banner>}
       <div className="flex justify-end">
-        <Button variant="primary" onClick={() => run()}>Find the runs and check them</Button>
+        <Button variant="primary" onClick={run}>Find the runs and check them</Button>
       </div>
     </div>
   );
@@ -389,55 +533,6 @@ function LineminderForm({ f, o, onChange, checks }: { f: Tdat; o: LmOpts; onChan
   );
 }
 
-/** The SOP-04 limits, kept on this device, with the Knowledge Hub documents they come from. */
-function SopEditor({ sop, onChange }: { sop: SopRules; onChange: (s: SopRules) => void }) {
-  const lib = useQuery({ queryKey: ['knowledge'], queryFn: () => api<{ docs: KnowledgeDoc[] }>('/knowledge'), retry: false, staleTime: 5 * 60_000 });
-  const docs = (lib.data?.docs ?? []).filter((d) => /sop-?0?4\b|winch operation|jarring|speed guideline/i.test(`${d.doc_no ?? ''} ${d.title}`));
-  const num = (k: keyof SopRules, label: string, unit: string, hint?: string) => (
-    <Field id={`sop-${k}`} label={label} unit={unit} hint={hint}>
-      <input id={`sop-${k}`} className={cx(inputClass, 'pr-14')} type="number" min={0} value={sop[k] as number} onChange={(e) => onChange({ ...sop, [k]: Number(e.target.value) || 0 })} />
-    </Field>
-  );
-  const det = (k: keyof SopRules['detect'], label: string, unit: string) => (
-    <span className="flex items-center gap-1 text-xs text-text-muted">{label}
-      <input aria-label={`${label} (${unit})`} className={inputSized(`w-20 ${small}`)} type="number" min={0} value={sop.detect[k]} onChange={(e) => onChange({ ...sop, detect: { ...sop.detect, [k]: Number(e.target.value) || 0 } })} />{unit}
-    </span>
-  );
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-text-subtle">
-        From NESR-8000-SOP-04 Winch Operations: 6.2 Wire speed guidelines and 8.3 Wire cycling and jarring. Set the BHA speeds from the Speed Guidelines and the wire breaking strength or MAT for the job. Kept on this device.
-        {docs.length > 0 && <> Documents: {docs.map((d, i) => (
-          <span key={d.id}>{i > 0 && ' · '}{d.file ? <a className="font-semibold text-accent-text underline" href={fileUrl(d.id, d.file, d.file.content_type === 'application/pdf')} target="_blank" rel="noreferrer"><BookOpen aria-hidden className="mr-0.5 inline size-3" />{d.doc_no ? `${d.doc_no} ` : ''}{d.title}</a> : d.title}</span>
-        ))}</>}
-      </p>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {num('surfaceDepth', 'Near surface: shallower than', 'ft')}{num('surfaceSpeed', 'Near surface: max speed', 'fpm')}
-        {num('restrictionBand', 'Restriction: within', 'ft')}{num('restrictionSpeed', 'Restriction: max speed', 'fpm')}
-        {num('maxRih', 'BHA: max RIH speed', 'fpm', '0: not checked')}{num('maxPooh', 'BHA: max POOH speed', 'fpm', '0: not checked')}
-      </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {num('mbs', 'Wire breaking strength', 'lbs', '0: not known')}{num('matPct', 'Jar up at most', '% MBS')}
-        {num('mat', 'MAT (if set)', 'lbs', 'Wins over the % when set')}{num('jarDownLossPct', 'Jar down: lose at most', '%')}
-        {num('cycleMin', 'Cycle at most', 'min')}{num('restMin', 'Rest at least', 'min')}{num('maxCycles', 'Cycles at one place', 'max')}
-        <div className="flex flex-col justify-end gap-1">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sop.spang} onChange={(e) => onChange({ ...sop, spang: e.target.checked })} />Spang jars in the string</label>
-          {sop.spang && <span className="flex items-center gap-1 text-xs text-text-muted">limit <input aria-label="Spang jar limit (lbs)" className={inputSized(`w-24 ${small}`)} type="number" value={sop.spangLimit} onChange={(e) => onChange({ ...sop, spangLimit: Number(e.target.value) || 0 })} /> lbs</span>}
-        </div>
-      </div>
-      <details>
-        <summary className="cursor-pointer text-sm font-semibold">How jarring and speed findings are found</summary>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-          {det('stationaryFt', 'Held in place: within', 'ft')}{det('windowSec', 'over', 's')}{det('upMinLb', 'Jar up: over normal by', 'lbs')}{det('upPct', 'or', '%')}
-          {det('downPct', 'Jar down: under normal by', '%')}{det('gapSec', 'One cycle: hits within', 's')}{det('minSec', 'Speed: lasting', 's')}{det('mergeSec', 'merged within', 's')}
-        </div>
-      </details>
-      <Button size="sm" variant="ghost" onClick={() => onChange(structuredClone(SOP_DEFAULTS))}><RotateCcw aria-hidden className="size-3.5" />Restore SOP-04 defaults</Button>
-    </div>
-  );
-}
-
-
 function Step({ n, title, note, children }: { n: number; title: string; note?: string; children: ReactNode }) {
   return (
     <section>
@@ -447,18 +542,21 @@ function Step({ n, title, note, children }: { n: number; title: string; note?: s
   );
 }
 
-function DropZone({ id, accept, label, status, onFile }: { id: string; accept: string; label: string; status: string; onFile: (buf: ArrayBuffer, name: string) => void }) {
+function DropZone({ id, accept, label, status, onFiles }: { id: string; accept: string; label: string; status: string; onFiles: (f: { buf: ArrayBuffer; name: string }[]) => void }) {
   const [over, setOver] = useState(false);
-  const take = (f: File | undefined) => { if (f) f.arrayBuffer().then((b) => onFile(b, f.name)); };
-  const drop = (e: DragEvent) => { e.preventDefault(); setOver(false); take(e.dataTransfer.files[0]); };
+  const take = (list: FileList | null | undefined) => {
+    const fs = [...(list ?? [])];
+    if (fs.length) Promise.all(fs.map((f) => f.arrayBuffer().then((buf) => ({ buf, name: f.name })))).then(onFiles);
+  };
+  const drop = (e: DragEvent) => { e.preventDefault(); setOver(false); take(e.dataTransfer.files); };
   return (
     <div onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={drop}
       className={cx('flex flex-wrap items-center gap-3 rounded-md border-2 border-dashed px-3 py-3', over ? 'border-accent bg-accent/10' : 'border-border-strong bg-surface-2')}>
       <label htmlFor={id} className="inline-flex h-(--layout-control-sm) cursor-pointer items-center gap-1.5 rounded-sm border border-border-strong bg-surface px-3 text-sm font-semibold hover:bg-surface-3 focus-within:outline-2 focus-within:outline-focus">
         <Upload aria-hidden className="size-3.5" />{label}
-        <input id={id} type="file" accept={accept} className="sr-only" onChange={(e) => { take(e.target.files?.[0]); e.target.value = ''; }} />
+        <input id={id} type="file" multiple accept={accept} className="sr-only" onChange={(e) => { take(e.target.files); e.target.value = ''; }} />
       </label>
-      <span className="min-w-0 text-xs break-all text-text-muted">{status} <span className="text-text-subtle">· or drop it here</span></span>
+      <span className="min-w-0 text-xs break-all text-text-muted">{status} <span className="text-text-subtle">· or drop them here</span></span>
     </div>
   );
 }
@@ -506,84 +604,6 @@ function MappingForm({ t, m, onChange }: { t: Table; m: Mapping; onChange: (m: M
       <Field id="wd-mind" label="Skip rows shallower than" unit="ft">
         <input id="wd-mind" className={cx(inputClass, 'pr-10')} type="number" min={0} value={m.minDepth} onChange={(e) => set('minDepth', Number(e.target.value) || 0)} />
       </Field>
-    </div>
-  );
-}
-
-function SurveyForm({ t, m, onChange }: { t: Table; m: SurveyMapping; onChange: (m: SurveyMapping) => void }) {
-  const set = <K extends keyof SurveyMapping>(k: K, v: SurveyMapping[K]) => onChange({ ...m, [k]: v });
-  return (
-    <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3">
-      <ColSelect id="sv-c-md" label="MD column" t={t} value={m.md} onChange={(v) => set('md', v)} />
-      <ColSelect id="sv-c-inc" label="Inclination column (°)" t={t} value={m.inc} onChange={(v) => set('inc', v)} />
-      <ColSelect id="sv-c-tvd" label="TVD column" t={t} value={m.tvd} none onChange={(v) => set('tvd', v)} />
-      <Pick id="sv-unit" label="Survey depth unit" value={m.unit} options={opts(UNIT_DEPTH)} onChange={(v) => set('unit', v)} />
-      <Field id="sv-kopinc" label="KOP at first inclination of" unit="°">
-        <input id="sv-kopinc" className={inputClass} type="number" value={m.kopInc} onChange={(e) => set('kopInc', Number(e.target.value))} />
-      </Field>
-      <Field id="sv-latinc" label="Lateral at first inclination of" unit="°">
-        <input id="sv-latinc" className={inputClass} type="number" value={m.latInc} onChange={(e) => set('latInc', Number(e.target.value))} />
-      </Field>
-    </div>
-  );
-}
-
-function RulesEditor({ rules, set, onSet, onChange }: { rules: Rules; set: RuleSetKey; onSet: (s: RuleSetKey) => void; onChange: (r: Rules) => void }) {
-  const [note, setNote] = useState<string | null>(null);
-  const R = rules[set];
-  const edit = (key: RuleKey, f: string, v: number, tier?: [number, number]) => {
-    const next = structuredClone(rules);
-    if (tier) next[set].nearSurface.tiers[tier[0]][tier[1]] = v;
-    else (next[set][key] as Record<string, number>)[f] = v;
-    onChange(next);
-  };
-  const loadFile = (text: string) => {
-    try { const r = checkRules(JSON.parse(text)); if (r) { onChange(r); setNote('Rules loaded.'); } else setNote('That file is not a rules file: it needs both rule sets.'); }
-    catch { setNote('That file is not valid JSON.'); }
-  };
-  return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-end gap-3">
-        <div className="w-full sm:w-72">
-          <Pick<RuleSetKey> id="wd-set" label="Rule set" value={set} options={opts(RULE_SET_LABEL, RULE_SET_LABEL)} onChange={onSet} />
-        </div>
-        <Button size="sm" variant="ghost" onClick={() => { const n = structuredClone(rules); n[set] = structuredClone(RULE_DEFAULTS[set]); onChange(n); setNote(`Defaults restored for ${R.name}.`); }}>
-          <RotateCcw aria-hidden className="size-3.5" />Restore defaults</Button>
-        <Button size="sm" variant="ghost" onClick={() => saveFile('winch-rules.json', JSON.stringify(rules, null, 2), 'application/json')}><FileDown aria-hidden className="size-3.5" />Save rules file</Button>
-        <label className="inline-flex h-(--layout-control-sm) cursor-pointer items-center gap-1.5 rounded-sm px-3 text-sm font-semibold text-text-muted hover:text-text focus-within:outline-2 focus-within:outline-focus">
-          <FileUp aria-hidden className="size-3.5" />Load rules file
-          <input type="file" accept=".json" className="sr-only" onChange={(e) => { e.target.files?.[0]?.text().then(loadFile); e.target.value = ''; }} />
-        </label>
-      </div>
-      <p className="mb-2 text-xs text-text-subtle">Every limit can be changed and is kept on this device. The seasoning set has placeholder values: set them from your seasoning procedure before use.</p>
-      {note && <p role="status" className="mb-2 text-xs text-success">{note}</p>}
-      <details>
-        <summary className="cursor-pointer text-sm font-semibold">Limits for {R.name}</summary>
-        <ul className="mt-2 divide-y divide-border">
-          {RULE_FIELDS.map((rf) => (
-            <li key={rf.key} className="grid gap-2 py-2 md:grid-cols-[12rem_1fr]">
-              <div><p className="text-sm font-semibold">{rf.label}</p><p className="text-xs text-text-subtle">{ruleText(R, rf.key)}</p></div>
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                {rf.fields === 'tiers'
-                  ? R.nearSurface.tiers.map(([d, v], i) => (
-                    <span key={i} className="flex items-center gap-1 text-xs text-text-muted">
-                      within <input aria-label={`Tier ${i + 1} depth (ft)`} className={inputSized(`w-20 ${small}`)} type="number" value={d} onChange={(e) => edit('nearSurface', '', Number(e.target.value), [i, 0])} /> ft:
-                      <input aria-label={`Tier ${i + 1} max speed (fpm)`} className={inputSized(`w-20 ${small}`)} type="number" value={v} onChange={(e) => edit('nearSurface', '', Number(e.target.value), [i, 1])} /> fpm
-                    </span>
-                  ))
-                  : rf.fields.map((f) => (
-                    <span key={f.f} className="flex items-center gap-1 text-xs text-text-muted">
-                      {f.label}
-                      <input aria-label={`${rf.label}: ${f.label} (${f.unit})`} className={inputSized(`w-24 ${small}`)} type="number"
-                        value={(R[rf.key] as unknown as Record<string, number>)[f.f]} onChange={(e) => edit(rf.key, f.f, Number(e.target.value))} />
-                      {f.unit}
-                    </span>
-                  ))}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </details>
     </div>
   );
 }

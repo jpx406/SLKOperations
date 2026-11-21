@@ -1,44 +1,70 @@
 import { ExternalLink, FileDown, Pencil, Printer } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
-import {
-  CHECK_KEYS, RULE_META, RULE_SET_LABEL, dur, findingsCsv, fmt, hm, hms, limitCurves, median, ruleText, whereText,
-  type Analysis, type RuleSetKey, type Sample,
-} from '../../../shared/winchData';
+import { dur, findingsCsv, fmt, hm, hms, limitCurves, median, type Analysis, type Sample } from '../../../shared/winchData';
 import { SOP_LABEL, SOP_SOURCE, jarUpLimit, sopCsv, type Jarring, type Restriction, type Run, type SopFinding, type SopRuleKey, type SopRules } from '../../../shared/winchRuns';
+import { BRAIDED_CHECKS, BRAIDED_LABEL, LINE_LABEL, braidedText, staticAt, type LineKind } from '../../../shared/winchGuide';
 import { printOnly, saveFile } from '../../components/charts';
 import { Button, cx, inputSized } from '../../components/ui';
 
 // The winch report (6z.26), moved here in 6z.41 so the run tabs and the analysis window share it. 6z.41 adds a tab per
 // run (a recording can hold a whole job), the SOP-04 speed and jarring checks, and a plot of any recorded channel.
+// 6z.42: wire runs are checked against the Speed Guidelines for their service (the default speeds are flagged) and the
+// tension against static; braided-line runs against the seasoning rules (new or seasoned line) with no horizontal rules.
 
 export type Meta = { job: string; well: string; stage: string; unit: string; cable: string; date: string; by: string };
-/** One run: the guidelines analysis, the SOP-04 speed findings and the jarring. */
-export interface RunReport { run: Run; a: Analysis; speed: SopFinding[]; jar: Jarring }
+/**
+ * One run: the trip analysis (with the seasoning findings on braided line), the speed and tension findings, the
+ * jarring, the rules it was checked with and, on wire, its service and the static tension against depth.
+ */
+export interface RunReport {
+  run: Run; a: Analysis; speed: SopFinding[]; jar: Jarring; sop: SopRules;
+  service: string; group: string | null; isDefault: boolean;
+  stat: { step: number; v: (number | null)[] } | null;
+}
 /** A recorded channel against time, for the channel plot. */
 export interface ChannelSeries { name: string; unit: string; t: number[]; v: number[] }
 /** Everything the report needs: sent as is to the analysis window. */
-export interface WinchPayload { meta: Meta; fileName: string; reports: RunReport[]; channels: ChannelSeries[]; restrictions: Restriction[]; sop: SopRules; source: string }
+export interface WinchPayload {
+  meta: Meta; fileName: string; reports: RunReport[]; channels: ChannelSeries[]; restrictions: Restriction[]; source: string;
+  kind: LineKind;
+  /** Braided line: seasoned (true) or new line (false). */
+  seasoned: boolean;
+  /** The services a wire run can be set to. */
+  services: string[];
+  /** The run shown first. */
+  pick?: number;
+}
 
 const small = 'h-(--layout-control-sm) text-sm';
 type View = 'time' | 'depth' | 'findings' | 'sop' | 'channels';
 
 const runLabel = (r: Run) => `Run ${r.n}`;
-const runSpan = (r: RunReport) => `${fmt(r.run.maxD)} ft · ${hm(r.run.t0)}–${hm(r.run.t1)}`;
+// runs from joined files can fall on different days: then each start shows its date (6z.42)
+const dayOf = (t: number) => Math.floor(t / 86400);
+const dayText = (t: number) => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const runTime = (r: Run, days: boolean) => `${days ? `${dayText(r.t0)} ` : ''}${hm(r.t0)}–${dayOf(r.t1) !== dayOf(r.t0) ? `${dayText(r.t1)} ` : ''}${hm(r.t1)}`;
+const runSpan = (r: RunReport, days: boolean) => `${fmt(r.run.maxD)} ft · ${runTime(r.run, days)}`;
 const flagsOf = (r: RunReport) => r.a.viol.length + r.speed.length + r.jar.findings.length;
+export const seasonLabel = (seasoned: boolean) => (seasoned ? 'Seasoned line' : 'New line (seasoning)');
 
 /** The whole report: a tab per run, each with the same views. */
-export function RunsView({ p, wide, onEdit, onWindow, onSet }: { p: WinchPayload; wide?: boolean; onEdit?: () => void; onWindow?: () => void; onSet?: (s: RuleSetKey) => void }) {
-  const [pick, setPick] = useState(0);
+export function RunsView({ p, wide, onEdit, onWindow, onSeason, onService }: {
+  p: WinchPayload; wide?: boolean; onEdit?: () => void; onWindow?: (pick: number) => void;
+  onSeason?: (seasoned: boolean) => void; onService?: (run: number, service: string) => void;
+}) {
+  const [pick, setPick] = useState(() => Math.min(p.pick ?? 0, Math.max(0, p.reports.length - 1)));
   const [view, setView] = useState<View>('time');
   const box = useRef<HTMLDivElement>(null);
   const { meta, reports } = p;
   const r = reports[Math.min(pick, reports.length - 1)];
+  const days = new Set(reports.flatMap((x) => [dayOf(x.run.t0), dayOf(x.run.t1)])).size > 1;
   const date = meta.date ? new Date(`${meta.date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
-  const sub = [meta.job, date, meta.cable && `cable ${meta.cable}`, p.fileName, meta.by && `checked by ${meta.by}`].filter(Boolean).join(' · ');
+  const sub = [meta.job, date, LINE_LABEL[p.kind] + (p.kind === 'braided' ? `, ${seasonLabel(p.seasoned).toLowerCase()}` : ''), meta.cable && `line ${meta.cable}`, p.fileName, meta.by && `checked by ${meta.by}`].filter(Boolean).join(' · ');
   const csv = () => {
     const guide = reports.map((x) => findingsCsv(x.a).split('\n').map((l, i) => (i === 0 ? `Run,${l}` : `${x.run.n},${l}`))).flatMap((rows, i) => (i === 0 ? rows : rows.slice(1))).join('\n');
     const sop = sopCsv(reports.map((x) => ({ n: x.run.n, findings: [...x.speed, ...x.jar.findings] })), hms);
-    saveFile(`winch-findings${meta.well ? `-w${meta.well}` : ''}.csv`, `${guide}\n\nSOP-04 and jarring\n${sop}`, 'text/csv');
+    const services = p.kind === 'wire' ? `Run,Service,Speed row\n${reports.map((x) => `${x.run.n},"${x.service || 'not set'}","${x.group ?? 'not listed: default speeds used'}"`).join('\n')}\n\n` : '';
+    saveFile(`winch-findings${meta.well ? `-w${meta.well}` : ''}.csv`, `${services}${p.kind === 'braided' ? `Seasoning rules\n${guide}\n\n` : ''}Speed, tension and jarring\n${sop}`, 'text/csv');
   };
   return (
     <div ref={box} className="space-y-4">
@@ -49,7 +75,7 @@ export function RunsView({ p, wide, onEdit, onWindow, onSet }: { p: WinchPayload
         </div>
         <div className="flex flex-wrap gap-1 print:hidden">
           {onEdit && <Button size="sm" variant="ghost" onClick={onEdit}><Pencil aria-hidden className="size-3.5" />Change inputs</Button>}
-          {onWindow && <Button size="sm" variant="ghost" onClick={onWindow}><ExternalLink aria-hidden className="size-3.5" />Open in a new window</Button>}
+          {onWindow && <Button size="sm" variant="ghost" onClick={() => onWindow(pick)}><ExternalLink aria-hidden className="size-3.5" />Open in a new window</Button>}
           <Button size="sm" variant="ghost" onClick={csv}><FileDown aria-hidden className="size-3.5" />Findings CSV</Button>
           <Button size="sm" variant="ghost" onClick={() => printOnly(box.current)}><Printer aria-hidden className="size-3.5" />Print</Button>
         </div>
@@ -59,13 +85,15 @@ export function RunsView({ p, wide, onEdit, onWindow, onSet }: { p: WinchPayload
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full min-w-[34rem] text-xs">
             <caption className="sr-only">Runs in this recording</caption>
-            <thead><tr>{['Run', 'Time', 'Max depth', 'Guidelines', 'SOP-04 speed', 'Jarring cycles', 'Jarring flags'].map((h) => <th key={h} scope="col" className={cx(th, 'px-3')}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Run', 'Time', 'Max depth', p.kind === 'wire' ? 'Service' : 'Seasoning rules', 'Speed and tension', 'Jarring cycles', 'Jarring flags'].map((h) => <th key={h} scope="col" className={cx(th, 'px-3')}>{h}</th>)}</tr></thead>
             <tbody>{reports.map((x, i) => (
               <tr key={x.run.n} className={cx('cursor-pointer border-t border-border hover:bg-surface-2', i === pick && 'bg-surface-2')} onClick={() => setPick(i)}>
                 <td className={cx(td, 'px-3 font-semibold')}>{runLabel(x.run)}{x.run.partial && <span className="ml-1 font-normal text-text-subtle">(partial)</span>}</td>
-                <td className={cx(td, 'px-3 font-mono')}>{hm(x.run.t0)}–{hm(x.run.t1)}</td>
+                <td className={cx(td, 'px-3 font-mono')}>{runTime(x.run, days)}</td>
                 <td className={cx(td, 'px-3 font-mono')}>{fmt(x.run.maxD)} ft</td>
-                <td className={cx(td, 'px-3')}><Pill tone={x.a.viol.length ? 'danger' : 'success'}>{x.a.viol.length || '✓'}</Pill></td>
+                <td className={cx(td, 'px-3')}>{p.kind === 'wire'
+                  ? <>{x.service || 'Not set'}{x.isDefault && <span className="ml-1"><Pill tone="warning">default speeds</Pill></span>}</>
+                  : <Pill tone={x.a.viol.length ? 'danger' : 'success'}>{x.a.viol.length || '✓'}</Pill>}</td>
                 <td className={cx(td, 'px-3')}><Pill tone={x.speed.length ? 'danger' : 'success'}>{x.speed.length || '✓'}</Pill></td>
                 <td className={cx(td, 'px-3 font-mono')}>{x.jar.cycles.length || '—'}</td>
                 <td className={cx(td, 'px-3')}><Pill tone={x.jar.findings.length ? 'danger' : 'success'}>{x.jar.findings.length || '✓'}</Pill></td>
@@ -75,102 +103,139 @@ export function RunsView({ p, wide, onEdit, onWindow, onSet }: { p: WinchPayload
         </div>
       )}
 
+      {reports.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm print:hidden">
+          <label htmlFor="wd-run-pick" className="font-semibold">Run</label>
+          <select id="wd-run-pick" className={inputSized(`w-auto max-w-full ${small}`)} value={pick} onChange={(e) => setPick(Number(e.target.value))}>
+            {reports.map((x, i) => <option key={x.run.n} value={i}>{runLabel(x.run)} · {runSpan(x, days)}{flagsOf(x) ? ` · ${flagsOf(x)} flags` : ''}</option>)}
+          </select>
+          <Button size="sm" variant="ghost" disabled={pick === 0} onClick={() => setPick(pick - 1)}>Previous</Button>
+          <Button size="sm" variant="ghost" disabled={pick >= reports.length - 1} onClick={() => setPick(pick + 1)}>Next</Button>
+        </div>
+      )}
+
       <div role="tablist" aria-label="Runs" className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border print:hidden">
         {reports.map((x, i) => (
           <button key={x.run.n} type="button" role="tab" aria-selected={i === pick} onClick={() => setPick(i)}
             className={cx('-mb-px shrink-0 rounded-t-sm border border-b-0 px-3 py-1.5 text-left text-sm', i === pick ? 'border-border bg-surface font-semibold' : 'border-transparent text-text-muted hover:text-text')}>
-            {runLabel(x.run)} {flagsOf(x) > 0 && <Pill tone="danger">{flagsOf(x)}</Pill>}
-            <span className="block text-xs font-normal text-text-subtle">{runSpan(x)}</span>
+            {runLabel(x.run)} {flagsOf(x) > 0 && <Pill tone="danger">{flagsOf(x)}</Pill>}{p.kind === 'wire' && x.isDefault && <span className="ml-1"><Pill tone="warning">default</Pill></span>}
+            <span className="block text-xs font-normal text-text-subtle">{runSpan(x, days)}</span>
           </button>
         ))}
       </div>
 
-      <RunPanel key={r.run.n} r={r} p={p} view={view} setView={setView} wide={wide} onSet={onSet} />
+      <RunPanel key={r.run.n} r={r} p={p} view={view} setView={setView} wide={wide} onSeason={onSeason} onService={onService && ((sv) => onService(pick, sv))} />
     </div>
   );
 }
 
-/** One run's report: tiles, then the time, depth, findings, SOP-04 and channel views. */
-function RunPanel({ r, p, view, setView, wide, onSet }: { r: RunReport; p: WinchPayload; view: View; setView: (v: View) => void; wide?: boolean; onSet?: (s: RuleSetKey) => void }) {
+/** One run's report: tiles, then the time, depth, rules and channel views. */
+function RunPanel({ r, p, view, setView, wide, onSeason, onService }: {
+  r: RunReport; p: WinchPayload; view: View; setView: (v: View) => void; wide?: boolean;
+  onSeason?: (seasoned: boolean) => void; onService?: (service: string) => void;
+}) {
   const { a } = r;
   const { kpi } = a;
+  const wire = p.kind === 'wire';
   const sopN = r.speed.length + r.jar.findings.length;
   const tiles: [string, string, boolean?][] = [
     [`${fmt(kpi.maxD)} ft`, 'Max depth'], [dur(kpi.rihSec), 'RIH, surface to bottom'], [dur(kpi.bottomSec), 'At bottom'], [dur(kpi.poohSec), 'POOH to surface'],
     [`${fmt(kpi.avgRih)} fpm`, 'Avg RIH speed'], [`${fmt(kpi.avgPooh)} fpm`, 'Avg POOH speed'], [`${fmt(kpi.maxT)} lbs`, 'Max tension'],
-    [String(kpi.nViol), 'Guideline violations', kpi.nViol > 0], [String(r.jar.cycles.length), 'Jarring cycles'], [String(sopN), 'SOP-04 flags', sopN > 0],
+    wire ? [`${fmt(r.sop.maxRih)} / ${fmt(r.sop.maxPooh)}`, 'RIH / POOH limit, fpm', r.isDefault] : [String(kpi.nViol), 'Seasoning rule flags', kpi.nViol > 0],
+    [String(r.jar.cycles.length), 'Jarring cycles'], [String(sopN), wire ? 'Speed, tension, jarring flags' : 'Restriction and jarring flags', sopN > 0],
   ];
   const marks = [...r.jar.cycles.map((c) => ({ t0: c.t0, t1: c.t1, kind: 'jar' as const })), ...r.speed.map((f) => ({ t0: f.t0, t1: f.t1, kind: 'sop' as const }))];
-  const tabs: [View, string][] = [['time', 'Time view'], ['depth', 'Depth view'], ['findings', `Guidelines (${kpi.nViol})`], ['sop', `SOP-04 and jarring (${sopN})`]];
+  const tabs: [View, string][] = [['time', 'Time view'], ['depth', 'Depth view']];
+  if (!wire) tabs.push(['findings', `Seasoning rules (${kpi.nViol})`]);
+  tabs.push(['sop', `${wire ? 'Speed, tension and jarring' : 'Restrictions and jarring'} (${sopN})`]);
   if (p.channels.length) tabs.push(['channels', 'Channels']);
+  const v = !wire && view === 'findings' ? view : wire && view === 'findings' ? 'sop' : view;
+  const options = [...new Set([...p.services, r.service].filter(Boolean))];
   return (
     <div className="space-y-4">
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {tiles.map(([v, l, bad]) => (
+        {tiles.map(([val, l, bad]) => (
           <div key={l} className="rounded-md border border-border bg-surface-2 px-3 py-2">
-            <dd className={cx('font-display text-base leading-tight font-bold', bad ? 'text-danger' : 'text-success')}>{v}</dd>
+            <dd className={cx('font-display text-base leading-tight font-bold', bad ? (l.startsWith('RIH /') ? 'text-warning' : 'text-danger') : 'text-success')}>{val}</dd>
             <dt className="text-xs text-text-muted">{l}</dt>
           </div>
         ))}
       </dl>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className={cx('rounded-pill px-2.5 py-0.5 font-semibold', kpi.nViol ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success')}>
-          {kpi.nViol ? `${kpi.nViol} guideline violation${kpi.nViol > 1 ? 's' : ''}` : 'No guideline violations'}</span>
+        {!wire && <span className={cx('rounded-pill px-2.5 py-0.5 font-semibold', kpi.nViol ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success')}>
+          {kpi.nViol ? `${kpi.nViol} seasoning rule flag${kpi.nViol > 1 ? 's' : ''}` : 'Seasoning rules kept'}</span>}
         <span className={cx('rounded-pill px-2.5 py-0.5 font-semibold', sopN ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success')}>
-          {sopN ? `${sopN} SOP-04 flag${sopN > 1 ? 's' : ''}` : 'SOP-04 kept'}</span>
-        {a.advice.length > 0 && <span className="rounded-pill bg-warning-subtle px-2.5 py-0.5 font-semibold text-warning">{a.advice.length} advisory</span>}
-        {onSet ? <>
-          <label htmlFor="wd-rset" className="ml-1 text-text-muted">Rules</label>
-          <select id="wd-rset" className={inputSized(`w-auto ${small}`)} value={a.set} onChange={(e) => onSet(e.target.value as RuleSetKey)}>
-            {(Object.keys(RULE_SET_LABEL) as RuleSetKey[]).map((k) => <option key={k} value={k}>{RULE_SET_LABEL[k]}</option>)}
+          {sopN ? `${sopN} ${wire ? 'speed, tension or jarring' : 'restriction or jarring'} flag${sopN > 1 ? 's' : ''}` : 'Guidelines kept'}</span>
+        {wire ? <>
+          {onService ? <>
+            <label htmlFor="wd-service" className="ml-1 text-text-muted">Service</label>
+            <select id="wd-service" className={inputSized(`w-auto max-w-full ${small}`)} value={r.service} onChange={(e) => onService(e.target.value)}>
+              <option value="">Not set</option>
+              {options.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </> : <span className="text-text-muted">Service: {r.service || 'not set'}</span>}
+          {r.isDefault
+            ? <span className="rounded-pill bg-warning-subtle px-2.5 py-0.5 font-semibold text-warning">Default speeds in use: {r.service ? `${r.service} is not in the Speed Guidelines` : 'no service set'}</span>
+            : <span className="text-text-subtle">Speeds: {r.group}</span>}
+        </> : onSeason ? <>
+          <label htmlFor="wd-season" className="ml-1 text-text-muted">Line</label>
+          <select id="wd-season" className={inputSized(`w-auto ${small}`)} value={p.seasoned ? 'seasoned' : 'new'} onChange={(e) => onSeason(e.target.value === 'seasoned')}>
+            <option value="seasoned">{seasonLabel(true)}</option><option value="new">{seasonLabel(false)}</option>
           </select>
-        </> : <span className="text-text-muted">Rules: {RULE_SET_LABEL[a.set]}</span>}
-        <span className="text-text-subtle">{a.sv.source === 'manual' ? 'Zones entered by hand' : a.sv.source === 'vertical' ? 'Vertical well' : `Zones from ${a.sv.source}`}</span>
+        </> : <span className="text-text-muted">Line: {seasonLabel(p.seasoned)}</span>}
       </div>
 
       <div role="tablist" aria-label="Views" className="flex flex-wrap gap-1 print:hidden">
-        {tabs.map(([v, l]) => (
-          <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
-            className={cx('h-(--layout-control-sm) rounded-sm border px-3 text-sm font-semibold', view === v ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
+        {tabs.map(([k, l]) => (
+          <button key={k} type="button" role="tab" aria-selected={v === k} onClick={() => setView(k)}
+            className={cx('h-(--layout-control-sm) rounded-sm border px-3 text-sm font-semibold', v === k ? 'border-accent-text bg-accent text-on-accent' : 'border-border text-text-muted hover:text-text')}>{l}</button>
         ))}
       </div>
 
       <div role="tabpanel">
-        {view === 'time' && <>
+        {v === 'time' && <>
           <TimeChart a={a} marks={marks} tall={wide} />
-          <p className="mt-2 text-xs text-text-subtle">Shaded across: the well zones on the depth scale. Red bands: a guideline or SOP-04 speed broken; amber: advice; purple: jarring. Point at the plot for the values; drag across to zoom in.</p>
+          <p className="mt-2 text-xs text-text-subtle">Red bands: a speed or tension guideline broken; purple: jarring. Point at the plot for the values; drag across to zoom in.</p>
         </>}
-        {view === 'depth' && <>
-          <DepthCharts a={a} />
-          <p className="mt-2 text-xs text-text-subtle">Trip in (RIH) and trip out (POOH) against depth. Dashed lines: the guideline limit at that depth (red for POOH, blue for RIH, amber for the advised pump-down tension). Speed in ft/min, tension in lbs.</p>
+        {v === 'depth' && <>
+          <DepthCharts a={a} wire={wire ? { r, restrictions: p.restrictions } : undefined} />
+          <p className="mt-2 text-xs text-text-subtle">{wire
+            ? 'Trip in (RIH) and trip out (POOH) against depth. Dashed lines: the speed limit for the service (slower near surface and at restrictions); on tension, the static tension (grey) with the running minimum (blue) and the pulling maximum (red). Speed in ft/min, tension in lbs.'
+            : 'Trip in (RIH) and trip out (POOH) against depth. Dashed lines: the seasoning rule limit at that depth (red for POOH, blue for RIH). Speed in ft/min, tension in lbs.'}</p>
         </>}
-        {view === 'findings' && <Findings a={a} />}
-        {view === 'sop' && <SopPanel r={r} sop={p.sop} restrictions={p.restrictions} />}
-        {view === 'channels' && <ChannelPlot channels={p.channels} t0={r.run.t0} t1={r.run.t1} tall={wide} />}
+        {v === 'findings' && <Findings a={a} seasoned={p.seasoned} />}
+        {v === 'sop' && <SopPanel r={r} kind={p.kind} restrictions={p.restrictions} />}
+        {v === 'channels' && <ChannelPlot channels={p.channels} t0={r.run.t0} t1={r.run.t1} tall={wide} />}
       </div>
     </div>
   );
 }
 
-const SPEED_RULES: SopRuleKey[] = ['surfaceSpeed', 'restrictionSpeed', 'maxRih', 'maxPooh'];
-const JAR_RULES: SopRuleKey[] = ['jarMat', 'jarSpang', 'jarDown', 'jarCycle', 'jarRest', 'jarCycles'];
+const SPEED_RULES: SopRuleKey[] = ['surfaceSpeed', 'restrictionSpeed', 'maxRih', 'maxPooh', 'rihTension', 'poohTension'];
+const JAR_RULES: SopRuleKey[] = ['jarMat', 'jarSpang', 'jarHeavy', 'jarDown', 'jarCycle', 'jarRest', 'jarCycles'];
 
-/** The SOP-04 speed rules and the jarring: what each rule says, what broke it, and every jarring cycle. */
-export function SopPanel({ r, sop, restrictions }: { r: RunReport; sop: SopRules; restrictions: Restriction[] }) {
+/** The speed, tension and jarring rules: what each says, what broke it, and every jarring cycle. */
+export function SopPanel({ r, kind, restrictions }: { r: RunReport; kind: LineKind; restrictions: Restriction[] }) {
+  const sop = r.sop;
   const lim = jarUpLimit(sop);
+  const svc = r.isDefault ? `the default speeds${r.service ? ` (${r.service} is not listed)` : ''}` : `${r.group}`;
   const text: Record<SopRuleKey, string> = {
-    surfaceSpeed: `${sop.surfaceSpeed} ft/min or less while the BHA is shallower than ${sop.surfaceDepth} ft`,
-    restrictionSpeed: restrictions.length ? `${sop.restrictionSpeed} ft/min or less within ${sop.restrictionBand} ft of ${restrictions.map((x) => `${x.label} (${fmt(x.depth)} ft)`).join(', ')}` : 'No restrictions entered for this well',
-    maxRih: sop.maxRih ? `${sop.maxRih} ft/min or less running in (Speed Guidelines for the BHA)` : 'Not checked: set the running speed for the BHA',
-    maxPooh: sop.maxPooh ? `${sop.maxPooh} ft/min or less pulling out (Speed Guidelines for the BHA)` : 'Not checked: set the pulling speed for the BHA',
+    surfaceSpeed: `${sop.surfaceSpeed} ft/min or less while the tools are shallower than ${sop.surfaceDepth} ft`,
+    restrictionSpeed: restrictions.length ? `${sop.restrictionSpeed} ft/min or less from ${sop.restrictionBand} ft before to ${sop.restrictionBand} ft past ${restrictions.map((x) => `${x.label} (${fmt(x.depth)} ft)`).join(', ')}` : 'No restrictions entered for this well',
+    maxRih: `${sop.maxRih} ft/min or less running in: ${svc}`,
+    maxPooh: `${sop.maxPooh} ft/min or less pulling out: ${svc}`,
+    rihTension: sop.rihFactor ? `Running in, the normal tension stays over ${sop.rihFactor} × the static tension at that depth` : 'Not checked',
+    poohTension: sop.poohFactor ? `Pulling out, the normal tension stays under ${sop.poohFactor} × the static tension at that depth` : 'Not checked',
     jarMat: lim ? `Jarring up never over ${fmt(lim.limit)} lbs (the ${lim.from})` : 'Not checked: enter the wire breaking strength or the MAT',
     jarSpang: sop.spang ? `Jarring up never over the spang jar limit of ${fmt(sop.spangLimit)} lbs` : 'Not checked: no spang jars in the string',
+    jarHeavy: sop.heavyLb ? `Jarring over ${fmt(sop.heavyLb)} lbs is heavy jarring: it needs a new program and an MoC approved by the NESR OM` : 'Not checked',
     jarDown: `Jarring down never loses more than ${sop.jarDownLossPct}% of the normal tension`,
     jarCycle: `A jarring cycle lasts ${sop.cycleMin} minutes or less`,
     jarRest: `At least ${sop.restMin} minutes of rest between cycles`,
-    jarCycles: `After ${sop.maxCycles} cycles at one place, shear off, pull out, cut the wire and re-test it`,
+    jarCycles: `After ${sop.maxCycles} cycles at one place: pull out, cut 1.5 × the distance from the hay pulley to the stuffing box, new rope socket`,
   };
+  const speedRules = kind === 'wire' ? SPEED_RULES : (['restrictionSpeed'] as SopRuleKey[]);
   const findings = [...r.speed, ...r.jar.findings].sort((x, y) => x.t0 - y.t0);
   const count = (k: SopRuleKey) => findings.filter((f) => f.rule === k).length;
   const ruleList = (keys: SopRuleKey[]) => (
@@ -190,12 +255,18 @@ export function SopPanel({ r, sop, restrictions }: { r: RunReport; sop: SopRules
   );
   return (
     <div className="space-y-5 text-xs">
+      {r.isDefault && kind === 'wire' && (
+        <p className="rounded-md border-l-3 border-warning bg-warning-subtle px-3 py-2 text-warning">
+          Default speeds in use: {r.service ? `${r.service} is not in the Speed Guidelines` : 'no service is set for this run'}. Any service not listed needs its plan and speeds confirmed with the Service Manager and written in the JRA.
+        </p>
+      )}
       <section>
-        <h4 className="mb-1 text-sm font-semibold">Speed (NESR-8000-SOP-04, 6.2 and the Speed Guidelines)</h4>
-        {ruleList(SPEED_RULES)}
+        <h4 className="mb-1 text-sm font-semibold">{kind === 'wire' ? 'Speed and tension (Speed Guidelines, NESR-8000-QAF-04-01)' : 'Restrictions (SOP-04 6.2)'}</h4>
+        {ruleList(speedRules)}
+        {kind === 'braided' && <p className="mt-1 text-text-subtle">On braided line the speeds and tensions come from the seasoning rules: see that tab.</p>}
       </section>
       <section>
-        <h4 className="mb-1 text-sm font-semibold">Jarring (NESR-8000-SOP-04, 8.3 and the Jarring Guidelines)</h4>
+        <h4 className="mb-1 text-sm font-semibold">Jarring (Jarring Guidelines, QAF-SLK-Jarring-01, and SOP-04 8.3)</h4>
         {ruleList(JAR_RULES)}
       </section>
       <section>
@@ -211,7 +282,7 @@ export function SopPanel({ r, sop, restrictions }: { r: RunReport; sop: SopRules
                 <td className={td}><b>{fmt(f.worst, f.unit === 'min' ? 1 : 0)} {f.unit}</b> vs {f.side} {fmt(f.limit, f.unit === 'min' ? 1 : 0)}</td>
                 <td className={cx(td, 'text-text-muted')}>{f.note}</td>
               </tr>
-            )) : <tr className="border-t border-border"><td colSpan={6} className={cx(td, 'text-text-subtle')}>Nothing against SOP-04 on this run.</td></tr>}</tbody>
+            )) : <tr className="border-t border-border"><td colSpan={6} className={cx(td, 'text-text-subtle')}>Nothing broken on this run.</td></tr>}</tbody>
           </table>
         </div>
       </section>
@@ -293,42 +364,22 @@ export function ChannelPlot({ channels, t0, t1, tall }: { channels: ChannelSerie
 export const th = 'py-1.5 pr-3 text-left font-mono text-label font-semibold tracking-wide text-text-muted uppercase';
 export const td = 'py-1.5 pr-3 align-top';
 
-export function Findings({ a }: { a: Analysis }) {
-  const { zones, viol, advice, R, LW, ruleCounts, sv, P, S } = a;
-  const rows = [...viol, ...advice].sort((x, y) => x.t0 - y.t0);
+/** Braided line: the seasoning rules that apply in any well, what broke them, and the phases of the run. */
+export function Findings({ a, seasoned }: { a: Analysis; seasoned: boolean }) {
+  const { viol, R, ruleCounts, P, S } = a;
+  const rows = viol.filter((v) => BRAIDED_CHECKS.includes(v.rule)).sort((x, y) => x.t0 - y.t0);
   return (
     <div className="space-y-5 text-xs">
       <section>
-        <h4 className="mb-1 text-sm font-semibold">By zone <span className="font-normal text-text-subtle">(speed avg / max in ft/min, tension in lbs)</span></h4>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[36rem]">
-            <thead><tr>{['Zone', 'Depth (ft)', 'RIH speed', 'POOH speed', 'RIH min tension', 'POOH max tension', 'Flags'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}</tr></thead>
-            <tbody>{zones.map((z) => (
-              <tr key={z.name} className="border-t border-border">
-                <td className={td}>{z.name}</td><td className={cx(td, 'font-mono')}>{fmt(z.lo)} – {z.hi == null ? 'TD' : fmt(z.hi)}</td>
-                <td className={cx(td, 'font-mono')}>{fmt(z.rihAvg)} / {fmt(z.rihMax)}</td><td className={cx(td, 'font-mono')}>{fmt(z.poohAvg)} / {fmt(z.poohMax)}</td>
-                <td className={cx(td, 'font-mono')}>{fmt(z.rihMinT)}</td><td className={cx(td, 'font-mono')}>{fmt(z.poohMaxT)}</td>
-                <td className={td}><Pill tone={z.flags ? 'danger' : 'success'}>{z.flags || '✓'}</Pill></td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-        <p className="mt-1 text-text-subtle">Vertical line weight (median RIH tension {fmt(R.pumpTension.lwFrom)}–{fmt(R.pumpTension.lwTo)} ft above the 30° point): {Number.isNaN(LW) ? 'not measurable from this run' : `${fmt(LW)} lbs`}.</p>
-      </section>
-
-      <section>
-        <h4 className="mb-1 text-sm font-semibold">Guidelines check: {R.name}</h4>
+        <h4 className="mb-1 text-sm font-semibold">Seasoning rules: {seasonLabel(seasoned)}</h4>
         <ul className="divide-y divide-border">
-          {CHECK_KEYS.map((k) => {
-            const n = ruleCounts[k], M = RULE_META[k];
-            const text = k === 'pumpTension'
-              ? `Close to the vertical line weight (${Number.isNaN(LW) ? 'n/a' : `${fmt(LW)} lbs`} measured above the curve): ${Number.isNaN(LW) ? '—' : `${fmt(LW - R.pumpTension.band)} – ${fmt(LW + R.pumpTension.band)} lbs`}`
-              : ruleText(R, k);
+          {BRAIDED_CHECKS.map((k) => {
+            const n = ruleCounts[k];
             return (
               <li key={k} className="grid grid-cols-[2.5rem_1fr] gap-2 py-1.5 sm:grid-cols-[2.5rem_14rem_1fr]">
-                <span><Pill tone={n ? (M.advice ? 'warning' : 'danger') : 'success'}>{n ? `${n}×` : '✓'}</Pill></span>
-                <span className="font-semibold">{M.label}</span>
-                <span className="col-start-2 text-text-muted sm:col-start-auto">{text}</span>
+                <span><Pill tone={n ? 'danger' : 'success'}>{n ? `${n}×` : '✓'}</Pill></span>
+                <span className="font-semibold">{BRAIDED_LABEL[k]}</span>
+                <span className="col-start-2 text-text-muted sm:col-start-auto">{braidedText(R, k)}</span>
               </li>
             );
           })}
@@ -336,20 +387,20 @@ export function Findings({ a }: { a: Analysis }) {
       </section>
 
       <section>
-        <h4 className="mb-1 text-sm font-semibold">Violations ({viol.length}){advice.length > 0 && ` · ${advice.length} advisory`}</h4>
+        <h4 className="mb-1 text-sm font-semibold">Flags ({rows.length})</h4>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[40rem]">
-            <thead><tr>{['Time', 'Lasted', 'Depth (ft)', 'Where', 'Rule', 'Worst'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Time', 'Lasted', 'Depth (ft)', 'Direction', 'Rule', 'Worst'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}</tr></thead>
             <tbody>{rows.length ? rows.map((v, i) => (
-              <tr key={i} className={cx('border-t border-border', v.advice && 'text-warning')}>
+              <tr key={i} className="border-t border-border">
                 <td className={cx(td, 'font-mono')}>{hms(v.t0)}</td><td className={td}>{dur(v.sec)}</td><td className={cx(td, 'font-mono')}>{fmt(v.d0)} – {fmt(v.d1)}</td>
-                <td className={td}>{whereText(v)}</td><td className={td}>{v.label}</td>
+                <td className={td}>{v.dir === 'STOP' ? v.phase : v.dir}</td><td className={td}>{BRAIDED_LABEL[v.rule] ?? v.label}</td>
                 <td className={td}><b>{fmt(v.worst)} {v.unit}</b> vs {v.side} {fmt(v.limit)} ({v.worst >= v.limit ? '+' : '−'}{fmt(Math.abs(v.worst - v.limit))})</td>
               </tr>
-            )) : <tr className="border-t border-border"><td colSpan={6} className={cx(td, 'text-text-subtle')}>No guideline broken on this run.</td></tr>}</tbody>
+            )) : <tr className="border-t border-border"><td colSpan={6} className={cx(td, 'text-text-subtle')}>No seasoning rule broken on this run.</td></tr>}</tbody>
           </table>
         </div>
-        <p className="mt-1 text-text-subtle">{ruleText(R, 'detect')}.</p>
+        <p className="mt-1 text-text-subtle">{braidedText(R, 'detect')}.</p>
       </section>
 
       <section>
@@ -357,12 +408,12 @@ export function Findings({ a }: { a: Analysis }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[32rem]">
             <thead><tr>{['Phase', 'From', 'To', 'Duration', 'Depth'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}</tr></thead>
-            <tbody>{([['RIH, surface to bottom', S[P.iStart], S[P.iBottom], P.rihSec], ['Bottom to steady POOH (plug and perf)', S[P.iBottom], S[P.iSteady], P.bottomSec], ['POOH, steady to surface', S[P.iSteady], S[P.iEnd], P.poohSec]] as const).map(([l, x, y, s]) => (
-              <tr key={l} className="border-t border-border"><td className={td}>{l}</td><td className={cx(td, 'font-mono')}>{hms(x.t)}</td><td className={cx(td, 'font-mono')}>{hms(y.t)}</td><td className={td}>{dur(s)}</td><td className={cx(td, 'font-mono')}>{fmt(x.depth)} → {fmt(y.depth)} ft</td></tr>
+            <tbody>{([['RIH, surface to bottom', S[P.iStart], S[P.iBottom], P.rihSec], ['At bottom', S[P.iBottom], S[P.iSteady], P.bottomSec], ['POOH to surface', S[P.iSteady], S[P.iEnd], P.poohSec]] as const).map(([l, x, y, sec]) => (
+              <tr key={l} className="border-t border-border"><td className={td}>{l}</td><td className={cx(td, 'font-mono')}>{hms(x.t)}</td><td className={cx(td, 'font-mono')}>{hms(y.t)}</td><td className={td}>{dur(sec)}</td><td className={cx(td, 'font-mono')}>{fmt(x.depth)} → {fmt(y.depth)} ft</td></tr>
             ))}</tbody>
           </table>
         </div>
-        <p className="mt-1 text-text-subtle">Zones: KOP {fmt(sv.kop)} · 30° {fmt(sv.p30)} · lateral {fmt(sv.lat)} · TD {fmt(sv.td)} ft · {S.length.toLocaleString()} rows · median {fmt(median(S.map((s) => s.dt)), 1)} s apart</p>
+        <p className="mt-1 text-text-subtle">{S.length.toLocaleString()} rows · median {fmt(median(S.map((x) => x.dt)), 1)} s apart</p>
       </section>
     </div>
   );
@@ -379,7 +430,6 @@ export const C = {
   depth: 'var(--color-text-subtle)', speed: 'var(--color-chart-1)', tension: 'var(--color-chart-2)', rih: 'var(--color-chart-1)', pooh: 'var(--color-chart-3)',
   danger: 'var(--color-danger)', warning: 'var(--color-warning)', grid: 'var(--color-border)', text: 'var(--color-text-muted)', jar: 'var(--color-chart-5)',
 };
-export const ZONE_FILL = ['transparent', 'var(--color-chart-1)', 'var(--color-chart-3)', 'var(--color-chart-6)'];
 
 export function useWidth() {
   const ref = useRef<HTMLDivElement>(null);
@@ -421,7 +471,7 @@ export const lowerBound = (S: Sample[], t: number) => { let lo = 0, hi = S.lengt
 
 /** marks (6z.41): jarring cycles and SOP-04 speed findings, shaded like the guideline findings; tall in the analysis window. */
 export function TimeChart({ a, marks = [], tall }: { a: Analysis; marks?: { t0: number; t1: number; kind: 'jar' | 'sop' }[]; tall?: boolean }) {
-  const { S, sv, viol, advice, kpi } = a;
+  const { S, viol, advice, kpi } = a;
   const [ref, W] = useWidth();
   const narrow = W < 560;
   const H = narrow ? 300 : tall ? 560 : 400, M = { l: narrow ? 44 : 56, r: narrow ? 84 : 110, t: 10, b: 28 };
@@ -435,7 +485,7 @@ export function TimeChart({ a, marks = [], tall }: { a: Analysis; marks?: { t0: 
   const [t0, t1] = range;
   const x = (t: number) => M.l + ((t - t0) / (t1 - t0 || 1)) * pw;
   const tAt = (px: number) => t0 + ((px - M.l) / pw) * (t1 - t0);
-  const dMax = Math.max(sv.td, kpi.maxD) * 1.02, sMax = Math.max(100, ...S.map((s) => s.sp)) * 1.1, tMax = kpi.maxT * 1.1;
+  const dMax = kpi.maxD * 1.02, sMax = Math.max(100, ...S.map((s) => s.sp)) * 1.1, tMax = kpi.maxT * 1.1;
   const yD = (v: number) => M.t + ph - (v / dMax) * ph, yS = (v: number) => M.t + ph - (v / sMax) * ph, yT = (v: number) => M.t + ph - (v / tMax) * ph;
   const i0 = Math.max(0, lowerBound(S, t0) - 1), i1 = Math.min(S.length - 1, lowerBound(S, t1));
   const cols = Math.max(50, Math.round(pw));
@@ -455,8 +505,8 @@ export function TimeChart({ a, marks = [], tall }: { a: Analysis; marks?: { t0: 
     <div ref={ref} className="relative">
       <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
         <Key color={C.depth}>Depth (ft)</Key><Key color={C.speed}>Speed (ft/min)</Key><Key color={C.tension}>Tension (lbs)</Key>
-        <Key color={C.danger} band>Violation</Key><Key color={C.warning} band>Advice</Key>
-        {marks.some((m) => m.kind === 'jar') && <Key color={C.jar} band>Jarring</Key>}{marks.some((m) => m.kind === 'sop') && <Key color={C.danger} band>SOP-04 speed</Key>}
+{viol.length > 0 && <Key color={C.danger} band>Seasoning rule</Key>}
+        {marks.some((m) => m.kind === 'jar') && <Key color={C.jar} band>Jarring</Key>}{marks.some((m) => m.kind === 'sop') && <Key color={C.danger} band>Speed or tension</Key>}
         {zoomed && <Button size="sm" variant="ghost" onClick={() => setRange(full)}>Show the whole run</Button>}
       </div>
       <svg width={W} height={H} role="img" aria-labelledby={titleId} className="touch-pan-y select-none"
@@ -466,9 +516,6 @@ export function TimeChart({ a, marks = [], tall }: { a: Analysis; marks?: { t0: 
         onPointerLeave={() => { setHover(null); }} onDoubleClick={() => setRange(full)}>
         <title id={titleId}>{`Depth, line speed and tension against time, ${hm(t0)} to ${hm(t1)}. ${viol.length} violations marked.`}</title>
         <defs><clipPath id={clip}><rect x={M.l} y={M.t} width={pw} height={ph} /></clipPath></defs>
-        {[[sv.kop, sv.p30, 1], [sv.p30, sv.lat, 2], [sv.lat, dMax, 3]].map(([lo, hi, z]) => (
-          <rect key={z} x={M.l} width={pw} y={yD(hi)} height={Math.max(0, yD(lo) - yD(hi))} fill={ZONE_FILL[z]} opacity={0.1} />
-        ))}
         <g clipPath={`url(#${clip})`}>
           {viol.map((v, i) => <rect key={`v${i}`} x={x(v.t0)} width={Math.max(1.5, x(v.t1) - x(v.t0))} y={M.t} height={ph} fill={C.danger} opacity={0.22} />)}
           {marks.map((m, i) => <rect key={`m${i}`} x={x(m.t0)} width={Math.max(2, x(m.t1) - x(m.t0))} y={M.t} height={ph} fill={m.kind === 'jar' ? C.jar : C.danger} opacity={m.kind === 'jar' ? 0.25 : 0.18} />)}
@@ -479,9 +526,6 @@ export function TimeChart({ a, marks = [], tall }: { a: Analysis; marks?: { t0: 
         {ticks(0, sMax, 4).map((v) => <text key={`s${v}`} x={M.l + pw + 4} y={yS(v)} dy="0.32em" fontSize={10} fill={C.speed}>{fmt(v)}</text>)}
         {ticks(0, tMax, 4).map((v) => <text key={`t${v}`} x={M.l + pw + (narrow ? 40 : 52)} y={yT(v)} dy="0.32em" fontSize={10} fill={C.tension}>{fmt(v)}</text>)}
         {tTicks.map((t) => <text key={t} x={x(t)} y={H - 10} textAnchor="middle" fontSize={10} fill={C.text}>{hm(t)}</text>)}
-        {sv.source !== 'vertical' && ([['KOP', sv.kop], ['30°', sv.p30], ['Lateral', sv.lat]] as const).map(([n, d]) => (
-          <text key={n} x={M.l + 4} y={yD(d) - 3} fontSize={10} fill={C.text}>{n} {fmt(d)}</text>
-        ))}
         <g clipPath={`url(#${clip})`} fill="none" strokeLinejoin="round">
           <path d={paths.depth} stroke={C.depth} strokeWidth={1.6} />
           <path d={paths.speed} stroke={C.speed} strokeWidth={1} />
@@ -506,10 +550,24 @@ export function Key({ color, band, children }: { color: string; band?: boolean; 
   return <span className="inline-flex items-center gap-1.5"><span aria-hidden className={band ? 'h-2.5 w-3 opacity-40' : 'h-0.5 w-4'} style={{ background: color }} />{children}</span>;
 }
 
+/** The limit lines on wire: the service speeds (slower near surface and at restrictions) and the static tension band. */
+function wireCurves(r: RunReport, restrictions: Restriction[], D: number[]) {
+  const s = r.sop;
+  const speed = (lim: number) => D.map((d) => {
+    let m = lim;
+    if (s.surfaceDepth > 0 && d < s.surfaceDepth) m = Math.min(m, s.surfaceSpeed);
+    if (s.restrictionBand > 0 && restrictions.some((x) => Math.abs(d - x.depth) <= s.restrictionBand)) m = Math.min(m, s.restrictionSpeed);
+    return m;
+  });
+  const st = (k: number) => D.map((d) => { const v = r.stat ? staticAt(r.stat, d) : null; return v == null || d < Math.max(s.surfaceDepth, 100) ? null : v * k; });
+  return { pooh: speed(s.maxPooh), rih: speed(s.maxRih), stat: st(1), rihMin: s.rihFactor ? st(s.rihFactor) : D.map(() => null), poohMax: s.poohFactor ? st(s.poohFactor) : D.map(() => null) };
+}
+
 /** Two panels against depth (down the page): line speed and tension, trip in and trip out, with the limit lines. */
-export function DepthCharts({ a }: { a: Analysis }) {
+export function DepthCharts({ a, wire }: { a: Analysis; wire?: { r: RunReport; restrictions: Restriction[] } }) {
   const [ref, W] = useWidth();
   const L = useMemo(() => limitCurves(a), [a]);
+  const Wc = useMemo(() => (wire ? wireCurves(wire.r, wire.restrictions, L.D) : null), [wire, L.D]);
   const two = W >= 560;
   const pw = two ? Math.floor((W - 12) / 2) : W;
   const rih = a.S.filter((s) => s.phase === 'RIH' && s.dir === 'RIH'), pooh = a.S.filter((s) => s.dir === 'POOH');
@@ -517,14 +575,14 @@ export function DepthCharts({ a }: { a: Analysis }) {
     <div ref={ref}>
       <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-muted">
         <Key color={C.rih}>RIH</Key><Key color={C.pooh}>POOH</Key><Key color={C.danger}>POOH limit</Key><Key color={C.rih}>RIH limit</Key>
-        {L.pumpBand && <Key color={C.warning}>Advised pump-down tension</Key>}
+        {Wc && <Key color={C.depth}>Static tension</Key>}
       </div>
       <div className={cx('grid gap-3', two && 'grid-cols-2')}>
         <DepthPanel W={pw} a={a} title="Speed (ft/min)" rih={rih} pooh={pooh} val={(s) => s.sp}
-          limits={[{ v: L.poohSpeed, color: C.danger }, { v: L.rihSpeed, color: C.rih }]} D={L.D} />
+          limits={Wc ? [{ v: Wc.pooh, color: C.danger }, { v: Wc.rih, color: C.rih, dot: true }] : [{ v: L.poohSpeed, color: C.danger }, { v: L.rihSpeed, color: C.rih }]} D={L.D} />
         <DepthPanel W={pw} a={a} title="Tension (lbs)" rih={rih} pooh={pooh} val={(s) => s.ten} D={L.D}
-          limits={[{ v: L.poohTension, color: C.danger }, { v: L.rihTensionMin, color: C.rih, dot: true },
-            ...(L.pumpBand ? [{ v: L.D.map((d) => (d >= L.pumpBand!.from ? L.pumpBand!.lo : null)), color: C.warning }, { v: L.D.map((d) => (d >= L.pumpBand!.from ? L.pumpBand!.hi : null)), color: C.warning }] : [])]} />
+          limits={Wc ? [{ v: Wc.stat, color: C.depth }, { v: Wc.poohMax, color: C.danger }, { v: Wc.rihMin, color: C.rih, dot: true }]
+            : [{ v: L.poohTension, color: C.danger }, { v: L.rihTensionMin, color: C.rih, dot: true }]} />
       </div>
     </div>
   );
@@ -534,11 +592,11 @@ export function DepthPanel({ W, a, title, rih, pooh, val, limits, D }: {
   W: number; a: Analysis; title: string; rih: Sample[]; pooh: Sample[]; val: (s: Sample) => number; D: number[];
   limits: { v: (number | null)[]; color: string; dot?: boolean }[];
 }) {
-  const { sv, kpi } = a;
+  const { kpi } = a;
   const H = 420, M = { l: 52, r: 10, t: 8, b: 32 }, pw = W - M.l - M.r, ph = H - M.t - M.b;
   const titleId = useId();
   const [hover, setHover] = useState<number | null>(null);
-  const dMax = Math.max(sv.td, kpi.maxD) * 1.02;
+  const dMax = kpi.maxD * 1.02;
   const vMax = Math.max(100, ...limits.flatMap((l) => l.v.filter((n): n is number => n != null)), ...rih.map(val), ...pooh.map(val)) * 1.05;
   const x = (v: number) => M.l + (v / vMax) * pw, y = (d: number) => M.t + (d / dMax) * ph;
   const path = (arr: Sample[]) => {
@@ -566,10 +624,7 @@ export function DepthPanel({ W, a, title, rih, pooh, val, limits, D }: {
       <svg width={W} height={H} role="img" aria-labelledby={titleId} className="touch-pan-y select-none"
         onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); const py = ((e.clientY - r.top) / r.height) * H; setHover(Math.min(dMax, Math.max(0, ((py - M.t) / ph) * dMax))); }}
         onPointerLeave={() => setHover(null)}>
-        <title id={titleId}>{`${title} against depth, trip in and trip out, with the guideline limits.`}</title>
-        {[[sv.kop, sv.p30, 1], [sv.p30, sv.lat, 2], [sv.lat, dMax, 3]].map(([lo, hi, z]) => (
-          <rect key={z} x={M.l} width={pw} y={y(lo)} height={Math.max(0, y(hi) - y(lo))} fill={ZONE_FILL[z]} opacity={0.1} />
-        ))}
+        <title id={titleId}>{`${title} against depth, trip in and trip out, with the limits.`}</title>
         {ticks(0, dMax).map((v) => <g key={v}><line x1={M.l} x2={M.l + pw} y1={y(v)} y2={y(v)} stroke={C.grid} strokeWidth={0.5} />
           <text x={M.l - 4} y={y(v)} dy="0.32em" textAnchor="end" fontSize={10} fill={C.text}>{fmt(v)}</text></g>)}
         {ticks(0, vMax, W < 360 ? 3 : 5).map((v) => <g key={`x${v}`}><line x1={x(v)} x2={x(v)} y1={M.t} y2={M.t + ph} stroke={C.grid} strokeWidth={0.5} />

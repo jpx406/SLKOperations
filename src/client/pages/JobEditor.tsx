@@ -446,7 +446,7 @@ export function JobEditor() {
 
             {job && (
               <>
-                <SectionTitle aside="Winch export against the cable guidelines">Winch data: plots and guidelines check</SectionTitle>
+                <SectionTitle aside="Winch recordings against the Speed and Jarring Guidelines">Winch data: plots and guidelines check</SectionTitle>
                 <Suspense fallback={<Skeleton className="h-40" />}><WinchDataCard job={job} /></Suspense>
               </>
             )}

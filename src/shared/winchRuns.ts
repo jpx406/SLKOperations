@@ -57,6 +57,10 @@ export interface SopRules {
   mat: number;
   /** 8.3: spang jars in the string: their limit applies. */
   spang: boolean; spangLimit: number;
+  /** Jarring Guidelines: jarring over this is heavy jarring, which needs a new program and an MoC (0: not checked). */
+  heavyLb: number;
+  /** Speed Guidelines: normal tension above rihFactor × static running in, below poohFactor × static pulling out (0: not checked). */
+  rihFactor: number; poohFactor: number;
   /** 8.3: jarring down never loses more than this share of the normal tension. */
   jarDownLossPct: number;
   /** 8.3: at most maxCycles cycles of cycleMin minutes of jarring, with restMin minutes of rest between. */
@@ -72,6 +76,8 @@ export interface SopRules {
     gapSec: number;
     /** A speed finding counts when it lasts this long; findings less than mergeSec apart are one. */
     minSec: number; mergeSec: number;
+    /** A tension finding counts when it lasts this long. */
+    tensionSec: number;
   };
 }
 
@@ -80,10 +86,10 @@ export const SOP_DEFAULTS: SopRules = {
   restrictionBand: 100, restrictionSpeed: 30,
   maxRih: 0, maxPooh: 0,
   mbs: 0, matPct: 60, mat: 0,
-  spang: false, spangLimit: 1450,
+  spang: false, spangLimit: 1450, heavyLb: 1300, rihFactor: 0, poohFactor: 0,
   jarDownLossPct: 20,
   cycleMin: 15, restMin: 10, maxCycles: 3,
-  detect: { stationaryFt: 30, windowSec: 60, upMinLb: 150, upPct: 15, downPct: 10, gapSec: 120, minSec: 3, mergeSec: 30 },
+  detect: { stationaryFt: 30, windowSec: 60, upMinLb: 150, upPct: 15, downPct: 10, gapSec: 120, minSec: 3, mergeSec: 30, tensionSec: 5 },
 };
 
 /** Saved SOP-04 limits, or null when they do not read; missing fields take the defaults. */
@@ -120,15 +126,17 @@ export function parseRestrictions(text: string): Restriction[] {
 
 // ---------------------------------------------------------------- findings
 
-export type SopRuleKey = 'surfaceSpeed' | 'restrictionSpeed' | 'maxRih' | 'maxPooh' | 'jarMat' | 'jarSpang' | 'jarDown' | 'jarCycle' | 'jarRest' | 'jarCycles';
+export type SopRuleKey = 'surfaceSpeed' | 'restrictionSpeed' | 'maxRih' | 'maxPooh' | 'rihTension' | 'poohTension' | 'jarMat' | 'jarSpang' | 'jarHeavy' | 'jarDown' | 'jarCycle' | 'jarRest' | 'jarCycles';
 export const SOP_LABEL: Record<SopRuleKey, string> = {
-  surfaceSpeed: 'Speed near surface', restrictionSpeed: 'Speed at a restriction', maxRih: 'RIH speed for the BHA', maxPooh: 'POOH speed for the BHA',
-  jarMat: 'Jar-up tension', jarSpang: 'Spang jar limit', jarDown: 'Jar-down tension loss', jarCycle: 'Jarring cycle too long', jarRest: 'Rest between cycles too short', jarCycles: 'Too many jarring cycles',
+  surfaceSpeed: 'Speed near surface', restrictionSpeed: 'Speed at a restriction', maxRih: 'RIH speed for the service', maxPooh: 'POOH speed for the service',
+  rihTension: 'RIH tension against static', poohTension: 'POOH tension against static',
+  jarMat: 'Jar-up tension', jarSpang: 'Spang jar limit', jarHeavy: 'Heavy jarring', jarDown: 'Jar-down tension loss', jarCycle: 'Jarring cycle too long', jarRest: 'Rest between cycles too short', jarCycles: 'Too many jarring cycles',
 };
 /** Where each rule comes from, for the report. */
 export const SOP_SOURCE: Record<SopRuleKey, string> = {
-  surfaceSpeed: 'SOP-04 6.2', restrictionSpeed: 'SOP-04 6.2', maxRih: 'Speed Guidelines (SOP-04 6.4)', maxPooh: 'Speed Guidelines (SOP-04 6.4)',
-  jarMat: 'SOP-04 8.3', jarSpang: 'SOP-04 8.3', jarDown: 'SOP-04 8.3', jarCycle: 'SOP-04 8.3', jarRest: 'SOP-04 8.3', jarCycles: 'SOP-04 8.3',
+  surfaceSpeed: 'Speed Guidelines', restrictionSpeed: 'Speed Guidelines', maxRih: 'Speed Guidelines', maxPooh: 'Speed Guidelines',
+  rihTension: 'Speed Guidelines', poohTension: 'Speed Guidelines',
+  jarMat: 'Jarring Guidelines', jarSpang: 'Jarring Guidelines', jarHeavy: 'Jarring Guidelines', jarDown: 'SOP-04 8.3', jarCycle: 'Jarring Guidelines', jarRest: 'Jarring Guidelines', jarCycles: 'Jarring Guidelines',
 };
 
 export interface SopFinding {
@@ -144,8 +152,8 @@ export function sopSpeedFindings(S: Sample[], R: SopRules, restrictions: Restric
   const limitAt = (s: Sample): { key: SopRuleKey; limit: number; note: string } | null => {
     if (s.dir === 'STOP') return null;
     const opts: { key: SopRuleKey; limit: number; note: string }[] = [];
-    if (s.depth < R.surfaceDepth) opts.push({ key: 'surfaceSpeed', limit: R.surfaceSpeed, note: `shallower than ${R.surfaceDepth} ft` });
-    const near = restrictions.find((r) => Math.abs(s.depth - r.depth) <= R.restrictionBand);
+    if (R.surfaceDepth > 0 && s.depth < R.surfaceDepth) opts.push({ key: 'surfaceSpeed', limit: R.surfaceSpeed, note: `shallower than ${R.surfaceDepth} ft` });
+    const near = R.restrictionBand > 0 ? restrictions.find((r) => Math.abs(s.depth - r.depth) <= R.restrictionBand) : undefined;
     if (near) opts.push({ key: 'restrictionSpeed', limit: R.restrictionSpeed, note: `${near.label} at ${near.depth} ft` });
     if (s.dir === 'RIH' && R.maxRih > 0) opts.push({ key: 'maxRih', limit: R.maxRih, note: '' });
     if (s.dir === 'POOH' && R.maxPooh > 0) opts.push({ key: 'maxPooh', limit: R.maxPooh, note: '' });
@@ -172,6 +180,44 @@ export function sopSpeedFindings(S: Sample[], R: SopRules, restrictions: Restric
     const p = merged[merged.length - 1];
     if (p && p.rule === e.rule && p.dir === e.dir && e.t0 - p.t1 < R.detect.mergeSec) {
       p.t1 = e.t1; p.sec = p.t1 - p.t0; p.d0 = Math.min(p.d0, e.d0); p.d1 = Math.max(p.d1, e.d1); p.worst = Math.max(p.worst, e.worst);
+    } else merged.push(e);
+  }
+  return merged;
+}
+
+/**
+ * Tension against the static tension at the same depth (Speed Guidelines): running in, the normal tension stays over
+ * rihFactor × static; pulling out, under poohFactor × static. Checked deeper than the surface stretch only.
+ */
+export function sopTensionFindings(S: Sample[], R: SopRules, staticAt: (depth: number) => number | null): SopFinding[] {
+  if (!(R.rihFactor > 0) && !(R.poohFactor > 0)) return [];
+  const out: SopFinding[] = [];
+  let cur: SopFinding | null = null;
+  const flush = () => { if (cur && cur.sec >= R.detect.tensionSec) out.push(cur); cur = null; };
+  for (const s of S) {
+    let L: { key: SopRuleKey; limit: number; side: 'min' | 'max' } | null = null;
+    const st = s.dir === 'STOP' || s.depth < Math.max(R.surfaceDepth, 100) ? null : staticAt(s.depth);
+    if (st && st > 0) {
+      if (s.dir === 'RIH' && R.rihFactor > 0 && s.ten < st * R.rihFactor) L = { key: 'rihTension', limit: st * R.rihFactor, side: 'min' };
+      if (s.dir === 'POOH' && R.poohFactor > 0 && s.ten > st * R.poohFactor) L = { key: 'poohTension', limit: st * R.poohFactor, side: 'max' };
+    }
+    if (!L || (cur && cur.rule !== L.key)) flush();
+    if (!L) continue;
+    const note = `static ${Math.round(st!)} lbs × ${L.key === 'rihTension' ? R.rihFactor : R.poohFactor}`;
+    if (!cur) {
+      cur = { rule: L.key, label: SOP_LABEL[L.key], source: SOP_SOURCE[L.key], t0: s.t, t1: s.t + s.dt, sec: s.dt, d0: s.depth, d1: s.depth, dir: s.dir, worst: s.ten, limit: L.limit, unit: 'lbs', side: L.side, note };
+    } else {
+      cur.t1 = s.t + s.dt; cur.sec += s.dt; cur.d0 = Math.min(cur.d0, s.depth); cur.d1 = Math.max(cur.d1, s.depth);
+      if (L.side === 'min' ? s.ten < cur.worst : s.ten > cur.worst) Object.assign(cur, { worst: s.ten, limit: L.limit, note });
+    }
+  }
+  flush();
+  const merged: SopFinding[] = [];
+  for (const e of out) {
+    const p = merged[merged.length - 1];
+    if (p && p.rule === e.rule && e.t0 - p.t1 < R.detect.mergeSec) {
+      p.t1 = e.t1; p.sec = p.t1 - p.t0; p.d0 = Math.min(p.d0, e.d0); p.d1 = Math.max(p.d1, e.d1);
+      if (e.side === 'min' ? e.worst < p.worst : e.worst > p.worst) Object.assign(p, { worst: e.worst, limit: e.limit, note: e.note });
     } else merged.push(e);
   }
   return merged;
@@ -281,6 +327,7 @@ export function detectJarring(S: Sample[], R: SopRules): Jarring {
     const cyc = `cycle ${c.n} at ${Math.round(c.depth)} ft`;
     if (limit && c.up && c.peak > limit.limit) f('jarMat', c, c.peak, limit.limit, 'lbs', 'max', `${cyc}; limit is the ${limit.from}`);
     if (R.spang && c.up && c.peak > R.spangLimit) f('jarSpang', c, c.peak, R.spangLimit, 'lbs', 'max', cyc);
+    if (R.heavyLb > 0 && c.up && c.peak > R.heavyLb) f('jarHeavy', c, c.peak, R.heavyLb, 'lbs', 'max', `${cyc}: heavy jarring needs a new program and an MoC approved by the NESR OM`);
     const lowest = c.normal * (1 - R.jarDownLossPct / 100);
     if (c.down && c.low < lowest) f('jarDown', c, c.low, lowest, 'lbs', 'min', `${cyc}; normal tension ${Math.round(c.normal)} lbs`);
     if (c.t1 - c.t0 > R.cycleMin * 60) f('jarCycle', c, (c.t1 - c.t0) / 60, R.cycleMin, 'min', 'max', cyc);
