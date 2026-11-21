@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleCheck, CircleX, FileText, Upload, X } from 'lucide-react';
+import { CircleCheck, CircleX, FileText, Paperclip, Upload, X } from 'lucide-react';
+import { sizeText } from '../../shared/attachments';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import {
   CHECK_KEYS, TIME_MODES, UNIT_DEPTH, UNIT_SPEED, UNIT_TENSION, analyse, buildSamples, demoRun, fmt, guessMapping, mappingProblems, num,
@@ -33,7 +34,7 @@ type Format = 'lineminder' | 'csv';
 /** Lineminder choices: units, step, the channels kept and which are depth, tension and speed. */
 type LmOpts = { units: Units; step: number; keep: number[]; depth: number; tension: number; speed: number };
 /** A winch file: parsed, and its copy in the job's attachments (attId) once uploaded, or why it could not be. */
-type WFile = { id: string; name: string; attId?: string; saveError?: string; demo?: boolean } & ({ kind: 'lineminder'; f: Tdat } | { kind: 'csv'; t: Table });
+type WFile = { id: string; name: string; attId?: string; saveError?: string } & ({ kind: 'lineminder'; f: Tdat } | { kind: 'csv'; t: Table });
 type JoinAnswers = Record<string, JoinAnswer>;
 /** What is kept with the job (6z.43): every choice on the card; the files are referred to by their attachment. */
 interface SavedState {
@@ -41,7 +42,9 @@ interface SavedState {
   lm: LmOpts | null; map: Mapping | null; keepCols: number[]; kindPick: LineKind | null; seasonPick: boolean | null; newLine: RuleSet | null;
   limits: { mbs: string; mat: string; spang: boolean }; restr: string; services: string[]; checked: boolean;
 }
-interface AttRow { id: string; file_name: string; note: string | null; uploaded_at: string; uploaded_by_name: string; category: string }
+interface AttRow { id: string; file_name: string; note: string | null; uploaded_at: string; uploaded_by_name: string; category: string; size_bytes: number }
+/** Attachments that can be winch data: Lineminder recordings and text or CSV exports (6z.45). */
+const WINCH_FILE = /\.(da_tdat|dat|csv|txt|tsv|log|prn)$/i;
 
 /** A file read from its bytes, with no side effects (for restoring). */
 function readFile(buf: ArrayBuffer, name: string, id: string, attId?: string): WFile {
@@ -117,7 +120,7 @@ function checkRun(base: Base, r: Run, g: WinchGuide, st: Setup, service: string)
 export function WinchDataCard({ job }: { job: Job }) {
   const { data: me } = useMe();
   const qc = useQueryClient();
-  const saved = useQuery({ queryKey: ['winch-state', job.id], queryFn: () => api<{ state: SavedState | null; updatedAt: string | null; updatedBy: string | null; canEdit: boolean }>(`/winch/state/${encodeURIComponent(job.id)}`), staleTime: Infinity, retry: false });
+  const saved = useQuery({ refetchOnMount: 'always', gcTime: 0, queryKey: ['winch-state', job.id], queryFn: () => api<{ state: SavedState | null; updatedAt: string | null; updatedBy: string | null; canEdit: boolean }>(`/winch/state/${encodeURIComponent(job.id)}`), staleTime: Infinity, retry: false });
   const atts = useQuery({ queryKey: ['attachments', 'job', job.id], queryFn: () => api<{ files: AttRow[] }>(`/attachments/job/${encodeURIComponent(job.id)}`), retry: false });
   const [restored, setRestored] = useState(false);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
@@ -205,6 +208,8 @@ export function WinchDataCard({ job }: { job: Job }) {
     for (const w of added) {
       const buf = bufs.get(w.id);
       if (!buf || w.attId) continue;
+      const same = (atts.data?.files ?? []).find((a) => a.file_name === w.name && a.size_bytes === buf.byteLength && (a.note ?? '').startsWith('Winch data file'));
+      if (same) { setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, attId: same.id } : x))); continue; }
       api<{ id: string }>(`/attachments/job/${encodeURIComponent(job.id)}?category=document&note=${encodeURIComponent('Winch data file')}`, { method: 'POST', headers: { 'X-File-Name': encodeURIComponent(w.name) }, body: buf })
         .then((r) => { setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, attId: r.id, saveError: undefined } : x))); qc.invalidateQueries({ queryKey: ['attachments', 'job', job.id] }); })
         .catch((e) => setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, saveError: (e as Error).message } : x))));
@@ -299,7 +304,7 @@ export function WinchDataCard({ job }: { job: Job }) {
 
   // restore what was kept with the job (6z.43): the choices, then each file from the attachments
   useEffect(() => {
-    if (restored || saved.isLoading) return;
+    if (restored || saved.isLoading || saved.isFetching || !saved.isFetchedAfterMount) return;
     const st = saved.data?.state;
     if (!st || st.v !== 1) { setRestored(true); return; }
     let gone = false;
@@ -323,7 +328,7 @@ export function WinchDataCard({ job }: { job: Job }) {
     })();
     return () => { gone = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saved.isLoading, saved.data, restored]);
+  }, [saved.isLoading, saved.isFetching, saved.isFetchedAfterMount, saved.data, restored]);
 
   // run the check again once restored, when it had been run
   useEffect(() => {
@@ -350,7 +355,7 @@ export function WinchDataCard({ job }: { job: Job }) {
     if (saved.data && !saved.data.canEdit) { setSaveNote({ ok: false, text: 'Not kept with the job: your role can only view jobs.' }); return; }
     const t = setTimeout(() => {
       api<{ updatedAt: string }>(`/winch/state/${encodeURIComponent(job.id)}`, { method: 'PUT', body: stateJson, headers: { 'Content-Type': 'application/json' } })
-        .then((r) => { lastSaved.current = stateJson; setSaveNote({ ok: true, text: `Kept with the job at ${new Date(r.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` }); })
+        .then((r) => { lastSaved.current = stateJson; qc.setQueryData(['winch-state', job.id], (o: object | undefined) => ({ ...(o ?? {}), state: JSON.parse(stateJson), updatedAt: r.updatedAt })); setSaveNote({ ok: true, text: `Kept with the job at ${new Date(r.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` }); })
         .catch((e) => setSaveNote({ ok: false, text: `Not kept with the job: ${(e as Error).message}` }));
     }, 800);
     return () => clearTimeout(t);
@@ -377,14 +382,28 @@ export function WinchDataCard({ job }: { job: Job }) {
     setTimeout(() => loadFilesFresh([{ buf: new TextEncoder().encode(d.text).buffer as ArrayBuffer, name: d.fileName }]), 0);
     setKindPick('braided');
   };
+  /** Adds a winch file already in the job's attachments, without uploading it again (6z.45). */
+  const addFromAttachment = async (a: AttRow) => {
+    setProblem(null);
+    try {
+      const res = await fetch(`/api/attachments/job/${encodeURIComponent(job.id)}/${encodeURIComponent(a.id)}`, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`could not be opened (${res.status})`);
+      const buf = await res.arrayBuffer();
+      const r = addFile(buf, a.file_name, files);
+      if (typeof r === 'string') { setProblem(r); return; }
+      const added = r[r.length - 1];
+      setFiles(r.map((x) => (x.id === added.id ? { ...x, attId: a.id } : x)));
+      setBase(null);
+    } catch (e) { setProblem(`${a.file_name} ${(e as Error).message}.`); }
+  };
   const loadFilesFresh = (picked: { buf: ArrayBuffer; name: string }[]) => {
     // the demos start from no files
     let list: WFile[] = [];
     const bufs = new Map<string, ArrayBuffer>();
     for (const p of picked) { const r = addFile(p.buf, p.name, list); if (typeof r !== 'string') { list = r; bufs.set(r[r.length - 1].id, p.buf); } }
-    // demo files are not kept with the job
-    setFiles(list.map((x) => ({ ...x, demo: true }))); setBase(null); setProblem(null);
-    void bufs;
+    // demos are offered only on an empty card, and kept like any other file (6z.45)
+    setFiles(list); setBase(null); setProblem(null);
+    upload(list, bufs);
   };
   const demoLm = () => { setLm(null); setMap(null); setAnswers({}); setKindPick('wire'); setRestr(''); const d = demoLineminder(); setTimeout(() => loadFilesFresh([{ buf: d.buffer, name: d.fileName }]), 0); };
   const demoPair = () => { setLm(null); setMap(null); setAnswers({}); setKindPick('wire'); setRestr(''); setTimeout(() => loadFilesFresh(demoLineminderPair().map((d) => ({ buf: d.buffer, name: d.fileName }))), 0); };
@@ -415,9 +434,11 @@ export function WinchDataCard({ job }: { job: Job }) {
       <div className="flex flex-wrap items-start justify-between gap-2">{status}{savedReports}</div>
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 text-sm text-text-muted">Add the Lineminder recordings or winch exports for the job. The app joins them, finds each run, and checks it against the Speed and Jarring Guidelines (slickline wire) or the seasoning rules (braided line).</p>
-        <Button size="sm" variant="ghost" onClick={demoLm}>Demo recording</Button>
-        <Button size="sm" variant="ghost" onClick={demoPair}>Demo: two recordings</Button>
-        <Button size="sm" variant="ghost" onClick={demoText}>Demo export</Button>
+        {!files.length && <>
+          <Button size="sm" variant="ghost" onClick={demoLm}>Demo recording</Button>
+          <Button size="sm" variant="ghost" onClick={demoPair}>Demo: two recordings</Button>
+          <Button size="sm" variant="ghost" onClick={demoText}>Demo export</Button>
+        </>}
       </div>
 
       <Step n={1} title="Winch data files" note="One or more for the same job">
@@ -429,6 +450,28 @@ export function WinchDataCard({ job }: { job: Job }) {
         <DropZone id="wd-file" accept={format === 'lineminder' ? '.da_tdat,.dat' : '.txt,.csv,.tsv,.log,.dat,.prn'}
           label={files.length ? 'Add another file' : format === 'lineminder' ? 'Choose the Lineminder recordings' : 'Choose the winch exports'} onFiles={loadFiles}
           status={files.length ? `${files.length} file${files.length > 1 ? 's' : ''}` : 'No file yet'} />
+        {(() => {
+          const loaded = new Set(files.map((x) => x.attId).filter(Boolean));
+          const seen = new Set<string>();
+          // one of each file (same name and size), newest first, not already loaded
+          const offer = (atts.data?.files ?? []).filter((a) => WINCH_FILE.test(a.file_name) && !loaded.has(a.id))
+            .filter((a) => { const k = `${a.file_name}|${a.size_bytes}`; if (seen.has(k)) return false; seen.add(k); return true; });
+          if (!offer.length) return null;
+          return (
+            <div className="mt-2 rounded-md border border-border px-3 py-2 text-xs">
+              <p className="mb-1 font-semibold">Or add one from the job's attachments</p>
+              <ul className="space-y-1">
+                {offer.map((a) => (
+                  <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="min-w-0 break-all">{a.file_name}</span>
+                    <span className="text-text-subtle">{sizeText(a.size_bytes)} · {a.uploaded_by_name} · {new Date(a.uploaded_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    <Button size="sm" variant="ghost" className="ml-auto" onClick={() => addFromAttachment(a)}><Paperclip aria-hidden className="size-3.5" />Add</Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
         {files.length > 0 && (
           <ul className="mt-2 divide-y divide-border rounded-md border border-border text-xs" aria-label="Files">
             {[...spans].sort((a, b) => a.t0 - b.t0).map((sp) => {
@@ -444,7 +487,7 @@ export function WinchDataCard({ job }: { job: Job }) {
                     <span className="text-text-muted">
                       {w.kind === 'lineminder' ? `${tdatSummary(w.f).records.toLocaleString()} records` : `${w.t.data.length.toLocaleString()} rows`} · {stamp(sp.t0)} to {stamp(sp.t1)}
                     </span>
-                    {w.demo ? <span className="text-text-subtle">Demo: not kept</span> : w.attId ? <span className="text-success">In the attachments</span> : w.saveError ? <span className="text-danger">Not saved: {w.saveError}</span> : <span className="text-text-subtle">Saving…</span>}
+                    {w.attId ? <span className="text-success">In the attachments</span> : w.saveError ? <span className="text-danger">Not saved: {w.saveError}</span> : <span className="text-text-subtle">Saving…</span>}
                     {out && <span className="font-semibold text-warning">Left out: a different job</span>}
                     {gapAns === 'same' && <span className="text-success">Same job, joined</span>}
                     <Button size="sm" variant="ghost" className="ml-auto" aria-label={`Remove ${w.name}`} onClick={() => removeFile(sp.id)}><X aria-hidden className="size-3.5" /></Button>
