@@ -265,6 +265,12 @@ export function manualSurvey(kop: number, p30: number, lat: number, td: number):
   return { kop, p30, lat, td, stations: st, source: 'manual' };
 }
 
+/** A vertical well (6z.41): the whole hole is the vertical zone, so only the vertical rules apply. */
+export function verticalSurvey(td: number): Survey {
+  const d = Math.max(1, td);
+  return { kop: d, p30: d + 0.1, lat: d + 0.2, td: d + 0.2, stations: [{ md: 0, inc: 0, tvd: 0 }, { md: d + 0.2, inc: 0, tvd: d + 0.2 }], source: 'vertical' };
+}
+
 export interface SurveyMapping { md: number; inc: number; tvd: number; unit: keyof typeof UNIT_DEPTH; kopInc: number; latInc: number }
 export function guessSurveyMapping(t: Table): SurveyMapping {
   return {
