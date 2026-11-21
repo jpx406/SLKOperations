@@ -158,3 +158,40 @@ describe('joining files', () => {
     expect(runs[1].t0 - runs[0].t1).toBeGreaterThan(2 * 86400 - 60);
   });
 });
+
+// 6z.43: the scorecard and the winch file types kept as attachments
+import { scorecard } from '../src/shared/winchScore';
+import { analyse, verticalSurvey } from '../src/shared/winchData';
+import { checkUpload } from '../src/shared/attachments';
+
+describe('scorecard', () => {
+  const S = samples(toTable(demoLineminder().buffer));
+  const reports = splitRuns(S).map((r, i) => {
+    const Sr = S.slice(r.i0, r.i1 + 1);
+    const a = analyse(Sr, verticalSurvey(r.maxD), { post: GUIDE_DEFAULTS.braided.seasoned, seasoning: GUIDE_DEFAULTS.braided.newLine }, 'post');
+    const sp = speedsFor(GUIDE_DEFAULTS.wire, ['Drift', 'Caliper'][i]);
+    const sop = wireSop(GUIDE_DEFAULTS, sp.speeds, { mbs: 3000, mat: 0, spang: true });
+    return { run: r, a: { ...a, viol: [] }, speed: sopSpeedFindings(Sr, sop, []), jar: detectJarring(Sr, sop), service: ['Drift', 'Caliper'][i], isDefault: sp.isDefault };
+  });
+  const sc = scorecard(reports);
+  it('counts speed, tension and jarring flags per run and for the job', () => {
+    expect(sc.rows).toHaveLength(2);
+    expect(sc.rows[0]).toMatchObject({ label: 'Run 1', speedFlags: 0, jarCycles: 0, jarFlags: 0, total: 0, keptPct: 100, defaultSpeeds: false });
+    expect(sc.rows[1].jarCycles).toBe(4);
+    expect(sc.rows[1].jarFlags).toBe(6);
+    expect(sc.rows[1].speedFlags).toBeGreaterThan(0);
+    expect(sc.rows[1].defaultSpeeds).toBe(true);
+    expect(sc.total.total).toBe(sc.rows[0].total + sc.rows[1].total);
+    expect(Math.round(sc.total.maxD)).toBe(6000);
+    expect(sc.total.keptPct).toBeLessThan(100);
+    expect(sc.byRule.find((r) => r.label === 'Heavy jarring')?.count).toBe(1);
+  });
+});
+
+describe('winch files as attachments', () => {
+  it('keeps Lineminder recordings and text exports', () => {
+    expect(checkUpload('DEMO_W12.da_tdat', 100)).toEqual({ name: 'DEMO_W12.da_tdat', type: 'application/octet-stream' });
+    expect(checkUpload('run.log', 10)).toMatchObject({ type: 'text/plain' });
+    expect(checkUpload('page.html', 10)).toHaveProperty('error');
+  });
+});

@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { CircleCheck, CircleX, Upload, X } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CircleCheck, CircleX, FileText, Upload, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import {
   CHECK_KEYS, TIME_MODES, UNIT_DEPTH, UNIT_SPEED, UNIT_TENSION, analyse, buildSamples, demoRun, fmt, guessMapping, mappingProblems, num,
@@ -32,7 +32,22 @@ import { RunsView, seasonLabel, type ChannelSeries, type Meta, type RunReport, t
 type Format = 'lineminder' | 'csv';
 /** Lineminder choices: units, step, the channels kept and which are depth, tension and speed. */
 type LmOpts = { units: Units; step: number; keep: number[]; depth: number; tension: number; speed: number };
-type WFile = { id: string; name: string } & ({ kind: 'lineminder'; f: Tdat } | { kind: 'csv'; t: Table });
+/** A winch file: parsed, and its copy in the job's attachments (attId) once uploaded, or why it could not be. */
+type WFile = { id: string; name: string; attId?: string; saveError?: string; demo?: boolean } & ({ kind: 'lineminder'; f: Tdat } | { kind: 'csv'; t: Table });
+type JoinAnswers = Record<string, JoinAnswer>;
+/** What is kept with the job (6z.43): every choice on the card; the files are referred to by their attachment. */
+interface SavedState {
+  v: 1; files: { id: string; attId: string; name: string }[]; answers: JoinAnswers; format: Format;
+  lm: LmOpts | null; map: Mapping | null; keepCols: number[]; kindPick: LineKind | null; seasonPick: boolean | null; newLine: RuleSet | null;
+  limits: { mbs: string; mat: string; spang: boolean }; restr: string; meta: Meta; services: string[]; checked: boolean;
+}
+interface AttRow { id: string; file_name: string; note: string | null; uploaded_at: string; uploaded_by_name: string; category: string }
+
+/** A file read from its bytes, with no side effects (for restoring). */
+function readFile(buf: ArrayBuffer, name: string, id: string, attId?: string): WFile {
+  if (isTdat(buf)) return { id, name, attId, kind: 'lineminder', f: parseTdat(buf) };
+  return { id, name, attId, kind: 'csv', t: parseTable(new TextDecoder().decode(buf)) };
+}
 
 const uniq = (a: number[]) => [...new Set(a.filter((i) => i >= 0))];
 const stamp = (t: number) => (Number.isFinite(t) ? new Date(t * 1000).toISOString().slice(0, 16).replace('T', ' ') : '—');
@@ -101,6 +116,13 @@ function checkRun(base: Base, r: Run, g: WinchGuide, st: Setup, service: string)
 
 export function WinchDataCard({ job }: { job: Job }) {
   const { data: me } = useMe();
+  const qc = useQueryClient();
+  const saved = useQuery({ queryKey: ['winch-state', job.id], queryFn: () => api<{ state: SavedState | null; updatedAt: string | null; updatedBy: string | null; canEdit: boolean }>(`/winch/state/${encodeURIComponent(job.id)}`), staleTime: Infinity, retry: false });
+  const atts = useQuery({ queryKey: ['attachments', 'job', job.id], queryFn: () => api<{ files: AttRow[] }>(`/attachments/job/${encodeURIComponent(job.id)}`), retry: false });
+  const [restored, setRestored] = useState(false);
+  const [restoreNote, setRestoreNote] = useState<string | null>(null);
+  const [saveNote, setSaveNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const pendingRun = useRef(false);
   const guideQ = useGuide();
   const lineQ = useQuery({ queryKey: ['winch-line', job.id], queryFn: () => api<WinchLine>(`/winch/line/${encodeURIComponent(job.id)}`), staleTime: 5 * 60_000, retry: false });
   const [format, setFormat] = useState<Format>('lineminder');
@@ -157,7 +179,7 @@ export function WinchDataCard({ job }: { job: Job }) {
   });
 
   const addFile = (buf: ArrayBuffer, name: string, list: WFile[]): WFile[] | string => {
-    const id = `${name}-${list.length}-${buf.byteLength}`;
+    const id = `${name}-${Date.now().toString(36)}-${list.length}-${buf.byteLength}`;
     if (isTdat(buf)) {
       const f = parseTdat(buf);
       if (!lm && !list.some((x) => x.kind === 'lineminder')) {
@@ -184,16 +206,29 @@ export function WinchDataCard({ job }: { job: Job }) {
     setFormat('csv');
     return [...list, { id, name, kind: 'csv', t }];
   };
+  /** Keeps a copy of each new file with the job's attachments, so the check survives a refresh. */
+  const upload = (added: WFile[], bufs: Map<string, ArrayBuffer>) => {
+    for (const w of added) {
+      const buf = bufs.get(w.id);
+      if (!buf || w.attId) continue;
+      api<{ id: string }>(`/attachments/job/${encodeURIComponent(job.id)}?category=document&note=${encodeURIComponent('Winch data file')}`, { method: 'POST', headers: { 'X-File-Name': encodeURIComponent(w.name) }, body: buf })
+        .then((r) => { setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, attId: r.id, saveError: undefined } : x))); qc.invalidateQueries({ queryKey: ['attachments', 'job', job.id] }); })
+        .catch((e) => setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, saveError: (e as Error).message } : x))));
+    }
+  };
   const loadFiles = (picked: { buf: ArrayBuffer; name: string }[]) => {
     let list = files;
+    const before = new Set(files.map((x) => x.id));
+    const bufs = new Map<string, ArrayBuffer>();
     const errs: string[] = [];
     for (const p of picked) {
-      try { const r = addFile(p.buf, p.name, list); if (typeof r === 'string') errs.push(r); else { list = r; guessMeta(p.name); } }
+      try { const r = addFile(p.buf, p.name, list); if (typeof r === 'string') errs.push(r); else { list = r; bufs.set(r[r.length - 1].id, p.buf); guessMeta(p.name); } }
       catch (e) { errs.push(`${p.name}: ${(e as Error).message}`); }
     }
     setFiles(list);
     setBase(null);
     setProblem(errs.length ? errs.join(' ') : null);
+    upload(list.filter((x) => !before.has(x.id)), bufs);
   };
   const removeFile = (id: string) => {
     const left = files.filter((f) => f.id !== id);
@@ -234,7 +269,7 @@ export function WinchDataCard({ job }: { job: Job }) {
   const checks = useMemo(() => (firstTdat ? tdatChecks(firstTdat.f) : []), [firstTdat]);
   const mapProblems = firstCsv && map ? mappingProblems(firstCsv.t, map) : [];
 
-  const run = () => {
+  const run = (restoring = false) => {
     if (!files.length) { setProblem('Add the winch data file first, or try a demo.'); return; }
     if (plan.problems.length) { setProblem(plan.problems.join('. ') + '.'); return; }
     if (plan.ask.length) { setProblem('Say whether each file after a gap of more than a day is the same job.'); return; }
@@ -253,7 +288,7 @@ export function WinchDataCard({ job }: { job: Job }) {
     setBase({ S, runs, channels: channelSeries(built.t, built.m, built.cols), fileName: names.length > 1 ? `${names[0]} + ${names.length - 1} more` : names[0], source, meta: { ...meta }, minDepth: built.m.minDepth });
     // each run starts with the job's services in order, the last one repeated
     const js = (job.services ?? []).filter(Boolean);
-    setServices(runs.map((_, i) => js[Math.min(i, js.length - 1)] ?? ''));
+    if (!(restoring && services.length === runs.length)) setServices(runs.map((_, i) => js[Math.min(i, js.length - 1)] ?? ''));
     setProblem(null);
   };
 
@@ -262,11 +297,84 @@ export function WinchDataCard({ job }: { job: Job }) {
     const reports = base.runs.map((r, i) => checkRun(base, r, g, setup, services[i] ?? ''));
     return {
       meta: base.meta, fileName: base.fileName, reports, channels: base.channels, restrictions: setup.restrictions, source: base.source,
-      kind: setup.kind, seasoned: setup.seasoned, services: [...new Set([...listedServices(g.wire), ...(job.services ?? [])])],
+      kind: setup.kind, seasoned: setup.seasoned, services: [...new Set([...listedServices(g.wire), ...(job.services ?? [])])], jobId: job.id, by: me?.fullName ?? '',
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base, g, services, setup?.kind, setup?.seasoned, setup?.newLine, setup?.limits.mbs, setup?.limits.mat, setup?.limits.spang, restr]);
   latest.current = payload;
+
+  // restore what was kept with the job (6z.43): the choices, then each file from the attachments
+  useEffect(() => {
+    if (restored || saved.isLoading) return;
+    const st = saved.data?.state;
+    if (!st || st.v !== 1) { setRestored(true); return; }
+    let gone = false;
+    (async () => {
+      const list: WFile[] = [];
+      const missing: string[] = [];
+      for (const x of st.files) {
+        try {
+          const res = await fetch(`/api/attachments/job/${encodeURIComponent(job.id)}/${encodeURIComponent(x.attId)}`, { credentials: 'same-origin' });
+          if (!res.ok) throw new Error(String(res.status));
+          list.push(readFile(await res.arrayBuffer(), x.name, x.id, x.attId));
+        } catch { missing.push(x.name); }
+      }
+      if (gone) return;
+      setFiles(list); setAnswers(st.answers ?? {}); setFormat(st.format ?? 'lineminder'); setLm(st.lm); setMap(st.map); setKeepCols(st.keepCols ?? []);
+      setKindPick(st.kindPick); setSeasonPick(st.seasonPick); setNewLine(st.newLine); setLimits(st.limits); setRestr(st.restr ?? ''); setMeta(st.meta);
+      setServices(st.services ?? []);
+      setRestoreNote(missing.length ? `Could not open ${missing.join(', ')} from the attachments: add ${missing.length > 1 ? 'them' : 'it'} again.` : null);
+      pendingRun.current = !!st.checked && list.length > 0;
+      setRestored(true);
+    })();
+    return () => { gone = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved.isLoading, saved.data, restored]);
+
+  // run the check again once restored, when it had been run
+  useEffect(() => {
+    if (!restored || !pendingRun.current || !built || !g) return;
+    pendingRun.current = false;
+    run(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored, built, g]);
+
+  // keep every change with the job, a moment after it is made
+  const stateJson = useMemo(() => {
+    const st: SavedState = {
+      v: 1, files: files.filter((x) => x.attId).map((x) => ({ id: x.id, attId: x.attId!, name: x.name })), answers, format, lm, map, keepCols,
+      kindPick, seasonPick, newLine, limits, restr, meta, services, checked: !!base,
+    };
+    return JSON.stringify(st);
+  }, [files, answers, format, lm, map, keepCols, kindPick, seasonPick, newLine, limits, restr, meta, services, base]);
+  const lastSaved = useRef<string | null>(null);
+  useEffect(() => {
+    if (!restored) return;
+    if (lastSaved.current === null) { lastSaved.current = saved.data?.state ? stateJson : JSON.stringify(null); if (saved.data?.state) return; }
+    if (stateJson === lastSaved.current) return;
+    if (!saved.data?.state && !files.some((x) => x.attId)) return;
+    if (saved.data && !saved.data.canEdit) { setSaveNote({ ok: false, text: 'Not kept with the job: your role can only view jobs.' }); return; }
+    const t = setTimeout(() => {
+      api<{ updatedAt: string }>(`/winch/state/${encodeURIComponent(job.id)}`, { method: 'PUT', body: stateJson, headers: { 'Content-Type': 'application/json' } })
+        .then((r) => { lastSaved.current = stateJson; setSaveNote({ ok: true, text: `Kept with the job at ${new Date(r.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` }); })
+        .catch((e) => setSaveNote({ ok: false, text: `Not kept with the job: ${(e as Error).message}` }));
+    }, 800);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateJson, restored]);
+
+  const reports = (atts.data?.files ?? []).filter((a) => (a.note ?? '').startsWith('Winch data analysis'));
+  const savedReports = reports.length > 0 && (
+    <details className="text-xs">
+      <summary className="cursor-pointer font-semibold">Saved reports ({reports.length})</summary>
+      <ul className="mt-1 space-y-0.5">
+        {reports.map((a) => (
+          <li key={a.id}><a className="inline-flex items-center gap-1 text-accent-text underline" href={`/api/attachments/job/${encodeURIComponent(job.id)}/${a.id}`}><FileText aria-hidden className="size-3" />{a.file_name}</a> <span className="text-text-subtle">· {a.uploaded_by_name}</span></li>
+        ))}
+      </ul>
+    </details>
+  );
+  const status = <p role="status" className={cx('text-xs', saveNote && !saveNote.ok ? 'text-danger' : 'text-text-subtle')}>{saveNote?.text ?? (saved.data?.updatedAt ? `Kept with the job, last by ${saved.data.updatedBy ?? 'someone'} on ${new Date(saved.data.updatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Everything here is kept with the job as you go.')}</p>;
 
   const demoText = () => {
     const d = demoRun();
@@ -278,8 +386,11 @@ export function WinchDataCard({ job }: { job: Job }) {
   const loadFilesFresh = (picked: { buf: ArrayBuffer; name: string }[]) => {
     // the demos start from no files
     let list: WFile[] = [];
-    for (const p of picked) { const r = addFile(p.buf, p.name, list); if (typeof r !== 'string') list = r; guessMeta(p.name); }
-    setFiles(list); setBase(null); setProblem(null);
+    const bufs = new Map<string, ArrayBuffer>();
+    for (const p of picked) { const r = addFile(p.buf, p.name, list); if (typeof r !== 'string') { list = r; bufs.set(r[r.length - 1].id, p.buf); } guessMeta(p.name); }
+    // demo files are not kept with the job
+    setFiles(list.map((x) => ({ ...x, demo: true }))); setBase(null); setProblem(null);
+    void bufs;
   };
   const demoLm = () => { setLm(null); setMap(null); setAnswers({}); setKindPick('wire'); setRestr(''); const d = demoLineminder(); setTimeout(() => loadFilesFresh([{ buf: d.buffer, name: d.fileName }]), 0); };
   const demoPair = () => { setLm(null); setMap(null); setAnswers({}); setKindPick('wire'); setRestr(''); setTimeout(() => loadFilesFresh(demoLineminderPair().map((d) => ({ buf: d.buffer, name: d.fileName }))), 0); };
@@ -294,15 +405,20 @@ export function WinchDataCard({ job }: { job: Job }) {
     return (
       <div className="space-y-3">
         {problem && <Banner tone="danger">{problem}</Banner>}
+        {status}
         <RunsView p={payload} onEdit={() => setBase(null)} onWindow={openWindow}
           onSeason={(s) => setSeasonPick(s)} onService={(i, sv) => setServices((a) => a.map((x, k) => (k === i ? sv : x)))} />
+        {savedReports}
       </div>
     );
   }
 
   const line = lineQ.data;
+  if (!restored) return <Skeleton className="h-40" />;
   return (
     <div className="space-y-5">
+      {restoreNote && <Banner tone="warning">{restoreNote}</Banner>}
+      <div className="flex flex-wrap items-start justify-between gap-2">{status}{savedReports}</div>
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 text-sm text-text-muted">Add the Lineminder recordings or winch exports for the job. The app joins them, finds each run, and checks it against the Speed and Jarring Guidelines (slickline wire) or the seasoning rules (braided line).</p>
         <Button size="sm" variant="ghost" onClick={demoLm}>Demo recording</Button>
@@ -334,6 +450,7 @@ export function WinchDataCard({ job }: { job: Job }) {
                     <span className="text-text-muted">
                       {w.kind === 'lineminder' ? `${tdatSummary(w.f).records.toLocaleString()} records` : `${w.t.data.length.toLocaleString()} rows`} · {stamp(sp.t0)} to {stamp(sp.t1)}
                     </span>
+                    {w.demo ? <span className="text-text-subtle">Demo: not kept</span> : w.attId ? <span className="text-success">In the attachments</span> : w.saveError ? <span className="text-danger">Not saved: {w.saveError}</span> : <span className="text-text-subtle">Saving…</span>}
                     {out && <span className="font-semibold text-warning">Left out: a different job</span>}
                     {gapAns === 'same' && <span className="text-success">Same job, joined</span>}
                     <Button size="sm" variant="ghost" className="ml-auto" aria-label={`Remove ${w.name}`} onClick={() => removeFile(sp.id)}><X aria-hidden className="size-3.5" /></Button>
@@ -459,7 +576,7 @@ export function WinchDataCard({ job }: { job: Job }) {
 
       {problem && <Banner tone="danger">{problem}</Banner>}
       <div className="flex justify-end">
-        <Button variant="primary" onClick={run}>Find the runs and check them</Button>
+        <Button variant="primary" onClick={() => run()}>Find the runs and check them</Button>
       </div>
     </div>
   );

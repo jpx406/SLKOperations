@@ -1,9 +1,12 @@
-import { ExternalLink, FileDown, Pencil, Printer } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ExternalLink, FileDown, Pencil, Printer, Save } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import { dur, findingsCsv, fmt, hm, hms, limitCurves, median, type Analysis, type Sample } from '../../../shared/winchData';
 import { SOP_LABEL, SOP_SOURCE, jarUpLimit, sopCsv, type Jarring, type Restriction, type Run, type SopFinding, type SopRuleKey, type SopRules } from '../../../shared/winchRuns';
 import { BRAIDED_CHECKS, BRAIDED_LABEL, LINE_LABEL, braidedText, staticAt, type LineKind } from '../../../shared/winchGuide';
-import { printOnly, saveFile } from '../../components/charts';
+import { saveFile } from '../../components/charts';
+import { scorecard, type ScoreRow } from '../../../shared/winchScore';
+import { buildReportPdf, saveReport } from './reportPdf';
 import { Button, cx, inputSized } from '../../components/ui';
 
 // The winch report (6z.26), moved here in 6z.41 so the run tabs and the analysis window share it. 6z.41 adds a tab per
@@ -33,6 +36,8 @@ export interface WinchPayload {
   services: string[];
   /** The run shown first. */
   pick?: number;
+  /** The job the report belongs to, for saving the PDF to its attachments, and who is signed in (6z.43). */
+  jobId?: string; by?: string;
 }
 
 const small = 'h-(--layout-control-sm) text-sm';
@@ -54,8 +59,27 @@ export function RunsView({ p, wide, onEdit, onWindow, onSeason, onService }: {
 }) {
   const [pick, setPick] = useState(() => Math.min(p.pick ?? 0, Math.max(0, p.reports.length - 1)));
   const [view, setView] = useState<View>('time');
-  const box = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState<'print' | 'save' | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const { meta, reports } = p;
+  // Print and Save make the PDF and keep it with the job's attachments, named with the time (6z.43)
+  const report = async (mode: 'print' | 'save') => {
+    setBusy(mode); setNote(null);
+    const by = p.by || meta.by || '';
+    let bytes: Uint8Array | null = null;
+    try {
+      const r = await saveReport(p, by, mode);
+      bytes = r.bytes;
+      setNote({ ok: true, text: `Saved to the job's attachments as “${r.saved.name}”.` });
+      qc.invalidateQueries({ queryKey: ['attachments', 'job', p.jobId] });
+    } catch (e) {
+      setNote({ ok: false, text: `Not saved to the attachments: ${(e as Error).message}` });
+      if (mode === 'print') bytes = await buildReportPdf(p, new Date(), by, mode).catch(() => null);
+    }
+    if (mode === 'print' && bytes) printPdf(bytes);
+    setBusy(null);
+  };
   const r = reports[Math.min(pick, reports.length - 1)];
   const days = new Set(reports.flatMap((x) => [dayOf(x.run.t0), dayOf(x.run.t1)])).size > 1;
   const date = meta.date ? new Date(`${meta.date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
@@ -67,7 +91,7 @@ export function RunsView({ p, wide, onEdit, onWindow, onSeason, onService }: {
     saveFile(`winch-findings${meta.well ? `-w${meta.well}` : ''}.csv`, `${services}${p.kind === 'braided' ? `Seasoning rules\n${guide}\n\n` : ''}Speed, tension and jarring\n${sop}`, 'text/csv');
   };
   return (
-    <div ref={box} className="space-y-4">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="font-display text-lg font-bold">Well {meta.well || '—'} · Stage {meta.stage || '—'} · {meta.unit || '—'}</h3>
@@ -77,31 +101,14 @@ export function RunsView({ p, wide, onEdit, onWindow, onSeason, onService }: {
           {onEdit && <Button size="sm" variant="ghost" onClick={onEdit}><Pencil aria-hidden className="size-3.5" />Change inputs</Button>}
           {onWindow && <Button size="sm" variant="ghost" onClick={() => onWindow(pick)}><ExternalLink aria-hidden className="size-3.5" />Open in a new window</Button>}
           <Button size="sm" variant="ghost" onClick={csv}><FileDown aria-hidden className="size-3.5" />Findings CSV</Button>
-          <Button size="sm" variant="ghost" onClick={() => printOnly(box.current)}><Printer aria-hidden className="size-3.5" />Print</Button>
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => report('save')}><Save aria-hidden className="size-3.5" />{busy === 'save' ? 'Saving…' : 'Save report'}</Button>
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => report('print')}><Printer aria-hidden className="size-3.5" />{busy === 'print' ? 'Making the PDF…' : 'Print'}</Button>
         </div>
       </div>
 
-      {reports.length > 1 && (
-        <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full min-w-[34rem] text-xs">
-            <caption className="sr-only">Runs in this recording</caption>
-            <thead><tr>{['Run', 'Time', 'Max depth', p.kind === 'wire' ? 'Service' : 'Seasoning rules', 'Speed and tension', 'Jarring cycles', 'Jarring flags'].map((h) => <th key={h} scope="col" className={cx(th, 'px-3')}>{h}</th>)}</tr></thead>
-            <tbody>{reports.map((x, i) => (
-              <tr key={x.run.n} className={cx('cursor-pointer border-t border-border hover:bg-surface-2', i === pick && 'bg-surface-2')} onClick={() => setPick(i)}>
-                <td className={cx(td, 'px-3 font-semibold')}>{runLabel(x.run)}{x.run.partial && <span className="ml-1 font-normal text-text-subtle">(partial)</span>}</td>
-                <td className={cx(td, 'px-3 font-mono')}>{runTime(x.run, days)}</td>
-                <td className={cx(td, 'px-3 font-mono')}>{fmt(x.run.maxD)} ft</td>
-                <td className={cx(td, 'px-3')}>{p.kind === 'wire'
-                  ? <>{x.service || 'Not set'}{x.isDefault && <span className="ml-1"><Pill tone="warning">default speeds</Pill></span>}</>
-                  : <Pill tone={x.a.viol.length ? 'danger' : 'success'}>{x.a.viol.length || '✓'}</Pill>}</td>
-                <td className={cx(td, 'px-3')}><Pill tone={x.speed.length ? 'danger' : 'success'}>{x.speed.length || '✓'}</Pill></td>
-                <td className={cx(td, 'px-3 font-mono')}>{x.jar.cycles.length || '—'}</td>
-                <td className={cx(td, 'px-3')}><Pill tone={x.jar.findings.length ? 'danger' : 'success'}>{x.jar.findings.length || '✓'}</Pill></td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      )}
+      {note && <p role="status" className={cx('text-xs', note.ok ? 'text-success' : 'text-danger')}>{note.text}</p>}
+
+      <ScorecardView p={p} days={days} pick={pick} onPick={setPick} />
 
       {reports.length > 1 && (
         <div className="flex flex-wrap items-center gap-2 text-sm print:hidden">
@@ -126,6 +133,76 @@ export function RunsView({ p, wide, onEdit, onWindow, onSeason, onService }: {
 
       <RunPanel key={r.run.n} r={r} p={p} view={view} setView={setView} wide={wide} onSeason={onSeason} onService={onService && ((sv) => onService(pick, sv))} />
     </div>
+  );
+}
+
+/** Opens the browser's print dialog on the PDF, or the PDF itself when printing from the page is not allowed. */
+function printPdf(bytes: Uint8Array) {
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+  const f = document.createElement('iframe');
+  f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  f.src = url;
+  f.onload = () => {
+    try { f.contentWindow?.focus(); f.contentWindow?.print(); } catch { window.open(url, '_blank'); }
+    setTimeout(() => { f.remove(); URL.revokeObjectURL(url); }, 120_000);
+  };
+  document.body.appendChild(f);
+}
+
+/** The scorecard (6z.43): the job's totals, a row per run and the flags by rule. */
+function ScorecardView({ p, days, pick, onPick }: { p: WinchPayload; days: boolean; pick: number; onPick: (i: number) => void }) {
+  const sc = useMemo(() => scorecard(p.reports), [p.reports]);
+  const t = sc.total;
+  const tiles: [string, string, boolean][] = [
+    [String(t.total), 'Flags in all', t.total > 0], [String(t.speedFlags), 'Speed flags', t.speedFlags > 0], [String(t.tensionFlags), 'Tension flags', t.tensionFlags > 0],
+    [String(t.jarFlags), 'Jarring flags', t.jarFlags > 0], [String(t.jarCycles), 'Jarring cycles', false], [`${fmt(t.keptPct, 1)}%`, 'Moving time inside the limits', t.keptPct < 100],
+  ];
+  const num = (v: number, bad = false) => <td className={cx(td, 'px-2 text-right font-mono', bad && 'font-bold text-danger')}>{fmt(v)}</td>;
+  const rowCells = (r: ScoreRow) => <>
+    <td className={cx(td, 'px-2 text-right font-mono')}>{fmt(r.maxD)}</td>
+    {num(r.maxRih)}{num(r.maxPooh)}{num(r.maxT)}
+    {num(r.speedFlags, r.speedFlags > 0)}{num(r.tensionFlags, r.tensionFlags > 0)}{num(r.jarCycles)}{num(r.jarFlags, r.jarFlags > 0)}{num(r.total, r.total > 0)}
+    <td className={cx(td, 'px-2 text-right font-mono', r.keptPct < 100 && 'text-danger')}>{fmt(r.keptPct, 1)}%</td>
+  </>;
+  return (
+    <section aria-labelledby="wd-score" className="space-y-2">
+      <h4 id="wd-score" className="text-sm font-semibold">Scorecard</h4>
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {tiles.map(([v, l, bad]) => (
+          <div key={l} className="rounded-md border border-border bg-surface-2 px-3 py-2">
+            <dd className={cx('font-display text-lg leading-tight font-bold', bad ? 'text-danger' : 'text-success')}>{v}</dd>
+            <dt className="text-xs text-text-muted">{l}</dt>
+          </div>
+        ))}
+      </dl>
+      <div className="overflow-x-auto rounded-md border border-border">
+        <table className="w-full min-w-[46rem] text-xs">
+          <caption className="sr-only">Scorecard by run</caption>
+          <thead><tr>{['Run', p.kind === 'wire' ? 'Service' : 'Line', 'Max depth', 'Top RIH', 'Top POOH', 'Top tension', 'Speed', 'Tension', 'Jar cycles', 'Jar flags', 'Total', 'Kept'].map((h, i) => (
+            <th key={h} scope="col" className={cx(th, 'px-2', i > 1 && 'text-right')}>{h}</th>
+          ))}</tr></thead>
+          <tbody>
+            {sc.rows.map((r, i) => (
+              <tr key={r.label} className={cx('cursor-pointer border-t border-border hover:bg-surface-2', i === pick && 'bg-surface-2')} onClick={() => onPick(i)}>
+                <td className={cx(td, 'px-2 font-semibold')}>{r.label}<span className="block font-normal text-text-subtle">{runTime(p.reports[i].run, days)}</span></td>
+                <td className={cx(td, 'px-2')}>{p.kind === 'wire' ? <>{r.service || 'Not set'}{r.defaultSpeeds && <span className="ml-1"><Pill tone="warning">default speeds</Pill></span>}</> : seasonLabel(p.seasoned)}</td>
+                {rowCells(r)}
+              </tr>
+            ))}
+            <tr className="border-t-2 border-border-strong font-semibold"><td className={cx(td, 'px-2')}>Job</td><td className={cx(td, 'px-2 text-text-muted')}>{sc.rows.length} run{sc.rows.length === 1 ? '' : 's'} · {fmt(t.hours, 1)} h</td>{rowCells(t)}</tr>
+          </tbody>
+        </table>
+      </div>
+      {sc.byRule.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer font-semibold">Flags by rule ({sc.byRule.length})</summary>
+          <ul className="mt-1 grid gap-x-6 gap-y-0.5 sm:grid-cols-2">
+            {sc.byRule.map((r) => <li key={`${r.label}${r.source}`} className="flex justify-between gap-2 border-b border-border py-0.5"><span>{r.label} <span className="text-text-subtle">{r.source}</span></span><span className="font-mono font-bold text-danger">{r.count}</span></li>)}
+          </ul>
+        </details>
+      )}
+      <p className="text-xs text-text-subtle">Speed and tension flags count each stretch over a limit; jarring flags each jarring rule broken. Kept: the share of moving time with no speed or tension flag open.</p>
+    </section>
   );
 }
 

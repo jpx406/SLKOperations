@@ -65,7 +65,7 @@ export function FailureRoster() {
   const data = rows.data ?? [];
   const exportRows = (list: Row[], suffix: string, kind: 'xlsx' | 'csv') => {
     const cells = list.map(toCells);
-    if (kind === 'xlsx') save(`failure-roster-${suffix}.xlsx`, workbook('Failure Roster', HEADER, cells, [11, 12, 12, 10, 12, 12, 9, 22, 7, 12, 40, 30]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    if (kind === 'xlsx') save(`failure-roster-${suffix}.xlsx`, workbook('Incidents Dashboard', HEADER, cells, [11, 12, 12, 10, 12, 12, 9, 22, 7, 12, 40, 30]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     else save(`failure-roster-${suffix}.csv`, csv(HEADER, cells), 'text/csv;charset=utf-8');
   };
   const gaps = summary.data ? summary.data.nptWithout8mf.length + summary.data.failureNotInRoster.length : 0;
@@ -80,7 +80,7 @@ export function FailureRoster() {
           <Button size="sm" onClick={() => exportRows(data, stamp(), 'xlsx')} disabled={!data.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
           {canEdit && <Button size="sm" variant="primary" onClick={() => setAdding(true)}><Plus aria-hidden className="size-4" />Add failure</Button>}
         </div>
-      }><span id="roster-title">Failure roster</span></PageTitle>
+      }><span id="roster-title">Incidents Dashboard</span></PageTitle>
 
       {summary.data && gaps > 0 && (
         <div className="mb-4 print:hidden">

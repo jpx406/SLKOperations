@@ -21,6 +21,8 @@ export const TYPES: Record<string, string> = {
   msg: 'application/vnd.ms-outlook', eml: 'message/rfc822', zip: 'application/zip',
   // videos (6z.17): played in the page, never run as code
   mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+  // winch data (6z.43): Lineminder recordings and text exports, always downloaded, never shown in the page
+  da_tdat: 'application/octet-stream', dat: 'application/octet-stream', tsv: 'text/plain', log: 'text/plain', prn: 'text/plain',
 };
 export const VIDEO = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 /** Types a browser may show in the page instead of downloading. */
@@ -29,7 +31,7 @@ export const MAX_BYTES = 25 * 1024 * 1024;
 /** Videos may be larger; the Worker holds the whole upload in memory, so 50 MB is the ceiling. */
 export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
-export const extOf = (name: string) => (/\.([a-z0-9]{1,6})$/i.exec(name)?.[1] ?? '').toLowerCase();
+export const extOf = (name: string) => (/\.([a-z0-9_]{1,8})$/i.exec(name)?.[1] ?? '').toLowerCase();
 
 /** A safe file name: no folders, no control characters, at most 150 characters. */
 export function cleanName(name: string): string {

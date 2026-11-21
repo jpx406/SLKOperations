@@ -12,10 +12,7 @@ export const NAV: Group[] = [
       { key: 'jobs', label: 'Jobs', path: '/operation/jobs', screen: 'S03' },
       { key: 'job_log', label: 'Job Log', path: '/operation/job-log', screen: 'S08', milestone: '2g' },
       { key: 'pre_job_notes', label: 'Pre-Job Notes', path: '/operation/pre-job-notes', screen: 'S09', milestone: '3' },
-      { key: 'failure_roster', label: 'Failure Roster', path: '/operation/failure-roster', screen: 'S10', milestone: '2h' },
-      { key: 'eight_min_facts', label: '8 Min. Facts', path: '/operation/8-min-facts', screen: 'S11', milestone: '2h' },
       { key: 'quick_plan', label: 'Quick Plan', path: '/operation/quick-plan', screen: 'S25', milestone: '3' },
-      { key: 'database', label: 'Database', path: '/operation/database', screen: 'S24', milestone: '2f' },
     ],
   },
   {
@@ -25,6 +22,10 @@ export const NAV: Group[] = [
       { key: 'npt_analysis', label: 'NPT Analysis', path: '/quality/npt', screen: 'S14', milestone: '2i' },
       { key: 'utilization', label: 'Utilization', path: '/quality/utilization', screen: 'S15', milestone: '3' },
       { key: 'statistics', label: 'Wire KPIs', path: '/quality/wire-kpis', screen: 'D3', milestone: '3' },
+      // 6z.43 (owner request 2026-11-21): 8 Min. Facts as Q-Incidents and the Failure Roster as the Incidents Dashboard,
+      // moved here from Operation; their addresses stay the same so links keep working
+      { key: 'eight_min_facts', label: 'Q-Incidents', path: '/operation/8-min-facts', screen: 'S11', milestone: '2h' },
+      { key: 'failure_roster', label: 'Incidents Dashboard', path: '/operation/failure-roster', screen: 'S10', milestone: '2h' },
     ],
   },
   // 6z.35 (owner request 2026-11-20): the Knowledge Hub under Service Quality and Competency, its own menu, under it
@@ -55,6 +56,8 @@ export const NAV: Group[] = [
       { key: 'reconciliation', label: 'Reconciliation', path: '/wires/reconciliation', screen: 'S46', milestone: '2e' },
     ],
   },
+  // 6z.43: the Database as the Assets Inventory, in a Maintenance menu of its own (same address)
+  { label: 'Maintenance', pages: [{ key: 'database', label: 'Assets Inventory', path: '/operation/database', screen: 'S24', milestone: '2f' }] },
   {
     label: 'Administration',
     pages: [

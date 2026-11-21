@@ -14,7 +14,7 @@ import { Banner, Button, Card, Field, PageTitle, Skeleton, cx, inputClass, input
 interface Status { enabled: boolean; configured: boolean; model?: string; sentToday: number; dailyLimit: number; blocked: string | null; tools: string[]; starters: string[] }
 interface Msg { role: 'user' | 'assistant'; content: string; note?: string | null; tools?: { name: string; ok: boolean }[] }
 const TOOL_LABEL: Record<string, string> = {
-  job_statistics: 'Statistics', find_jobs: 'Jobs', get_job: 'Job', failure_roster: 'Failure Roster', eight_min_facts: '8 Min. Facts',
+  job_statistics: 'Statistics', find_jobs: 'Jobs', get_job: 'Job', failure_roster: 'Incidents Dashboard', eight_min_facts: 'Q-Incidents',
   attendance_month: 'Attendance', reconciliation_findings: 'Reconciliation', sales_revenue: 'Sales',
 };
 

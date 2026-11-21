@@ -43,7 +43,7 @@ export function Database() {
             {countries.map((c) => <option key={c}>{c}</option>)}
           </Select>
         </label>
-      )}><span id="db-title">Equipment database</span></PageTitle>
+      )}><span id="db-title">Assets Inventory</span></PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">
         Units, drums, wires and job types come from WIREGUARD and change there. SLK Operations Hub keeps its own pressure control equipment,
         grease panels, pick lists and the sections each job type opens in the job editor.

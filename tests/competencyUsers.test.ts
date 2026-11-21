@@ -51,7 +51,11 @@ describe('Competency profiles', () => {
 describe('menus (6z.35)', () => {
   it('Knowledge Hub then Competency under Service Quality, Attendance in Bonus, the inventories and wires in Equipment', () => {
     // 6z.40: Career Development, its own menu below Competency
-    expect(NAV.map((g) => g.label)).toEqual(['Operation', 'Service Quality', 'Knowledge Hub', 'Competency', 'Career Development', 'Bonus', 'SLK Activity Dashboard', 'Equipment', 'Administration']);
+    // 6z.43: Q-Incidents and the Incidents Dashboard under Service Quality, the Assets Inventory in Maintenance
+    expect(NAV.map((g) => g.label)).toEqual(['Operation', 'Service Quality', 'Knowledge Hub', 'Competency', 'Career Development', 'Bonus', 'SLK Activity Dashboard', 'Equipment', 'Maintenance', 'Administration']);
+    expect(NAV.find((g) => g.label === 'Operation')!.pages.map((p) => p.label)).toEqual(['Schedule', 'Jobs', 'Job Log', 'Pre-Job Notes', 'Quick Plan']);
+    expect(NAV.find((g) => g.label === 'Service Quality')!.pages.map((p) => p.label).slice(-2)).toEqual(['Q-Incidents', 'Incidents Dashboard']);
+    expect(NAV.find((g) => g.label === 'Maintenance')!.pages).toEqual([expect.objectContaining({ key: 'database', label: 'Assets Inventory', path: '/operation/database' })]);
     expect(NAV.find((g) => g.label === 'Career Development')!.pages[0]).toMatchObject({ key: 'career_development', path: '/career' });
     expect(NAV.find((g) => g.label === 'Bonus')!.pages.map((p) => p.label)).toEqual(['Bonus Report', 'Bonus Analysis', 'Bonus Rules', 'Attendance']);
     expect(NAV.find((g) => g.label === 'Equipment')!.pages.map((p) => p.label)).toEqual(['Explosive', 'Hardware', 'MCR', 'Wires', 'Reconciliation']);

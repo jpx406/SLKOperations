@@ -35,6 +35,36 @@ winch.put('/guide', async (c) => {
   return c.json({ guide, saved: true, updatedAt: now, updatedBy: user.fullName, canEdit: true });
 });
 
+/**
+ * The winch check kept with the job (6z.43): the card's choices as JSON, saved as they change. Anyone who can open
+ * the job reads it; saving needs the right to edit jobs.
+ */
+winch.get('/state/:jobId', async (c) => {
+  const job = await getJob(c.env, c.get('user'), c.req.param('jobId'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const row = await c.env.DB.prepare(`SELECT w.state, w.updated_at, coalesce(u.full_name, w.updated_by) AS by FROM winch_checks w
+    LEFT JOIN user_roles u ON u.username = w.updated_by WHERE w.job_id = ?`).bind(job.id).first<{ state: string; updated_at: string; by: string | null }>();
+  let state: unknown = null;
+  if (row) { try { state = JSON.parse(row.state); } catch { /* unreadable: start again */ } }
+  return c.json({ state, updatedAt: row?.updated_at ?? null, updatedBy: row?.by ?? null, canEdit: !!c.get('user').menus.jobs?.edit });
+});
+
+winch.put('/state/:jobId', async (c) => {
+  const user = c.get('user');
+  const job = await getJob(c.env, user, c.req.param('jobId'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const text = await c.req.text();
+  if (text.length > 400_000) return c.json({ error: 'The winch check is too large to save' }, 413);
+  let state: unknown;
+  try { state = JSON.parse(text); } catch { return c.json({ error: 'Send the winch check as JSON' }, 400); }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return c.json({ error: 'Send the winch check as an object' }, 400);
+  const now = new Date().toISOString();
+  await c.env.DB.prepare(`INSERT INTO winch_checks (job_id, state, updated_by, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (job_id) DO UPDATE SET state = excluded.state, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+    .bind(job.id, JSON.stringify(state), user.username, now).run();
+  return c.json({ ok: true, updatedAt: now, updatedBy: user.fullName });
+});
+
 /** The job's wire from WIREGUARD: size and grade (wire or braided line), breaking strength and runs on it up to the job. */
 winch.get('/line/:jobId', async (c) => {
   const job = await getJob(c.env, c.get('user'), c.req.param('jobId'));

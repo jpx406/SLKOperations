@@ -48,10 +48,10 @@ export function EightMinFactsList() {
   const backlog = (jobs.data ?? []).filter((j) => (j.npt_hours > 0 || j.failure === 'yes') && j.eight_min_facts_done !== 'yes' && j.status !== 'canceled');
   return (
     <section aria-labelledby="emf-title">
-      <PageTitle aside={me?.menus.eight_min_facts?.edit && <Link to="/operation/8-min-facts/new" className="inline-flex h-(--layout-control-md) items-center gap-2 rounded-md bg-accent px-3.5 text-sm font-semibold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />New 8 Min. Facts</Link>}>
-        <span id="emf-title">8 Min. Facts</span>
+      <PageTitle aside={me?.menus.eight_min_facts?.edit && <Link to="/operation/8-min-facts/new" className="inline-flex h-(--layout-control-md) items-center gap-2 rounded-md bg-accent px-3.5 text-sm font-semibold text-on-accent hover:bg-accent-hover"><Plus aria-hidden className="size-4" />New Q-Incident</Link>}>
+        <span id="emf-title">Q-Incidents</span>
       </PageTitle>
-      <p className="-mt-3 mb-4 text-sm text-text-muted">One report per failure or NPT event, per field ticket. Saving updates the job’s NPT and the Failure Roster; print, Word and email from the report.</p>
+      <p className="-mt-3 mb-4 text-sm text-text-muted">One report per failure or NPT event, per field ticket. Saving updates the job’s NPT and the Incidents Dashboard; print, Word and email from the report.</p>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div role="radiogroup" aria-label="Status" onKeyDown={rovingKeys} className="flex gap-1.5">
           {[['', 'All'], ['saved', 'Saved'], ['sent', 'Sent']].map(([v, l]) => (
@@ -67,7 +67,7 @@ export function EightMinFactsList() {
       </div>
       {backlog.length > 0 && !q && !status && (
         <Card className="mb-4">
-          <h2 className="label-caps mb-2 text-warning">Waiting for an 8 Min. Facts · {backlog.length}</h2>
+          <h2 className="label-caps mb-2 text-warning">Waiting for a Q-Incident report · {backlog.length}</h2>
           <ul className="divide-y divide-border">
             {backlog.slice(0, 8).map((j) => (
               <li key={j.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
@@ -78,12 +78,12 @@ export function EightMinFactsList() {
               </li>
             ))}
           </ul>
-          {backlog.length > 8 && <p className="mt-2 text-xs text-text-subtle">{backlog.length - 8} more. The Failure Roster lists them all.</p>}
+          {backlog.length > 8 && <p className="mt-2 text-xs text-text-subtle">{backlog.length - 8} more. The Incidents Dashboard lists them all.</p>}
         </Card>
       )}
       {list.isPending && <Skeleton className="h-64" />}
       {list.isError && <Banner tone="danger">{list.error.message}</Banner>}
-      {list.data && !list.data.length && <EmptyState title={q || status ? 'No reports match' : 'No 8 Min. Facts yet'}>{q || status ? 'Clear the search or the status filter.' : 'Start one from a field ticket when a failure or NPT happens.'}</EmptyState>}
+      {list.data && !list.data.length && <EmptyState title={q || status ? 'No reports match' : 'No Q-Incidents yet'}>{q || status ? 'Clear the search or the status filter.' : 'Start one from a field ticket when a failure or NPT happens.'}</EmptyState>}
       {!!list.data?.length && (
         <Card className="overflow-x-auto p-0">
           <table className="w-full min-w-[60rem] text-sm">
@@ -190,7 +190,7 @@ export function EightMinFactsEditor() {
       qc.invalidateQueries({ queryKey: ['emf'] });
       qc.invalidateQueries({ queryKey: ['job', job.id] });
       setDirty(false);
-      setNotice(`Saved as v${res.report.current_version}. The job’s NPT, Failure and 8MF fields and the Failure Roster are updated.`);
+      setNotice(`Saved as v${res.report.current_version}. The job’s NPT, Failure and 8MF fields and the Incidents Dashboard are updated.`);
       if (isNew) navigate(`/operation/8-min-facts/${res.report.id}`, { replace: true });
     } catch (e) { setError((e as ApiError).message); } finally { setSaving(false); }
   };
@@ -202,8 +202,8 @@ export function EightMinFactsEditor() {
   return (
     <section aria-labelledby="emf-ed-title" className="emf-print">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link to="/operation/8-min-facts" className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3 print:hidden"><ArrowLeft aria-hidden className="size-4" />8 Min. Facts</Link>
-        <h1 id="emf-ed-title" className="min-w-0 truncate font-display text-xl font-extrabold uppercase">{head.title || (isNew ? 'New 8 Min. Facts' : report?.title)}</h1>
+        <Link to="/operation/8-min-facts" className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3 print:hidden"><ArrowLeft aria-hidden className="size-4" />Q-Incidents</Link>
+        <h1 id="emf-ed-title" className="min-w-0 truncate font-display text-xl font-extrabold uppercase">{head.title || (isNew ? 'New Q-Incident' : report?.title)}</h1>
         {report && <span className="font-mono text-sm text-text-muted">{report.log_no} · v{report.current_version}</span>}
         <span role="status" aria-live="polite" className="text-xs font-semibold">
           {dirty ? <span id="mf-export-hint" className="text-text-muted">Unsaved changes. Save to print or export.</span> : report ? <span className="inline-flex items-center gap-1 text-success"><Check aria-hidden className="size-3.5" />All changes saved</span> : null}
@@ -318,7 +318,7 @@ export function EightMinFactsEditor() {
               <div><dt className="text-xs text-text-muted">Severity</dt><dd className="mt-2"><SeverityPill severity={totals.severity} /></dd></div>
             </dl>
             <p className="mt-3 border-t border-border pt-3 text-xs text-text-muted print:hidden">
-              On save: the job’s NPT becomes the sum of its 8 Min. Facts, Failure and 8MF are set to Yes, and the Failure Roster gets one row per incident.
+              On save: the job’s NPT becomes the sum of its Q-Incident reports, Failure and 8MF are set to Yes, and the Incidents Dashboard gets one row per incident.
             </p>
           </Card>
           <Card className="print:hidden">
