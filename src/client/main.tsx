@@ -7,6 +7,7 @@ import { RequireAuth } from './auth';
 import { AppShell } from './components/AppShell';
 import { AdminUsers } from './pages/AdminUsers';
 import { Database } from './pages/Database';
+import { UtilityList, UtilityProject } from './pages/Utilities';
 import { JobBoard } from './pages/JobBoard';
 import { JobEditor } from './pages/JobEditor';
 import { JobLog } from './pages/JobLog';
@@ -42,7 +43,7 @@ import './styles.css';
 // the winch analysis window (6z.41) opens on its own, without the app around it
 const WinchWindow = lazy(() => import('./pages/winch/WinchWindow'));
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/career', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/quick-plan']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/career', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/quick-plan', '/utilities/rig-up', '/utilities/tool-string', '/utilities/winch']);
 
 /** Sends an old address to the page's new one, keeping its filters (?severity=high ...). */
 function MovedTo({ path }: { path: string }) {
@@ -100,6 +101,9 @@ const router = createBrowserRouter([
       // the old address, kept for bookmarks and digest emails sent before the move
       { path: 'operation/reconciliation', element: <MovedTo path="/wires/reconciliation" /> },
       { path: 'operation/database', element: <Database /> },
+      // Utilities (6z.47): the tools on their own, as projects
+      { path: 'utilities/:slug', element: <UtilityList /> },
+      { path: 'utilities/:slug/:id', element: <UtilityProject /> },
       { path: 'admin/users', element: <AdminUsers /> },
       { path: 'admin/data', element: <AdminData /> },
       { path: 'admin/form-templates', element: <FormTemplates /> },

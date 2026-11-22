@@ -53,7 +53,7 @@ describe('menus (6z.35)', () => {
     // 6z.40: Career Development, its own menu below Competency
     // 6z.43: Q-Incidents and the Incidents Dashboard under Service Quality, the Assets Inventory in Maintenance
     // 6z.44: the SLK Activity Dashboard first, Equipment after Service Quality, the Assets Inventory inside Equipment
-    expect(NAV.map((g) => g.label)).toEqual(['SLK Activity Dashboard', 'Operation', 'Service Quality', 'Equipment', 'Knowledge Hub', 'Competency', 'Career Development', 'Bonus', 'Administration']);
+    expect(NAV.map((g) => g.label)).toEqual(['SLK Activity Dashboard', 'Operation', 'Service Quality', 'Utilities', 'Equipment', 'Knowledge Hub', 'Competency', 'Career Development', 'Bonus', 'Administration']);
     expect(NAV.find((g) => g.label === 'Operation')!.pages.map((p) => p.label)).toEqual(['Schedule', 'Jobs', 'Job Log', 'Pre-Job Notes', 'Quick Plan']);
     expect(NAV.find((g) => g.label === 'Service Quality')!.pages.map((p) => p.label)).toEqual(['Statistics', 'NPT Analysis', 'Q-Incidents', 'Incidents Dashboard']);
     expect(NAV.find((g) => g.label === 'Career Development')!.pages[0]).toMatchObject({ key: 'career_development', path: '/career' });

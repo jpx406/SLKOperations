@@ -26,6 +26,7 @@ import { signatures } from './signatures';
 import { attachments } from './attachments';
 import { wires } from './wires';
 import { winch } from './winch';
+import { utilities } from './utilities';
 import { sendDigests } from './digest';
 import { bonus } from './bonus';
 import { sales } from './sales';
@@ -247,6 +248,7 @@ app.route('/pre-job-notes', preJobNotes);
 app.route('/jra', jra);
 app.route('/wires', wires);
 app.route('/winch', winch);
+app.route('/utilities', utilities);
 app.route('/knowledge', knowledge);
 // the Competency module's storage (6z.34)
 app.route('/competency', competency);

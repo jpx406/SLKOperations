@@ -2,11 +2,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, FileDown, Pencil, Printer, Save } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import { dur, findingsCsv, fmt, hm, hms, limitCurves, median, type Analysis, type Sample } from '../../../shared/winchData';
-import { SOP_LABEL, SOP_SOURCE, jarUpLimit, sopCsv, type Jarring, type Restriction, type Run, type SopFinding, type SopRuleKey, type SopRules } from '../../../shared/winchRuns';
+import { SOP_LABEL, SOP_SOURCE, sopCsv, type Jarring, type Restriction, type Run, type SopFinding, type SopRuleKey, type SopRules } from '../../../shared/winchRuns';
 import { BRAIDED_CHECKS, BRAIDED_LABEL, LINE_LABEL, braidedText, staticAt, type LineKind } from '../../../shared/winchGuide';
 import { saveFile } from '../../components/charts';
 import { scorecard, type ScoreRow } from '../../../shared/winchScore';
 import { buildReportPdf, saveReport } from './reportPdf';
+import { JAR_RULES, SPEED_RULES, sopTexts } from './ruleRows';
 import { Button, cx, inputSized } from '../../components/ui';
 
 // The winch report (6z.26), moved here in 6z.41 so the run tabs and the analysis window share it. 6z.41 adds a tab per
@@ -15,7 +16,7 @@ import { Button, cx, inputSized } from '../../components/ui';
 // tension against static; braided-line runs against the seasoning rules (new or seasoned line) with no horizontal rules.
 
 /** The job details on the report (6z.44: from the job, not typed). */
-export type Meta = { drss: string; field: string; well: string; unit: string; cable: string; date: string; by: string };
+export type Meta = { drss: string; field: string; well: string; unit: string; cable: string; date: string; by: string; crew?: string; client?: string };
 /**
  * One run: the trip analysis (with the seasoning findings on braided line), the speed and tension findings, the
  * jarring, the rules it was checked with and, on wire, its service and the static tension against depth.
@@ -39,6 +40,10 @@ export interface WinchPayload {
   pick?: number;
   /** The job the report belongs to, for saving the PDF to its attachments, and who is signed in (6z.43). */
   jobId?: string; by?: string;
+  /** Where Print and Save keep the PDF (an API path taking ?category=&note=), and the list to refresh (6z.47). */
+  reportUpload?: string; reportsKey?: unknown[];
+  /** The files the runs came from, with their time spans, for the printout. */
+  files?: { name: string; t0: number; t1: number }[];
 }
 
 const small = 'h-(--layout-control-sm) text-sm';
@@ -72,8 +77,8 @@ export function RunsView({ p, wide, onEdit, onWindow, onSeason, onService }: {
     try {
       const r = await saveReport(p, by, mode);
       bytes = r.bytes;
-      setNote({ ok: true, text: `Saved to the job's attachments as “${r.saved.name}”.` });
-      qc.invalidateQueries({ queryKey: ['attachments', 'job', p.jobId] });
+      setNote({ ok: true, text: `Saved to the ${p.jobId ? "job's attachments" : 'project'} as “${r.saved.name}”.` });
+      qc.invalidateQueries({ queryKey: p.reportsKey ?? ['attachments', 'job', p.jobId] });
     } catch (e) {
       setNote({ ok: false, text: `Not saved to the attachments: ${(e as Error).message}` });
       if (mode === 'print') bytes = await buildReportPdf(p, new Date(), by, mode).catch(() => null);
@@ -290,29 +295,11 @@ function RunPanel({ r, p, view, setView, wide, onSeason, onService }: {
   );
 }
 
-const SPEED_RULES: SopRuleKey[] = ['surfaceSpeed', 'restrictionSpeed', 'maxRih', 'maxPooh', 'rihTension', 'poohTension'];
-const JAR_RULES: SopRuleKey[] = ['jarMat', 'jarSpang', 'jarHeavy', 'jarDown', 'jarCycle', 'jarRest', 'jarCycles'];
 
 /** The speed, tension and jarring rules: what each says, what broke it, and every jarring cycle. */
 export function SopPanel({ r, kind, restrictions }: { r: RunReport; kind: LineKind; restrictions: Restriction[] }) {
   const sop = r.sop;
-  const lim = jarUpLimit(sop);
-  const svc = r.isDefault ? `the default speeds${r.service ? ` (${r.service} is not listed)` : ''}` : `${r.group}`;
-  const text: Record<SopRuleKey, string> = {
-    surfaceSpeed: `${sop.surfaceSpeed} ft/min or less while the tools are shallower than ${sop.surfaceDepth} ft`,
-    restrictionSpeed: restrictions.length ? `${sop.restrictionSpeed} ft/min or less from ${sop.restrictionBand} ft before to ${sop.restrictionBand} ft past ${restrictions.map((x) => `${x.label} (${fmt(x.depth)} ft)`).join(', ')}` : 'No restrictions entered for this well',
-    maxRih: `${sop.maxRih} ft/min or less running in: ${svc}`,
-    maxPooh: `${sop.maxPooh} ft/min or less pulling out: ${svc}`,
-    rihTension: sop.rihFactor ? `Running in, the normal tension stays over ${sop.rihFactor} × the static tension at that depth` : 'Not checked',
-    poohTension: sop.poohFactor ? `Pulling out, the normal tension stays under ${sop.poohFactor} × the static tension at that depth` : 'Not checked',
-    jarMat: lim ? `Jarring up never over ${fmt(lim.limit)} lbs (the ${lim.from})` : 'Not checked: enter the wire breaking strength or the MAT',
-    jarSpang: sop.spang ? `Jarring up never over the spang jar limit of ${fmt(sop.spangLimit)} lbs` : 'Not checked: no spang jars in the string',
-    jarHeavy: sop.heavyLb ? `Jarring over ${fmt(sop.heavyLb)} lbs is heavy jarring: it needs a new program and an MoC approved by the NESR OM` : 'Not checked',
-    jarDown: `Jarring down never loses more than ${sop.jarDownLossPct}% of the normal tension`,
-    jarCycle: `A jarring cycle lasts ${sop.cycleMin} minutes or less`,
-    jarRest: `At least ${sop.restMin} minutes of rest between cycles`,
-    jarCycles: `After ${sop.maxCycles} cycles at one place: pull out, cut 1.5 × the distance from the hay pulley to the stuffing box, new rope socket`,
-  };
+  const text = sopTexts(r, restrictions);
   const speedRules = kind === 'wire' ? SPEED_RULES : (['restrictionSpeed'] as SopRuleKey[]);
   const findings = [...r.speed, ...r.jar.findings].sort((x, y) => x.t0 - y.t0);
   const count = (k: SopRuleKey) => findings.filter((f) => f.rule === k).length;

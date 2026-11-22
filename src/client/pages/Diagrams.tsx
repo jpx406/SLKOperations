@@ -14,12 +14,14 @@ import { Banner, Button, Card, Skeleton, cx, inputClass, inputSized } from '../c
 // Rig Up (QAF14009) and tool string (QAF14010) diagrams of a job, opened from Preparation. The sheet in the middle is
 // the printout; the catalogue adds parts where they belong in the stack; the right side edits a row and shows the checks.
 
-interface Diagram {
+export interface Diagram {
   id: string; kind: DiagramKind; run_no: number; items: Row[]; rev: number; pdf_rev: number | null; pdf_at: string | null; pdf_by_name: string | null;
   status: DiagramStatus; sent_by_name: string | null; sent_at: string | null; verified_by_name: string | null; verified_at: string | null; reviewed_by_name: string | null; reviewed_at: string | null;
   updated_by_name: string | null; updated_at: string;
 }
-interface JobFacts {
+export interface JobFacts {
+  /** A typed client, for a Utilities project (6z.47); a job's sheet names the job's client. */
+  client?: string;
   id: string; ticket_no: string | null; drss_no: string | null; well: string | null; field: string | null; rig: string | null; unit_number: string | null; start_date: string | null;
   sdm_username: string | null; sdm_name: string | null; siwhp_psi: number | null; h2s_ppm: number | null; min_restriction_in: number | null;
   wire_serial_number: string | null; wire_in: number | null; target_depth_ft: number | null;
@@ -260,7 +262,7 @@ export function Diagrams() {
 
 // ---- catalogue ----
 
-function Catalogue({ family, parts, loading, canEdit, well, onAdd }: {
+export function Catalogue({ family, parts, loading, canEdit, well, onAdd }: {
   family: Family; parts: Part[]; loading: boolean; canEdit: boolean; well: { mpwhp_psi: number | null; h2s_ppm: number | null; min_id_in: number | null }; onAdd: (p: Part) => void;
 }) {
   const [q, setQ] = useState('');
@@ -388,7 +390,7 @@ const PartIcon = ({ row, family }: { row: Row; family: Family }) => {
 
 // ---- the sheet: the engineering drawing sheet the PDF prints (owner request 2026-11-09) ----
 
-function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelect, onMove, onChange, onDropPart }: {
+export function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelect, onMove, onChange, onDropPart }: {
   kind: DiagramKind; run: number; rows: Row[]; sel: number | null; unit: 'ft' | 'm'; job: JobFacts; rev: number; diagram: Diagram | null; canEdit: boolean;
   onSelect: (i: number | null) => void; onMove: (i: number, by: number) => void; onChange: (rows: Row[], sel?: number | null) => void; onDropPart: (partId: string, at: number) => void;
 }) {
@@ -544,7 +546,7 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
                 {rig ? 'Rig up diagram · pressure control' : `Slickline string diagram · BHA · Run ${run}`}
               </div>
               {fact('Form', `${FORM[kind].code}${rig ? '' : ' Rev 2'}`, true)}
-              {fact('Client', 'Saudi Aramco')}{fact('Well', job.well)}{fact('Diagram rev', String(rev), true)}
+              {fact('Client', job.client || 'Saudi Aramco')}{fact('Well', job.well)}{fact('Diagram rev', String(rev), true)}
               {fact('Field / Rig', [job.field, job.rig].filter(Boolean).join(' / '))}{fact('Job ref.', [job.ticket_no, job.drss_no].filter(Boolean).join(' / '))}{fact('Date', job.start_date ? formatDate(job.start_date) : null)}
             </div>
             <div className="grid grid-cols-3 border-t border-[#15191e]">
@@ -561,7 +563,7 @@ function Sheet({ kind, run, rows, sel, unit, job, rev, diagram, canEdit, onSelec
 
 // ---- right side ----
 
-function Totals({ kind, rows, unit }: { kind: DiagramKind; rows: Row[]; unit: 'ft' | 'm' }) {
+export function Totals({ kind, rows, unit }: { kind: DiagramKind; rows: Row[]; unit: 'ft' | 'm' }) {
   const L = (n: number | null) => (n == null ? '—' : unit === 'ft' ? `${n.toFixed(2)} ft` : `${(n * 0.3048).toFixed(2)} m`);
   const items: [string, string][] = kind === 'rigup'
     ? (() => { const t = rigTotals(rows); return [['Parts', String(t.parts)], ['Length above the tree', L(t.length_ft)], ['Lubricator', L(t.lubricator_ft)], ['Smallest bore', t.min_id_in != null ? `${t.min_id_in} in` : '—'], ['System working pressure', t.system_wp != null ? `${t.system_wp.toLocaleString()} psi` : '—']] as [string, string][]; })()
@@ -575,7 +577,7 @@ function Totals({ kind, rows, unit }: { kind: DiagramKind; rows: Row[]; unit: 'f
   );
 }
 
-function RowEditor({ family, row, index, canEdit, onChange, onClose }: { family: Family; row: Row; index: number; canEdit: boolean; onChange: (r: Row) => void; onClose: () => void }) {
+export function RowEditor({ family, row, index, canEdit, onChange, onClose }: { family: Family; row: Row; index: number; canEdit: boolean; onChange: (r: Row) => void; onClose: () => void }) {
   const set = <K extends keyof Row>(k: K, v: Row[K]) => onChange({ ...row, [k]: v });
   const num = (k: 'rating_psi' | 'id_in' | 'od_in' | 'fn_in' | 'fn_lower_in' | 'length_ft' | 'weight_lb' | 'stroke_ft' | 'rams', label: string, unit?: string, step = 'any') => (
     <label className="grid gap-1 text-xs text-text-muted">{label}{unit && <span className="sr-only"> in {unit}</span>}

@@ -12,6 +12,8 @@ export const MENU_KEYS = [
   'slk_ops',
   // Career Development (6z.40): the Career Development Plan, out of Competency, on the same data and users
   'career_development',
+  // Utilities (6z.47): the rig up, tool string and winch tools used on their own, without a job
+  'utilities',
 ] as const;
 const STAGE_KEYS = ['job_design', 'job_preparation', 'job_execution', 'job_closure'];
 
@@ -110,6 +112,10 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PUT', re: /^\/api\/winch\/guide$/, menu: 'users', action: 'edit' },
   // the winch check kept with the job (6z.43)
   { method: 'PUT', re: /^\/api\/winch\/state\/[^/]+$/, menu: 'jobs', action: 'edit' },
+  // Utilities projects (6z.47): deleting a project is checked in the route (whoever made it, the delete right or an admin)
+  { method: 'POST', re: /^\/api\/utilities(\/[^/]+\/(duplicate|files|pdf))?$/, menu: 'utilities', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/utilities\/[^/]+(\/state)?$/, menu: 'utilities', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/utilities\/[^/]+(\/files\/[^/]+)?$/, menu: 'utilities', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/admin\/rules\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/attendance$/, menu: 'users', action: 'edit' },
   // Users & Roles: someone's Face ID devices, their Face ID switch, and the WIREGUARD user import
@@ -216,10 +222,11 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/winch\/guide(\/version)?$/, menus: 'any' },
   { re: /^\/api\/winch\/line\/[^/]+$/, menus: ['jobs', 'schedule'] },
   { re: /^\/api\/winch\/state\/[^/]+$/, menus: ['jobs'] },
+  { re: /^\/api\/utilities(\/[^/]+(\/(state|files(\/[^/]+)?))?)?$/, menus: ['utilities'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
   { re: /^\/api\/database$/, menus: ['database'] },
-  { re: /^\/api\/diagrams\/parts$/, menus: ['jobs', 'database'] },
+  { re: /^\/api\/diagrams\/parts$/, menus: ['jobs', 'database', 'utilities'] },
   { re: /^\/api\/diagrams\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/job-log(\/options)?$/, menus: ['job_log'] },
   // only the values that occur in the caller's own jobs, for the filter dropdowns

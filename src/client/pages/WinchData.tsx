@@ -117,17 +117,59 @@ function checkRun(base: Base, r: Run, g: WinchGuide, st: Setup, service: string)
   return { run: r, a, speed, jar: detectJarring(Sr, sop), sop, service, group, isDefault, stat };
 }
 
+/**
+ * Where the winch work lives (6z.47): a job (its attachments, its saved check, its details) or a Utilities project
+ * (the project's files and data, details typed in). Both answer the same file and state API shapes.
+ */
+export interface WinchHost {
+  /** For the query keys. */
+  key: string;
+  /** GET/PUT the saved check: { state, updatedAt, updatedBy, canEdit }. */
+  stateUrl: string;
+  /** GET the files { files }, POST one (raw, X-File-Name, ?category=&note=), GET <filesUrl>/<id>. */
+  filesUrl: string;
+  filesKey: unknown[];
+  /** The details for the heading: shown from the job, or typed in a project (onMeta set). */
+  meta: Meta; onMeta?: (m: Meta) => void;
+  /** The job's services, for each run's service. */
+  services: string[];
+  /** The job's wire from WIREGUARD, when there is a job. */
+  lineUrl?: string;
+  /** Words: "the job" or "the project". */
+  home: 'job' | 'project';
+  jobId?: string;
+}
+
+/** The winch card on a job's Closure tab: the job is the host. */
 export function WinchDataCard({ job }: { job: Job }) {
   const { data: me } = useMe();
+  const crewQ = useQuery({ queryKey: ['job-crew', job.id], queryFn: () => api<{ crew: { crew_role: string; full_name: string; end_date: string | null }[] }>(`/jobs/${encodeURIComponent(job.id)}/crew`), staleTime: 5 * 60_000, retry: false });
+  // the crew for the printout, as the template lists it: role and name, the current crew only
+  const crew = (crewQ.data?.crew ?? []).filter((c) => !c.end_date).map((c) => `${c.crew_role.replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase())}: ${c.full_name}`).join('   |   ');
+  const meta = useMemo<Meta>(() => ({
+    drss: job.drss_no ?? '', field: job.field ?? '', well: job.well ?? '', unit: job.unit_number ?? '',
+    cable: job.wire_serial_number ?? '', date: job.start_date?.slice(0, 10) ?? '', by: me?.fullName ?? '', crew,
+  }), [job.drss_no, job.field, job.well, job.unit_number, job.wire_serial_number, job.start_date, me?.fullName, crew]);
+  const id = encodeURIComponent(job.id);
+  const host: WinchHost = {
+    key: `job-${job.id}`, stateUrl: `/winch/state/${id}`, filesUrl: `/attachments/job/${id}`, filesKey: ['attachments', 'job', job.id],
+    meta, services: (job.services ?? []).filter(Boolean), lineUrl: `/winch/line/${id}`, home: 'job', jobId: job.id,
+  };
+  return <WinchWorkbench host={host} />;
+}
+
+/** The winch check itself, for a job or a Utilities project. */
+export function WinchWorkbench({ host }: { host: WinchHost }) {
+  const { data: me } = useMe();
   const qc = useQueryClient();
-  const saved = useQuery({ refetchOnMount: 'always', gcTime: 0, queryKey: ['winch-state', job.id], queryFn: () => api<{ state: SavedState | null; updatedAt: string | null; updatedBy: string | null; canEdit: boolean }>(`/winch/state/${encodeURIComponent(job.id)}`), staleTime: Infinity, retry: false });
-  const atts = useQuery({ queryKey: ['attachments', 'job', job.id], queryFn: () => api<{ files: AttRow[] }>(`/attachments/job/${encodeURIComponent(job.id)}`), retry: false });
+  const saved = useQuery({ refetchOnMount: 'always', gcTime: 0, queryKey: ['winch-state', host.key], queryFn: () => api<{ state: SavedState | null; updatedAt: string | null; updatedBy: string | null; canEdit: boolean }>(host.stateUrl), staleTime: Infinity, retry: false });
+  const atts = useQuery({ queryKey: host.filesKey, queryFn: () => api<{ files: AttRow[] }>(host.filesUrl), retry: false });
   const [restored, setRestored] = useState(false);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
   const [saveNote, setSaveNote] = useState<{ ok: boolean; text: string } | null>(null);
   const pendingRun = useRef(false);
   const guideQ = useGuide();
-  const lineQ = useQuery({ queryKey: ['winch-line', job.id], queryFn: () => api<WinchLine>(`/winch/line/${encodeURIComponent(job.id)}`), staleTime: 5 * 60_000, retry: false });
+  const lineQ = useQuery({ queryKey: ['winch-line', host.key], queryFn: () => api<WinchLine>(host.lineUrl!), enabled: !!host.lineUrl, staleTime: 5 * 60_000, retry: false });
   const [format, setFormat] = useState<Format>('lineminder');
   const [files, setFiles] = useState<WFile[]>([]);
   const [answers, setAnswers] = useState<Record<string, JoinAnswer>>({});
@@ -139,11 +181,7 @@ export function WinchDataCard({ job }: { job: Job }) {
   const [newLine, setNewLine] = useState<RuleSet | null>(null);
   const [limits, setLimits] = useState<{ mbs: string; mat: string; spang: boolean }>({ mbs: '', mat: '', spang: false });
   const [restr, setRestr] = useState('');
-  // the job details come from the job itself (6z.44): filled in earlier in the job, so they are shown, not typed
-  const meta = useMemo<Meta>(() => ({
-    drss: job.drss_no ?? '', field: job.field ?? '', well: job.well ?? '', unit: job.unit_number ?? '',
-    cable: job.wire_serial_number ?? '', date: job.start_date?.slice(0, 10) ?? '', by: me?.fullName ?? '',
-  }), [job.drss_no, job.field, job.well, job.unit_number, job.wire_serial_number, job.start_date, me?.fullName]);
+  const meta = host.meta;
   const [base, setBase] = useState<Base | null>(null);
   const [services, setServices] = useState<string[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
@@ -210,8 +248,8 @@ export function WinchDataCard({ job }: { job: Job }) {
       if (!buf || w.attId) continue;
       const same = (atts.data?.files ?? []).find((a) => a.file_name === w.name && a.size_bytes === buf.byteLength && (a.note ?? '').startsWith('Winch data file'));
       if (same) { setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, attId: same.id } : x))); continue; }
-      api<{ id: string }>(`/attachments/job/${encodeURIComponent(job.id)}?category=document&note=${encodeURIComponent('Winch data file')}`, { method: 'POST', headers: { 'X-File-Name': encodeURIComponent(w.name) }, body: buf })
-        .then((r) => { setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, attId: r.id, saveError: undefined } : x))); qc.invalidateQueries({ queryKey: ['attachments', 'job', job.id] }); })
+      api<{ id: string }>(`${host.filesUrl}?category=document&note=${encodeURIComponent('Winch data file')}`, { method: 'POST', headers: { 'X-File-Name': encodeURIComponent(w.name) }, body: buf })
+        .then((r) => { setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, attId: r.id, saveError: undefined } : x))); qc.invalidateQueries({ queryKey: host.filesKey }); })
         .catch((e) => setFiles((l) => l.map((x) => (x.id === w.id ? { ...x, saveError: (e as Error).message } : x))));
     }
   };
@@ -286,7 +324,7 @@ export function WinchDataCard({ job }: { job: Job }) {
       : `${built.t.delim} separated export${used.length > 1 ? `s (${used.length} joined)` : ''}`;
     setBase({ S, runs, channels: channelSeries(built.t, built.m, built.cols), fileName: names.length > 1 ? `${names[0]} + ${names.length - 1} more` : names[0], source, meta: { ...meta }, minDepth: built.m.minDepth });
     // each run starts with the job's services in order, the last one repeated
-    const js = (job.services ?? []).filter(Boolean);
+    const js = host.services;
     if (!(restoring && services.length === runs.length)) setServices(runs.map((_, i) => js[Math.min(i, js.length - 1)] ?? ''));
     setProblem(null);
   };
@@ -296,7 +334,8 @@ export function WinchDataCard({ job }: { job: Job }) {
     const reports = base.runs.map((r, i) => checkRun(base, r, g, setup, services[i] ?? ''));
     return {
       meta, fileName: base.fileName, reports, channels: base.channels, restrictions: setup.restrictions, source: base.source,
-      kind: setup.kind, seasoned: setup.seasoned, services: [...new Set([...listedServices(g.wire), ...(job.services ?? [])])], jobId: job.id, by: me?.fullName ?? '',
+      kind: setup.kind, seasoned: setup.seasoned, services: [...new Set([...listedServices(g.wire), ...host.services])], jobId: host.jobId, by: me?.fullName ?? '',
+      reportUpload: host.filesUrl, reportsKey: host.filesKey, files: spans.filter((x) => plan.use.includes(x.id)).map((x) => ({ name: x.name, t0: x.t0, t1: x.t1 })),
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base, g, services, setup?.kind, setup?.seasoned, setup?.newLine, setup?.limits.mbs, setup?.limits.mat, setup?.limits.spang, restr]);
@@ -313,7 +352,7 @@ export function WinchDataCard({ job }: { job: Job }) {
       const missing: string[] = [];
       for (const x of st.files) {
         try {
-          const res = await fetch(`/api/attachments/job/${encodeURIComponent(job.id)}/${encodeURIComponent(x.attId)}`, { credentials: 'same-origin' });
+          const res = await fetch(`/api${host.filesUrl}/${encodeURIComponent(x.attId)}`, { credentials: 'same-origin' });
           if (!res.ok) throw new Error(String(res.status));
           list.push(readFile(await res.arrayBuffer(), x.name, x.id, x.attId));
         } catch { missing.push(x.name); }
@@ -352,11 +391,11 @@ export function WinchDataCard({ job }: { job: Job }) {
     if (lastSaved.current === null) { lastSaved.current = saved.data?.state ? stateJson : JSON.stringify(null); if (saved.data?.state) return; }
     if (stateJson === lastSaved.current) return;
     if (!saved.data?.state && !files.some((x) => x.attId)) return;
-    if (saved.data && !saved.data.canEdit) { setSaveNote({ ok: false, text: 'Not kept with the job: your role can only view jobs.' }); return; }
+    if (saved.data && !saved.data.canEdit) { setSaveNote({ ok: false, text: `Not kept with the ${host.home}: your role can only view ${host.home}s.` }); return; }
     const t = setTimeout(() => {
-      api<{ updatedAt: string }>(`/winch/state/${encodeURIComponent(job.id)}`, { method: 'PUT', body: stateJson, headers: { 'Content-Type': 'application/json' } })
-        .then((r) => { lastSaved.current = stateJson; qc.setQueryData(['winch-state', job.id], (o: object | undefined) => ({ ...(o ?? {}), state: JSON.parse(stateJson), updatedAt: r.updatedAt })); setSaveNote({ ok: true, text: `Kept with the job at ${new Date(r.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` }); })
-        .catch((e) => setSaveNote({ ok: false, text: `Not kept with the job: ${(e as Error).message}` }));
+      api<{ updatedAt: string }>(host.stateUrl, { method: 'PUT', body: stateJson, headers: { 'Content-Type': 'application/json' } })
+        .then((r) => { lastSaved.current = stateJson; qc.setQueryData(['winch-state', host.key], (o: object | undefined) => ({ ...(o ?? {}), state: JSON.parse(stateJson), updatedAt: r.updatedAt })); setSaveNote({ ok: true, text: `Kept with the ${host.home} at ${new Date(r.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` }); })
+        .catch((e) => setSaveNote({ ok: false, text: `Not kept with the ${host.home}: ${(e as Error).message}` }));
     }, 800);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -368,12 +407,12 @@ export function WinchDataCard({ job }: { job: Job }) {
       <summary className="cursor-pointer font-semibold">Saved reports ({reports.length})</summary>
       <ul className="mt-1 space-y-0.5">
         {reports.map((a) => (
-          <li key={a.id}><a className="inline-flex items-center gap-1 text-accent-text underline" href={`/api/attachments/job/${encodeURIComponent(job.id)}/${a.id}`}><FileText aria-hidden className="size-3" />{a.file_name}</a> <span className="text-text-subtle">· {a.uploaded_by_name}</span></li>
+          <li key={a.id}><a className="inline-flex items-center gap-1 text-accent-text underline" href={`/api${host.filesUrl}/${a.id}`}><FileText aria-hidden className="size-3" />{a.file_name}</a> <span className="text-text-subtle">· {a.uploaded_by_name}</span></li>
         ))}
       </ul>
     </details>
   );
-  const status = <p role="status" className={cx('text-xs', saveNote && !saveNote.ok ? 'text-danger' : 'text-text-subtle')}>{saveNote?.text ?? (saved.data?.updatedAt ? `Kept with the job, last by ${saved.data.updatedBy ?? 'someone'} on ${new Date(saved.data.updatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Everything here is kept with the job as you go.')}</p>;
+  const status = <p role="status" className={cx('text-xs', saveNote && !saveNote.ok ? 'text-danger' : 'text-text-subtle')}>{saveNote?.text ?? (saved.data?.updatedAt ? `Kept with the ${host.home}, last by ${saved.data.updatedBy ?? 'someone'} on ${new Date(saved.data.updatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : `Everything here is kept with the ${host.home} as you go.`)}</p>;
 
   const demoText = () => {
     const d = demoRun();
@@ -389,7 +428,7 @@ export function WinchDataCard({ job }: { job: Job }) {
     const errs: string[] = [];
     for (const a of rows) {
       try {
-        const res = await fetch(`/api/attachments/job/${encodeURIComponent(job.id)}/${encodeURIComponent(a.id)}`, { credentials: 'same-origin' });
+        const res = await fetch(`/api${host.filesUrl}/${encodeURIComponent(a.id)}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error(`could not be opened (${res.status})`);
         const r = addFile(await res.arrayBuffer(), a.file_name, list);
         if (typeof r === 'string') { errs.push(r); continue; }
@@ -438,7 +477,7 @@ export function WinchDataCard({ job }: { job: Job }) {
       {restoreNote && <Banner tone="warning">{restoreNote}</Banner>}
       <div className="flex flex-wrap items-start justify-between gap-2">{status}{savedReports}</div>
       <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-0 flex-1 text-sm text-text-muted">Add the Lineminder recordings or winch exports for the job. The app joins them, finds each run, and checks it against the Speed and Jarring Guidelines (slickline wire) or the seasoning rules (braided line).</p>
+        <p className="min-w-0 flex-1 text-sm text-text-muted">Add the Lineminder recordings or winch exports for the {host.home}. The app joins them, finds each run, and checks it against the Speed and Jarring Guidelines (slickline wire) or the seasoning rules (braided line).</p>
         {!files.length && <>
           <Button size="sm" variant="ghost" onClick={demoLm}>Demo recording</Button>
           <Button size="sm" variant="ghost" onClick={demoPair}>Demo: two recordings</Button>
@@ -599,6 +638,20 @@ export function WinchDataCard({ job }: { job: Job }) {
         <GuidePanel kind={kind} data={guideQ.data} offline={guideQ.offline} />
       </Step>
 
+      {host.onMeta ? (
+        <Step n={5} title="Job details" note="For the heading and the printout">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {([['drss', 'DRSS'], ['client', 'Client'], ['field', 'Field'], ['well', 'Well'], ['unit', 'Unit'], ['cable', 'Line'], ['date', 'Job date'], ['by', 'Checked by']] as const).map(([k, l]) => (
+              <Field key={k} id={`wd-m-${k}`} label={l}>
+                <input id={`wd-m-${k}`} className={inputClass} type={k === 'date' ? 'date' : 'text'} value={meta[k] ?? ''} onChange={(e) => host.onMeta!({ ...meta, [k]: e.target.value })} />
+              </Field>
+            ))}
+            <div className="col-span-2 lg:col-span-4"><Field id="wd-m-crew" label="Crew" hint="e.g. SDM: name | Supervisor: name | Operator: name">
+              <input id="wd-m-crew" className={inputClass} value={meta.crew ?? ''} onChange={(e) => host.onMeta!({ ...meta, crew: e.target.value })} />
+            </Field></div>
+          </div>
+        </Step>
+      ) : (
       <Step n={5} title="Job details" note="From the job: change them on the job's earlier steps">
         <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {([['drss', 'DRSS'], ['field', 'Field'], ['well', 'Well'], ['unit', 'Unit'], ['cable', 'Line'], ['date', 'Job date'], ['by', 'Checked by']] as const).map(([k, l]) => (
@@ -613,6 +666,7 @@ export function WinchDataCard({ job }: { job: Job }) {
           </div>
         </dl>
       </Step>
+      )}
 
       {problem && <Banner tone="danger">{problem}</Banner>}
       <div className="flex justify-end">

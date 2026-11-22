@@ -27,6 +27,15 @@ export const NAV: Group[] = [
       { key: 'failure_roster', label: 'Incidents Dashboard', path: '/operation/failure-roster', screen: 'S10', milestone: '2h' },
     ],
   },
+  // 6z.47 (owner request 2026-11-22): the rig up, tool string and winch tools on their own, without a job
+  {
+    label: 'Utilities',
+    pages: [
+      { key: 'utilities', label: 'Rig Up Diagram', path: '/utilities/rig-up', screen: 'U1', milestone: '6' },
+      { key: 'utilities', label: 'Tool String Diagram', path: '/utilities/tool-string', screen: 'U2', milestone: '6' },
+      { key: 'utilities', label: 'Winch Report', path: '/utilities/winch', screen: 'U3', milestone: '6' },
+    ],
+  },
   {
     // 6z.44: Utilization and Wire KPIs first, then Hardware, the Assets Inventory (was its own Maintenance menu), the
     // wires and the reconciliation. The Explosive and MCR inventories are out of the menu; their pages and rights stay.
@@ -74,6 +83,7 @@ export const MENU_LABELS: Record<string, string> = {
   // the first page with a key names it (Statistics, not the Wire KPIs page that shares its key)
   ...Object.fromEntries(NAV.flatMap((g) => g.pages.map((p) => [p.key, p.key === 'bonus' ? 'Bonus' : p.label])).reverse()),
   audit: 'Audit trail',
+  utilities: 'Utilities (rig up, tool string and winch report without a job)',
   // out of the menu (6z.44), still rights: the pages open by address and Explosive is used on the job
   inventory_explosive: 'Explosive inventory',
   inventory_mcr: 'MCR inventory',
