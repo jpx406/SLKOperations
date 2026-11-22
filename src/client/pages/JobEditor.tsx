@@ -2,6 +2,7 @@ import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Check, Loader2 } from 'lucide-react';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazyRetry } from '../staleBuild';
 import { Link, useNavigate, useParams } from 'react-router';
 import { EXECUTION_FIELDS, FIELD_POLICY, canEditField, stageOfField } from '../../shared/fieldPolicy';
 import { useRules } from '../rules';
@@ -23,7 +24,7 @@ import { ClientProcedures } from './Knowledge';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
 
 // the winch data check is only loaded when Closure is opened
-const WinchDataCard = lazy(() => import('./WinchData'));
+const WinchDataCard = lazy(lazyRetry(() => import('./WinchData')));
 
 type SaveState ={ kind: 'idle' | 'dirty' | 'saving' | 'saved' } | { kind: 'error'; message: string } | { kind: 'conflict'; message: string };
 

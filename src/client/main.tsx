@@ -38,10 +38,15 @@ import { SignIn } from './pages/SignIn';
 import { ModulePicker } from './pages/Modules';
 import { QrApprove } from './pages/QrApprove';
 import { Stub } from './pages/Stub';
+import { RouteError } from './components/RouteError';
+import { lazyRetry, watchPreloadErrors } from './staleBuild';
 import './styles.css';
 
+// a page left open across a deploy reloads into the new version instead of failing (6z.48)
+watchPreloadErrors();
+
 // the winch analysis window (6z.41) opens on its own, without the app around it
-const WinchWindow = lazy(() => import('./pages/winch/WinchWindow'));
+const WinchWindow = lazy(lazyRetry(() => import('./pages/winch/WinchWindow')));
 
 const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/career', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/quick-plan', '/utilities/rig-up', '/utilities/tool-string', '/utilities/winch']);
 
@@ -52,15 +57,16 @@ function MovedTo({ path }: { path: string }) {
 }
 
 const router = createBrowserRouter([
-  { path: '/signin', element: <SignIn /> },
+  { path: '/signin', element: <SignIn />, errorElement: <RouteError /> },
   // the phone side of QR sign-in: public, it signs another computer in after Face ID on this phone
   { path: '/qr/:id', element: <QrApprove /> },
   // after signing in: the SLK Operations Hub, the Knowledge Hub or Competency (6z.33)
-  { path: '/modules', element: <RequireAuth><ModulePicker /></RequireAuth> },
-  { path: '/winch-window', element: <RequireAuth><Suspense fallback={null}><WinchWindow /></Suspense></RequireAuth> },
+  { path: '/modules', element: <RequireAuth><ModulePicker /></RequireAuth>, errorElement: <RouteError /> },
+  { path: '/winch-window', element: <RequireAuth><Suspense fallback={null}><WinchWindow /></Suspense></RequireAuth>, errorElement: <RouteError /> },
   {
     path: '/',
     element: <RequireAuth><AppShell /></RequireAuth>,
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <Navigate to="/modules" replace /> },
       { path: 'operation/schedule', element: <Schedule /> },

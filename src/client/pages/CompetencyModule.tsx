@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
+import { lazyRetry } from '../staleBuild';
 import type { CompetencyHost } from '../competency/App';
 import { installCompetencyStorage } from '../competency/storage';
 import { api } from '../api';
@@ -12,7 +13,7 @@ import { Banner, Skeleton } from '../components/ui';
 // 6z.40: the same module opens as SLK Career Development (mode "career"): only the Career Development Plan, under its
 // own header, on the same data and Competency users; Competency itself no longer shows the plan.
 
-const CompetencyApp = lazy(() => import('../competency/App'));
+const CompetencyApp = lazy(lazyRetry(() => import('../competency/App')));
 
 class Boundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
