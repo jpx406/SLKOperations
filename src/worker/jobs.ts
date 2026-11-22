@@ -45,14 +45,14 @@ const NUMERIC = new Set([
   'runs_ok', 'runs_failed', 'max_depth_ft', 'tag_depth_ft', 'max_pull_lb', 'max_overpull_lb', 'jarring_minutes', 'wire_cut_ft', 'npt_hours',
   'op_hours_override', 'h2s_ppm', 'co2_pct', 'bht_f', 'bhp_psi', 'siwhp_psi', 'fluid_weight_pcf', 'solids_pct', 'target_depth_ft',
   'top_interval_ft', 'sssv_depth_ft', 'min_restriction_in', 'max_inclination_deg', 'target_casing_weight_lbft', 'pressure_rating_psi',
-  'lubricator_length_ft', 'km_to_location', 'man_hours_override', 'travel_km_override',
+  'lubricator_length_ft', 'km_to_location', 'man_hours_override', 'travel_km_override', 'min_restriction_depth_ft', 'max_deviation_depth_ft',
 ]);
 const INTEGER = new Set(['runs_ok', 'runs_failed', 'pressure_rating_psi', 'revenue_cents']);
 const DATE = new Set(['start_date', 'end_date', 'report_closure_date']);
 const DATETIME = new Set(['arrived_at', 'rig_up_at', 'rig_down_at']);
 const YESNO = new Set(['failure', 'third_party_required', 'special_setup', 'job_log_signed', 'ticket_signed', 'eight_min_facts_done',
   'prelim_report', 'final_report', 'wellsite_audit', 'wg_runs_logged', 'service_order']);
-const LABEL: Record<string, string> = { revenue_cents: 'Revenue', max_inclination_deg: 'Max inclination', pressure_rating_psi: 'Pressure rating' };
+const LABEL: Record<string, string> = { revenue_cents: 'Revenue', max_inclination_deg: 'Max deviation', min_restriction_depth_ft: 'Minimum restriction depth', max_deviation_depth_ft: 'Max deviation depth', pressure_rating_psi: 'Pressure rating' };
 const label = (k: string) => LABEL[k] ?? k.replace(/_/g, ' ');
 
 /** Normalises values and checks references. Returns an error message or null. */
@@ -155,7 +155,7 @@ export async function blockConflict(env: Env, unit: string | null, start: string
 }
 
 /** Job fields kept in job_extras: the jobs table is at D1's 100-column limit. */
-export const EXTRA_COLUMNS = ['company', 'km_to_location', 'man_hours_override', 'travel_km_override'];
+export const EXTRA_COLUMNS = ['company', 'km_to_location', 'man_hours_override', 'travel_km_override', 'min_restriction_depth_ft', 'max_deviation_depth_ft'];
 
 function updateStatements(env: Env, id: string, patch: Record<string, unknown>, username: string, at: string): D1PreparedStatement[] {
   const cols = Object.keys(patch).filter((k) => !EXTRA_COLUMNS.includes(k));

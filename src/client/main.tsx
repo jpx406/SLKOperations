@@ -20,6 +20,7 @@ import { Attendance } from './pages/Attendance';
 import { Inventory } from './pages/Inventory';
 import { PreJobNoteEditor, PreJobNotesList, PreJobNotesPrint } from './pages/PreJobNotes';
 import { JraPage } from './pages/Jra';
+import { JobLogPage, JobWinchPage } from './pages/JobSubPages';
 import { JobReport } from './pages/JobReport';
 import { Diagrams } from './pages/Diagrams';
 import { BonusAnalysis, BonusReport, BonusRules } from './pages/Bonus';
@@ -72,6 +73,9 @@ const router = createBrowserRouter([
       { path: 'operation/schedule', element: <Schedule /> },
       { path: 'operation/jobs', element: <JobBoard /> },
       { path: 'operation/jobs/:id/jra', element: <JraPage /> },
+      // the Job log and the Winch data on pages of their own, like the JRA (6z.49)
+      { path: 'operation/jobs/:id/log', element: <JobLogPage /> },
+      { path: 'operation/jobs/:id/winch', element: <JobWinchPage /> },
       { path: 'operation/jobs/:id/report', element: <JobReport /> },
       { path: 'operation/jobs/:id/diagrams', element: <Diagrams /> },
       { path: 'operation/jobs/:id/:stage?', element: <JobEditor /> },

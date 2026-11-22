@@ -24,7 +24,7 @@ export const FIELD_POLICY: Record<string, Policy> = {
   // 02 Preparation
   ...fields([
     'account_assignment', 'well_type', 'h2s_ppm', 'co2_pct', 'bht_f', 'bhp_psi', 'siwhp_psi', 'fluid_type', 'fluid_weight_pcf', 'solids_pct',
-    'target_depth_ft', 'top_interval_ft', 'completion_details', 'nipple_profile', 'sssv_depth_ft', 'min_restriction_in', 'max_inclination_deg',
+    'target_depth_ft', 'top_interval_ft', 'completion_details', 'nipple_profile', 'sssv_depth_ft', 'min_restriction_in', 'max_inclination_deg', 'min_restriction_depth_ft', 'max_deviation_depth_ft',
     'target_casing_type', 'target_casing_od', 'target_casing_weight_lbft', 'target_casing_grade', 'wellhead_connection',
     'wire_serial_number', 'drum_no', 'pce_id', 'pressure_rating_psi', 'lubricator_length_ft', 'stuffing_box_type', 'grease_panel_id',
     'jar_type', 'special_setup', 'special_setup_notes',

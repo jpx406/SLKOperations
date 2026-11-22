@@ -61,13 +61,16 @@ describe('stage completion', () => {
     expect(stagePercent({ ticket_no: '1', status: 'planned', services: ['Gauge Cutter'] }, 'design')).toBe(25);
   });
   it('treats an empty toolstring as not filled', () => {
-    expect(stagePercent({ well_type: 'Oil producer', toolstring: [] }, 'preparation')).toBe(10);
-    expect(stagePercent({ well_type: 'Oil producer', toolstring: [{ component: 'Stem' }] }, 'preparation')).toBe(20);
+    // 6z.49: 12 Preparation fields (the minimum restriction depth and the SSSV depth added)
+    expect(stagePercent({ well_type: 'Oil producer', toolstring: [] }, 'preparation')).toBe(8);
+    expect(stagePercent({ well_type: 'Oil producer', toolstring: [{ component: 'Stem' }] }, 'preparation')).toBe(17);
   });
-  it('adds the failure follow-up to closure only when the job has NPT or a failure', () => {
+  it('adds the failure follow-up to closure only when Failure is Yes or runs failed (6z.49)', () => {
     const signed = { job_log_signed: 'yes', ticket_signed: 'yes' } as const;
     expect(stagePercent({ ...signed, npt_hours: 0 }, 'closure')).toBe(29);
-    expect(stagePercent({ ...signed, npt_hours: 2 }, 'closure')).toBe(17);
+    expect(stagePercent({ ...signed, npt_hours: 2 }, 'closure')).toBe(29);
+    expect(stagePercent({ ...signed, failure: 'yes' }, 'closure')).toBe(17);
+    expect(stagePercent({ ...signed, runs_failed: 1 }, 'closure')).toBe(17);
   });
 });
 

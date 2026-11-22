@@ -1,13 +1,13 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Check, Loader2 } from 'lucide-react';
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { lazyRetry } from '../staleBuild';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { EXECUTION_FIELDS, FIELD_POLICY, canEditField, stageOfField } from '../../shared/fieldPolicy';
 import { useRules } from '../rules';
 import { jobEfficiency, manHours, opHours, peopleAssigned, runEfficiency, travelKm } from '../../shared/metrics';
-import { STAGES, canEditStage, canSeeStage, hasFailure, stagePercent, type Stage } from '../../shared/stages';
+import { STAGES, canEditStage, canSeeStage, needsFollowUp, stagePercent, type Stage } from '../../shared/stages';
+import { fromEvents } from '../../shared/jobEvents';
 import type { ToolPart } from '../../shared/toolstring';
 import type { Job, JobCrew, Lookups } from '../../shared/types';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
@@ -15,7 +15,9 @@ import { useMe } from '../auth';
 import { JraBanner, useJraLock } from './Jra';
 import { JobPackage, StageForms } from '../components/JobForms';
 import { Attachments } from '../components/Attachments';
-import { JobLogEvents } from '../components/JobLogEvents';
+import type { LogEvent } from '../components/JobLogEvents';
+import { Collapsible, type Completeness } from '../components/Collapsible';
+import { JobLogBanner, WinchBanner } from './JobSubPages';
 import { BonusDistribution } from './Bonus';
 import { PreJobNotePanel } from './PreJobNotes';
 import { CrewPanel, DetailsSection, PrepChecks, SectionTitle, WirePanel, serviceFlags } from '../components/jobParts';
@@ -24,7 +26,6 @@ import { ClientProcedures } from './Knowledge';
 import { Banner, Button, Card, Field, LockHint, ProgressBar, Skeleton, StatusPill, cx, inputClass } from '../components/ui';
 
 // the winch data check is only loaded when Closure is opened
-const WinchDataCard = lazy(lazyRetry(() => import('./WinchData')));
 
 type SaveState ={ kind: 'idle' | 'dirty' | 'saving' | 'saved' } | { kind: 'error'; message: string } | { kind: 'conflict'; message: string };
 
@@ -136,7 +137,8 @@ export function JobEditor() {
     setSave({ kind: 'dirty' });
     schedule();
   };
-  const change = (field: string, v: string) => changeMany({ [field]: v });
+  // failed runs mean a failure (6z.49): Failure goes to Yes by itself, which opens the follow-up on Closure
+  const change = (field: string, v: string) => changeMany(field === 'runs_failed' && Number(v) > 0 && values.failure !== 'yes' ? { [field]: v, failure: 'yes' } : { [field]: v });
   const changeJson = (field: string, v: unknown) => changeMany({ [field]: JSON.stringify(v) });
 
   const reloadAfterConflict = async () => {
@@ -150,6 +152,8 @@ export function JobEditor() {
   const canEditJobs = !!me?.menus.jobs?.edit;
   const jraLocked = useJraLock(job?.id);
   // the crew assigned, for the man-hours on Closure (the same query the crew panel uses)
+  // the Job Log, read into Execution's times, runs and depths (6z.49)
+  const eventsQ = useQuery({ queryKey: ['job-events', job?.id], queryFn: () => api<LogEvent[]>(`/jobs/${job!.id}/events`), enabled: !!job?.id, retry: false });
   const crewQ = useQuery({ queryKey: ['crew', job?.id], queryFn: () => api<JobCrew>(`/jobs/${job!.id}/crew`), enabled: !!job?.id });
   // Execution waits for an approved JRA on jobs that need one (the API refuses it too)
   const rules = useRules().data?.rules;
@@ -204,7 +208,7 @@ export function JobEditor() {
   const pceOptions = (L?.pce ?? []).filter((p) => p.country === country && (p.active || p.id === values.pce_id));
   const pce = pceOptions.find((p) => p.id === values.pce_id);
   const flags = serviceFlags(job, L);
-  const failureOpen = hasFailure(preview);
+  const failureOpen = needsFollowUp(preview);
   const json = <T,>(f: string, fallback: T): T => { try { return JSON.parse(values[f] || 'null') ?? fallback; } catch { return fallback; } };
   const pickPce = (id: string) => {
     const p = pceOptions.find((x) => x.id === id);
@@ -220,6 +224,31 @@ export function JobEditor() {
   const runEff = runEfficiency(num('runs_ok'), num('runs_failed'));
   const people = peopleAssigned(crewQ.data?.crew ?? [], crewQ.data?.headcount);
   const manAuto = manHours(op, people, null), travelAuto = travelKm(num('km_to_location'), null);
+  // how complete each Preparation section is (6z.49): the fields that must be there for the job
+  const filledN = (fs: string[]) => ({ done: fs.filter((k) => (values[k] ?? '') !== '').length, total: fs.length });
+  const wellNeeds = ['well_type', 'h2s_ppm', 'co2_pct', 'bht_f', 'bhp_psi', 'siwhp_psi', 'fluid_type', 'target_depth_ft', 'sssv_depth_ft', 'min_restriction_in', 'min_restriction_depth_ft', 'max_inclination_deg', 'max_deviation_depth_ft', ...(flags.is_memory ? ['top_interval_ft'] : [])];
+  const wellStatus: Completeness = filledN(wellNeeds);
+  const wheStatus: Completeness = filledN(['pce_id', 'pressure_rating_psi', 'lubricator_length_ft', 'stuffing_box_type', 'jar_type']);
+  const crewHead = crewQ.data?.headcount, crewNamed = (crewQ.data?.crew ?? []).filter((c) => !c.end_date).length;
+  const crewNeed = crewHead ? crewHead.supervisors + crewHead.operators + crewHead.assistant_operators + crewHead.helpers : 0;
+  const crewStatus: Completeness | null = !crewQ.data ? null : crewNeed ? { done: Math.min(crewNamed, crewNeed), total: crewNeed, note: `${crewNamed} of ${crewNeed} named` } : { done: 0, total: 1, note: 'Head count not set' };
+  // the largest tool OD against the minimum restriction (from Run 1 of the tool string)
+  const toolOd = Math.max(0, ...json<ToolPart[]>('toolstring', []).map((p) => Number(p.od_in) || 0));
+  const minR = num('min_restriction_in');
+  // Execution: times, runs and depths from the Job Log
+  const logSays = fromEvents(eventsQ.data ?? []);
+  const logValues: Record<string, string> = Object.fromEntries(Object.entries({
+    arrived_at: logSays.arrived_at && isoToLocalInput(logSays.arrived_at), rig_up_at: logSays.rig_up_at && isoToLocalInput(logSays.rig_up_at), rig_down_at: logSays.rig_down_at && isoToLocalInput(logSays.rig_down_at),
+    runs_ok: logSays.runs_ok != null ? String(logSays.runs_ok) : undefined, runs_failed: logSays.runs_failed != null ? String(logSays.runs_failed) : undefined,
+    max_depth_ft: logSays.max_depth_ft != null ? String(logSays.max_depth_ft) : undefined, tag_depth_ft: logSays.tag_depth_ft != null ? String(logSays.tag_depth_ft) : undefined,
+  }).filter(([k, v]) => v !== undefined && editable(k))) as Record<string, string>;
+  const logDiffers = Object.entries(logValues).filter(([k, v]) => (values[k] ?? '') !== v);
+  const applyLog = (only?: 'empty') => {
+    const next = Object.fromEntries(logDiffers.filter(([k]) => only !== 'empty' || !(values[k] ?? '')));
+    if (Number(next.runs_failed ?? values.runs_failed ?? 0) > 0 && values.failure !== 'yes' && editable('failure')) next.failure = 'yes';
+    if (Object.keys(next).length) changeMany(next);
+  };
+  const LOG_LABEL: Record<string, string> = { arrived_at: 'Arrived', rig_up_at: 'Rig-up', rig_down_at: 'Rig-down', runs_ok: 'Successful runs', runs_failed: 'Failed runs', max_depth_ft: 'Max depth', tag_depth_ft: 'Tag depth' };
 
   return (
     <section aria-labelledby="job-title">
@@ -306,24 +335,25 @@ export function JobEditor() {
           <Card>
             {job && <JraBanner jobId={job.id} />}
             {job && <StageForms jobId={job.id} stage="execution" canEdit={canEditJobs && canEditStage(me!.menus, 'execution') && !jraLocked} showJra={false} />}
-            <dl className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3" aria-live="polite">
-              <Metric label="Operating hours" value={op != null ? `${op} h` : '—'} note={op == null ? 'needs rig-up and rig-down' : preview.op_hours_override ? 'override' : 'rig-up → rig-down'} />
-              <Metric label="Job efficiency" value={eff != null ? `${eff}%` : '—'} note="(1 − NPT ÷ op hours) × 100" />
-              <Metric label="Run efficiency" value={runEff != null ? `${runEff}%` : '—'} note="successful ÷ total runs" />
-            </dl>
-            {job && (
-              <>
-                <SectionTitle aside="Kept on the device when there is no signal">Job log · sequence of events</SectionTitle>
-                <JobLogEvents jobId={job.id} canEdit={canEditJobs && !jraLocked} />
-                <SectionTitle>Times, runs and depths</SectionTitle>
-              </>
+            {job && <JobLogBanner jobId={job.id} />}
+            <Collapsible title="Times, runs and depths" open aside="Read from the job log where it says"
+              status={filledN(['arrived_at', 'rig_up_at', 'rig_down_at', 'runs_ok', 'max_depth_ft', 'failure'])}>
+            {logDiffers.length > 0 && (
+              <div className="mb-3 rounded-md border border-accent bg-accent/10 px-3 py-2 text-xs">
+                <p className="mb-1 font-semibold">From the job log</p>
+                <p className="mb-2 text-text-muted">{logDiffers.map(([k, v]) => `${LOG_LABEL[k]}: ${k.endsWith('_at') ? v.replace('T', ' ') : k.endsWith('_ft') ? `${Number(v).toLocaleString()} ft` : v}${values[k] ? ` (now ${k.endsWith('_at') ? values[k].replace('T', ' ') : values[k]})` : ''}`).join(' · ')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {logDiffers.some(([k]) => !(values[k] ?? '')) && <Button size="sm" variant="primary" onClick={() => applyLog('empty')}>Fill the empty ones</Button>}
+                  {logDiffers.some(([k]) => !!(values[k] ?? '')) && <Button size="sm" variant="ghost" onClick={() => applyLog()}>Use all from the log</Button>}
+                </div>
+              </div>
             )}
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
               {text('arrived_at', 'Arrived on site', { type: 'datetime-local', hint: 'Riyadh time' })}
               {text('rig_up_at', 'Rig-up', { type: 'datetime-local', hint: 'Riyadh time' })}
               {text('rig_down_at', 'Rig-down', { type: 'datetime-local', hint: 'Riyadh time' })}
               {text('runs_ok', 'Successful runs', { type: 'number' })}
-              {text('runs_failed', 'Failed runs', { type: 'number' })}
+              {text('runs_failed', 'Failed runs', { type: 'number', hint: 'More than 0 sets Failure to Yes' })}
               {text('max_depth_ft', 'Max depth reached', { type: 'number', unit: 'ft' })}
               {text('tag_depth_ft', 'Tag depth', { type: 'number', unit: 'ft' })}
               {text('max_pull_lb', 'Max pull', { type: 'number', unit: 'lb' })}
@@ -337,6 +367,7 @@ export function JobEditor() {
               {select('plug_type', 'Plug type', flags.is_plug ? list('plug_type') : [], flags.is_plug ? 'Set or pulled on this job' : 'Opens with a plug service', undefined, !flags.is_plug)}
               <div className="md:col-span-2 xl:col-span-3">{area('op_time_details', 'Operating time details', 'What happened, run by run, and any waiting time')}</div>
             </div>
+            </Collapsible>
             <ServiceSection on={flags.is_fishing} title="Fishing" need="a fishing service">
               <DetailsSection idPrefix="fishing" value={json('fishing_details', {})} canEdit={editable('fishing_details')} onChange={(v) => changeJson('fishing_details', v)}
                 fields={[{ key: 'fish', label: 'Fish description' }, { key: 'fish_top_ft', label: 'Top of fish', type: 'number', unit: 'ft' },
@@ -368,7 +399,7 @@ export function JobEditor() {
             <StageForms jobId={job.id} stage="preparation" canEdit={canEditJobs && canEditStage(me!.menus, 'preparation')} />
             <PrepChecks job={job} values={values} toolstring={json<ToolPart[]>('toolstring', [])}
               ctx={{ minRestrictionIn: num('min_restriction_in'), pceBoreIn: pce?.bore_in ?? null, lubricatorFt: num('lubricator_length_ft') }} />
-            <SectionTitle>Well</SectionTitle>
+            <Collapsible title="Well data" status={wellStatus} aside={toolOd && minR ? (toolOd >= minR ? <span className="font-semibold text-danger">Largest tool OD {toolOd} in does not pass {minR} in</span> : `Largest tool OD ${toolOd} in passes ${minR} in`) : undefined}>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
               {text('account_assignment', 'Account assignment')}
               {select('well_type', 'Well type', list('well_type'))}
@@ -380,12 +411,19 @@ export function JobEditor() {
               {select('fluid_type', 'Fluid type', list('fluid_type'))}
               {text('fluid_weight_pcf', 'Fluid weight', { type: 'number', unit: 'pcf' })}
               {text('solids_pct', 'Solids', { type: 'number', unit: '%' })}
-              {text('target_depth_ft', 'Target depth', { type: 'number', unit: 'ft' })}
-              {text('top_interval_ft', 'Top of interval', { type: 'number', unit: 'ft' })}
+              {text('target_depth_ft', 'Max target depth (multiple runs)', { type: 'number', unit: 'ft', hint: 'The deepest any run goes' })}
+              <div className={cx(!flags.is_memory && 'opacity-50')}>
+                {flags.is_memory ? text('top_interval_ft', 'Top of interval (memory logging)', { type: 'number', unit: 'ft' })
+                  : <Field id="top_interval_ft" label="Top of interval (memory logging)" unit="ft" hint="Opens with a memory logging service">
+                    <input id="top_interval_ft" className={cx(inputClass, 'pr-10')} disabled value={values.top_interval_ft ?? ''} readOnly />
+                  </Field>}
+              </div>
               {select('nipple_profile', 'Nipple profile', list('nipple_profile'))}
-              {text('sssv_depth_ft', 'SSSV depth', { type: 'number', unit: 'ft' })}
-              {text('min_restriction_in', 'Minimum restriction', { type: 'number', unit: 'in', hint: 'Checked against the largest tool OD' })}
-              {text('max_inclination_deg', 'Max inclination', { type: 'number', unit: '°' })}
+              {text('sssv_depth_ft', 'SSSV depth', { type: 'number', unit: 'ft', hint: '0 when there is no SSSV' })}
+              {text('min_restriction_in', 'Minimum restriction', { type: 'number', unit: 'in', hint: toolOd ? (minR && toolOd >= minR ? `Required · the largest tool OD (${toolOd} in) does not pass` : `Required · largest tool OD ${toolOd} in`) : 'Required · checked against the largest tool OD' })}
+              {text('min_restriction_depth_ft', 'Minimum restriction depth', { type: 'number', unit: 'ft', hint: 'Required' })}
+              {text('max_inclination_deg', 'Max deviation', { type: 'number', unit: '°' })}
+              {text('max_deviation_depth_ft', 'Max deviation depth', { type: 'number', unit: 'ft' })}
               {select('target_casing_type', 'Target casing / tubing', list('casing_type'))}
               {select('target_casing_od', 'Casing OD', list('casing_od'))}
               {text('target_casing_weight_lbft', 'Casing weight', { type: 'number', unit: 'lb/ft' })}
@@ -393,12 +431,13 @@ export function JobEditor() {
               {text('wellhead_connection', 'Wellhead connection', { placeholder: 'e.g. 4-1/16" 10K flange' })}
               <div className="md:col-span-2 xl:col-span-3">{area('completion_details', 'Completion details', 'Tubing, nipples and restrictions top to bottom')}</div>
             </div>
+            </Collapsible>
 
             <SectionTitle aside="From WIREGUARD">Wire and drum</SectionTitle>
             <WirePanel job={job} canEdit={editable('drum_no') && editable('wire_serial_number')}
               onPick={(drum, wire) => changeMany({ drum_no: drum ?? '', wire_serial_number: wire ?? '' })} />
 
-            <SectionTitle>Pressure control</SectionTitle>
+            <Collapsible title="WHE equipment" status={wheStatus} aside="Pressure control set, lubricator, stuffing box">
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
               {select('pce_id', 'Pressure control set', pceOptions.map((p) => ({ value: p.id, label: `${p.label} · ${p.bore_in} in bore${p.active ? '' : ' (switched off)'}` })),
                 !pceOptions.some((p) => p.active) ? 'No equipment listed yet (Database)' : pce ? `${pce.bore_in} in bore${pce.rating_psi ? ` · ${pce.rating_psi.toLocaleString()} psi` : ''}` : undefined, pickPce)}
@@ -410,6 +449,7 @@ export function JobEditor() {
               {select('special_setup', 'Special setup', YES_NO)}
               {values.special_setup === 'yes' && text('special_setup_notes', 'Special setup notes')}
             </div>
+            </Collapsible>
 
             {country && me?.menus.knowledge_hub?.view && <>
               <SectionTitle aside="Knowledge Hub · read or check the mind map">Procedures for this job</SectionTitle>
@@ -419,13 +459,19 @@ export function JobEditor() {
             <SectionTitle aside="QAF14009 and QAF14010">Rig up and tool string diagrams</SectionTitle>
             <DiagramsCard jobId={job.id} />
 
-            <SectionTitle aside="Head count and named crew">Crew</SectionTitle>
-            <CrewPanel job={job} canEdit={editable('well_type')} />
+            <Collapsible title="Crew" status={crewStatus} aside="Head count and named crew">
+              <CrewPanel job={job} canEdit={editable('well_type')} />
+            </Collapsible>
           </Card>
         )))}
 
         {stage === 'closure' && (needsJob ?? (
           <Card>
+            <dl className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3" aria-live="polite">
+              <Metric label="Operating hours" value={op != null ? `${op} h` : '—'} note={op == null ? 'needs rig-up and rig-down' : preview.op_hours_override ? 'override' : 'rig-up → rig-down'} />
+              <Metric label="Job efficiency" value={eff != null ? `${eff}%` : '—'} note="(1 − NPT ÷ op hours) × 100" />
+              <Metric label="Run efficiency" value={runEff != null ? `${runEff}%` : '—'} note="successful ÷ total runs" />
+            </dl>
             {job && <StageForms jobId={job.id} stage="closure" canEdit={canEditJobs && canEditStage(me!.menus, 'closure')} />}
             <SectionTitle>Sign-off</SectionTitle>
             <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
@@ -439,16 +485,16 @@ export function JobEditor() {
 
             {job && (
               <>
-                <SectionTitle aside="Uploaded to the job’s folder, approved by the SDM">Job package</SectionTitle>
-                <p className="mb-3 text-xs text-text-muted">The job can be completed once every document that applies is uploaded and the SDM has approved the package. The list is kept in Administration → Form templates.</p>
-                <JobPackage jobId={job.id} canEdit={canEditJobs && canEditStage(me!.menus, 'closure')} />
+                <Collapsible title="Debriefing" aside="Uploaded to the job’s folder, approved by the SDM">
+                  <p className="mb-3 text-xs text-text-muted">The job can be completed once every document that applies is uploaded and the SDM has approved the package. The list is kept in Administration → Form templates.</p>
+                  <JobPackage jobId={job.id} canEdit={canEditJobs && canEditStage(me!.menus, 'closure')} />
+                </Collapsible>
               </>
             )}
 
             {job && (
               <>
-                <SectionTitle aside="Winch recordings against the Speed and Jarring Guidelines">Winch data: plots and guidelines check</SectionTitle>
-                <Suspense fallback={<Skeleton className="h-40" />}><WinchDataCard job={job} /></Suspense>
+                <div className="mt-5"><WinchBanner jobId={job.id} /></div>
               </>
             )}
 
@@ -477,8 +523,9 @@ export function JobEditor() {
               </>
             )}
 
-            <SectionTitle aside={failureOpen ? 'NPT or a failure on this job' : undefined}>Failure follow-up</SectionTitle>
-            {!failureOpen ? <LockHint>Opens when the job has NPT hours or Failure = Yes on Execution.</LockHint> : (
+            <Collapsible title="Failure follow-up" status={failureOpen ? filledN(['eight_min_facts_done', 'prelim_report', 'final_report', 'report_closure_status', 'failure_description']) : null}
+              aside={failureOpen ? 'Failure = Yes on Execution' : 'Not needed: no failure on this job'}>
+            {!failureOpen ? <LockHint>Opens when Failure is Yes on Execution (failed runs set it to Yes).</LockHint> : (
               <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
                 {select('eight_min_facts_done', '8 Min. Facts done', YES_NO)}
                 {select('prelim_report', 'Preliminary report', YES_NO)}
@@ -489,6 +536,7 @@ export function JobEditor() {
                 <div className="md:col-span-2 xl:col-span-3">{area('failure_description', 'Failure description', 'What failed, why, and what was done')}</div>
               </div>
             )}
+            </Collapsible>
           </Card>
         ))}
         {job && <Card className="mt-4"><Attachments entity="job" id={job.id} /></Card>}

@@ -67,6 +67,8 @@ export interface Job {
   fluid_type: string | null; fluid_weight_pcf: number | null; solids_pct: number | null;
   target_depth_ft: number | null; top_interval_ft: number | null; completion_details: string | null; nipple_profile: string | null;
   sssv_depth_ft: number | null; min_restriction_in: number | null; max_inclination_deg: number | null;
+  /** 6z.49, kept in job_extras: where the minimum restriction is, and the depth of the largest deviation. */
+  min_restriction_depth_ft?: number | null; max_deviation_depth_ft?: number | null;
   target_casing_type: string | null; target_casing_od: string | null; target_casing_weight_lbft: number | null; target_casing_grade: string | null;
   wellhead_connection: string | null; wire_serial_number: string | null; drum_no: string | null;
   pce_id: string | null; pressure_rating_psi: number | null; lubricator_length_ft: number | null; stuffing_box_type: string | null;

@@ -16,7 +16,8 @@ export const canEditStage = (menus: Rights, s: Stage) => !!menus.jobs?.edit && !
 
 export const STAGE_FIELDS: Record<Stage, (keyof Job)[]> = {
   design: ['ticket_no', 'sdm_username', 'status', 'unit_number', 'start_date', 'end_date', 'location', 'field', 'rig', 'well', 'conveyance'],
-  preparation: ['well_type', 'fluid_type', 'target_depth_ft', 'min_restriction_in', 'siwhp_psi', 'wire_serial_number', 'drum_no', 'pce_id', 'pressure_rating_psi', 'toolstring'],
+  // 6z.49: the minimum restriction needs its depth, and the SSSV depth is asked (0 when there is none)
+  preparation: ['well_type', 'fluid_type', 'target_depth_ft', 'min_restriction_in', 'min_restriction_depth_ft', 'sssv_depth_ft', 'siwhp_psi', 'wire_serial_number', 'drum_no', 'pce_id', 'pressure_rating_psi', 'toolstring'],
   execution: ['arrived_at', 'rig_up_at', 'rig_down_at', 'runs_ok', 'max_depth_ft', 'failure'],
   closure: ['job_log_signed', 'ticket_signed', 'job_package_url', 'wellsite_audit', 'wg_runs_logged', 'service_order', 'revenue_cents'],
 };
@@ -24,11 +25,13 @@ export const STAGE_FIELDS: Record<Stage, (keyof Job)[]> = {
 export const FAILURE_FOLLOW_UP: (keyof Job)[] = ['eight_min_facts_done', 'prelim_report', 'final_report', 'report_closure_status', 'failure_description'];
 
 export const hasFailure = (job: Partial<Job>) => (job.npt_hours ?? 0) > 0 || job.failure === 'yes';
+/** The failure follow-up on Closure (6z.49): Failure = Yes on Execution, which failed runs set by themselves. */
+export const needsFollowUp = (job: Partial<Job>) => job.failure === 'yes' || (job.runs_failed ?? 0) > 0;
 
 const filled = (v: unknown) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0);
 
 export function stagePercent(job: Partial<Job>, stage: Stage): number {
-  const fields = stage === 'closure' && hasFailure(job) ? [...STAGE_FIELDS.closure, ...FAILURE_FOLLOW_UP] : STAGE_FIELDS[stage];
+  const fields = stage === 'closure' && needsFollowUp(job) ? [...STAGE_FIELDS.closure, ...FAILURE_FOLLOW_UP] : STAGE_FIELDS[stage];
   let done = fields.filter((f) => filled(job[f])).length;
   if (stage === 'design' && job.services?.length) done += 1;
   const total = fields.length + (stage === 'design' ? 1 : 0);
