@@ -17,8 +17,13 @@ import type { AppBindings, AuthedUser, Env } from './env';
 // New job fields beyond ~100 columns must go in a side table.
 const METRICS = `m.op_hours, m.job_efficiency_pct, m.run_efficiency_pct,
   (SELECT json_group_array(job_type_name) FROM (SELECT job_type_name FROM job_services s WHERE s.job_id = m.job_id ORDER BY position)) AS services`;
-const BOARD_COLUMNS = [...new Set(['id', 'country', 'npt_hours', 'updated_at', ...Object.values(STAGE_FIELDS).flat(), ...FAILURE_FOLLOW_UP])]
-  .map((c) => `j.${c}`).join(', ');
+/**
+ * The board's columns: what the stage percentages need. Fields kept in job_extras come from there (6z.50: the
+ * minimum restriction depth, added to Preparation in 6z.49, made the board ask the jobs table for a column it lacks).
+ * runs_failed is read too, since failed runs open the failure follow-up.
+ */
+export const boardColumns = () => [...new Set(['id', 'country', 'npt_hours', 'updated_at', 'runs_failed', ...Object.values(STAGE_FIELDS).flat(), ...FAILURE_FOLLOW_UP])]
+  .map((c) => (EXTRA_COLUMNS.includes(c) ? `x.${c}` : `j.${c}`)).join(', ');
 
 const inCountries = (alias = 'j') => `${alias}.country IN (SELECT value FROM json_each(?))`;
 const JSON_COLUMNS = ['toolstring', 'survey_details', 'fishing_details', 'perforation_details'];
@@ -202,7 +207,7 @@ jobs.get('/', async (c) => {
     const like = `%${q.replace(/[%_]/g, '')}%`;
     binds.push(like, like, like, like, like);
   }
-  const { results } = await c.env.DB.prepare(`SELECT ${BOARD_COLUMNS}, ${METRICS} FROM jobs j JOIN job_metrics m ON m.job_id = j.id WHERE ${where.join(' AND ')} ORDER BY coalesce(j.start_date, '9999') DESC, j.created_at DESC LIMIT 500`)
+  const { results } = await c.env.DB.prepare(`SELECT ${boardColumns()}, ${METRICS} FROM jobs j JOIN job_metrics m ON m.job_id = j.id LEFT JOIN job_extras x ON x.job_id = j.id WHERE ${where.join(' AND ')} ORDER BY coalesce(j.start_date, '9999') DESC, j.created_at DESC LIMIT 500`)
     .bind(...binds).all();
   return c.json(results.map(toJob));
 });
