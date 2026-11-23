@@ -4,8 +4,8 @@ import { Suspense, lazy } from 'react';
 import { Link, useParams } from 'react-router';
 import type { Job } from '../../shared/types';
 import { api } from '../api';
-import { useMe } from '../auth';
-import { JobLogEvents, type LogEvent } from '../components/JobLogEvents';
+import { JobLogEditor } from '../joblog/JobLogEditor';
+import { coerceForm, eventCount, hasSig } from '../../shared/jobLogForm';
 import { Banner, Card, Skeleton, cx } from '../components/ui';
 import { lazyRetry } from '../staleBuild';
 import { useJraLock } from './Jra';
@@ -32,23 +32,14 @@ function Header({ id, back, backLabel, title, job }: { id: string; back: string;
   );
 }
 
-/** /operation/jobs/:id/log — the sequence of events. */
+/** /operation/jobs/:id/log — the Job log · Sequence of Events form (6z.51). */
 export function JobLogPage() {
   const { id = '' } = useParams();
-  const { data: me } = useMe();
   const job = useJob(id);
   const jraLocked = useJraLock(id);
   if (job.isPending) return <Skeleton className="h-96" />;
   if (job.isError) return <Banner tone="danger" action={<Link className="underline" to="/operation/jobs">Back to jobs</Link>}>{job.error.message}</Banner>;
-  const canEdit = !!me?.menus.jobs?.edit && !jraLocked;
-  return (
-    <section aria-label="Job log">
-      <Header id={id} back="execution" backLabel="Execution" title="Job log · sequence of events" job={job.data} />
-      {jraLocked && <div className="mb-3"><Banner tone="warning">The JRA has to be approved before entries can be added.</Banner></div>}
-      <p className="mb-3 text-sm text-text-muted">Each entry has its time, and the run and depth when they apply. Arrival, rig-up, rig-down, the runs, failed runs, the deepest point and the tag are read from here into Execution's times, runs and depths. Entries are kept on the device when there is no signal.</p>
-      <Card><JobLogEvents jobId={id} canEdit={canEdit} /></Card>
-    </section>
-  );
+  return <JobLogEditor jobId={id} jraLocked={jraLocked} title={[job.data.ticket_no, job.data.well].filter(Boolean).join(' · ') || 'Job'} />;
 }
 
 /** /operation/jobs/:id/winch — the winch data and its report. */
@@ -65,19 +56,24 @@ export function JobWinchPage() {
   );
 }
 
-/** The card on Execution: how many entries, the last one, and the way into the Job log. */
+/** The card on Execution: the log's version, events and signatures, and the way into it (6z.51). */
 export function JobLogBanner({ jobId }: { jobId: string }) {
-  const q = useQuery({ queryKey: ['job-events', jobId], queryFn: () => api<LogEvent[]>(`/jobs/${jobId}/events`), retry: false });
-  const ev = q.data ?? [];
-  const last = [...ev].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))[0];
+  const q = useQuery({ queryKey: ['joblog-summary', jobId], queryFn: () => api<{ log: { version: number; form: unknown; savedBy: string | null; savedAt: string; sentAt: string | null } | null }>(`/joblog/${jobId}`), retry: false });
+  const log = q.data?.log;
+  const form = log ? coerceForm(log.form) : null;
+  const events = form ? eventCount(form) : 0;
+  const eng = !!form && hasSig(form.engSig), fm = !!form && hasSig(form.fmSig);
   return (
-    <div className={cx('mb-4 rounded-md border p-3', ev.length ? 'border-border' : 'border-warning')}>
+    <div className={cx('mb-4 rounded-md border p-3', events ? (eng && fm ? 'border-success' : 'border-border') : 'border-warning')}>
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="font-display text-base font-bold uppercase">Job log · sequence of events</h2>
-        <span className="text-sm text-text-muted">{q.isPending ? 'Reading…' : `${ev.length} entr${ev.length === 1 ? 'y' : 'ies'}`}</span>
-        <span className="ml-auto"><Link className={openBtn} to={`/operation/jobs/${jobId}/log`}>{ev.length ? 'Open job log' : 'Start job log'}</Link></span>
+        <span className="text-sm text-text-muted">{q.isPending ? 'Reading…' : log ? `v${log.version} · ${events} event${events === 1 ? '' : 's'}` : 'Not started'}</span>
+        {log && <span className={cx('label-caps rounded-pill px-2 py-0.5', eng ? 'bg-success-subtle text-success' : 'bg-neutral-subtle text-text-muted')}>Crew {eng ? 'signed' : 'not signed'}</span>}
+        {log && <span className={cx('label-caps rounded-pill px-2 py-0.5', fm ? 'bg-success-subtle text-success' : 'bg-neutral-subtle text-text-muted')}>Client {fm ? 'signed' : 'not signed'}</span>}
+        {log?.sentAt && <span className="label-caps rounded-pill bg-info-subtle px-2 py-0.5 text-info">Emailed</span>}
+        <span className="ml-auto"><Link className={openBtn} to={`/operation/jobs/${jobId}/log`}>{log ? 'Open job log' : 'Start job log'}</Link></span>
       </div>
-      <p className="mt-1 text-xs text-text-muted">{last ? `Last: ${when(last.occurred_at)}${last.run_no ? ` · run ${last.run_no}` : ''}${last.depth_ft != null ? ` · ${last.depth_ft.toLocaleString()} ft` : ''} · ${last.text}` : 'Log what happens as it happens: times, runs and depths are read from it.'}</p>
+      <p className="mt-1 text-xs text-text-muted">{log ? `Last saved ${when(log.savedAt)}${log.savedBy ? ` by ${log.savedBy}` : ''}. Times, runs and depths below are read from it.` : 'The header, every event with its run and depth, crew hours and both signatures, kept on the device with no signal. Times, runs and depths are read from it.'}</p>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { FAILURE_FOLLOW_UP, STAGE_FIELDS, canEditStage } from '../shared/stages'
 import { parseToolstring, toolTotals } from '../shared/toolstring';
 import type { Job } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logEvents } from './jobLogs';
 
 // Jobs: board, editor, create-on-first-save, autosave patches with per-field rights and a conflict check.
 
@@ -606,6 +607,9 @@ jobs.delete('/:id', async (c) => {
 jobs.get('/:id/events', async (c) => {
   const job = await getJob(c.env, c.get('user'), c.req.param('id'));
   if (!job) return c.json({ error: 'Job not found' }, 404);
+  // 6z.51: the sequence of events is the Job log form now; jobs that never had one keep their old entries
+  const fromLog = await logEvents(c.env, job.id);
+  if (fromLog) return c.json(fromLog);
   const { results } = await c.env.DB.prepare('SELECT id, client_id, occurred_at, run_no, depth_ft, text, created_by, created_at FROM job_log_events WHERE job_id = ? ORDER BY occurred_at, created_at').bind(job.id).all();
   return c.json(results);
 });

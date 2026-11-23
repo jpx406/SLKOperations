@@ -112,6 +112,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'PUT', re: /^\/api\/winch\/guide$/, menu: 'users', action: 'edit' },
   // the winch check kept with the job (6z.43)
   { method: 'PUT', re: /^\/api\/winch\/state\/[^/]+$/, menu: 'jobs', action: 'edit' },
+  // the Job log form (6z.51): saving also needs the Execution stage, checked in the route
+  { method: 'PUT', re: /^\/api\/joblog\/[^/]+$/, menu: 'jobs', action: 'edit' },
+  { method: 'POST', re: /^\/api\/joblog\/[^/]+\/sent$/, menu: 'jobs', action: 'view' },
   // Utilities projects (6z.47): deleting a project is checked in the route (whoever made it, the delete right or an admin)
   { method: 'POST', re: /^\/api\/utilities(\/[^/]+\/(duplicate|files|pdf))?$/, menu: 'utilities', action: 'edit' },
   { method: 'PUT', re: /^\/api\/utilities\/[^/]+(\/state)?$/, menu: 'utilities', action: 'edit' },
@@ -222,6 +225,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/winch\/guide(\/version)?$/, menus: 'any' },
   { re: /^\/api\/winch\/line\/[^/]+$/, menus: ['jobs', 'schedule'] },
   { re: /^\/api\/winch\/state\/[^/]+$/, menus: ['jobs'] },
+  { re: /^\/api\/joblog\/[^/]+(\/versions)?$/, menus: ['jobs'] },
   { re: /^\/api\/utilities(\/[^/]+(\/(state|files(\/[^/]+)?))?)?$/, menus: ['utilities'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
