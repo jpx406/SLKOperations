@@ -3,6 +3,11 @@
 // operator and the client representative. One form per job, saved with every version kept; two people saving at
 // once are merged (rows by id, header fields "mine if I changed them, else theirs"). Pure functions: the editor,
 // the Worker and the tests share them.
+//
+// 6z.52: everything on the owner's NESR Slickline Service Report (the Excel job log) is added: the well and crew
+// header with pressures and gauges, From and To on each line, the job status, the wire details, the BHA of each run
+// (read from the run's tool string) and a note. A new log starts with the three lines every log must have:
+// arrival on location first, then a rig up and a rig down line with the work between them.
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -31,39 +36,142 @@ export const num = (v: unknown) => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** One row of the sequence of events. Run and depth are the slickline additions. */
-export interface LogRow { id: string; date: string; time: string; run: string; depth: string; desc: string; remark: string }
+/** One row of the sequence of events. Run and depth are the slickline additions; `to` is when the work ended. */
+export interface LogRow { id: string; date: string; time: string; to: string; run: string; depth: string; desc: string; remark: string }
 /** A signature: drawn (a PNG data URL) or typed, with who put it there and when. */
 export interface Sig { img: string | null; text: string | null; by: string; at: string }
 export const hasSig = (s: Sig | null | undefined) => !!(s && (s.img || s.text));
 
+export const JOB_STATUSES = { complete: 'Complete', in_progress: 'In progress', incomplete: 'Incomplete', aborted: 'Aborted' } as const;
+export type JobStatusKey = keyof typeof JOB_STATUSES;
+/** The tools run in the hole on one run, read from that run's tool string and editable. */
+export interface Bha { run: string; text: string }
+
 export interface LogForm {
   ticket: string; well: string; customer: string; jobType: string; rig: string; date: string;
+  // the Slickline Service Report's header (6z.52)
+  field: string; tubingSize: string; tubingFl: string; tubingSi: string; casingFl: string; casingSi: string; whConnection: string; wellType: string;
+  supervisor: string; operator1: string; operator2: string; unit: string; pickup: string; gauge1: string; gauge2: string;
+  arrFl: string; arrSi: string; depFl: string; depSi: string; locationCond: string;
   rows: LogRow[];
+  status: '' | JobStatusKey;
+  wireType: string; wireSize: string; wireInitial: string; wireMaxPull: string; wireHrs: string; wireCut: string; wireFinal: string;
+  bha: Bha[];
+  notes: string;
   /** "" = worked out from the first to the last event. */
   dayHrs: string; nightHrs: string;
-  /** Slickline supervisor and operators (several), their I.D. and signature. */
+  /** NESR representative: the slickline supervisor and operators (several), their I.D. and signature. */
   engNames: string[]; engId: string; engSig: Sig | null;
   /** Client representative (company man). */
   fmName: string; fmId: string; fmDate: string; fmSig: Sig | null;
 }
 
-export const newRow = (o: Partial<LogRow> = {}): LogRow => ({ id: uid(), date: '', time: '', run: '', depth: '', desc: '', remark: '', ...o });
+export const newRow = (o: Partial<LogRow> = {}): LogRow => ({ id: uid(), date: '', time: '', to: '', run: '', depth: '', desc: '', remark: '', ...o });
 
 /** What the job gives the header. */
-export interface JobForLog { ticket?: string | null; well?: string | null; customer?: string | null; jobType?: string | null; rig?: string | null; startDate?: string | null; engineers?: string[] }
+export interface JobForLog {
+  ticket?: string | null; well?: string | null; customer?: string | null; jobType?: string | null; rig?: string | null; startDate?: string | null; engineers?: string[];
+  field?: string | null; wellType?: string | null; whConnection?: string | null; unit?: string | null; siwhp?: string | null;
+  supervisor?: string | null; operator1?: string | null; operator2?: string | null;
+  wireType?: string | null; wireSize?: string | null; wireInitial?: string | null; wireCut?: string | null; wireMaxPull?: string | null;
+  bha?: Bha[];
+}
+
+// ---- the lines every log must have
+
+const ARRIVED = /\barriv|\bon (site|location)\b/i;
+const RIG_UP = /\brig(ged|ging)?[\s-]*up\b|\br\/u\b/i;
+const RIG_DOWN = /\brig(ged|ging)?[\s-]*down\b|\br\/d\b/i;
+export type RowKind = 'arrival' | 'rigup' | 'rigdown';
+/** Which of the three required lines a description is, if any ("RU" and "RD" count in capitals only). */
+export function rowKind(desc: string): RowKind | null {
+  const d = desc || '';
+  if (ARRIVED.test(d)) return 'arrival';
+  if (/\bRD\b/.test(d) || RIG_DOWN.test(d)) return 'rigdown';
+  if (/\bRU\b/.test(d) || RIG_UP.test(d)) return 'rigup';
+  return null;
+}
+export const ROW_KIND_LABEL: Record<RowKind, string> = { arrival: 'Arrival', rigup: 'Rig up', rigdown: 'Rig down' };
+
+/** What a new log starts with: the three required lines, the work goes between rig up and rig down. */
+export const seedRows = (date: string): LogRow[] => [
+  newRow({ date, desc: 'ARRIVED ON LOCATION.' }),
+  newRow({ date, desc: 'RU SLK PCE ON WELL.' }),
+  newRow({ date, desc: 'COMPLETELY RD SLK EQUIPMENT AND SECURED WELL.' }),
+];
+
+/**
+ * The required lines, in the order they are on the form: arrival on location on the first line, a rig up line and a
+ * rig down line after it. Lists what is missing; empty means the log can be signed.
+ */
+export function mandatoryProblems(f: LogForm): string[] {
+  const rows = f.rows.filter((r) => !isEmptyRow(r));
+  const out: string[] = [];
+  if (!rows.length || rowKind(rows[0].desc) !== 'arrival') out.push('The first line must be the arrival on location.');
+  const up = rows.findIndex((r, i) => i > 0 && rowKind(r.desc) === 'rigup');
+  const down = rows.reduce((a, r, i) => (rowKind(r.desc) === 'rigdown' ? i : a), -1);
+  if (up < 0) out.push('Add a rig up line after the arrival.');
+  if (down < 0) out.push('Add a rig down line.');
+  else if (up >= 0 && down < up) out.push('The rig down line must come after the rig up line.');
+  for (const i of [0, up, down]) {
+    const r = rows[i];
+    if (i >= 0 && r && rowKind(r.desc) && !timeHM(r.time)) out.push(`Give the ${ROW_KIND_LABEL[rowKind(r.desc)!].toLowerCase()} line (line ${i + 1}) its time.`);
+  }
+  return out;
+}
+
+// ---- the description checklist: the owner's job log wording; ___ is a blank to fill in
+
+export const PHRASE_GROUPS: { group: string; phrases: string[] }[] = [
+  { group: 'Arrival and preparation', phrases: [
+    'ARRIVED ON LOCATION.', 'MOVED SLK EQUIPMENT FROM ___ TO ___ AND SECURED.', 'WAITED FOR WELL READINESS.', 'RAISED PTW.', 'HELD TOOLBOX TALK AND JSA WITH ALL CREW.',
+    'WAITED FOR WELL INTEGRITY TEST.', 'WAITED ON CLIENT.', 'WAITED ON DAYLIGHT.',
+  ] },
+  { group: 'Rig up and testing', phrases: [
+    'SPOTTED SLK PCE ON WELL.', 'RU SLK PCE ON SURFACE.', 'COC BOP OKAY.', 'RU SLK PCE ON WELL.', 'PRESSURE-TESTED SLK PCE TO ___ PSI FOR ___ MINS OK.',
+  ] },
+  { group: 'Runs', phrases: [
+    'RIH W/ ___ GC AND SOFT TAGGED AT ___ FT DF.', 'INFORMED AF AND WSC.', 'POOH.', 'CONNECTED EMGs AND PT QTS TO ___ PSI FOR ___ MINS OK.',
+    'RIH W/EMGs TO SD AT ___ FT DF AND OBSERVED ___ MINS STOP.', 'POOH MAKING SBHP STOPS TO SURFACE (OBSERVED ___ MINS STOP AT EVERY ___ FT AND ___ MINS STOP AT ___ PSI).',
+    'DISCONNECTED EMGs AND DOWNLOADED DATA OK.', 'RIH W/ ___ AND SET AT ___ FT DF.', 'RIH W/ ___ AND PULLED AT ___ FT DF.', 'JARRED UP ___ TIMES.',
+  ] },
+  { group: 'Rig down', phrases: ['RD SLK PCE FROM WELL.', 'COMPLETELY RD SLK EQUIPMENT AND SECURED WELL.', 'HANDED OVER THE WELL TO THE CLIENT.'] },
+];
+/** The fixed start of a phrase (before its first blank), used to tell whether it is in a description. */
+const lead = (p: string) => p.split('___')[0].trim().replace(/[.\s]+$/, '');
+const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toUpperCase();
+export const hasPhrase = (desc: string, p: string) => !!lead(p) && norm(desc).includes(norm(lead(p)));
+/** Ticking a phrase adds it to the end; unticking takes out the sentence that starts with it. */
+export function togglePhrase(desc: string, p: string): string {
+  if (!hasPhrase(desc, p)) return [desc.trim(), p].filter(Boolean).join(' ');
+  const parts = desc.split(/(?<=\.)\s+/);
+  const kept = parts.filter((s) => !norm(s).startsWith(norm(lead(p))));
+  return (kept.length === parts.length ? desc.replace(new RegExp(lead(p).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '') : kept.join(' ')).replace(/\s+/g, ' ').trim();
+}
 
 export const newForm = (job: JobForLog = {}, o: Partial<LogForm> = {}): LogForm => {
   const date = job.startDate?.slice(0, 10) || todayISO();
+  const s = (v: string | null | undefined) => v ?? '';
   return {
-    ticket: job.ticket ?? '', well: job.well ?? '', customer: job.customer ?? '', jobType: job.jobType ?? '', rig: job.rig ?? '', date,
-    rows: [newRow({ date })], dayHrs: '', nightHrs: '',
+    ticket: s(job.ticket), well: s(job.well), customer: s(job.customer), jobType: s(job.jobType), rig: s(job.rig), date,
+    field: s(job.field), tubingSize: '', tubingFl: '', tubingSi: s(job.siwhp), casingFl: '', casingSi: '', whConnection: s(job.whConnection), wellType: s(job.wellType),
+    supervisor: s(job.supervisor), operator1: s(job.operator1), operator2: s(job.operator2), unit: s(job.unit), pickup: '', gauge1: '', gauge2: '',
+    arrFl: '', arrSi: '', depFl: '', depSi: '', locationCond: '',
+    rows: seedRows(date), status: '',
+    wireType: s(job.wireType), wireSize: s(job.wireSize), wireInitial: s(job.wireInitial), wireMaxPull: s(job.wireMaxPull), wireHrs: '', wireCut: s(job.wireCut), wireFinal: '',
+    bha: job.bha?.map((b) => ({ ...b })) ?? [], notes: '',
+    dayHrs: '', nightHrs: '',
     engNames: job.engineers?.slice() ?? [], engId: '', engSig: null, fmName: '', fmId: '', fmDate: '', fmSig: null, ...o,
   };
 };
 
 export const HEADER_LABELS: Record<string, string> = {
-  ticket: 'Ticket', well: 'Well', customer: 'Client', jobType: 'Services', rig: 'Rig/Site', date: 'Date', dayHrs: 'Day hours', nightHrs: 'Night hours',
+  ticket: 'Ticket', well: 'Well', customer: 'Client', jobType: 'Job type', rig: 'Rig/Site', date: 'Date', dayHrs: 'Day hours', nightHrs: 'Night hours',
+  field: 'Field', tubingSize: 'Tubing size', tubingFl: 'Tubing pressure FL', tubingSi: 'Tubing pressure SI', casingFl: 'Casing pressure FL', casingSi: 'Casing pressure SI',
+  whConnection: 'W/H connection', wellType: 'Well type', supervisor: 'SLK supervisor', operator1: 'SLK operator', operator2: 'SLK operator (2)', unit: 'Unit',
+  pickup: 'Pick up', gauge1: 'Gauge S/N', gauge2: 'Gauge S/N (2)', arrFl: 'Arrival FL', arrSi: 'Arrival SI', depFl: 'Departure FL', depSi: 'Departure SI',
+  locationCond: 'Location condition', status: 'Job status', wireType: 'Wire type', wireSize: 'Wire size', wireInitial: 'Initial length', wireMaxPull: 'Max. pull',
+  wireHrs: 'Hours in hole', wireCut: 'Wire cut', wireFinal: 'Final length', bha: 'BHA', notes: 'Note',
   engNames: 'Slickline crew', engId: 'Crew I.D.', fmName: 'Client rep.', fmId: 'Client rep. I.D.', fmDate: 'Client rep. date',
 };
 
@@ -76,18 +184,30 @@ export const sortRows = (rows: LogRow[]) => rows.slice().sort((a, b) => {
   return `${a.date || '9999'} ${timeHM(a.time) || '00:00'}`.localeCompare(`${b.date || '9999'} ${timeHM(b.time) || '00:00'}`);
 });
 
-/** Minutes since 1970 for a row's local date and time (both Riyadh wall time). */
-const rowMinutes = (r: LogRow) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(r.date), t = /^(\d{2}):(\d{2})$/.exec(timeHM(r.time));
+/** Minutes since 1970 for a local date and time (both Riyadh wall time). */
+const minutesOf = (date: string, time: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date), t = /^(\d{2}):(\d{2})$/.exec(timeHM(time));
   return m && t ? Date.UTC(+m[1], +m[2] - 1, +m[3], +t[1], +t[2]) / 60_000 : null;
 };
 
+/** The To of a row: typed, else the next row's From (as the Excel's =D19 does). */
+export const toOf = (rows: LogRow[], i: number) => timeHM(rows[i]?.to) || timeHM(rows.slice(i + 1).find((r) => !isEmptyRow(r))?.time ?? '');
+
 /**
- * Crew hours worked out: from the first to the last logged event, split into Day (06:00–18:00) and Night
- * (18:00–06:00), to the half hour. A typed number wins; clearing it goes back to the worked-out one.
+ * Crew hours worked out: from the first logged time to the last (a line's To counts), split into Day
+ * (06:00–18:00) and Night (18:00–06:00), to the half hour. A typed number wins; clearing it goes back to the
+ * worked-out one.
  */
 export function autoHours(f: LogForm): { day: number | null; night: number | null; total: number | null } {
-  const pts = f.rows.filter((r) => !isEmptyRow(r)).map(rowMinutes).filter((x): x is number => x != null).sort((a, b) => a - b);
+  const pts: number[] = [];
+  for (const r of f.rows.filter((x) => !isEmptyRow(x))) {
+    const a = minutesOf(r.date, r.time);
+    if (a == null) continue;
+    pts.push(a);
+    const b = minutesOf(r.date, r.to);
+    if (b != null) pts.push(b < a ? b + 1440 : b);
+  }
+  pts.sort((a, b) => a - b);
   if (pts.length < 2) return { day: null, night: null, total: null };
   let day = 0, night = 0;
   for (let t = pts[0]; t < pts[pts.length - 1]; t++) {
@@ -103,8 +223,14 @@ export function hours(f: LogForm) {
   return { day, night, total: day == null && night == null ? null : (day ?? 0) + (night ?? 0), autoDay: num(f.dayHrs) == null, autoNight: num(f.nightHrs) == null };
 }
 
-const rowKey = (r: LogRow) => `${r.date}|${timeHM(r.time)}|${r.run}|${r.depth}|${r.desc.trim()}|${r.remark.trim()}`;
-const SCALARS = ['ticket', 'well', 'customer', 'jobType', 'rig', 'date', 'dayHrs', 'nightHrs', 'engId', 'fmName', 'fmId', 'fmDate'] as const;
+/** The final wire length: typed, else the initial length less the cut. */
+export const wireFinalOf = (f: LogForm) => f.wireFinal.trim() || (num(f.wireInitial) != null ? String(Math.round((num(f.wireInitial)! - (num(f.wireCut) ?? 0)) * 10) / 10) : '');
+
+const rowKey = (r: LogRow) => `${r.date}|${timeHM(r.time)}|${timeHM(r.to)}|${r.run}|${r.depth}|${r.desc.trim()}|${r.remark.trim()}`;
+export const SCALARS = ['ticket', 'well', 'customer', 'jobType', 'rig', 'date', 'field', 'tubingSize', 'tubingFl', 'tubingSi', 'casingFl', 'casingSi', 'whConnection', 'wellType',
+  'supervisor', 'operator1', 'operator2', 'unit', 'pickup', 'gauge1', 'gauge2', 'arrFl', 'arrSi', 'depFl', 'depSi', 'locationCond', 'status',
+  'wireType', 'wireSize', 'wireInitial', 'wireMaxPull', 'wireHrs', 'wireCut', 'wireFinal', 'notes', 'dayHrs', 'nightHrs', 'engId', 'fmName', 'fmId', 'fmDate'] as const;
+export type ScalarKey = (typeof SCALARS)[number];
 
 /** "What changed" for the version history. */
 export function changeSummary(prev: LogForm | null, next: LogForm): string {
@@ -112,7 +238,8 @@ export function changeSummary(prev: LogForm | null, next: LogForm): string {
   const out: string[] = [];
   const hdr = SCALARS.filter((k) => String(prev[k] ?? '') !== String(next[k] ?? '')).map((k) => HEADER_LABELS[k]);
   if (prev.engNames.join('|') !== next.engNames.join('|')) hdr.push(HEADER_LABELS.engNames);
-  if (hdr.length) out.push(`${hdr.join(', ')} changed`);
+  if (JSON.stringify(prev.bha) !== JSON.stringify(next.bha)) hdr.push(HEADER_LABELS.bha);
+  if (hdr.length) out.push(`${hdr.slice(0, 6).join(', ')}${hdr.length > 6 ? ` and ${hdr.length - 6} more` : ''} changed`);
   const pm = new Map(prev.rows.filter((r) => !isEmptyRow(r)).map((r) => [r.id, r]));
   const nm = new Map(next.rows.filter((r) => !isEmptyRow(r)).map((r) => [r.id, r]));
   let added = 0, removed = 0, edited = 0;
@@ -134,21 +261,24 @@ export function changeSummary(prev: LogForm | null, next: LogForm): string {
 export function mergeForms(base: LogForm | null, mine: LogForm, theirs: LogForm): LogForm {
   const b = base ?? newForm();
   const out: LogForm = { ...theirs };
-  for (const k of [...SCALARS, 'engSig', 'fmSig'] as const) {
+  for (const k of [...SCALARS, 'engSig', 'fmSig', 'bha'] as const) {
     const iChanged = JSON.stringify(b[k] ?? null) !== JSON.stringify(mine[k] ?? null);
     (out as unknown as Record<string, unknown>)[k] = iChanged ? mine[k] : theirs[k];
   }
   if (b.engNames.join('|') !== mine.engNames.join('|')) out.engNames = mine.engNames;
   const bm = new Map(b.rows.map((r) => [r.id, r])), tm = new Map(theirs.rows.map((r) => [r.id, r])), mm = new Map(mine.rows.map((r) => [r.id, r]));
   const rows: LogRow[] = [];
-  for (const id of new Set([...theirs.rows.map((r) => r.id), ...mine.rows.map((r) => r.id)])) {
+  // their order, with my new rows placed after the row they follow on my copy
+  const order = theirs.rows.map((r) => r.id);
+  mine.rows.forEach((r, i) => { if (!order.includes(r.id)) { const after = i > 0 ? order.indexOf(mine.rows[i - 1].id) : -1; order.splice(after + 1, 0, r.id); } });
+  for (const id of order) {
     const br = bm.get(id), t = tm.get(id), m = mm.get(id);
     const iChanged = !!m && (!br || rowKey(br) !== rowKey(m)), theyChanged = !!t && (!br || rowKey(br) !== rowKey(t));
     if (br && !m && !theyChanged) continue;   // I deleted it, they left it alone
     if (br && !t && !iChanged) continue;      // they deleted it, I left it alone
     rows.push(iChanged ? m! : (t ?? m!));
   }
-  out.rows = sortRows(rows.length ? rows : [newRow()]);
+  out.rows = rows.length ? rows : [newRow()];
   return out;
 }
 
@@ -161,30 +291,39 @@ const sigOf = (v: unknown): Sig | null => {
   return img || text ? { img, text, by: str(s.by).slice(0, 120), at: str(s.at).slice(0, 40) } : null;
 };
 
-/** Anything read back from the server, the device or a version, made into a whole form. */
+/** Anything read back from the server, the device or a version, made into a whole form. Missing fields come from the job. */
 export function coerceForm(f: unknown, job?: JobForLog): LogForm {
   const base = newForm(job);
   const x = (f && typeof f === 'object' ? f : {}) as Record<string, unknown>;
   const out = { ...base } as LogForm;
-  for (const k of SCALARS) if (x[k] !== undefined) (out as unknown as Record<string, string>)[k] = str(x[k]).slice(0, 400);
+  for (const k of SCALARS) if (x[k] !== undefined) (out as unknown as Record<string, string>)[k] = str(x[k]).slice(0, k === 'notes' ? 4000 : 400);
+  if (!(out.status in JOB_STATUSES)) out.status = '';
   out.rows = Array.isArray(x.rows) && x.rows.length
-    ? x.rows.slice(0, 2000).map((r) => { const o = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>; return newRow({ id: str(o.id) || uid(), date: str(o.date).slice(0, 10), time: str(o.time).slice(0, 8), run: str(o.run).slice(0, 6), depth: str(o.depth).slice(0, 12), desc: str(o.desc).slice(0, 4000), remark: str(o.remark).slice(0, 2000) }); })
-    : [newRow({ date: out.date })];
+    ? x.rows.slice(0, 2000).map((r) => { const o = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>; return newRow({ id: str(o.id) || uid(), date: str(o.date).slice(0, 10), time: str(o.time).slice(0, 8), to: str(o.to).slice(0, 8), run: str(o.run).slice(0, 6), depth: str(o.depth).slice(0, 12), desc: str(o.desc).slice(0, 4000), remark: str(o.remark).slice(0, 2000) }); })
+    : base.rows;
+  if (Array.isArray(x.bha)) out.bha = x.bha.slice(0, 30).map((b) => { const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>; return { run: str(o.run).slice(0, 4), text: str(o.text).slice(0, 1500) }; });
   out.engNames = Array.isArray(x.engNames) ? x.engNames.map(str).filter(Boolean).slice(0, 20) : x.engNames ? str(x.engNames).split(/\s*[,/]\s*/).filter(Boolean) : base.engNames;
   out.engSig = sigOf(x.engSig);
   out.fmSig = sigOf(x.fmSig);
   return out;
 }
 
-/** Rows ready for the exports: in order, numbered, empty ones left out, the day filled in. */
-export const exportRows = (f: LogForm) => sortRows(f.rows.filter((r) => !isEmptyRow(r))).map((r, i) => ({
-  n: i + 1, date: dateShort(r.date), time: timeHM(r.time), day: dayOf(r.date), run: r.run, depth: num(r.depth) != null ? num(r.depth)!.toLocaleString('en-US') : '', desc: r.desc, remark: r.remark,
-}));
+/** BHA lines from the job's tool strings: the part names of each run joined with " + ". */
+export const bhaFromStrings = (strings: { run: number; names: string[] }[]): Bha[] =>
+  strings.filter((s) => s.names.length).sort((a, b) => a.run - b.run).map((s) => ({ run: String(s.run), text: s.names.join(' + ') }));
 
-/** The rows as events with a time (Riyadh wall time, +03:00), for what Execution reads from the log. */
+/** Rows ready for the exports: in order, numbered, empty ones left out, the day filled in. */
+export const exportRows = (f: LogForm) => {
+  const rows = f.rows.filter((r) => !isEmptyRow(r));
+  return rows.map((r, i) => ({
+    n: i + 1, date: dateShort(r.date), time: timeHM(r.time), to: toOf(rows, i), day: dayOf(r.date), run: r.run, depth: num(r.depth) != null ? num(r.depth)!.toLocaleString('en-US') : '', desc: r.desc, remark: r.remark,
+  }));
+};
+
+/** The rows as events with a time (Riyadh wall time, +03:00), for what Execution reads from the log. Lines with no time are left out. */
 export function rowsAsEvents(f: LogForm): { id: string; occurred_at: string; run_no: number | null; depth_ft: number | null; text: string }[] {
-  return sortRows(f.rows.filter((r) => !isEmptyRow(r) && r.date)).map((r) => ({
-    id: r.id, occurred_at: new Date(`${r.date}T${timeHM(r.time) || '00:00'}:00+03:00`).toISOString(),
+  return sortRows(f.rows.filter((r) => !isEmptyRow(r) && r.date && timeHM(r.time))).map((r) => ({
+    id: r.id, occurred_at: new Date(`${r.date}T${timeHM(r.time)}:00+03:00`).toISOString(),
     run_no: num(r.run) != null && Number.isInteger(num(r.run)) ? num(r.run) : null, depth_ft: num(r.depth),
     text: [r.desc.trim(), r.remark.trim()].filter(Boolean).join(' — '),
   }));

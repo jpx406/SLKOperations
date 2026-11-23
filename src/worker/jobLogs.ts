@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { coerceForm, hasSig, rowsAsEvents, type JobForLog } from '../shared/jobLogForm';
+import { bhaFromStrings, coerceForm, hasSig, rowsAsEvents, type JobForLog } from '../shared/jobLogForm';
 import { canEditStage } from '../shared/stages';
 import type { Job } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
@@ -16,13 +16,28 @@ interface LogRowDb { id: string; job_id: string; current_version: number; form: 
 const now = () => new Date().toISOString();
 const mayEdit = (u: AuthedUser) => !!u.menus.jobs?.edit && canEditStage(u.menus, 'execution');
 
-/** What the job gives the log's header, and the crew offered for the sign-off. */
+/** What the job gives the log's header (6z.52: the Slickline Service Report's fields), the crew and each run's BHA. */
 async function jobFacts(env: Env, job: Job): Promise<JobForLog> {
-  const crew = await env.DB.prepare(`SELECT e.full_name FROM job_crew c JOIN employees e ON e.id = c.employee_id WHERE c.job_id = ? AND c.end_date IS NULL AND c.crew_role IN ('supervisor', 'operator') ORDER BY c.crew_role DESC, c.slot`)
-    .bind(job.id).all<{ full_name: string }>();
+  const [crew, wire, strings] = await Promise.all([
+    env.DB.prepare(`SELECT e.full_name, e.eid, c.crew_role FROM job_crew c JOIN employees e ON e.id = c.employee_id WHERE c.job_id = ? AND c.end_date IS NULL AND c.crew_role IN ('slickline_supervisor', 'slickline_operator', 'assistant_operator') ORDER BY CASE c.crew_role WHEN 'slickline_supervisor' THEN 0 WHEN 'slickline_operator' THEN 1 ELSE 2 END, c.slot`)
+      .bind(job.id).all<{ full_name: string; eid: string | null; crew_role: string }>(),
+    job.wire_serial_number ? env.DB.prepare('SELECT wire_grade, wire_size, remaining_length_ft FROM wg_wires WHERE wire_serial_number = ?').bind(job.wire_serial_number)
+      .first<{ wire_grade: string | null; wire_size: string | null; remaining_length_ft: number | null }>() : Promise.resolve(null),
+    env.DB.prepare(`SELECT run_no, items FROM job_diagrams WHERE job_id = ? AND kind = 'toolstring' ORDER BY run_no`).bind(job.id).all<{ run_no: number; items: string }>(),
+  ]);
+  const who = (r: { full_name: string; eid: string | null }) => [r.full_name, r.eid].filter(Boolean).join(' - ');
+  const sup = crew.results.filter((r) => r.crew_role === 'slickline_supervisor'), ops = crew.results.filter((r) => r.crew_role !== 'slickline_supervisor');
+  const names = (items: string) => { try { const rows = JSON.parse(items) as { name?: string }[]; return rows.map((r) => String(r.name ?? '').trim()).filter(Boolean); } catch { return []; } };
+  const n = (v: number | null | undefined) => (v == null ? null : String(v));
+  const bha = bhaFromStrings(strings.results.map((r) => ({ run: r.run_no, names: names(r.items) })));
+  if (!bha.length && job.toolstring?.length) bha.push({ run: '1', text: job.toolstring.map((p) => p.component).join(' + ') });
   return {
     ticket: job.ticket_no, well: job.well, customer: job.location, jobType: (job.services ?? []).join(', '), rig: job.rig, startDate: job.start_date,
     engineers: crew.results.map((r) => r.full_name),
+    field: job.field, wellType: job.well_type, whConnection: job.wellhead_connection, unit: job.unit_number, siwhp: n(job.siwhp_psi),
+    supervisor: sup.map(who).join(' / ') || null, operator1: ops[0] ? who(ops[0]) : null, operator2: ops.slice(1).map(who).join(' / ') || null,
+    wireType: wire?.wire_grade ?? null, wireSize: wire?.wire_size ? `${wire.wire_size}"` : null, wireInitial: n(wire?.remaining_length_ft), wireCut: n(job.wire_cut_ft), wireMaxPull: n(job.max_pull_lb),
+    bha,
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoHours, changeSummary, coerceForm, dayOf, eventCount, exportRows, hours, mergeForms, newForm, newRow, rowsAsEvents, sortRows, type LogForm } from '../src/shared/jobLogForm';
+import { autoHours, bhaFromStrings, changeSummary, coerceForm, dayOf, eventCount, exportRows, hasPhrase, hours, mandatoryProblems, mergeForms, newForm, newRow, rowKind, rowsAsEvents, sortRows, togglePhrase, wireFinalOf, type LogForm } from '../src/shared/jobLogForm';
 import { fromEvents } from '../src/shared/jobEvents';
 import { readAllowed, ruleFor } from '../src/worker/permissions';
 
@@ -9,11 +9,11 @@ const row = (id: string, date: string, time: string, desc: string, run = '', dep
 const form = (rows: ReturnType<typeof newRow>[], o: Partial<LogForm> = {}): LogForm => ({ ...newForm({ ticket: 'T-1', well: 'W-801', startDate: '2026-11-22' }), rows, ...o });
 
 describe('job log form', () => {
-  it('fills the header from the job and starts with one empty row', () => {
+  it('fills the header from the job and starts with the arrival, rig up and rig down lines', () => {
     const f = newForm({ ticket: 'T-1', well: 'W-801', customer: 'Saudi Aramco', jobType: 'Drift, Plug', rig: 'R-12', startDate: '2026-11-22', engineers: ['A. Supervisor'] });
     expect(f).toMatchObject({ ticket: 'T-1', well: 'W-801', customer: 'Saudi Aramco', jobType: 'Drift, Plug', rig: 'R-12', date: '2026-11-22', engNames: ['A. Supervisor'] });
-    expect(f.rows).toHaveLength(1);
-    expect(eventCount(f)).toBe(0);
+    expect(f.rows.map((r) => rowKind(r.desc))).toEqual(['arrival', 'rigup', 'rigdown']);
+    expect(eventCount(f)).toBe(3);
     expect(dayOf('2026-11-22')).toBe('Sunday');
   });
 
@@ -58,10 +58,53 @@ describe('job log form', () => {
   it('sorts, numbers and exports rows, and feeds Execution from them', () => {
     const f = form([row('b', '2026-11-22', '07:55', 'Tagged bottom', '1', '9450'), row('a', '2026-11-22', '05:00', 'Arrived on location'), row('e', '', '', '')]);
     expect(sortRows(f.rows).map((r) => r.id)).toEqual(['a', 'b', 'e']);
-    expect(exportRows(f).map((r) => [r.n, r.time, r.run, r.depth])).toEqual([[1, '05:00', '', ''], [2, '07:55', '1', '9,450']]);
+    // the copies keep the order of the form; To is the next line's From unless typed
+    const g = { ...f, rows: sortRows(f.rows) };
+    expect(exportRows(g).map((r) => [r.n, r.time, r.to, r.run, r.depth])).toEqual([[1, '05:00', '07:55', '', ''], [2, '07:55', '', '1', '9,450']]);
     const ev = rowsAsEvents(f);
     expect(ev[0].occurred_at).toBe('2026-11-22T02:00:00.000Z');
     expect(fromEvents(ev)).toMatchObject({ arrived_at: '2026-11-22T02:00:00.000Z', runs: 1, max_depth_ft: 9450, tag_depth_ft: 9450 });
+  });
+});
+
+describe('job log as the Slickline Service Report (6z.52)', () => {
+  it('needs the arrival first, then a rig up and a rig down line, each with a time, before signing', () => {
+    const ok = form([row('a', '2026-11-22', '18:20', 'ARRIVED ON LOCATION.'), row('b', '2026-11-22', '19:00', 'RU SLK PCE ON SURFACE. COC BOP OKAY.'), row('c', '2026-11-22', '21:20', 'RIH W/4.423" GC AND SOFT TAGGED AT 10,447FT DF.', '1', '10447'), row('d', '2026-11-23', '06:45', 'COMPLETELY RD SLK EQUIPMENT AND SECURED WELL')]);
+    expect(mandatoryProblems(ok)).toEqual([]);
+    expect(mandatoryProblems({ ...ok, rows: ok.rows.slice(1) })[0]).toMatch(/first line must be the arrival/);
+    expect(mandatoryProblems({ ...ok, rows: [ok.rows[0], ok.rows[2], ok.rows[3]] })).toEqual(['Add a rig up line after the arrival.']);
+    expect(mandatoryProblems({ ...ok, rows: [ok.rows[0], ok.rows[3], ok.rows[1]] })).toEqual(['The rig down line must come after the rig up line.']);
+    expect(mandatoryProblems(newForm({ startDate: '2026-11-22' })).every((p) => /its time/.test(p))).toBe(true);
+    // "ru" inside a word is not a rig up; "RU" and "rigged up" are
+    expect(rowKind('Waited for truck')).toBeNull();
+    expect(rowKind('Rigged up lubricator')).toBe('rigup');
+  });
+
+  it('ticks the usual wording into a description and takes it out again, the text staying free', () => {
+    const p = 'PRESSURE-TESTED SLK PCE TO ___ PSI FOR ___ MINS OK.';
+    let d = togglePhrase('', 'RAISED PTW.');
+    d = togglePhrase(d, p);
+    expect(d).toBe('RAISED PTW. PRESSURE-TESTED SLK PCE TO ___ PSI FOR ___ MINS OK.');
+    d = d.replace('___ PSI', '7500 PSI').replace('___ MINS', '15 MINS');
+    expect(hasPhrase(d, p)).toBe(true);
+    expect(togglePhrase(d, p)).toBe('RAISED PTW.');
+  });
+
+  it('reads each run’s BHA from its tool string and works out the final wire length', () => {
+    expect(bhaFromStrings([{ run: 2, names: ['Rope socket', 'Stem', 'EMGs'] }, { run: 1, names: ['Rope socket', 'Gauge cutter'] }, { run: 3, names: [] }]))
+      .toEqual([{ run: '1', text: 'Rope socket + Gauge cutter' }, { run: '2', text: 'Rope socket + Stem + EMGs' }]);
+    const f = newForm({ wireInitial: '18000', wireCut: '150', bha: [{ run: '1', text: 'Rope socket' }] });
+    expect(wireFinalOf(f)).toBe('17850');
+    expect(f.bha).toEqual([{ run: '1', text: 'Rope socket' }]);
+    // a log saved before 6z.52 gets the new fields from the job
+    const old = coerceForm({ well: 'W-1', rows: [{ id: 'x', date: '2026-11-22', time: '07:00', desc: 'Arrived' }] }, { field: 'THRY', unit: 'SL 52', bha: [{ run: '1', text: 'GC' }] });
+    expect(old).toMatchObject({ well: 'W-1', field: 'THRY', unit: 'SL 52', status: '', bha: [{ run: '1', text: 'GC' }] });
+    expect(old.rows[0].to).toBe('');
+  });
+
+  it('counts a line’s To in the crew hours, across midnight', () => {
+    const f = form([{ ...row('a', '2026-11-22', '17:00', 'ARRIVED ON LOCATION.'), to: '01:00' }]);
+    expect(autoHours(f)).toEqual({ day: 1, night: 7, total: 8 });
   });
 });
 

@@ -2,11 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileDown, FileText, History, Mail, Plus, Printer, Save, Sheet, SortAsc, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router';
-import { dayOf, eventCount, hasSig, hours, isEmptyRow, newRow, sortRows, timeHM, type LogForm, type LogRow } from '../../shared/jobLogForm';
+import { ROW_KIND_LABEL, dayOf, eventCount, hasSig, hours, isEmptyRow, mandatoryProblems, newRow, rowKind, sortRows, timeHM, toOf, type LogForm, type LogRow } from '../../shared/jobLogForm';
 import { api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, Field, Skeleton, cx, inputClass } from '../components/ui';
 import { Dialog } from '../pages/knowledge/common';
+import { HeaderCard, JobDetailsCard, PhrasePicker } from './Sections';
 import { SignaturePad } from './SignaturePad';
 import { docBlob, downloadBlob, emailBody, emailSubject, emlBlob, fileBase, pdfBlob, xlsxBlob } from './exports';
 import { isUnsynced, loadLog, pushLog, stageLocal, type LocalLog, type LogData } from './store';
@@ -63,7 +64,7 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
     return next;
   });
   const setRow = (id: string, patch: Partial<LogRow>) => setForm((f) => ({ ...f, rows: f.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
-  const insertBelow = (id: string) => setForm((f) => { const i = f.rows.findIndex((r) => r.id === id); const prev = f.rows[i]; const rows = f.rows.slice(); rows.splice(i + 1, 0, newRow({ date: prev?.date || f.date, run: prev?.run ?? '' })); return { ...f, rows }; });
+  const insertBelow = (id: string) => setForm((f) => { const i = f.rows.findIndex((r) => r.id === id); const prev = f.rows[i]; const rows = f.rows.slice(); rows.splice(i + 1, 0, newRow({ date: prev?.date || f.date, run: prev?.run ?? '', time: prev ? toOf(f.rows, i) : '' })); return { ...f, rows }; });
   const deleteRow = (id: string) => setForm((f) => { const r = f.rows.find((x) => x.id === id); if (!isEmptyRow(r) && !window.confirm('Delete this row?')) return f; const rows = f.rows.filter((x) => x.id !== id); return { ...f, rows: rows.length ? rows : [newRow({ date: f.date })] }; });
   const onEnter = (e: KeyboardEvent<HTMLTextAreaElement>, id: string, col: string) => {
     if (e.key !== 'Enter' || e.shiftKey) return;
@@ -100,6 +101,8 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
   const crewOptions = useMemo(() => [...new Set([...(q.data?.crew ?? []), ...(q.data?.job.engineers ?? [])])], [q.data]);
   if (q.isLoading || !rec) return <Skeleton className="h-96" />;
   const f = rec.form, h = hours(f), unsynced = isUnsynced(rec), events = eventCount(f), bothSigned = hasSig(f.engSig) && hasSig(f.fmSig);
+  const problems = mandatoryProblems(f);
+  const filled = f.rows.filter((r) => !isEmptyRow(r));
 
   return (
     <section aria-labelledby="jl-title">
@@ -128,31 +131,28 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
       {q.isError && <div className="mb-3"><Banner tone="warning">Could not reach the server: working from the copy on this device.</Banner></div>}
       {notice && <div className="mb-3"><Banner tone={notice.tone}>{notice.text}</Banner></div>}
 
-      <Card className="mb-4 p-4">
-        <h2 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold">Header <span className="font-normal text-text-subtle">read from the job, can be changed</span></h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {([['well', 'Well no.'], ['customer', 'Client'], ['jobType', 'Services'], ['rig', 'Rig / site'], ['ticket', 'Ticket no.']] as const).map(([k, l]) => (
-            <Field key={k} id={`jl-${k}`} label={l}><input id={`jl-${k}`} className={inputClass} disabled={ro} value={f[k]} onChange={(e) => setForm({ [k]: e.target.value })} /></Field>
-          ))}
-          <Field id="jl-date" label="Date"><input id="jl-date" type="date" className={inputClass} disabled={ro} value={f.date} onChange={(e) => setForm({ date: e.target.value })} /></Field>
-        </div>
-      </Card>
+      <HeaderCard f={f} ro={ro} set={setForm} />
 
       <Card className="mb-4 p-4">
-        <h2 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold">Sequence of events <span className="font-normal text-text-subtle">Enter in Description or Remarks goes to the next row · the day comes from the date</span></h2>
+        <h2 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold">Sequence of events <span className="font-normal text-text-subtle">the first line is the arrival on location, then a rig up and a rig down line with the work between them · tick the usual wording with the list button or type your own · Enter goes to the next row</span></h2>
+        {problems.length > 0 && <div className="mb-3"><Banner tone="warning"><span className="font-semibold">Needed before signing:</span> {problems.join(' ')}</Banner></div>}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[60rem] border-separate border-spacing-y-1.5 text-sm">
+          <table className="w-full min-w-[76rem] border-separate border-spacing-y-1.5 text-sm">
             <caption className="sr-only">Sequence of events</caption>
-            <thead><tr>{['', 'Date', 'Time', 'Day', 'Run', 'Depth (ft)', 'Description of operations', 'Remarks', ''].map((t, i) => <th key={i} scope="col" className="px-1 text-left font-mono text-label font-semibold tracking-wide text-text-muted uppercase">{t}</th>)}</tr></thead>
+            <thead><tr>{['', 'Date', 'From', 'To', 'Day', 'Run', 'Depth (ft)', 'Work description', 'Remarks', ''].map((t, i) => <th key={i} scope="col" className="px-1 text-left font-mono text-label font-semibold tracking-wide text-text-muted uppercase">{t}</th>)}</tr></thead>
             <tbody>{f.rows.map((r, i) => (
               <tr key={r.id}>
-                <td className="w-7 pr-1 text-right text-xs text-text-subtle">{i + 1}</td>
+                <td className="w-16 pr-1 text-right text-xs text-text-subtle">{i + 1}{(() => { const k = rowKind(r.desc); return k && !isEmptyRow(r) ? <span className={cx('mt-0.5 block rounded-sm px-1 font-mono text-[0.625rem] font-bold uppercase', (k === 'arrival' ? filled[0]?.id === r.id : true) ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning')}>{ROW_KIND_LABEL[k]}</span> : null; })()}</td>
                 <td className="w-36 px-1"><input type="date" aria-label={`Row ${i + 1} date`} data-jl={`date-${i}`} className={cell} disabled={ro} value={r.date} onChange={(e) => setRow(r.id, { date: e.target.value })} /></td>
-                <td className="w-28 px-1"><input type="time" aria-label={`Row ${i + 1} time`} data-jl={`time-${i}`} className={cell} disabled={ro} value={timeHM(r.time)} onChange={(e) => setRow(r.id, { time: e.target.value })} /></td>
+                <td className="w-28 px-1"><input type="time" aria-label={`Row ${i + 1} from`} data-jl={`time-${i}`} className={cell} disabled={ro} value={timeHM(r.time)} onChange={(e) => setRow(r.id, { time: e.target.value })} /></td>
+                <td className="w-28 px-1"><input type="time" aria-label={`Row ${i + 1} to`} title={!r.to && toOf(f.rows, i) ? `Ends when the next line starts (${toOf(f.rows, i)})` : undefined} className={cx(cell, !r.to && 'text-text-subtle')} disabled={ro} value={timeHM(r.to)} onChange={(e) => setRow(r.id, { to: e.target.value })} /></td>
                 <td className="w-24 px-1 text-xs text-text-muted">{dayOf(r.date)}</td>
                 <td className="w-16 px-1"><input inputMode="numeric" aria-label={`Row ${i + 1} run`} className={cell} disabled={ro} value={r.run} onChange={(e) => setRow(r.id, { run: e.target.value.replace(/[^\d]/g, '').slice(0, 3) })} /></td>
                 <td className="w-24 px-1"><input inputMode="decimal" aria-label={`Row ${i + 1} depth in ft`} className={cell} disabled={ro} value={r.depth} onChange={(e) => setRow(r.id, { depth: e.target.value.replace(/[^\d.]/g, '').slice(0, 8) })} /></td>
-                <td className="px-1"><textarea rows={1} aria-label={`Row ${i + 1} description`} data-jl={`desc-${i}`} className={cx(cell, 'h-auto min-h-9 resize-y py-1.5')} disabled={ro} placeholder="Operation…" value={r.desc} onChange={(e) => setRow(r.id, { desc: e.target.value })} onKeyDown={(e) => onEnter(e, r.id, 'desc')} /></td>
+                <td className="min-w-80 px-1"><div className="flex items-start gap-1">
+                  <textarea rows={1} aria-label={`Row ${i + 1} work description`} data-jl={`desc-${i}`} className={cx(cell, 'h-auto min-h-9 flex-1 resize-y py-1.5')} disabled={ro} placeholder={i === 0 ? 'ARRIVED ON LOCATION.' : 'Work done…'} value={r.desc} onChange={(e) => setRow(r.id, { desc: e.target.value })} onKeyDown={(e) => onEnter(e, r.id, 'desc')} />
+                  {!ro && <PhrasePicker label={`row ${i + 1}`} value={r.desc} onChange={(v) => setRow(r.id, { desc: v })} />}
+                </div></td>
                 <td className="w-52 px-1"><textarea rows={1} aria-label={`Row ${i + 1} remarks`} data-jl={`remark-${i}`} className={cx(cell, 'h-auto min-h-9 resize-y py-1.5')} disabled={ro} placeholder="Remarks" value={r.remark} onChange={(e) => setRow(r.id, { remark: e.target.value })} onKeyDown={(e) => onEnter(e, r.id, 'remark')} /></td>
                 <td className="w-20 whitespace-nowrap">{!ro && <>
                   <Button size="sm" variant="ghost" aria-label={`Insert a row below row ${i + 1}`} onClick={() => insertBelow(r.id)}><Plus aria-hidden className="size-3.5" /></Button>
@@ -163,11 +163,13 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
           </table>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {!ro && <Button size="sm" variant="ghost" onClick={() => setForm((x) => ({ ...x, rows: [...x.rows, newRow({ date: x.rows[x.rows.length - 1]?.date || x.date, run: x.rows[x.rows.length - 1]?.run ?? '' })] }))}><Plus aria-hidden className="size-3.5" />Add row</Button>}
+          {!ro && <Button size="sm" variant="ghost" onClick={() => setForm((x) => ({ ...x, rows: [...x.rows, newRow({ date: x.rows[x.rows.length - 1]?.date || x.date, run: x.rows[x.rows.length - 1]?.run ?? '', time: timeHM(x.rows[x.rows.length - 1]?.to ?? '') })] }))}><Plus aria-hidden className="size-3.5" />Add row</Button>}
           {!ro && <Button size="sm" variant="ghost" onClick={() => setForm((x) => ({ ...x, rows: sortRows(x.rows) }))}><SortAsc aria-hidden className="size-3.5" />Sort by date and time</Button>}
-          <span className="ml-auto text-xs text-text-subtle">{events} event{events === 1 ? '' : 's'} · every save keeps a version · arrival, rig-up, rig-down, runs, failed runs, the deepest point and the tag are read into Execution</span>
+          <span className="ml-auto text-xs text-text-subtle">{events} event{events === 1 ? '' : 's'} · every save keeps a version · a line’s To is the next line’s From unless typed · arrival, rig up, rig down, runs, failed runs, the deepest point and the tag are read into Execution</span>
         </div>
       </Card>
+
+      <JobDetailsCard f={f} ro={ro} set={setForm} toolBha={q.data?.job.bha ?? []} />
 
       <Card className="mb-4 p-4">
         <h2 className="mb-3 text-sm font-semibold">Crew hours and sign-off</h2>
@@ -179,21 +181,22 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
         <p className="mt-1 mb-4 text-xs text-text-subtle">Worked out from the first to the last logged event: Day 06:00–18:00, Night 18:00–06:00. Type a number to change it; clear it to go back.</p>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="rounded-md border border-border bg-surface-2 p-3">
-            <p className="mb-2 font-mono text-label font-bold tracking-wide text-accent-text uppercase">Slickline supervisor / operator</p>
+            <p className="mb-2 font-mono text-label font-bold tracking-wide text-accent-text uppercase">NESR representative · slickline supervisor / operator</p>
             <NamesPicker value={f.engNames} options={crewOptions} disabled={ro} onChange={(v) => setForm({ engNames: v })} />
-            <div className="mt-3"><SignaturePad value={f.engSig} by={user} disabled={ro} onChange={(v) => setForm({ engSig: v })} /></div>
+            <div className="mt-3"><SignaturePad value={f.engSig} by={user} disabled={ro || (problems.length > 0 && !hasSig(f.engSig))} onChange={(v) => setForm({ engSig: v })} /></div>
             <div className="mt-3"><Field id="jl-engid" label="I.D. number"><input id="jl-engid" className={inputClass} disabled={ro} value={f.engId} onChange={(e) => setForm({ engId: e.target.value })} /></Field></div>
           </div>
           <div className="rounded-md border border-border bg-surface-2 p-3">
             <p className="mb-2 font-mono text-label font-bold tracking-wide text-accent-text uppercase">Client representative</p>
             <input aria-label="Client representative name" className={inputClass} disabled={ro} value={f.fmName} placeholder="Name" onChange={(e) => setForm({ fmName: e.target.value })} />
-            <div className="mt-3"><SignaturePad value={f.fmSig} by={user} disabled={ro} onChange={(v) => setForm({ fmSig: v })} /></div>
+            <div className="mt-3"><SignaturePad value={f.fmSig} by={user} disabled={ro || (problems.length > 0 && !hasSig(f.fmSig))} onChange={(v) => setForm({ fmSig: v })} /></div>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <Field id="jl-fmid" label="I.D. number"><input id="jl-fmid" className={inputClass} disabled={ro} value={f.fmId} onChange={(e) => setForm({ fmId: e.target.value })} /></Field>
               <Field id="jl-fmdate" label="Date"><input id="jl-fmdate" type="date" className={inputClass} disabled={ro} value={f.fmDate} onChange={(e) => setForm({ fmDate: e.target.value })} /></Field>
             </div>
           </div>
         </div>
+        {problems.length > 0 && !ro && <p className="mt-3 text-xs text-warning">Signing opens when the log has the arrival on the first line, a rig up line and a rig down line, each with its time.</p>}
         <p className={cx('mt-3 text-xs', bothSigned ? 'text-success' : 'text-text-subtle')}>
           {bothSigned ? 'Both signed: saving sets the job’s “Job log signed” to Yes.' : 'When the crew and the client representative have both signed and the log is saved, the job’s “Job log signed” is set to Yes. The log stays editable; each save keeps a version.'}
         </p>

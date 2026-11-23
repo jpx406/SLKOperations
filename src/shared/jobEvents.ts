@@ -1,6 +1,8 @@
 // What the Job Log (sequence of events) says about the job's times, runs and depths (6z.49): Execution fills its
 // fields from it. Each entry has a time, an optional run and depth, and what happened in words.
 
+import { rowKind } from './jobLogForm';
+
 export interface EventLite { occurred_at: string; run_no: number | null; depth_ft: number | null; text: string }
 
 export interface FromLog {
@@ -9,9 +11,6 @@ export interface FromLog {
   max_depth_ft?: number; tag_depth_ft?: number;
 }
 
-const ARRIVED = /\barriv|\bon (site|location)\b/i;
-const RIG_UP = /\brig(ged)?[\s-]*up\b|\br\/u\b/i;
-const RIG_DOWN = /\brig(ged)?[\s-]*down\b|\br\/d\b/i;
 const FAILED = /\bfail|\bmis-?run\b|\bunsuccess|\bnot successful\b|\baborted?\b/i;
 const TAG = /\btag(ged|ging)?\b/i;
 
@@ -19,9 +18,8 @@ const TAG = /\btag(ged|ging)?\b/i;
 export function fromEvents(events: EventLite[]): FromLog {
   const ev = [...events].sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
   const out: FromLog = {};
-  const first = (re: RegExp) => ev.find((e) => re.test(e.text));
-  const last = (re: RegExp) => [...ev].reverse().find((e) => re.test(e.text));
-  const a = first(ARRIVED), u = first(RIG_UP), d = last(RIG_DOWN);
+  // arrival, rig up and rig down are told apart as the job log's required lines are (6z.52: "RU" and "RD" count)
+  const a = ev.find((e) => rowKind(e.text) === 'arrival'), u = ev.find((e) => rowKind(e.text) === 'rigup'), d = [...ev].reverse().find((e) => rowKind(e.text) === 'rigdown');
   if (a) out.arrived_at = a.occurred_at;
   if (u) out.rig_up_at = u.occurred_at;
   if (d) out.rig_down_at = d.occurred_at;
