@@ -17,9 +17,11 @@ interface PceRow {
 interface PanelRow { id: string; country: string; label: string; panel_type: string | null; active: number; open_jobs: number; all_jobs: number }
 interface ListRow { id: string; country: string; kind: ListKind; value: string; sort: number; active: number }
 interface ProfileRow { job_type_name: string; domain: string | null; is_plug: number; is_fishing: number; is_memory: number; is_perforation: number; is_explosive: number; updated_at: string | null }
-interface Db { units: UnitRow[]; pce: PceRow[]; greasePanels: PanelRow[]; lists: ListRow[]; serviceProfiles: ProfileRow[]; domains: string[] }
+interface EqTypeRow { id: string; country: string; name: string; role: string | null; sort: number; active: number; items: number }
+interface EqRow { id: string; country: string; type_id: string; serial_no: string; description: string | null; notes: string | null; active: number }
+interface Db { units: UnitRow[]; pce: PceRow[]; greasePanels: PanelRow[]; lists: ListRow[]; serviceProfiles: ProfileRow[]; domains: string[]; equipmentTypes: EqTypeRow[]; equipment: EqRow[] }
 
-const TABS = [['units', 'Units'], ['pce', 'Pressure control'], ['parts', 'Parts catalogue'],['panels', 'Grease panels'], ['lists', 'Lists'], ['profiles', 'Service profiles']] as const;
+const TABS = [['units', 'Units'], ['pce', 'Pressure control'], ['equipment', 'Equipment'], ['parts', 'Parts catalogue'], ['panels', 'Grease panels'], ['lists', 'Lists'], ['profiles', 'Service profiles']] as const;
 type Tab = (typeof TABS)[number][0];
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 
@@ -46,7 +48,7 @@ export function Database() {
       )}><span id="db-title">Assets Inventory</span></PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">
         Units, drums, wires and job types come from WIREGUARD and change there. SLK Operations Hub keeps its own pressure control equipment,
-        grease panels, pick lists and the sections each job type opens in the job editor.
+        grease panels, the equipment list (memory gauges, pick ups and any type you add), pick lists and the sections each job type opens in the job editor.
       </p>
       {!rights.edit && <div className="mb-4"><Banner tone="info">You can view the database. Your role does not change it.</Banner></div>}
       <div role="tablist" aria-label="Database sections" className="mb-4 flex flex-wrap gap-2">
@@ -62,6 +64,7 @@ export function Database() {
         {db.isError && <Banner tone="danger">{db.error.message}</Banner>}
         {db.data && tab === 'units' && <Units rows={inCountry(db.data.units)} />}
         {db.data && tab === 'pce' && <PceTable rows={inCountry(db.data.pce)} rights={rights} country={shown} />}
+        {db.data && tab === 'equipment' && <EquipmentTab types={inCountry(db.data.equipmentTypes)} rows={inCountry(db.data.equipment)} canEdit={rights.edit} country={shown} />}
         {tab === 'parts' && <PartsTable rights={rights} />}
         {db.data && tab === 'panels' && <Panels rows={inCountry(db.data.greasePanels)} rights={rights} country={shown} types={db.data.lists.filter((l) => l.kind === 'grease_panel_type' && l.active).map((l) => l.value)} />}
         {db.data && tab === 'lists' && <Lists rows={inCountry(db.data.lists)} canEdit={rights.edit} country={shown} />}
@@ -158,6 +161,120 @@ function PceTable({ rows, rights, country }: { rows: PceRow[]; rights: Rights; c
       )}
       {editing && <PceDialog row={editing === 'new' ? null : editing} country={country} canRemove={rights.remove} onClose={(msg) => { setEditing(null); setNotice(msg ?? null); }} />}
     </>
+  );
+}
+
+// ---- the equipment list (6z.53): memory gauges, pick ups and any type added, by serial number ----
+
+const ROLE_NOTE: Record<string, string> = { memory_gauge: 'Picked as Memory gauge S/N on the job log', pickup: 'Picked as Pick up number on the job log' };
+
+function EquipmentTab({ types, rows, canEdit, country }: { types: EqTypeRow[]; rows: EqRow[]; canEdit: boolean; country: string }) {
+  const saved = useSaved();
+  const [error, setError] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [newType, setNewType] = useState('');
+  const [editing, setEditing] = useState<EqRow | 'new' | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const call = useMutation({
+    mutationFn: ({ path, method, json }: { path: string; method: 'POST' | 'PATCH'; json: Record<string, unknown> }) => api(path, { method, json }),
+    onSuccess: () => { setError(null); saved(); },
+    onError: (e: ApiError) => setError(e.message),
+  });
+  const typeName = (id: string) => types.find((t) => t.id === id)?.name ?? '—';
+  const shownRows = rows.filter((r) => !typeFilter || r.type_id === typeFilter);
+  return (
+    <>
+      {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+      <Card className="mb-4 p-4">
+        <h2 className="mb-1 text-sm font-semibold">Types</h2>
+        <p className="mb-3 text-sm text-text-muted">Memory gauges and pick ups are read by the job log. Add any other type of equipment you keep by serial number.</p>
+        <ul className="mb-3 flex flex-wrap gap-2">
+          {types.map((t) => (
+            <li key={t.id} className={cx('inline-flex items-center gap-1.5 rounded-pill border px-3 py-1 text-sm', t.active ? 'border-border' : 'border-dashed border-border text-text-subtle')}>
+              {renaming?.id === t.id ? (
+                <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); call.mutate({ path: `/database/equipment-types/${t.id}`, method: 'PATCH', json: { name: renaming.name } }, { onSuccess: () => setRenaming(null) }); }}>
+                  <input aria-label="Type name" autoFocus className={inputSized('h-7 w-40')} value={renaming.name} onChange={(e) => setRenaming({ id: t.id, name: e.target.value })} />
+                  <Button size="sm" type="submit" variant="primary">Save</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
+                </form>
+              ) : (
+                <>
+                  <span className="font-semibold">{t.name}</span>
+                  <span className="font-mono text-xs text-text-subtle">{t.items}</span>
+                  {!country && <span className="text-xs text-text-subtle">{t.country}</span>}
+                  {!t.active && <span className="text-xs">switched off</span>}
+                  {canEdit && <Button size="sm" variant="ghost" aria-label={`Rename ${t.name}`} onClick={() => setRenaming({ id: t.id, name: t.name })}><Pencil aria-hidden className="size-3" /></Button>}
+                  {canEdit && !t.role && <Button size="sm" variant="ghost" onClick={() => call.mutate({ path: `/database/equipment-types/${t.id}`, method: 'PATCH', json: { active: !t.active } })}>{t.active ? 'Switch off' : 'Switch on'}</Button>}
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+        {canEdit && (
+          <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); call.mutate({ path: '/database/equipment-types', method: 'POST', json: { country, name: newType } }, { onSuccess: () => setNewType('') }); }}>
+            <Field id="eq-newtype" label="New type"><input id="eq-newtype" className={inputSized('w-56')} value={newType} placeholder="e.g. Crane, Generator" onChange={(e) => setNewType(e.target.value)} /></Field>
+            <Button type="submit" disabled={!country || !newType.trim()}><Plus aria-hidden className="size-4" />Add type</Button>
+            {!country && <span className="text-xs text-text-subtle">Pick a country at the top first.</span>}
+          </form>
+        )}
+      </Card>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-text-muted">Type
+          <Select className={inputSized('h-(--layout-control-sm) w-48')} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="">All types</option>
+            {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select>
+        </label>
+        <span className="flex-1" />
+        {canEdit && <Button variant="primary" disabled={!country} onClick={() => setEditing('new')}><Plus aria-hidden className="size-4" />Add equipment</Button>}
+      </div>
+      {!shownRows.length ? <EmptyState title="No equipment yet">Add memory gauges, pick ups and other equipment by serial number.</EmptyState> : (
+        <Table head={['Serial no.', 'Type', 'Description', 'Notes', 'Status', '']} min="44rem">
+          {shownRows.map((r) => (
+            <tr key={r.id} className={cx('border-t border-border', !r.active && 'text-text-subtle')}>
+              <th scope="row" className="px-3 py-2 text-left font-semibold">{r.serial_no}{!country && <span className="block text-xs font-normal text-text-subtle">{r.country}</span>}</th>
+              <td className="px-3 py-2">{typeName(r.type_id)}{(() => { const role = types.find((t) => t.id === r.type_id)?.role; return role ? <span className="block text-xs text-text-subtle">{ROLE_NOTE[role]}</span> : null; })()}</td>
+              <td className="px-3 py-2">{r.description ?? '—'}</td>
+              <td className="px-3 py-2 text-xs text-text-muted">{r.notes ?? ''}</td>
+              <td className="px-3 py-2"><OnOff on={!!r.active} /></td>
+              <td className="px-3 py-2 text-right">{canEdit && <Button size="sm" onClick={() => setEditing(r)} aria-label={`Edit ${r.serial_no}`}><Pencil aria-hidden className="size-3.5" />Edit</Button>}</td>
+            </tr>
+          ))}
+        </Table>
+      )}
+      {editing && <EquipmentDialog row={editing === 'new' ? null : editing} types={types.filter((t) => t.active && (editing === 'new' ? t.country === country : t.country === editing.country))} country={editing === 'new' ? country : editing.country} defaultType={typeFilter} onClose={() => setEditing(null)} />}
+    </>
+  );
+}
+
+function EquipmentDialog({ row, types, country, defaultType, onClose }: { row: EqRow | null; types: EqTypeRow[]; country: string; defaultType: string; onClose: () => void }) {
+  const saved = useSaved();
+  const [f, setF] = useState({ type_id: row?.type_id ?? (types.some((t) => t.id === defaultType) ? defaultType : types[0]?.id ?? ''), serial_no: row?.serial_no ?? '', description: row?.description ?? '', notes: row?.notes ?? '', active: row ? !!row.active : true });
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => (row ? api(`/database/equipment/${row.id}`, { method: 'PATCH', json: f }) : api('/database/equipment', { method: 'POST', json: { ...f, country } })),
+    onSuccess: () => { saved(); onClose(); },
+    onError: (e: ApiError) => setError(e.message),
+  });
+  return (
+    <Dialog title={row ? `Edit ${row.serial_no}` : `Add equipment · ${country}`} onClose={onClose}>
+      {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+      <form className="grid grid-cols-1 gap-4 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+        <Field id="eq-type" label="Type" required>
+          <Select id="eq-type" className={inputClass} value={f.type_id} onChange={(e) => setF({ ...f, type_id: e.target.value })}>
+            {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select>
+        </Field>
+        <Field id="eq-serial" label="Serial no." required><input id="eq-serial" className={inputClass} value={f.serial_no} onChange={(e) => setF({ ...f, serial_no: e.target.value })} placeholder="e.g. SPG-1234" /></Field>
+        <div className="sm:col-span-2"><Field id="eq-desc" label="Description"><input id="eq-desc" className={inputClass} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Make, model, rating" /></Field></div>
+        <div className="sm:col-span-2"><Field id="eq-notes" label="Notes"><input id="eq-notes" className={inputClass} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field></div>
+        {row && <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Active (offered on the job log)</label>}
+        <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <Button type="submit" variant="primary" loading={save.isPending} disabled={!f.type_id || !f.serial_no.trim()}>Save</Button>
+          <Button onClick={onClose}>Cancel</Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

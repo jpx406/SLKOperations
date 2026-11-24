@@ -335,7 +335,6 @@ export function JobEditor() {
           <Card>
             {job && <JraBanner jobId={job.id} />}
             {job && <StageForms jobId={job.id} stage="execution" canEdit={canEditJobs && canEditStage(me!.menus, 'execution') && !jraLocked} showJra={false} />}
-            {job && <JobLogBanner jobId={job.id} />}
             <Collapsible title="Times, runs and depths" open aside="Read from the job log where it says"
               status={filledN(['arrived_at', 'rig_up_at', 'rig_down_at', 'runs_ok', 'max_depth_ft', 'failure'])}>
             {logDiffers.length > 0 && (
@@ -368,6 +367,7 @@ export function JobEditor() {
               <div className="md:col-span-2 xl:col-span-3">{area('op_time_details', 'Operating time details', 'What happened, run by run, and any waiting time')}</div>
             </div>
             </Collapsible>
+            {job && <div className="mt-4"><JobLogBanner jobId={job.id} /></div>}
             <ServiceSection on={flags.is_fishing} title="Fishing" need="a fishing service">
               <DetailsSection idPrefix="fishing" value={json('fishing_details', {})} canEdit={editable('fishing_details')} onChange={(v) => changeJson('fishing_details', v)}
                 fields={[{ key: 'fish', label: 'Fish description' }, { key: 'fish_top_ft', label: 'Top of fish', type: 'number', unit: 'ft' },

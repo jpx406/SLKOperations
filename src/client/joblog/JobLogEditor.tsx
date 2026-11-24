@@ -2,12 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileDown, FileText, History, Mail, Plus, Printer, Save, Sheet, SortAsc, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router';
-import { ROW_KIND_LABEL, dayOf, eventCount, hasSig, hours, isEmptyRow, mandatoryProblems, newRow, rowKind, sortRows, timeHM, toOf, type LogForm, type LogRow } from '../../shared/jobLogForm';
+import { ROW_KIND_LABEL, applyJob, dayOf, eventCount, hasSig, hours, isEmptyRow, jobValues, mandatoryProblems, newRow, rowKind, setRowTo, sortRows, timeHM, toOf, type LogForm, type LogRow } from '../../shared/jobLogForm';
 import { api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, Field, Skeleton, cx, inputClass } from '../components/ui';
 import { Dialog } from '../pages/knowledge/common';
-import { HeaderCard, JobDetailsCard, PhrasePicker } from './Sections';
+import { HeaderCard, JobDetailsCard, PhrasePicker, type HeaderCtx } from './Sections';
 import { SignaturePad } from './SignaturePad';
 import { docBlob, downloadBlob, emailBody, emailSubject, emlBlob, fileBase, pdfBlob, xlsxBlob } from './exports';
 import { isUnsynced, loadLog, pushLog, stageLocal, type LocalLog, type LogData } from './store';
@@ -45,7 +45,7 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
   }, [q.isLoading, q.data, rec, jobId]);
   useEffect(() => {
     const on = () => setOnline(true), off = () => setOnline(false);
-    const flush = () => { if (stageTimer.current && latest.current) { window.clearTimeout(stageTimer.current); void stageLocal(latest.current, latest.current.form); } };
+    const flush = () => { if (stageTimer.current && latest.current) { window.clearTimeout(stageTimer.current); stageTimer.current = undefined; void stageLocal(latest.current, latest.current.form); } };
     const hide = () => { if (document.visibilityState === 'hidden') flush(); };
     window.addEventListener('online', on); window.addEventListener('offline', off); window.addEventListener('pagehide', flush); document.addEventListener('visibilitychange', hide);
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', hide); flush(); };
@@ -60,7 +60,7 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
     const form = typeof patch === 'function' ? patch(r.form) : { ...r.form, ...patch };
     const next: LocalLog = { ...r, form, status: 'offline' };
     window.clearTimeout(stageTimer.current);
-    stageTimer.current = window.setTimeout(() => { void stageLocal(next, form); }, 400);
+    stageTimer.current = window.setTimeout(() => { stageTimer.current = undefined; void stageLocal(next, form); }, 400);
     return next;
   });
   const setRow = (id: string, patch: Partial<LogRow>) => setForm((f) => ({ ...f, rows: f.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
@@ -78,7 +78,8 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
     if (!rec || saving) return;
     setSaving(true); setNotice(null);
     window.clearTimeout(stageTimer.current);
-    const staged = await stageLocal(rec, rec.form);
+    stageTimer.current = undefined;
+    const staged = await stageLocal(rec, applyJob(rec.form, q.data?.job));
     if (!online) { setRec(staged); setSaving(false); setNotice({ tone: 'warning', text: 'No connection: your changes are kept on this device. Save / Sync again when you are back online.' }); return; }
     const r = await pushLog(staged);
     setSaving(false);
@@ -100,7 +101,10 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
 
   const crewOptions = useMemo(() => [...new Set([...(q.data?.crew ?? []), ...(q.data?.job.engineers ?? [])])], [q.data]);
   if (q.isLoading || !rec) return <Skeleton className="h-96" />;
-  const f = rec.form, h = hours(f), unsynced = isUnsynced(rec), events = eventCount(f), bothSigned = hasSig(f.engSig) && hasSig(f.fmSig);
+  // a field the job has a value for is read from the job (6z.53)
+  const locked = jobValues(q.data?.job);
+  const ctx: HeaderCtx = { locked, options: q.data?.options ?? null, canEdit, jobId, crew: crewOptions };
+  const f = applyJob(rec.form, q.data?.job), h = hours(f), unsynced = isUnsynced(rec), events = eventCount(f), bothSigned = hasSig(f.engSig) && hasSig(f.fmSig);
   const problems = mandatoryProblems(f);
   const filled = f.rows.filter((r) => !isEmptyRow(r));
 
@@ -131,7 +135,7 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
       {q.isError && <div className="mb-3"><Banner tone="warning">Could not reach the server: working from the copy on this device.</Banner></div>}
       {notice && <div className="mb-3"><Banner tone={notice.tone}>{notice.text}</Banner></div>}
 
-      <HeaderCard f={f} ro={ro} set={setForm} />
+      <HeaderCard f={f} ro={ro} set={setForm} ctx={ctx} />
 
       <Card className="mb-4 p-4">
         <h2 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold">Sequence of events <span className="font-normal text-text-subtle">the first line is the arrival on location, then a rig up and a rig down line with the work between them · tick the usual wording with the list button or type your own · Enter goes to the next row</span></h2>
@@ -145,13 +149,15 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
                 <td className="w-16 pr-1 text-right text-xs text-text-subtle">{i + 1}{(() => { const k = rowKind(r.desc); return k && !isEmptyRow(r) ? <span className={cx('mt-0.5 block rounded-sm px-1 font-mono text-[0.625rem] font-bold uppercase', (k === 'arrival' ? filled[0]?.id === r.id : true) ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning')}>{ROW_KIND_LABEL[k]}</span> : null; })()}</td>
                 <td className="w-36 px-1"><input type="date" aria-label={`Row ${i + 1} date`} data-jl={`date-${i}`} className={cell} disabled={ro} value={r.date} onChange={(e) => setRow(r.id, { date: e.target.value })} /></td>
                 <td className="w-28 px-1"><input type="time" aria-label={`Row ${i + 1} from`} data-jl={`time-${i}`} className={cell} disabled={ro} value={timeHM(r.time)} onChange={(e) => setRow(r.id, { time: e.target.value })} /></td>
-                <td className="w-28 px-1"><input type="time" aria-label={`Row ${i + 1} to`} title={!r.to && toOf(f.rows, i) ? `Ends when the next line starts (${toOf(f.rows, i)})` : undefined} className={cx(cell, !r.to && 'text-text-subtle')} disabled={ro} value={timeHM(r.to)} onChange={(e) => setRow(r.id, { to: e.target.value })} /></td>
+                <td className="w-28 px-1"><input type="time" aria-label={`Row ${i + 1} to`} title={!r.to && toOf(f.rows, i) ? `Ends when the next line starts (${toOf(f.rows, i)})` : undefined} className={cx(cell, !r.to && 'text-text-subtle')} disabled={ro} value={timeHM(r.to)}
+                  onClick={() => { if (!ro && !timeHM(r.to) && timeHM(r.time)) setForm((x) => ({ ...x, rows: setRowTo(x.rows, r.id, timeHM(r.time), false) })); }}
+                  onChange={(e) => setForm((x) => ({ ...x, rows: setRowTo(x.rows, r.id, e.target.value) }))} /></td>
                 <td className="w-24 px-1 text-xs text-text-muted">{dayOf(r.date)}</td>
                 <td className="w-16 px-1"><input inputMode="numeric" aria-label={`Row ${i + 1} run`} className={cell} disabled={ro} value={r.run} onChange={(e) => setRow(r.id, { run: e.target.value.replace(/[^\d]/g, '').slice(0, 3) })} /></td>
                 <td className="w-24 px-1"><input inputMode="decimal" aria-label={`Row ${i + 1} depth in ft`} className={cell} disabled={ro} value={r.depth} onChange={(e) => setRow(r.id, { depth: e.target.value.replace(/[^\d.]/g, '').slice(0, 8) })} /></td>
                 <td className="min-w-80 px-1"><div className="flex items-start gap-1">
                   <textarea rows={1} aria-label={`Row ${i + 1} work description`} data-jl={`desc-${i}`} className={cx(cell, 'h-auto min-h-9 flex-1 resize-y py-1.5')} disabled={ro} placeholder={i === 0 ? 'ARRIVED ON LOCATION.' : 'Work done…'} value={r.desc} onChange={(e) => setRow(r.id, { desc: e.target.value })} onKeyDown={(e) => onEnter(e, r.id, 'desc')} />
-                  {!ro && <PhrasePicker label={`row ${i + 1}`} value={r.desc} onChange={(v) => setRow(r.id, { desc: v })} />}
+                  {!ro && <PhrasePicker label={`row ${i + 1}`} value={r.desc} onChange={(v) => setRow(r.id, { desc: v })} ctx={ctx} />}
                 </div></td>
                 <td className="w-52 px-1"><textarea rows={1} aria-label={`Row ${i + 1} remarks`} data-jl={`remark-${i}`} className={cx(cell, 'h-auto min-h-9 resize-y py-1.5')} disabled={ro} placeholder="Remarks" value={r.remark} onChange={(e) => setRow(r.id, { remark: e.target.value })} onKeyDown={(e) => onEnter(e, r.id, 'remark')} /></td>
                 <td className="w-20 whitespace-nowrap">{!ro && <>
@@ -165,11 +171,11 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {!ro && <Button size="sm" variant="ghost" onClick={() => setForm((x) => ({ ...x, rows: [...x.rows, newRow({ date: x.rows[x.rows.length - 1]?.date || x.date, run: x.rows[x.rows.length - 1]?.run ?? '', time: timeHM(x.rows[x.rows.length - 1]?.to ?? '') })] }))}><Plus aria-hidden className="size-3.5" />Add row</Button>}
           {!ro && <Button size="sm" variant="ghost" onClick={() => setForm((x) => ({ ...x, rows: sortRows(x.rows) }))}><SortAsc aria-hidden className="size-3.5" />Sort by date and time</Button>}
-          <span className="ml-auto text-xs text-text-subtle">{events} event{events === 1 ? '' : 's'} · every save keeps a version · a line’s To is the next line’s From unless typed · arrival, rig up, rig down, runs, failed runs, the deepest point and the tag are read into Execution</span>
+          <span className="ml-auto text-xs text-text-subtle">{events} event{events === 1 ? '' : 's'} · every save keeps a version · a line’s To starts the next line · picking a To starts from the line’s From · arrival, rig up, rig down, runs, failed runs, the deepest point and the tag are read into Execution</span>
         </div>
       </Card>
 
-      <JobDetailsCard f={f} ro={ro} set={setForm} toolBha={q.data?.job.bha ?? []} />
+      <JobDetailsCard f={f} ro={ro} set={setForm} toolBha={q.data?.job.bha ?? []} locked={locked} />
 
       <Card className="mb-4 p-4">
         <h2 className="mb-3 text-sm font-semibold">Crew hours and sign-off</h2>

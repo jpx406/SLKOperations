@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PHRASE_GROUPS, applyJob, cleanLogOption, jobValues, phraseGroups, setRowTo } from '../src/shared/jobLogForm';
 import { autoHours, bhaFromStrings, changeSummary, coerceForm, dayOf, eventCount, exportRows, hasPhrase, hours, mandatoryProblems, mergeForms, newForm, newRow, rowKind, rowsAsEvents, sortRows, togglePhrase, wireFinalOf, type LogForm } from '../src/shared/jobLogForm';
 import { fromEvents } from '../src/shared/jobEvents';
 import { readAllowed, ruleFor } from '../src/worker/permissions';
@@ -105,6 +106,36 @@ describe('job log as the Slickline Service Report (6z.52)', () => {
   it('counts a line’s To in the crew hours, across midnight', () => {
     const f = form([{ ...row('a', '2026-11-22', '17:00', 'ARRIVED ON LOCATION.'), to: '01:00' }]);
     expect(autoHours(f)).toEqual({ day: 1, night: 7, total: 8 });
+  });
+});
+
+describe('job log header from the job and its pick lists (6z.53)', () => {
+  it('reads every field the job has from the job, over what was saved, and leaves the rest', () => {
+    const job = { well: 'THRY-9510', field: 'THRY', startDate: '2026-11-22T00:00:00Z', siwhp: '1200', wireCut: '150', wireMaxPull: '', unit: null };
+    expect(jobValues(job)).toEqual({ well: 'THRY-9510', field: 'THRY', date: '2026-11-22', tubingSi: '1200', wireCut: '150' });
+    const saved = coerceForm({ well: '', field: 'old', unit: 'SL 52', locationCond: 'Good', rows: [] }, job);
+    expect(saved).toMatchObject({ well: 'THRY-9510', field: 'THRY', unit: 'SL 52', locationCond: 'Good', wireCut: '150', date: '2026-11-22' });
+    expect(applyJob(newForm(), null).well).toBe('');
+  });
+
+  it('makes a line’s To the next line’s From; a To picked from the From changes only that line', () => {
+    const rows = [row('a', '2026-11-22', '18:20', 'ARRIVED ON LOCATION.'), row('b', '2026-11-22', '19:30', 'RU SLK PCE ON WELL.'), row('c', '2026-11-22', '21:00', 'RIH')];
+    let r = setRowTo(rows, 'a', '18:20', false);
+    expect(r.map((x) => [x.time, x.to])).toEqual([['18:20', '18:20'], ['19:30', ''], ['21:00', '']]);
+    r = setRowTo(r, 'a', '19:00');
+    expect(r.map((x) => [x.time, x.to])).toEqual([['18:20', '19:00'], ['19:00', ''], ['21:00', '']]);
+    r = setRowTo(r, 'c', '23:00');   // the last line: nothing after it
+    expect(r[2].to).toBe('23:00');
+    expect(setRowTo(r, 'b', '')[2].time).toBe('21:00');   // clearing a To leaves the next From
+  });
+
+  it('cleans pick list values and groups the wording', () => {
+    expect(cleanLogOption('tubingSize', 'x', '  4 1/2"  ')).toEqual({ kind: 'tubingSize', grp: '', value: '4 1/2"' });
+    expect(cleanLogOption('phrase', '', 'RAISED PTW.')).toEqual({ kind: 'phrase', grp: 'Other', value: 'RAISED PTW.' });
+    expect(cleanLogOption('nope', '', 'x')).toEqual({ error: 'Unknown list' });
+    expect(cleanLogOption('field', '', '   ')).toEqual({ error: 'Type a value' });
+    const flat = PHRASE_GROUPS.flatMap((g) => g.phrases.map((value) => ({ grp: g.group, value })));
+    expect(phraseGroups(flat)).toEqual(PHRASE_GROUPS);
   });
 });
 

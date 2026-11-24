@@ -10,7 +10,7 @@ export interface LocalLog {
   status: 'synced' | 'offline'; savedBy?: string | null; savedAt?: string | null; createdBy?: string | null; sentAt?: string | null; sentBy?: string | null;
 }
 export interface ServerLog { id: string; version: number; form: LogForm; createdBy: string | null; savedBy: string | null; savedAt: string; sentBy: string | null; sentAt: string | null }
-export interface LogData { job: JobForLog; crew: string[]; canEdit: boolean; log: ServerLog | null }
+export interface LogData { job: JobForLog; crew: string[]; canEdit: boolean; log: ServerLog | null; options?: import('./Sections').LogOptions }
 
 const DB = 'slk-joblog', STORE = 'logs';
 let dbp: Promise<IDBDatabase> | null = null;

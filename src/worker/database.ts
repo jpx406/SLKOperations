@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { LIST_KINDS, SERVICE_FLAGS, cleanListValue, cleanPce } from '../shared/database';
 import { cleanPart } from '../shared/diagram';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { ensureEquipmentTypes } from './logOptions';
 
 // Equipment Database (S24). WIREGUARD units are shown read-only; PCE, grease panels, local lists and
 // service profiles are kept here. Nothing is hard-deleted while a job still points at it.
@@ -19,7 +20,8 @@ export const database = new Hono<AppBindings>();
 
 database.get('/', async (c) => {
   const countries = JSON.stringify(c.get('user').countries);
-  const [units, pce, panels, lists, profiles, domains] = await c.env.DB.batch([
+  for (const country of c.get('user').countries) await ensureEquipmentTypes(c.env, country);
+  const [units, pce, panels, lists, profiles, domains, eqTypes, equipment] = await c.env.DB.batch([
     c.env.DB.prepare(
       `SELECT u.unit_number, u.country, u.year, u.wg_active,
               (SELECT count(*) FROM jobs j WHERE j.unit_number = u.unit_number AND ${OPEN}) AS open_jobs,
@@ -46,10 +48,14 @@ database.get('/', async (c) => {
        LEFT JOIN service_profiles p ON p.job_type_name = t.name ORDER BY t.name`,
     ).bind(countries),
     c.env.DB.prepare('SELECT name FROM service_domains ORDER BY sort, name'),
+    c.env.DB.prepare(`SELECT t.id, t.country, t.name, t.role, t.sort, t.active, (SELECT count(*) FROM equipment e WHERE e.type_id = t.id AND e.active = 1) AS items
+       FROM equipment_types t WHERE t.${inC} ORDER BY t.active DESC, t.sort, t.name`).bind(countries),
+    c.env.DB.prepare(`SELECT e.id, e.country, e.type_id, e.serial_no, e.description, e.notes, e.active FROM equipment e WHERE e.${inC} ORDER BY e.active DESC, e.serial_no`).bind(countries),
   ]);
   return c.json({
     units: units.results, pce: pce.results, greasePanels: panels.results, lists: lists.results,
     serviceProfiles: profiles.results, domains: (domains.results as { name: string }[]).map((d) => d.name),
+    equipmentTypes: eqTypes.results, equipment: equipment.results,
   });
 });
 
@@ -201,6 +207,101 @@ database.patch('/lists/:id', async (c) => {
     await c.env.DB.batch([...stmts, audit(c.env, user, 'edit', 'lookup_values', id, `${row.kind} ${row.value}: ${JSON.stringify(b)}`)]);
   } catch (e) {
     return c.json({ error: duplicate(e) ? `${b.value} is already on the list` : 'Could not save' }, 400);
+  }
+  return c.json({ ok: true });
+});
+
+// ---- the equipment list (6z.53): types people add, and each piece by serial number ----
+
+const clip = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+
+database.post('/equipment-types', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json<{ country?: string; name?: string }>().catch(() => ({} as { country?: string; name?: string }));
+  if (!ownCountry(user, b.country)) return c.json({ error: 'Pick one of your countries' }, 400);
+  const name = clip(b.name, 60);
+  if (!name) return c.json({ error: 'Name the type' }, 400);
+  const id = crypto.randomUUID();
+  const next = await c.env.DB.prepare('SELECT coalesce(max(sort), 0) + 10 AS s FROM equipment_types WHERE country = ?').bind(b.country).first<{ s: number }>();
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO equipment_types (id, country, name, sort) VALUES (?, ?, ?, ?)').bind(id, b.country, name, next?.s ?? 10),
+      audit(c.env, user, 'create', 'equipment_types', id, `Equipment type added: ${name} (${b.country})`),
+    ]);
+  } catch (e) {
+    return c.json({ error: duplicate(e) ? `${name} is already a type` : 'Could not save' }, 400);
+  }
+  return c.json({ ok: true, id }, 201);
+});
+
+database.patch('/equipment-types/:id', async (c) => {
+  const user = c.get('user');
+  const row = await c.env.DB.prepare('SELECT id, country, name FROM equipment_types WHERE id = ?').bind(c.req.param('id')).first<{ id: string; country: string; name: string }>();
+  if (!row || !user.countries.includes(row.country)) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json<{ name?: string; active?: boolean }>().catch(() => ({} as { name?: string; active?: boolean }));
+  const stmts = [];
+  if (b.name !== undefined) {
+    const name = clip(b.name, 60);
+    if (!name) return c.json({ error: 'Name the type' }, 400);
+    stmts.push(c.env.DB.prepare('UPDATE equipment_types SET name = ? WHERE id = ?').bind(name, row.id));
+  }
+  if (b.active !== undefined) stmts.push(c.env.DB.prepare('UPDATE equipment_types SET active = ? WHERE id = ?').bind(b.active ? 1 : 0, row.id));
+  if (!stmts.length) return c.json({ error: 'Nothing to change' }, 400);
+  try {
+    await c.env.DB.batch([...stmts, audit(c.env, user, 'edit', 'equipment_types', row.id, `Equipment type ${row.name}: ${JSON.stringify(b)}`)]);
+  } catch (e) {
+    return c.json({ error: duplicate(e) ? `${b.name} is already a type` : 'Could not save' }, 400);
+  }
+  return c.json({ ok: true });
+});
+
+type EqBody = { country?: string; type_id?: string; serial_no?: string; description?: string; notes?: string; active?: boolean };
+
+database.post('/equipment', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json<EqBody>().catch(() => ({} as EqBody));
+  if (!ownCountry(user, b.country)) return c.json({ error: 'Pick one of your countries' }, 400);
+  const type = await c.env.DB.prepare('SELECT id, name FROM equipment_types WHERE id = ? AND country = ?').bind(b.type_id ?? '', b.country).first<{ id: string; name: string }>();
+  if (!type) return c.json({ error: 'Pick a type' }, 400);
+  const serial = clip(b.serial_no, 60);
+  if (!serial) return c.json({ error: 'Type the serial number' }, 400);
+  const id = crypto.randomUUID();
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO equipment (id, country, type_id, serial_no, description, notes) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(id, b.country, type.id, serial, clip(b.description, 120) || null, clip(b.notes, 500) || null),
+      audit(c.env, user, 'create', 'equipment', id, `${type.name} ${serial} added (${b.country})`),
+    ]);
+  } catch (e) {
+    return c.json({ error: duplicate(e) ? `${type.name} ${serial} is already listed` : 'Could not save' }, 400);
+  }
+  return c.json({ ok: true, id }, 201);
+});
+
+database.patch('/equipment/:id', async (c) => {
+  const user = c.get('user');
+  const row = await c.env.DB.prepare('SELECT id, country, serial_no FROM equipment WHERE id = ?').bind(c.req.param('id')).first<{ id: string; country: string; serial_no: string }>();
+  if (!row || !user.countries.includes(row.country)) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json<EqBody>().catch(() => ({} as EqBody));
+  const stmts = [];
+  if (b.type_id !== undefined) {
+    const type = await c.env.DB.prepare('SELECT id FROM equipment_types WHERE id = ? AND country = ?').bind(b.type_id, row.country).first();
+    if (!type) return c.json({ error: 'Pick a type' }, 400);
+    stmts.push(c.env.DB.prepare('UPDATE equipment SET type_id = ? WHERE id = ?').bind(b.type_id, row.id));
+  }
+  if (b.serial_no !== undefined) {
+    const serial = clip(b.serial_no, 60);
+    if (!serial) return c.json({ error: 'Type the serial number' }, 400);
+    stmts.push(c.env.DB.prepare('UPDATE equipment SET serial_no = ? WHERE id = ?').bind(serial, row.id));
+  }
+  if (b.description !== undefined) stmts.push(c.env.DB.prepare('UPDATE equipment SET description = ? WHERE id = ?').bind(clip(b.description, 120) || null, row.id));
+  if (b.notes !== undefined) stmts.push(c.env.DB.prepare('UPDATE equipment SET notes = ? WHERE id = ?').bind(clip(b.notes, 500) || null, row.id));
+  if (b.active !== undefined) stmts.push(c.env.DB.prepare('UPDATE equipment SET active = ? WHERE id = ?').bind(b.active ? 1 : 0, row.id));
+  if (!stmts.length) return c.json({ error: 'Nothing to change' }, 400);
+  try {
+    await c.env.DB.batch([...stmts, audit(c.env, user, 'edit', 'equipment', row.id, `Equipment ${row.serial_no}: ${JSON.stringify(b)}`)]);
+  } catch (e) {
+    return c.json({ error: duplicate(e) ? 'That serial number is already listed for the type' : 'Could not save' }, 400);
   }
   return c.json({ ok: true });
 });

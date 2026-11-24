@@ -1,79 +1,148 @@
-import { Check, ListChecks, Plus, RefreshCw, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Check, ListChecks, Lock, Pencil, Plus, RefreshCw, Settings2, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { JOB_STATUSES, PHRASE_GROUPS, hasPhrase, togglePhrase, wireFinalOf, type Bha, type LogForm, type ScalarKey } from '../../shared/jobLogForm';
-import { Button, Card, Field, cx, inputClass } from '../components/ui';
+import { Link } from 'react-router';
+import { JOB_STATUSES, LOG_OPTION_KINDS, hasPhrase, phraseGroups, togglePhrase, wireFinalOf, type Bha, type JobField, type LogForm, type LogOption, type LogOptionKind, type ScalarKey } from '../../shared/jobLogForm';
+import { api } from '../api';
+import { Select } from '../components/Select';
+import { Banner, Button, Card, Field, cx, inputClass } from '../components/ui';
+import { Dialog } from '../pages/knowledge/common';
 
 // The parts of the Job log added from the owner's NESR Slickline Service Report (6z.52): the full header, the
 // description checklist, and the job status, wire details, BHA per run and note.
+// 6z.53: what the job has is read from the job and locked here; the rest is picked from lists people can add to,
+// gauges and pick ups from the equipment list in Assets Inventory, and the wording list can be managed.
 
 type Set = (patch: Partial<LogForm>) => void;
 
-function Text({ f, k, label, ro, set, unit, placeholder }: { f: LogForm; k: ScalarKey; label: string; ro: boolean; set: Set; unit?: string; placeholder?: string }) {
+export interface LogOptions {
+  country: string;
+  custom: LogOption[];
+  base: Partial<Record<LogOptionKind, string[]>>;
+  equipment: { gauges: { value: string; label: string }[]; pickups: { value: string; label: string }[] };
+}
+/** What the header needs besides the form: the job's values, the lists, and whether lists can be changed. */
+export interface HeaderCtx { locked: Partial<Record<JobField, string>>; options: LogOptions | null; canEdit: boolean; jobId: string; crew: string[] }
+
+const valuesOf = (o: LogOptions | null, kind: LogOptionKind) =>
+  [...new Set([...(o?.base[kind] ?? []), ...(o?.custom ?? []).filter((x) => x.kind === kind).map((x) => x.value)])];
+
+function useOptionSaver(ctx: { jobId: string; options: LogOptions | null }) {
+  const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const run = async (fn: () => Promise<unknown>) => {
+    setError(null);
+    try { await fn(); await qc.invalidateQueries({ queryKey: ['joblog', ctx.jobId] }); return true; } catch (e) { setError((e as Error).message); return false; }
+  };
+  return {
+    error,
+    add: (kind: LogOptionKind, value: string, grp = '') => run(() => api('/log-options', { method: 'POST', json: { country: ctx.options?.country, kind, grp, value } })),
+    change: (id: string, body: { value?: string; grp?: string; active?: boolean }) => run(() => api(`/log-options/${id}`, { method: 'PATCH', json: body })),
+  };
+}
+
+/** A header field: locked when the job has it, else typed or picked from the list, with a way to add what was typed. */
+function Pick({ f, k, label, ro, set, ctx, kind, unit, placeholder }: { f: LogForm; k: ScalarKey; label: string; ro: boolean; set: Set; ctx: HeaderCtx; kind?: LogOptionKind; unit?: string; placeholder?: string }) {
+  const saver = useOptionSaver(ctx);
+  const lockedValue = (ctx.locked as Record<string, string | undefined>)[k];
+  const id = `jl-${k}`;
+  if (lockedValue) {
+    return (
+      <Field id={id} label={label} unit={unit} hint={<span className="inline-flex items-center gap-1"><Lock aria-hidden className="size-3" />From the job</span>}>
+        <input id={id} className={cx(inputClass, 'bg-surface-2', unit && 'pr-10')} readOnly aria-readonly value={lockedValue} />
+      </Field>
+    );
+  }
+  const list = kind ? (kind === 'supervisor' || kind === 'operator1' || kind === 'operator2' ? [...new Set([...ctx.crew, ...valuesOf(ctx.options, kind)])] : valuesOf(ctx.options, kind)) : [];
+  const v = String(f[k] ?? '');
+  const canAdd = !ro && ctx.canEdit && !!kind && !!ctx.options && !!v.trim() && !list.some((x) => x.toLowerCase() === v.trim().toLowerCase());
   return (
-    <Field id={`jl-${k}`} label={label} unit={unit}>
-      <input id={`jl-${k}`} className={cx(inputClass, unit && 'pr-10')} disabled={ro} value={String(f[k] ?? '')} placeholder={placeholder} onChange={(e) => set({ [k]: e.target.value } as Partial<LogForm>)} />
+    <Field id={id} label={label} unit={unit} error={saver.error} hint={canAdd ? undefined : kind && !ro ? 'Pick from the list or type' : undefined}>
+      <input id={id} list={kind ? `${id}-list` : undefined} className={cx(inputClass, unit && 'pr-10', canAdd && 'pr-24')} disabled={ro} value={v} placeholder={placeholder} onChange={(e) => set({ [k]: e.target.value } as Partial<LogForm>)} />
+      {kind && <datalist id={`${id}-list`}>{list.map((o) => <option key={o} value={o} />)}</datalist>}
+      {canAdd && <button type="button" className="absolute top-1/2 right-1.5 inline-flex h-7 -translate-y-1/2 items-center gap-1 rounded-sm bg-surface-3 px-2 text-xs font-semibold hover:bg-surface-2" onClick={() => void saver.add(kind!, v.trim())}><Plus aria-hidden className="size-3" />Add to list</button>}
+    </Field>
+  );
+}
+
+/** Equipment picked from Assets Inventory → Equipment. A value saved before stays shown. */
+function EquipmentPick({ f, k, label, ro, set, items, type }: { f: LogForm; k: ScalarKey; label: string; ro: boolean; set: Set; items: { value: string; label: string }[]; type: string }) {
+  const v = String(f[k] ?? '');
+  const all = v && !items.some((i) => i.value === v) ? [{ value: v, label: `${v} (not on the list)` }, ...items] : items;
+  return (
+    <Field id={`jl-${k}`} label={label} hint={!items.length ? <>No {type.toLowerCase()} on the list yet: add them in <Link className="underline" to="/operation/database?tab=equipment">Assets Inventory → Equipment</Link>.</> : undefined}>
+      <Select id={`jl-${k}`} className={inputClass} disabled={ro} value={v} onChange={(e) => set({ [k]: e.target.value } as Partial<LogForm>)}>
+        <option value="">—</option>
+        {all.map((i) => <option key={i.value} value={i.value}>{i.label}</option>)}
+      </Select>
     </Field>
   );
 }
 
 /** Two values side by side under one label: flowing (FL) and shut in (SI) pressures. */
-function Pair({ f, a, b, label, ro, set }: { f: LogForm; a: ScalarKey; b: ScalarKey; label: string; ro: boolean; set: Set }) {
+function Pair({ f, a, b, label, ro, set, locked }: { f: LogForm; a: ScalarKey; b: ScalarKey; label: string; ro: boolean; set: Set; locked?: Partial<Record<string, string>> }) {
   return (
     <div>
       <p className="label-caps mb-1.5 text-text-muted">{label}</p>
       <div className="grid grid-cols-2 gap-2">
-        {([[a, 'FL'], [b, 'SI']] as const).map(([k, l]) => (
-          <div key={k} className="relative">
-            <input aria-label={`${label} ${l === 'FL' ? 'flowing' : 'shut in'}`} className={cx(inputClass, 'pl-9 pr-10')} inputMode="decimal" disabled={ro} value={String(f[k] ?? '')} onChange={(e) => set({ [k]: e.target.value } as Partial<LogForm>)} />
-            <span aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-mono text-xs text-text-subtle">{l}</span>
-            <span aria-hidden className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-xs text-text-subtle">psi</span>
-          </div>
-        ))}
+        {([[a, 'FL'], [b, 'SI']] as const).map(([k, l]) => {
+          const lv = locked?.[k];
+          return (
+            <div key={k} className="relative">
+              <input aria-label={`${label} ${l === 'FL' ? 'flowing' : 'shut in'}`} title={lv ? 'From the job (SIWHP)' : undefined} className={cx(inputClass, 'pl-9 pr-10', lv && 'bg-surface-2')} inputMode="decimal" disabled={ro && !lv} readOnly={!!lv} value={lv ?? String(f[k] ?? '')} onChange={(e) => set({ [k]: e.target.value } as Partial<LogForm>)} />
+              <span aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-mono text-xs text-text-subtle">{l}</span>
+              <span aria-hidden className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-xs text-text-subtle">psi</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-export function HeaderCard({ f, ro, set }: { f: LogForm; ro: boolean; set: Set }) {
-  const t = (k: ScalarKey, label: string, o: { unit?: string; placeholder?: string } = {}) => <Text key={k} f={f} k={k} label={label} ro={ro} set={set} {...o} />;
+export function HeaderCard({ f, ro, set, ctx }: { f: LogForm; ro: boolean; set: Set; ctx: HeaderCtx }) {
+  const p = (k: ScalarKey, label: string, kind?: LogOptionKind, o: { unit?: string; placeholder?: string } = {}) => <Pick key={k} f={f} k={k} label={label} ro={ro} set={set} ctx={ctx} kind={kind} {...o} />;
+  const eq = ctx.options?.equipment ?? { gauges: [], pickups: [] };
+  const lockedN = Object.keys(ctx.locked).filter((k) => !k.startsWith('wire')).length;
   return (
     <Card className="mb-4 p-4">
-      <h2 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold">Header <span className="font-normal text-text-subtle">read from the job, can be changed</span></h2>
+      <h2 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold">Header <span className="font-normal text-text-subtle">{lockedN ? 'fields with a lock come from the job; change them on the job' : 'read from the job'} · the rest from the lists or typed</span></h2>
       <h3 className="label-caps mb-2 text-accent-text">Well</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {t('well', 'Well number')}
-        <Field id="jl-date" label="Date"><input id="jl-date" type="date" className={inputClass} disabled={ro} value={f.date} onChange={(e) => set({ date: e.target.value })} /></Field>
-        {t('jobType', 'Job type')}
-        {t('rig', 'Rig / rigless / site')}
-        {t('field', 'Field')}
-        {t('customer', 'Client')}
-        {t('ticket', 'Ticket no.')}
-        {t('wellType', 'Well type', { placeholder: 'Gas, oil, water…' })}
-        {t('tubingSize', 'Tubing size', { placeholder: '5 1/2"' })}
-        {t('whConnection', 'W/H connection')}
-        <Pair f={f} a="tubingFl" b="tubingSi" label="Tubing pressure" ro={ro} set={set} />
+        {p('well', 'Well number', 'well')}
+        {ctx.locked.date ? p('date', 'Date') : <Field id="jl-date" label="Date"><input id="jl-date" type="date" className={inputClass} disabled={ro} value={f.date} onChange={(e) => set({ date: e.target.value })} /></Field>}
+        {p('jobType', 'Job type', 'jobType')}
+        {p('rig', 'Rig / rigless / site', 'rig')}
+        {p('field', 'Field', 'field')}
+        {p('customer', 'Client', 'customer')}
+        {p('ticket', 'Ticket no.')}
+        {p('wellType', 'Well type', 'wellType')}
+        {p('tubingSize', 'Tubing size', 'tubingSize')}
+        {p('whConnection', 'W/H connection', 'whConnection')}
+        <Pair f={f} a="tubingFl" b="tubingSi" label="Tubing pressure" ro={ro} set={set} locked={ctx.locked} />
         <Pair f={f} a="casingFl" b="casingSi" label="Casing pressure" ro={ro} set={set} />
         <Pair f={f} a="arrFl" b="arrSi" label="Well status arrival" ro={ro} set={set} />
         <Pair f={f} a="depFl" b="depSi" label="Well status departure" ro={ro} set={set} />
-        {t('locationCond', 'Location condition', { placeholder: 'Good' })}
+        {p('locationCond', 'Location condition', 'locationCond')}
       </div>
       <h3 className="label-caps mt-4 mb-2 text-accent-text">Crew and equipment</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {t('supervisor', 'SLK supervisor', { placeholder: 'Name - ID / Name - ID' })}
-        {t('operator1', 'SLK operator', { placeholder: 'Name - ID' })}
-        {t('operator2', 'SLK operator', { placeholder: 'Name - ID' })}
-        {t('unit', 'SLK unit number')}
-        {t('pickup', 'Pick up number')}
-        {t('gauge1', 'Memory gauge S/N')}
-        {t('gauge2', 'Memory gauge S/N')}
+        {p('supervisor', 'SLK supervisor', 'supervisor', { placeholder: 'Name - ID' })}
+        {p('operator1', 'SLK operator', 'operator1', { placeholder: 'Name - ID' })}
+        {p('operator2', 'SLK operator', 'operator2', { placeholder: 'Name - ID' })}
+        {p('unit', 'SLK unit number', 'unit')}
+        <EquipmentPick f={f} k="pickup" label="Pick up number" ro={ro} set={set} items={eq.pickups} type="Pick ups" />
+        <EquipmentPick f={f} k="gauge1" label="Memory gauge S/N" ro={ro} set={set} items={eq.gauges} type="Memory gauges" />
+        <EquipmentPick f={f} k="gauge2" label="Memory gauge S/N" ro={ro} set={set} items={eq.gauges.filter((g) => g.value !== f.gauge1)} type="Memory gauges" />
       </div>
     </Card>
   );
 }
 
 /** The description's checklist: tick the usual wording to add it, untick to take it out; the text stays free to edit. */
-export function PhrasePicker({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+export function PhrasePicker({ value, onChange, label, ctx }: { value: string; onChange: (v: string) => void; label: string; ctx: HeaderCtx }) {
   const [open, setOpen] = useState(false);
+  const [manage, setManage] = useState(false);
   const [q, setQ] = useState('');
   const box = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLDivElement>(null);
@@ -99,7 +168,8 @@ export function PhrasePicker({ value, onChange, label }: { value: string; onChan
     document.addEventListener('mousedown', off); document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('mousedown', off); document.removeEventListener('keydown', esc); };
   }, [open]);
-  const groups = PHRASE_GROUPS.map((g) => ({ ...g, phrases: g.phrases.filter((p) => p.toLowerCase().includes(q.toLowerCase())) })).filter((g) => g.phrases.length);
+  const all = phraseGroups((ctx.options?.custom ?? []).filter((o) => o.kind === 'phrase'));
+  const groups = all.map((g) => ({ ...g, phrases: g.phrases.filter((p) => p.toLowerCase().includes(q.toLowerCase())) })).filter((g) => g.phrases.length);
   return (
     <div ref={box}>
       <div ref={btn}><Button size="sm" variant="ghost" aria-label={`Choose wording for ${label}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}><ListChecks aria-hidden className="size-4" /></Button></div>
@@ -121,25 +191,91 @@ export function PhrasePicker({ value, onChange, label }: { value: string; onChan
                 })}
               </fieldset>
             ))}
-            {!groups.length && <p className="px-1 py-2 text-xs text-text-muted">Nothing matches. Type it in the description instead.</p>}
+            {!groups.length && <p className="px-1 py-2 text-xs text-text-muted">{all.length ? 'Nothing matches. Type it in the description instead.' : 'No wording yet.'}</p>}
           </div>
           <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
-            <span className="text-xs text-text-subtle">Fill the ___ blanks in the description.</span>
+            {ctx.canEdit && ctx.options ? <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setManage(true); }}><Settings2 aria-hidden className="size-3.5" />Manage the list</Button>
+              : <span className="text-xs text-text-subtle">Fill the ___ blanks in the description.</span>}
             <Button size="sm" variant="secondary" onClick={() => setOpen(false)}><Check aria-hidden className="size-3.5" />Done</Button>
           </div>
         </div>
       )}
+      {manage && <ManageWording ctx={ctx} onClose={() => setManage(false)} />}
     </div>
   );
 }
 
-/** Job status, wire details, the BHA of each run and the note. */
-export function JobDetailsCard({ f, ro, set, toolBha }: { f: LogForm; ro: boolean; set: Set; toolBha: Bha[] }) {
-  const t = (k: ScalarKey, label: string, unit?: string) => <Text key={k} f={f} k={k} label={label} ro={ro} set={set} unit={unit} />;
+/** Add, change and remove the wording offered in the checklist, for everyone in the country. */
+function ManageWording({ ctx, onClose }: { ctx: HeaderCtx; onClose: () => void }) {
+  const saver = useOptionSaver(ctx);
+  const phrases = (ctx.options?.custom ?? []).filter((o) => o.kind === 'phrase');
+  const groups = phraseGroups(phrases).map((g) => g.group);
+  const [grp, setGrp] = useState(groups[0] ?? 'Other');
+  const [newGrp, setNewGrp] = useState('');
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState<{ id: string; value: string; grp: string } | null>(null);
+  const add = async () => { if (await saver.add('phrase', text.trim(), grp === '+' ? newGrp.trim() : grp)) { setText(''); if (grp === '+' && newGrp.trim()) { setGrp(newGrp.trim()); setNewGrp(''); } } };
+  return (
+    <Dialog title={`${LOG_OPTION_KINDS.phrase} · ${ctx.options?.country ?? ''}`} onClose={onClose} wide>
+      <p className="mb-3 text-sm text-text-muted">The checklist by each work description. Changes are for everyone in {ctx.options?.country}. Use ___ for a blank to fill in. Logs that already used a wording keep their text.</p>
+      {saver.error && <div className="mb-3"><Banner tone="danger">{saver.error}</Banner></div>}
+      <div className="mb-4 grid gap-2 rounded-md border border-border bg-surface-2 p-3 sm:grid-cols-[12rem_1fr_auto] sm:items-end">
+        <Field id="jl-ph-grp" label="Group">
+          <Select id="jl-ph-grp" className={inputClass} value={grp} onChange={(e) => setGrp(e.target.value)}>
+            {groups.map((g) => <option key={g} value={g}>{g}</option>)}
+            <option value="+">New group…</option>
+          </Select>
+        </Field>
+        <Field id="jl-ph-text" label="Wording"><input id="jl-ph-text" className={inputClass} value={text} placeholder="e.g. RIH W/ ___ AND SET AT ___ FT DF." onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && text.trim()) void add(); }} /></Field>
+        <Button variant="primary" disabled={!text.trim() || (grp === '+' && !newGrp.trim())} onClick={() => void add()}><Plus aria-hidden className="size-4" />Add</Button>
+        {grp === '+' && <div className="sm:col-span-3"><Field id="jl-ph-newgrp" label="New group name"><input id="jl-ph-newgrp" className={inputClass} value={newGrp} onChange={(e) => setNewGrp(e.target.value)} /></Field></div>}
+      </div>
+      {phraseGroups(phrases).map((g) => (
+        <section key={g.group} className="mb-3">
+          <h3 className="label-caps mb-1 text-accent-text">{g.group}</h3>
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {phrases.filter((o) => o.grp === g.group).map((o) => (
+              <li key={o.id} className="flex flex-wrap items-center gap-2 px-2 py-1.5 text-sm">
+                {editing?.id === o.id ? (
+                  <>
+                    <Select aria-label="Group" className={cx(inputClass, 'w-44')} value={editing.grp} onChange={(e) => setEditing({ ...editing, grp: e.target.value })}>
+                      {groups.map((x) => <option key={x} value={x}>{x}</option>)}
+                    </Select>
+                    <input aria-label="Wording" autoFocus className={cx(inputClass, 'min-w-48 flex-1')} value={editing.value} onChange={(e) => setEditing({ ...editing, value: e.target.value })} />
+                    <Button size="sm" variant="primary" disabled={!editing.value.trim()} onClick={async () => { if (await saver.change(o.id, { value: editing.value, grp: editing.grp })) setEditing(null); }}><Check aria-hidden className="size-3.5" />Save</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="min-w-0 flex-1">{o.value}</span>
+                    <Button size="sm" variant="ghost" aria-label={`Change ${o.value}`} onClick={() => setEditing({ id: o.id, value: o.value, grp: o.grp })}><Pencil aria-hidden className="size-3.5" /></Button>
+                    <Button size="sm" variant="ghost" className="text-danger" aria-label={`Remove ${o.value}`} onClick={() => { if (window.confirm(`Remove “${o.value}” from the list?`)) void saver.change(o.id, { active: false }); }}><Trash2 aria-hidden className="size-3.5" /></Button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {!phrases.length && <p className="text-sm text-text-muted">The list is empty. Add the first wording above.</p>}
+    </Dialog>
+  );
+}
+
+/** Job status, wire details (from the job), the BHA of each run and the note. */
+export function JobDetailsCard({ f, ro, set, toolBha, locked }: { f: LogForm; ro: boolean; set: Set; toolBha: Bha[]; locked: Partial<Record<JobField, string>> }) {
+  const t = (k: ScalarKey, label: string, unit?: string) => {
+    const lv = (locked as Record<string, string | undefined>)[k];
+    return (
+      <Field key={k} id={`jl-${k}`} label={label} unit={unit} hint={lv ? <span className="inline-flex items-center gap-1"><Lock aria-hidden className="size-3" />From the job</span> : undefined}>
+        <input id={`jl-${k}`} className={cx(inputClass, unit && 'pr-10', lv && 'bg-surface-2')} disabled={ro && !lv} readOnly={!!lv} value={lv ?? String(f[k] ?? '')} onChange={(e) => set({ [k]: e.target.value } as Partial<LogForm>)} />
+      </Field>
+    );
+  };
   const setBha = (i: number, patch: Partial<Bha>) => set({ bha: f.bha.map((b, j) => (j === i ? { ...b, ...patch } : b)) });
   const runsInLog = [...new Set(f.rows.map((r) => r.run).filter(Boolean))];
   const missing = runsInLog.filter((r) => !f.bha.some((b) => b.run === r));
-  const final = wireFinalOf(f);
+  const final = wireFinalOf({ ...f, ...locked });
   return (
     <Card className="mb-4 p-4">
       <h2 className="mb-3 text-sm font-semibold">Job status, wire and BHA</h2>
@@ -153,7 +289,7 @@ export function JobDetailsCard({ f, ro, set, toolBha }: { f: LogForm; ro: boolea
           ))}
         </div>
       </fieldset>
-      <h3 className="label-caps mb-2 text-accent-text">Wire details</h3>
+      <h3 className="label-caps mb-2 flex flex-wrap items-center gap-2 text-accent-text">Wire details <span className="font-sans text-xs font-normal tracking-normal text-text-subtle normal-case">the wire on the job (WIREGUARD), the max pull and the wire cut from Execution</span></h3>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {t('wireType', 'Type')}
         {t('wireSize', 'Size')}

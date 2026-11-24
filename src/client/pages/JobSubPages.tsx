@@ -73,7 +73,7 @@ export function JobLogBanner({ jobId }: { jobId: string }) {
         {log?.sentAt && <span className="label-caps rounded-pill bg-info-subtle px-2 py-0.5 text-info">Emailed</span>}
         <span className="ml-auto"><Link className={openBtn} to={`/operation/jobs/${jobId}/log`}>{log ? 'Open job log' : 'Start job log'}</Link></span>
       </div>
-      <p className="mt-1 text-xs text-text-muted">{log ? `Last saved ${when(log.savedAt)}${log.savedBy ? ` by ${log.savedBy}` : ''}. Times, runs and depths below are read from it.` : 'The header, every event with its run and depth, crew hours and both signatures, kept on the device with no signal. Times, runs and depths are read from it.'}</p>
+      <p className="mt-1 text-xs text-text-muted">{log ? `Last saved ${when(log.savedAt)}${log.savedBy ? ` by ${log.savedBy}` : ''}. The header, the wire and the crew come from the job above; times, runs and depths are read back from the log.` : 'Fill the times, runs and depths above first: the log’s header, wire and crew come from the job. Every event with its run and depth, crew hours and both signatures, kept on the device with no signal.'}</p>
     </div>
   );
 }

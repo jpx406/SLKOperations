@@ -4,6 +4,7 @@ import { canEditStage } from '../shared/stages';
 import type { Job } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { getJob } from './jobs';
+import { logOptionsFor } from './logOptions';
 
 // The Job log · Sequence of Events (6z.51): one form per job, every save a new version. A save names the version it
 // started from; when someone saved meanwhile, the answer is "conflict" with their copy, and the page merges and
@@ -35,6 +36,7 @@ async function jobFacts(env: Env, job: Job): Promise<JobForLog> {
     ticket: job.ticket_no, well: job.well, customer: job.location, jobType: (job.services ?? []).join(', '), rig: job.rig, startDate: job.start_date,
     engineers: crew.results.map((r) => r.full_name),
     field: job.field, wellType: job.well_type, whConnection: job.wellhead_connection, unit: job.unit_number, siwhp: n(job.siwhp_psi),
+    tubingSize: /tubing/i.test(job.target_casing_type ?? '') ? job.target_casing_od : null,
     supervisor: sup.map(who).join(' / ') || null, operator1: ops[0] ? who(ops[0]) : null, operator2: ops.slice(1).map(who).join(' / ') || null,
     wireType: wire?.wire_grade ?? null, wireSize: wire?.wire_size ? `${wire.wire_size}"` : null, wireInitial: n(wire?.remaining_length_ft), wireCut: n(job.wire_cut_ft), wireMaxPull: n(job.max_pull_lb),
     bha,
@@ -48,12 +50,13 @@ jobLogs.get('/:jobId', async (c) => {
   const user = c.get('user');
   const job = await getJob(c.env, user, c.req.param('jobId'));
   if (!job) return c.json({ error: 'Job not found' }, 404);
-  const [row, facts, crewNames] = await Promise.all([
+  const [row, facts, crewNames, options] = await Promise.all([
     load(c.env, job.id), jobFacts(c.env, job),
     c.env.DB.prepare(`SELECT DISTINCT e.full_name FROM job_crew c JOIN employees e ON e.id = c.employee_id WHERE c.job_id = ? ORDER BY e.full_name`).bind(job.id).all<{ full_name: string }>(),
+    logOptionsFor(c.env, job.country),
   ]);
   return c.json({
-    job: facts, crew: crewNames.results.map((r) => r.full_name), canEdit: mayEdit(user),
+    job: facts, crew: crewNames.results.map((r) => r.full_name), canEdit: mayEdit(user), options,
     log: row ? { id: row.id, version: row.current_version, form: coerceForm(JSON.parse(row.form), facts), createdBy: row.created_by, savedBy: row.saved_by, savedAt: row.saved_at, sentBy: row.sent_by, sentAt: row.sent_at, sentVersion: row.sent_version } : null,
   });
 });

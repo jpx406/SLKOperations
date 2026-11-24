@@ -9,6 +9,7 @@ import { importWgUsers, wgUserActive } from './wgUsers';
 import { syncPeople } from './people';
 import { aiAdminGet, aiAdminPut, aiChat, aiStatus, assistantChat } from './ai';
 import { database } from './database';
+import { logOptions } from './logOptions';
 import { diagrams } from './diagrams';
 import { emf } from './emf';
 import { failureRoster } from './failureRoster';
@@ -251,6 +252,7 @@ app.route('/wires', wires);
 app.route('/winch', winch);
 app.route('/utilities', utilities);
 app.route('/joblog', jobLogs);
+app.route('/log-options', logOptions);
 app.route('/knowledge', knowledge);
 // the Competency module's storage (6z.34)
 app.route('/competency', competency);

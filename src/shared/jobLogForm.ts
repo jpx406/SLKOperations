@@ -71,10 +71,73 @@ export const newRow = (o: Partial<LogRow> = {}): LogRow => ({ id: uid(), date: '
 /** What the job gives the header. */
 export interface JobForLog {
   ticket?: string | null; well?: string | null; customer?: string | null; jobType?: string | null; rig?: string | null; startDate?: string | null; engineers?: string[];
-  field?: string | null; wellType?: string | null; whConnection?: string | null; unit?: string | null; siwhp?: string | null;
+  field?: string | null; wellType?: string | null; whConnection?: string | null; unit?: string | null; siwhp?: string | null; tubingSize?: string | null;
   supervisor?: string | null; operator1?: string | null; operator2?: string | null;
   wireType?: string | null; wireSize?: string | null; wireInitial?: string | null; wireCut?: string | null; wireMaxPull?: string | null;
   bha?: Bha[];
+}
+
+// ---- what the job fills (6z.53): a field the job has a value for is read from the job and not typed on the log
+
+export const JOB_FIELDS = {
+  ticket: 'ticket', well: 'well', customer: 'customer', jobType: 'jobType', rig: 'rig', date: 'startDate', field: 'field', wellType: 'wellType',
+  whConnection: 'whConnection', unit: 'unit', tubingSize: 'tubingSize', tubingSi: 'siwhp', supervisor: 'supervisor', operator1: 'operator1', operator2: 'operator2',
+  wireType: 'wireType', wireSize: 'wireSize', wireInitial: 'wireInitial', wireCut: 'wireCut', wireMaxPull: 'wireMaxPull',
+} as const satisfies Partial<Record<string, keyof JobForLog>>;
+export type JobField = keyof typeof JOB_FIELDS;
+
+/** The values the job gives the log: only fields the job has a value for. */
+export function jobValues(job: JobForLog | null | undefined): Partial<Record<JobField, string>> {
+  const out: Partial<Record<JobField, string>> = {};
+  if (!job) return out;
+  for (const [k, src] of Object.entries(JOB_FIELDS) as [JobField, keyof JobForLog][]) {
+    const v = job[src];
+    const t = typeof v === 'string' ? (k === 'date' ? v.slice(0, 10) : v).trim() : '';
+    if (t) out[k] = t;
+  }
+  return out;
+}
+/** The form with the job's values in place of what was saved. */
+export const applyJob = <F extends LogForm>(f: F, job: JobForLog | null | undefined): F => ({ ...f, ...jobValues(job) });
+
+/** Setting a line's To also makes it the next line's From (`link` false: only this line, as when a picked To starts at the From). */
+export function setRowTo(rows: LogRow[], id: string, to: string, link = true): LogRow[] {
+  const i = rows.findIndex((r) => r.id === id);
+  if (i < 0) return rows;
+  return rows.map((r, j) => (j === i ? { ...r, to } : link && j === i + 1 && timeHM(to) ? { ...r, time: timeHM(to) } : r));
+}
+
+// ---- the job log's pick lists (6z.53): kept per country, people with the job's edit right add, change and remove
+
+export const LOG_OPTION_KINDS = {
+  phrase: 'Work description wording', well: 'Well number', jobType: 'Job type', rig: 'Rig / rigless / site', field: 'Field', customer: 'Client',
+  wellType: 'Well type', tubingSize: 'Tubing size', whConnection: 'W/H connection', unit: 'SLK unit', locationCond: 'Location condition',
+  supervisor: 'SLK supervisor', operator1: 'SLK operator', operator2: 'SLK operator', wireType: 'Wire type', wireSize: 'Wire size',
+} as const;
+export type LogOptionKind = keyof typeof LOG_OPTION_KINDS;
+/** The usual values offered before anyone adds their own. */
+export const LOG_OPTION_DEFAULTS: Partial<Record<LogOptionKind, string[]>> = {
+  tubingSize: ['2 3/8"', '2 7/8"', '3 1/2"', '4 1/2"', '5 1/2"', '7"'],
+  whConnection: ['2 9/16" 5K', '3 1/16" 5K', '3 1/16" 10K', '4 1/16" 5K', '4 1/16" 10K', '5 1/8" 5K', '7 1/16" 5K'],
+  locationCond: ['Good', 'Fair', 'Poor', 'Wet / muddy', 'Sandy'],
+  wellType: ['Oil', 'Gas', 'Water', 'Injector', 'Observation'],
+  wireType: ['Carbon steel', 'Stainless steel 316', 'Supa 75', 'Braided line'],
+  wireSize: ['0.092"', '0.108"', '0.125"', '0.140"', '0.160"', '3/16"'],
+};
+export interface LogOption { id: string; kind: LogOptionKind; grp: string; value: string }
+/** A value for a pick list: one line, trimmed; the wording may be longer. */
+export function cleanLogOption(kind: unknown, grp: unknown, value: unknown): { kind: LogOptionKind; grp: string; value: string } | { error: string } {
+  if (typeof kind !== 'string' || !(kind in LOG_OPTION_KINDS)) return { error: 'Unknown list' };
+  const v = String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, kind === 'phrase' ? 400 : 80);
+  if (!v) return { error: 'Type a value' };
+  const g = kind === 'phrase' ? String(grp ?? '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Other' : '';
+  return { kind: kind as LogOptionKind, grp: g, value: v };
+}
+/** The wording grouped for the checklist, in the order the groups first appear. */
+export function phraseGroups(opts: { grp: string; value: string }[]): { group: string; phrases: string[] }[] {
+  const out: { group: string; phrases: string[] }[] = [];
+  for (const o of opts) { let g = out.find((x) => x.group === o.grp); if (!g) out.push(g = { group: o.grp, phrases: [] }); g.phrases.push(o.value); }
+  return out;
 }
 
 // ---- the lines every log must have
@@ -291,7 +354,7 @@ const sigOf = (v: unknown): Sig | null => {
   return img || text ? { img, text, by: str(s.by).slice(0, 120), at: str(s.at).slice(0, 40) } : null;
 };
 
-/** Anything read back from the server, the device or a version, made into a whole form. Missing fields come from the job. */
+/** Anything read back from the server, the device or a version, made into a whole form. Missing fields, and every field the job has a value for, come from the job. */
 export function coerceForm(f: unknown, job?: JobForLog): LogForm {
   const base = newForm(job);
   const x = (f && typeof f === 'object' ? f : {}) as Record<string, unknown>;
@@ -305,7 +368,7 @@ export function coerceForm(f: unknown, job?: JobForLog): LogForm {
   out.engNames = Array.isArray(x.engNames) ? x.engNames.map(str).filter(Boolean).slice(0, 20) : x.engNames ? str(x.engNames).split(/\s*[,/]\s*/).filter(Boolean) : base.engNames;
   out.engSig = sigOf(x.engSig);
   out.fmSig = sigOf(x.fmSig);
-  return out;
+  return job ? applyJob(out, job) : out;
 }
 
 /** BHA lines from the job's tool strings: the part names of each run joined with " + ". */

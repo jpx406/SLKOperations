@@ -115,6 +115,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   // the Job log form (6z.51): saving also needs the Execution stage, checked in the route
   { method: 'PUT', re: /^\/api\/joblog\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/joblog\/[^/]+\/sent$/, menu: 'jobs', action: 'view' },
+  // the job log's pick lists (6z.53); removing an entry is a PATCH that switches it off
+  { method: 'POST', re: /^\/api\/log-options$/, menu: 'jobs', action: 'edit' },
+  { method: 'PATCH', re: /^\/api\/log-options\/[^/]+$/, menu: 'jobs', action: 'edit' },
   // Utilities projects (6z.47): deleting a project is checked in the route (whoever made it, the delete right or an admin)
   { method: 'POST', re: /^\/api\/utilities(\/[^/]+\/(duplicate|files|pdf))?$/, menu: 'utilities', action: 'edit' },
   { method: 'PUT', re: /^\/api\/utilities\/[^/]+(\/state)?$/, menu: 'utilities', action: 'edit' },
@@ -163,8 +166,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   // asking the agent only reads; its tools go through READ_RULES with the asker's own session
   { method: 'POST', re: /^\/api\/ai\/chat$/, menu: 'ai_agent', action: 'view' },
   { method: 'POST', re: /^\/api\/ai\/assistant$/, menu: 'ai_assistant', action: 'view' },
-  { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists|parts)$/, menu: 'database', action: 'edit' },
-  { method: 'PATCH', re: /^\/api\/database\/(pce|grease-panels|lists|parts)\/[^/]+$/, menu: 'database', action: 'edit' },
+  { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists|parts|equipment|equipment-types)$/, menu: 'database', action: 'edit' },
+  { method: 'PATCH', re: /^\/api\/database\/(pce|grease-panels|lists|parts|equipment|equipment-types)\/[^/]+$/, menu: 'database', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/database\/(pce|grease-panels|parts)\/[^/]+$/, menu: 'database', action: 'delete' },
   // rig up and tool string diagrams (Preparation); who may edit or review is checked in the route
   { method: 'PUT', re: /^\/api\/diagrams\/[^/]+\/(rigup|toolstring)\/\d+$/, menu: 'jobs', action: 'edit' },
