@@ -1,7 +1,7 @@
 // Attachments (R2): files kept with a job (photos, signed ticket, job log scan, the uploaded JRA form …) or with a
 // Knowledge Hub entry. Only document and image types are accepted, so nothing uploaded can run in the browser.
 
-export const ATTACH_ENTITIES = { job: 'Job', knowledge: 'Knowledge Hub entry' } as const;
+export const ATTACH_ENTITIES = { job: 'Job', knowledge: 'Knowledge Hub entry', opportunity: 'Opportunity' } as const;
 export type AttachEntity = keyof typeof ATTACH_ENTITIES;
 export const isAttachEntity = (v: unknown): v is AttachEntity => typeof v === 'string' && v in ATTACH_ENTITIES;
 

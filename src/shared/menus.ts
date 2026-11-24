@@ -16,7 +16,7 @@ export const NAV: Group[] = [
       // 6z.54: the Risk Tool and Crew Check out of the Competency Framework
       { key: 'job_risk_profile', label: 'Job Risk Profile', path: '/operation/job-risk-profile', screen: 'S08b', milestone: '6' },
       { key: 'pre_job_notes', label: 'Pre-Job Notes', path: '/operation/pre-job-notes', screen: 'S09', milestone: '3' },
-      { key: 'quick_plan', label: 'Quick Plan', path: '/operation/quick-plan', screen: 'S25', milestone: '3' },
+      { key: 'quick_plan', label: 'Opportunities', path: '/operation/opportunities', screen: 'S25', milestone: '3' },
     ],
   },
   {

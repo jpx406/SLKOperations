@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { checkCard, isColumn, reorder, type QpCard } from '../shared/quickPlan';
+import { checkCard, isColumn, readServices, reorder, type QpCard, type QpFields } from '../shared/quickPlan';
 import type { AppBindings, AuthedUser, Env } from './env';
 
-// Quick Plan (S25). Cards are working notes for early scheduling talks, kept per country. Turning one into a job
-// creates the job through the normal job route (with its checks) and then links the card here.
+// Opportunities (S25, Quick Plan until 6z.55). Cards are working notes for early scheduling talks, kept per country.
+// Turning one into a job creates the job through the normal job route (with its checks) and then links the card here.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
   env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
@@ -11,19 +11,45 @@ const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: 
 
 export const quickPlan = new Hono<AppBindings>();
 
+/** The lists the card form picks from, for the person's countries. */
+async function options(env: Env, countries: string[]) {
+  const inC = 'country IN (SELECT value FROM json_each(?))';
+  const cs = JSON.stringify(countries);
+  const [services, locations, fields, logOpts, wells] = await env.DB.batch([
+    env.DB.prepare(`SELECT DISTINCT name FROM wg_job_types WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(cs),
+    env.DB.prepare(`SELECT DISTINCT name FROM wg_job_locations WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(cs),
+    env.DB.prepare(`SELECT DISTINCT name FROM wg_fields WHERE wg_active = 1 AND ${inC} ORDER BY name`).bind(cs),
+    env.DB.prepare(`SELECT kind, value AS name FROM job_log_options WHERE active = 1 AND kind IN ('customer', 'field', 'well') AND ${inC} ORDER BY sort, value`).bind(cs),
+    env.DB.prepare(`SELECT DISTINCT well AS name FROM jobs WHERE deleted_at IS NULL AND well IS NOT NULL AND well <> '' AND ${inC} ORDER BY well LIMIT 500`).bind(cs),
+  ]);
+  const names = (r: D1Result) => (r.results as { name: string }[]).map((x) => x.name);
+  const added = (kind: string) => (logOpts.results as { kind: string; name: string }[]).filter((x) => x.kind === kind).map((x) => x.name);
+  const merge = (...lists: string[][]) => [...new Set(lists.flat())].sort((a, b) => a.localeCompare(b));
+  return { services: names(services), clients: merge(names(locations), added('customer')), fields: merge(names(fields), added('field')), wells: merge(names(wells), added('well')) };
+}
+
 quickPlan.get('/', async (c) => {
   const user = c.get('user');
-  const { results } = await c.env.DB.prepare(
-    `SELECT q.*, j.ticket_no FROM quick_plan_cards q LEFT JOIN jobs j ON j.id = q.promoted_job_id
-     WHERE q.country IN (SELECT value FROM json_each(?)) ORDER BY q.column_key, q.sort, q.created_at`,
-  ).bind(JSON.stringify(user.countries)).all<QpCard>();
-  return c.json({ cards: results, canEdit: !!user.menus.quick_plan?.edit, canCreateJobs: !!user.menus.jobs?.edit });
+  const cs = JSON.stringify(user.countries);
+  const [{ results }, opts] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT q.*, j.ticket_no, coalesce(r.full_name, q.created_by) AS created_by_name,
+         (SELECT count(*) FROM attachments a WHERE a.entity_type = 'opportunity' AND a.entity_id = q.id AND a.deleted_at IS NULL) AS files
+       FROM quick_plan_cards q LEFT JOIN jobs j ON j.id = q.promoted_job_id LEFT JOIN user_roles r ON r.username = q.created_by
+       WHERE q.country IN (SELECT value FROM json_each(?)) ORDER BY q.column_key, q.sort, q.created_at`,
+    ).bind(cs).all<QpCard>(),
+    options(c.env, user.countries),
+  ]);
+  const cards = results.map((r) => ({ ...r, services: readServices(r.services) }));
+  return c.json({ cards, options: opts, canEdit: !!user.menus.quick_plan?.edit, canCreateJobs: !!user.menus.jobs?.edit });
 });
 
 async function own(c: { env: Env; get: (k: 'user') => AuthedUser }, id: string) {
   const r = await c.env.DB.prepare('SELECT * FROM quick_plan_cards WHERE id = ?').bind(id).first<QpCard>();
   return r && c.get('user').countries.includes(r.country) ? r : null;
 }
+
+const values = (f: QpFields) => [f.title, f.notes, f.target_date, JSON.stringify(f.services), f.client, f.field, f.well, f.temperature_f, f.pressure_psi];
 
 quickPlan.post('/', async (c) => {
   const user = c.get('user');
@@ -35,8 +61,9 @@ quickPlan.post('/', async (c) => {
   const id = crypto.randomUUID();
   const last = await c.env.DB.prepare(`SELECT coalesce(max(sort), -1) AS s FROM quick_plan_cards WHERE country = ? AND column_key = 'idea'`).bind(country).first<{ s: number }>();
   await c.env.DB.batch([
-    c.env.DB.prepare('INSERT INTO quick_plan_cards (id, country, title, notes, target_date, unit_number, column_key, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, country, r.card.title, r.card.notes, r.card.target_date, r.card.unit_number, 'idea', (last?.s ?? -1) + 1, user.username),
+    c.env.DB.prepare(`INSERT INTO quick_plan_cards (id, country, title, notes, target_date, services, client, field, well, temperature_f, pressure_psi, column_key, sort, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, country, ...values(r.card), 'idea', (last?.s ?? -1) + 1, user.username),
     audit(c.env, user, 'create', id, `${country}: ${r.card.title}`),
   ]);
   return c.json({ id }, 201);
@@ -49,7 +76,8 @@ quickPlan.put('/:id', async (c) => {
   const r = checkCard(await c.req.json().catch(() => ({})));
   if ('error' in r) return c.json({ error: r.error }, 400);
   await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE quick_plan_cards SET title = ?, notes = ?, target_date = ?, unit_number = ? WHERE id = ?').bind(r.card.title, r.card.notes, r.card.target_date, r.card.unit_number, cur.id),
+    c.env.DB.prepare('UPDATE quick_plan_cards SET title = ?, notes = ?, target_date = ?, services = ?, client = ?, field = ?, well = ?, temperature_f = ?, pressure_psi = ? WHERE id = ?')
+      .bind(...values(r.card), cur.id),
     audit(c.env, user, 'update', cur.id, r.card.title),
   ]);
   return c.json({ ok: true });

@@ -70,7 +70,7 @@ export function FilterBar({ optionsPath, withStatus = true, variant = 'row', dim
 }
 
 /** A dropdown of checkboxes. Nothing ticked means "all". */
-export function MultiSelect({ label, options, value, onChange, stacked, emptyText = 'All' }: { label: string; options: Option[]; value: string[]; onChange: (v: string[]) => void; stacked?: boolean; emptyText?: string }) {
+export function MultiSelect({ label, options, value, onChange, stacked, emptyText = 'All', clearText = 'Show all', noOptionsText = 'No values in your jobs yet.' }: { label: string; options: Option[]; value: string[]; onChange: (v: string[]) => void; stacked?: boolean; emptyText?: string; clearText?: string; noOptionsText?: string }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const box = useRef<HTMLDivElement>(null);
@@ -85,7 +85,7 @@ export function MultiSelect({ label, options, value, onChange, stacked, emptyTex
   const summary = !value.length ? emptyText : value.length === 1 ? options.find((o) => o.value === value[0])?.label ?? value[0] : `${value.length} selected`;
   const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   return (
-    <div ref={box} className="relative" onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); } }}>
+    <div ref={box} className="relative" onKeyDown={(e) => { if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); setOpen(false); } }}>
       {stacked ? (
         <>
           <span id={`${id}-l`} className="label-caps mb-1 block text-text-muted">{label}</span>
@@ -101,9 +101,9 @@ export function MultiSelect({ label, options, value, onChange, stacked, emptyTex
         </button>
       )}
       {open && (
-        <div id={id} role="group" aria-label={label} className={cx('absolute left-0 z-40 w-64 rounded-md border border-border bg-surface p-2 shadow-pop', stacked ? 'top-full mt-1' : 'top-9')}>
+        <div id={id} role="group" aria-label={label} className={cx('absolute left-0 z-40 rounded-md border border-border bg-surface p-2 shadow-pop', stacked ? 'top-full mt-1 w-full min-w-64' : 'top-9 w-64')}>
           {options.length > 0 && <input aria-label={`Search ${label.toLowerCase()}`} autoFocus className={cx(inputClass, 'mb-2 h-(--layout-control-sm)')} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />}
-          {!options.length && <p className="px-1 py-2 text-xs text-text-subtle">No values in your jobs yet.</p>}
+          {!options.length && <p className="px-1 py-2 text-xs text-text-subtle">{noOptionsText}</p>}
           <ul className="max-h-64 overflow-y-auto">
             {shown.map((o) => (
               <li key={o.value}>
@@ -115,7 +115,7 @@ export function MultiSelect({ label, options, value, onChange, stacked, emptyTex
               </li>
             ))}
           </ul>
-          {value.length > 0 && <Button size="sm" variant="ghost" className="mt-1 w-full" onClick={() => onChange([])}>Show all</Button>}
+          {value.length > 0 && <Button size="sm" variant="ghost" className="mt-1 w-full" onClick={() => onChange([])}>{clearText}</Button>}
         </div>
       )}
     </div>

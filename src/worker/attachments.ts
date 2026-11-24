@@ -5,7 +5,7 @@ import type { AppBindings, AuthedUser, Env } from './env';
 // Attachments in R2. Access follows the record: a job's files need the jobs tab (to upload or remove, its edit right),
 // a Knowledge Hub entry's need the knowledge_hub tab, and both stay inside the person's countries.
 
-const MENU: Record<AttachEntity, string> = { job: 'jobs', knowledge: 'knowledge_hub' };
+const MENU: Record<AttachEntity, string> = { job: 'jobs', knowledge: 'knowledge_hub', opportunity: 'quick_plan' };
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
   env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
@@ -15,7 +15,9 @@ const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: 
 async function recordCountry(env: Env, user: AuthedUser, entity: AttachEntity, id: string): Promise<string | null> {
   const row = entity === 'job'
     ? await env.DB.prepare('SELECT country FROM jobs WHERE id = ? AND deleted_at IS NULL').bind(id).first<{ country: string }>()
-    : await env.DB.prepare('SELECT country FROM knowledge_docs WHERE id = ? AND retired_at IS NULL').bind(id).first<{ country: string }>();
+    : entity === 'opportunity'
+      ? await env.DB.prepare('SELECT country FROM quick_plan_cards WHERE id = ?').bind(id).first<{ country: string }>()
+      : await env.DB.prepare('SELECT country FROM knowledge_docs WHERE id = ? AND retired_at IS NULL').bind(id).first<{ country: string }>();
   // the Knowledge Hub is one library for every country (and Global); job files stay inside the person's countries
   return row && (entity === 'knowledge' || user.countries.includes(row.country)) ? row.country : null;
 }

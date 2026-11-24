@@ -50,7 +50,7 @@ watchPreloadErrors();
 // the winch analysis window (6z.41) opens on its own, without the app around it
 const WinchWindow = lazy(lazyRetry(() => import('./pages/winch/WinchWindow')));
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/job-risk-profile', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/career', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/quick-plan', '/utilities/rig-up', '/utilities/tool-string', '/utilities/winch']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/job-risk-profile', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/career', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/opportunities', '/utilities/rig-up', '/utilities/tool-string', '/utilities/winch']);
 
 /** Sends an old address to the page's new one, keeping its filters (?severity=high ...). */
 function MovedTo({ path }: { path: string }) {
@@ -123,7 +123,8 @@ const router = createBrowserRouter([
       { path: 'admin/companies', element: <AdminCompanies /> },
       { path: 'admin/ai-agent', element: <AiAgent /> },
       { path: 'knowledge', element: <KnowledgeHub /> },
-      { path: 'operation/quick-plan', element: <QuickPlan /> },
+      { path: 'operation/opportunities', element: <QuickPlan /> },
+      { path: 'operation/quick-plan', element: <Navigate to="/operation/opportunities" replace /> },
       ...NAV.flatMap((g) => g.pages).filter((p) => !BUILT.has(p.path)).map((p) => ({ path: p.path.slice(1), element: <Stub /> })),
       { path: '*', element: <Stub /> },
     ],

@@ -41,7 +41,7 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
     qc.invalidateQueries({ queryKey: ['attachments', entity, id] });
   };
   const remove = async (f: FileRow) => {
-    if (!window.confirm(`Remove “${f.file_name}”? It is hidden from the job; the audit log keeps a record.`)) return;
+    if (!window.confirm(`Remove “${f.file_name}”? It is hidden here; the audit log keeps a record.`)) return;
     try { await api(`${base}/${f.id}`, { method: 'DELETE' }); qc.invalidateQueries({ queryKey: ['attachments', entity, id] }); }
     catch (e) { setErrors([(e as ApiError).message]); }
   };

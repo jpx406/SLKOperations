@@ -134,6 +134,8 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'DELETE', re: /^\/api\/attachments\/job\/[^/]+\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/attachments\/knowledge\/[^/]+$/, menu: 'knowledge_hub', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/attachments\/knowledge\/[^/]+\/[^/]+$/, menu: 'knowledge_hub', action: 'edit' },
+  { method: 'POST', re: /^\/api\/attachments\/opportunity\/[^/]+$/, menu: 'quick_plan', action: 'edit' },
+  { method: 'DELETE', re: /^\/api\/attachments\/opportunity\/[^/]+\/[^/]+$/, menu: 'quick_plan', action: 'edit' },
   { method: 'POST', re: /^\/api\/quick-plan$/, menu: 'quick_plan', action: 'edit' },
   { method: 'PUT', re: /^\/api\/quick-plan\/[^/]+$/, menu: 'quick_plan', action: 'edit' },
   { method: 'POST', re: /^\/api\/quick-plan\/[^/]+\/(move|promote)$/, menu: 'quick_plan', action: 'edit' },
@@ -270,6 +272,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/competency\/me$/, menus: 'any' },
   { re: /^\/api\/attachments\/job\/[^/]+(\/[^/]+)?$/, menus: ['jobs'] },
   { re: /^\/api\/attachments\/knowledge\/[^/]+(\/[^/]+)?$/, menus: ['knowledge_hub'] },
+  { re: /^\/api\/attachments\/opportunity\/[^/]+(\/[^/]+)?$/, menus: ['quick_plan'] },
   { re: /^\/api\/signatures\/(jra|bonus)\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/signatures\/attendance\/[^/]+$/, menus: ['attendance'] },
 ];
