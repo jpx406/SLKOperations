@@ -11,6 +11,7 @@ import { UtilityList, UtilityProject } from './pages/Utilities';
 import { JobBoard } from './pages/JobBoard';
 import { JobEditor } from './pages/JobEditor';
 import { JobLog } from './pages/JobLog';
+import { JobRiskProfile } from './pages/JobRiskProfile';
 import { EightMinFactsEditor, EightMinFactsList } from './pages/EightMinFacts';
 import { FailureRoster } from './pages/FailureRoster';
 import { NptAnalysis, Statistics } from './pages/Statistics';
@@ -49,7 +50,7 @@ watchPreloadErrors();
 // the winch analysis window (6z.41) opens on its own, without the app around it
 const WinchWindow = lazy(lazyRetry(() => import('./pages/winch/WinchWindow')));
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/career', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/quick-plan', '/utilities/rig-up', '/utilities/tool-string', '/utilities/winch']);
+const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/job-risk-profile', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/career', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/quick-plan', '/utilities/rig-up', '/utilities/tool-string', '/utilities/winch']);
 
 /** Sends an old address to the page's new one, keeping its filters (?severity=high ...). */
 function MovedTo({ path }: { path: string }) {
@@ -83,6 +84,7 @@ const router = createBrowserRouter([
       { path: 'operation/pre-job-notes/print', element: <PreJobNotesPrint /> },
       { path: 'operation/pre-job-notes/:id', element: <PreJobNoteEditor /> },
       { path: 'operation/job-log', element: <JobLog /> },
+      { path: 'operation/job-risk-profile', element: <JobRiskProfile /> },
       { path: 'operation/8-min-facts', element: <EightMinFactsList /> },
       { path: 'operation/8-min-facts/:id', element: <EightMinFactsEditor /> },
       { path: 'operation/failure-roster', element: <FailureRoster /> },

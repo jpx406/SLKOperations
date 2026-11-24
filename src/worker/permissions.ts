@@ -14,6 +14,8 @@ export const MENU_KEYS = [
   'career_development',
   // Utilities (6z.47): the rig up, tool string and winch tools used on their own, without a job
   'utilities',
+  // Job Risk Profile (6z.54): the Risk Tool and Crew Check out of Competency, under Operations
+  'job_risk_profile',
 ] as const;
 const STAGE_KEYS = ['job_design', 'job_preparation', 'job_execution', 'job_closure'];
 
@@ -260,8 +262,10 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/knowledge\/manuals\/files\/[^/]+$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/knowledge\/settings\/copies\/[^/]+\/template$/, menus: ['knowledge_hub'] },
   { re: /^\/api\/quick-plan$/, menus: ['quick_plan'] },
-  { re: /^\/api\/competency\/(kv|kv-list|slk-seed)$/, menus: ['competency', 'career_development'] },
-  { re: /^\/api\/competency\/users$/, menus: ['users', 'competency', 'career_development'] },
+  { re: /^\/api\/competency\/(kv|kv-list)$/, menus: ['competency', 'career_development'] },
+  { re: /^\/api\/competency\/slk-seed$/, menus: ['competency', 'career_development', 'job_risk_profile'] },
+  { re: /^\/api\/competency\/risk-data$/, menus: ['competency', 'job_risk_profile'] },
+  { re: /^\/api\/competency\/users$/, menus: ['users', 'competency', 'career_development', 'job_risk_profile'] },
   // a person's own Competency profile, shown in the Knowledge Hub header too
   { re: /^\/api\/competency\/me$/, menus: 'any' },
   { re: /^\/api\/attachments\/job\/[^/]+(\/[^/]+)?$/, menus: ['jobs'] },

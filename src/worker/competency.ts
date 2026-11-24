@@ -113,6 +113,12 @@ competency.delete('/kv', async (c) => {
   return c.json({ key, deleted: true, shared });
 });
 
+/** The team's Competency data, read only, for Operations → Job Risk Profile (6z.54): null when nobody saved any yet. */
+competency.get('/risk-data', async (c) => {
+  const row = await c.env.DB.prepare('SELECT value, r2_key FROM competency_kv WHERE key = ? AND owner = ?').bind('nesr_wl_competency_team_v1', '').first<Row>();
+  return c.json({ value: await readValue(c.env, row) });
+});
+
 /**
  * What a new Competency dataset starts from: SLK's own active people (their WIREGUARD username as the ID, so
  * the person signed in finds their own record), the slickline services and their domains, and the countries.

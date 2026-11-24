@@ -24,3 +24,29 @@ export interface CompetencyHost {
 
 declare function App(props: { host?: CompetencyHost }): ReactElement;
 export default App;
+
+/** What Operations → Job Risk Profile reads from the module (6z.54): the risk rules, the dataset's shape and how
+ *  the proficiency figures are worked out. The state and figures are the module's own untyped objects. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
+export declare const _risk: {
+  STORE_KEY: string;
+  EMPTY: Any;
+  LEVEL_LABEL: string[];
+  L: { shift: string[] } & Record<string, Any[]>;
+  ZONES: Record<string, 'BLUE' | 'GREEN' | 'YELLOW' | 'RED' | 'BLACK'>;
+  ZONE_PL: Record<string, string>;
+  IMPACT_ROWS: string[];
+  HP_RATES: string[];
+  HP_ZONES: ('G' | 'Y' | 'R')[][];
+  HP_FACTORS: string[];
+  HP_AUTO_COMPLEX: string[];
+  HP_AUTO_SQ: string[];
+  normalizeReq(s: Any): Any;
+  slkSeedState(seed: CompetencyHost['seed']): Any;
+  syncSlkPeople(s: Any, people: NonNullable<CompetencyHost['people']>): Any;
+  deriveState(s: Any): Any;
+  certsForRole(s: Any, role: string): { name: string }[];
+  computeCertStatus(s: Any, empId: string, cert: Any): Any;
+  certStatusCode(st: Any): number;
+};
