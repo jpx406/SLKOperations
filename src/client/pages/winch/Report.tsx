@@ -669,8 +669,8 @@ export function DepthPanel({ W, a, title, rih, pooh, val, limits, D }: {
     let d = '', last: Sample | null = null;
     for (let i = 0; i < arr.length; i += per) {
       const s = arr[i];
-      // a jump in time (another pass) starts a new line instead of joining across
-      d += `${!last || s.t - last.t > 30 * per ? 'M' : 'L'}${x(val(s)).toFixed(1)},${y(s.depth).toFixed(1)}`;
+      // a jump in time or depth (another pass, or a stretch held for jarring) starts a new line instead of joining across
+      d += `${!last || s.t - last.t > 5 * per || Math.abs(s.depth - last.depth) > 150 ? 'M' : 'L'}${x(val(s)).toFixed(1)},${y(s.depth).toFixed(1)}`;
       last = s;
     }
     return d;

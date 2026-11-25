@@ -429,6 +429,18 @@ export function limitFor(key: CheckKey, s: Sample, R: RuleSet, sv: Survey, LW: n
   }
 }
 
+/** Each sample's tension as the median over ±halfSec, so a single noisy reading does not make or break a flag. */
+export function medianTension(S: Sample[], halfSec = 1): number[] {
+  const out: number[] = [];
+  let a = 0, b = -1;
+  for (let i = 0; i < S.length; i++) {
+    while (b + 1 < S.length && S[b + 1].t <= S[i].t + halfSec) b++;
+    while (S[a].t < S[i].t - halfSec) a++;
+    out.push(median(S.slice(a, b + 1).map((s) => s.ten)));
+  }
+  return out;
+}
+
 export function analyse(S0: Sample[], sv: Survey, rules: Rules, set: RuleSetKey): Analysis {
   const R = rules[set];
   const S = S0.map((s) => ({ ...s }));
@@ -437,13 +449,16 @@ export function analyse(S0: Sample[], sv: Survey, rules: Rules, set: RuleSetKey)
   // vertical line weight: the median RIH tension lwFrom–lwTo ft above the 30° point
   const LW = median(S.filter((s) => s.phase === 'RIH' && s.dir === 'RIH' && s.depth >= sv.p30 - R.pumpTension.lwTo && s.depth <= sv.p30 - R.pumpTension.lwFrom).map((s) => s.ten));
   const viol: Finding[] = [], advice: Finding[] = [];
+  // the tension checks read the median over a second either side, so one noisy reading is not a flag (6z.60)
+  const tenM = medianTension(S);
   for (const key of CHECK_KEYS) {
     const M = RULE_META[key];
     const minSec = M.kind === 'speed' ? R.detect.speedSec : R.detect.tensionSec;
     const events: Finding[] = [];
     let cur: Finding | null = null;
     const flush = () => { if (cur && cur.sec >= minSec) events.push(cur); cur = null; };
-    for (const s of S) {
+    for (let k = 0; k < S.length; k++) {
+      const s = M.q === 'ten' ? { ...S[k], ten: tenM[k] } : S[k];
       const L = limitFor(key, s, R, sv, LW);
       let lim: number | null = null, side: 'min' | 'max' = 'max';
       if (L) {

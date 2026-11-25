@@ -122,3 +122,34 @@ describe('winch data: checking a run', () => {
     expect(csv).toHaveLength(1 + a.viol.length + a.advice.length);
   });
 });
+
+describe('winch data: speed and tension as the time view reads them (6z.60)', () => {
+  const mk = (rows: [number, number, number, number][]): Sample[] =>
+    rows.map(([t, depth, sp, ten]) => ({ t, depth, ten, sp, dir: 'STOP' as const, dt: 0.5, phase: 'RIH' as const, zone: 0, tvd: depth }));
+  // running in at 400 ft/min (6.667 ft/s) read every half second, with a 900 ft/min spike on the speed channel
+  const run = mk(Array.from({ length: 120 }, (_, i) => [i / 2, 1000 + (i / 2) * (400 / 60), i === 60 ? 900 : 400 + ((i % 2) * 2 - 1) * 40, 500]));
+
+  it('takes the speed from the depth over time, not the speed channel', async () => {
+    const { steadySamples } = await import('../src/shared/winchRuns');
+    const S = steadySamples(run);
+    expect(Math.max(...S.slice(10, 110).map((s) => s.sp))).toBeLessThan(405);
+    expect(Math.min(...S.slice(10, 110).map((s) => s.sp))).toBeGreaterThan(395);
+    expect(S.slice(10, 110).every((s) => s.dir === 'RIH')).toBe(true);
+  });
+
+  it('counts working the tools up and down in one place, and jarring, as held', async () => {
+    const { steadySamples } = await import('../src/shared/winchRuns');
+    // strokes of 30 ft up and down every 4 s at 4,500 ft for two minutes
+    const work = mk(Array.from({ length: 240 }, (_, i) => { const p = (i / 2) % 4; return [i / 2, 4500 - (p < 2 ? p * 15 : (4 - p) * 15), 900, 500]; }));
+    expect(steadySamples(work).slice(60, 180).every((s) => s.dir === 'STOP')).toBe(true);
+    // a steady run is not held, unless it falls in a jarring stretch
+    expect(steadySamples(run).slice(10, 110).some((s) => s.dir === 'STOP')).toBe(false);
+    expect(steadySamples(run, { held: [[20, 30]] }).filter((s) => s.t >= 20 && s.t <= 30).every((s) => s.dir === 'STOP')).toBe(true);
+  });
+
+  it('reads the tension through a one-second median, so one noisy reading is not a flag', async () => {
+    const { medianTension } = await import('../src/shared/winchData');
+    const S = mk(Array.from({ length: 20 }, (_, i) => [i / 2, 3000, 300, i === 10 ? 1500 : 500]));
+    expect(Math.max(...medianTension(S))).toBe(500);
+  });
+});

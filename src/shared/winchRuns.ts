@@ -5,7 +5,7 @@
 // table and the jarring flow chart live in the Speed Guidelines and Jarring Guidelines documents of the Knowledge Hub.
 // Pure TypeScript: the Closure tab runs it in the browser; tests run it in Node.
 
-import { median, type Sample } from './winchData';
+import { median, medianTension, type Sample } from './winchData';
 
 // ---------------------------------------------------------------- runs
 
@@ -194,7 +194,9 @@ export function sopTensionFindings(S: Sample[], R: SopRules, staticAt: (depth: n
   const out: SopFinding[] = [];
   let cur: SopFinding | null = null;
   const flush = () => { if (cur && cur.sec >= R.detect.tensionSec) out.push(cur); cur = null; };
-  for (const s of S) {
+  const ten = medianTension(S);
+  for (let k = 0; k < S.length; k++) {
+    const s = { ...S[k], ten: ten[k] };
     let L: { key: SopRuleKey; limit: number; side: 'min' | 'max' } | null = null;
     const st = s.dir === 'STOP' || s.depth < Math.max(R.surfaceDepth, 100) ? null : staticAt(s.depth);
     if (st && st > 0) {
@@ -336,6 +338,55 @@ export function detectJarring(S: Sample[], R: SopRules): Jarring {
   }
   return { hits, cycles, findings, limit };
 }
+
+// ---------------------------------------------------------------- the samples the checks read (6z.60)
+
+/** The times the tools were held for jarring: each cycle, padded a few seconds either side. */
+export const heldTimes = (j: Jarring, padSec = 10): [number, number][] => j.cycles.map((c) => [c.t0 - padSec, c.t1 + padSec]);
+
+/**
+ * The samples as the time view reads them, for the speed and tension checks, the depth view and the top speeds.
+ * The speed is the depth's change over windowSec of time (the depth against time curve), not the speed channel, so
+ * a half-second spike from a jar stroke or a noisy sensor is not taken for running speed. The tools count as held,
+ * not running in or out, while jarring (held) and while worked up and down in one place: over a minute the depth stays
+ * within workFt while the line travels at least twice that back and forth. The tension is kept as recorded, so the
+ * jarring peaks still show.
+ */
+export function steadySamples(S: Sample[], opts: { windowSec?: number; held?: [number, number][]; workFt?: number } = {}): Sample[] {
+  const half = (opts.windowSec ?? 5) / 2, workFt = opts.workFt ?? 100, held = opts.held ?? [];
+  const out = S.map((s) => ({ ...s }));
+  if (!S.length) return out;
+  // the speed from the depth over the window
+  let a = 0, b = 0;
+  for (let i = 0; i < S.length; i++) {
+    while (S[a].t < S[i].t - half) a++;
+    while (b + 1 < S.length && S[b + 1].t <= S[i].t + half) b++;
+    const slope = S[b].t > S[a].t ? ((S[b].depth - S[a].depth) / (S[b].t - S[a].t)) * 60 : 0;
+    out[i].sp = Math.abs(slope);
+    out[i].dir = slope > 15 ? 'RIH' : slope < -15 ? 'POOH' : 'STOP';
+  }
+  // worked in one place: over a minute, a small depth range but a long way travelled back and forth
+  const path = [0];
+  for (let i = 1; i < S.length; i++) path.push(path[i - 1] + Math.abs(S[i].depth - S[i - 1].depth));
+  const minQ: number[] = [], maxQ: number[] = [];
+  let lo = 0, hi = -1;
+  for (let i = 0; i < S.length; i++) {
+    while (hi + 1 < S.length && S[hi + 1].t <= S[i].t + 30) {
+      hi++;
+      while (minQ.length && S[minQ[minQ.length - 1]].depth >= S[hi].depth) minQ.pop();
+      while (maxQ.length && S[maxQ[maxQ.length - 1]].depth <= S[hi].depth) maxQ.pop();
+      minQ.push(hi); maxQ.push(hi);
+    }
+    while (S[lo].t < S[i].t - 30) lo++;
+    while (minQ[0] < lo) minQ.shift();
+    while (maxQ[0] < lo) maxQ.shift();
+    const range = S[maxQ[0]].depth - S[minQ[0]].depth;
+    const worked = S[i].depth > 50 && range < workFt && path[hi] - path[lo] > 2 * Math.max(range, 10);
+    if (worked || held.some(([x, y]) => S[i].t >= x && S[i].t <= y)) out[i].dir = 'STOP';
+  }
+  return out;
+}
+
 
 // ---------------------------------------------------------------- the CSV
 

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleCheck, CircleX, FileText, Paperclip, Upload, X } from 'lucide-react';
+import { CircleCheck, CircleX, FileText, Paperclip, Trash2, Upload, X } from 'lucide-react';
 import { sizeText } from '../../shared/attachments';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import {
@@ -8,7 +8,7 @@ import {
   type Analysis, type CheckKey, type Mapping, type RuleKey, type RuleSet, type Sample, type SpeedSign, type Table, type TimeMode,
 } from '../../shared/winchData';
 import { channelTable, guessChannels, isTdat, parseTdat, tdatChecks, tdatSummary, tdatTable, type Tdat, type Units } from '../../shared/lineminder';
-import { detectJarring, parseRestrictions, sopSpeedFindings, sopTensionFindings, splitRuns, type Run } from '../../shared/winchRuns';
+import { detectJarring, heldTimes, parseRestrictions, sopSpeedFindings, sopTensionFindings, splitRuns, steadySamples, type Run } from '../../shared/winchRuns';
 import {
   BRAIDED_CHECKS, LINE_LABEL, braidedSop, gapText, joinPlan, lineKind, listedServices, seasonedFromRuns, speedsFor, staticAt, staticTension, wireSop,
   type FileSpan, type JobLimits, type JoinAnswer, type LineKind, type WinchGuide, type WinchLine,
@@ -98,7 +98,12 @@ interface Base { S: Sample[]; runs: Run[]; channels: ChannelSeries[]; fileName: 
 
 /** One run checked: wire against the service speeds, static tension and jarring; braided line against the seasoning rules. */
 function checkRun(base: Base, r: Run, g: WinchGuide, st: Setup, service: string): RunReport {
-  const Sr = base.S.slice(r.i0, r.i1 + 1);
+  const raw = base.S.slice(r.i0, r.i1 + 1);
+  const wire = st.kind !== 'braided' ? speedsFor(g.wire, service) : null;
+  const sop = wire ? wireSop(g, wire.speeds, st.limits) : braidedSop(g, st.limits);
+  // jarring from the tension as recorded; everything else from the samples as the time view reads them (6z.60)
+  const jar = detectJarring(raw, sop);
+  const Sr = steadySamples(raw, { held: heldTimes(jar) });
   const Sa = Sr.filter((s) => s.depth >= base.minDepth);
   const survey = verticalSurvey(r.maxD);
   const rules = { post: g.braided.seasoned, seasoning: st.newLine };
@@ -106,15 +111,13 @@ function checkRun(base: Base, r: Run, g: WinchGuide, st: Setup, service: string)
   if (st.kind === 'braided') {
     const viol = a0.viol.filter((v) => BRAIDED_CHECKS.includes(v.rule));
     const a: Analysis = { ...a0, viol, advice: [], kpi: { ...a0.kpi, nViol: viol.length } };
-    const sop = braidedSop(g, st.limits);
-    return { run: r, a, speed: sopSpeedFindings(Sr, sop, st.restrictions), jar: detectJarring(Sr, sop), sop, service: '', group: null, isDefault: false, stat: null };
+    return { run: r, a, speed: sopSpeedFindings(Sr, sop, st.restrictions), jar, sop, service: '', group: null, isDefault: false, stat: null };
   }
   const a: Analysis = { ...a0, viol: [], advice: [], ruleCounts: Object.fromEntries(CHECK_KEYS.map((k) => [k, 0])) as Record<CheckKey, number>, kpi: { ...a0.kpi, nViol: 0 } };
-  const { speeds, group, isDefault } = speedsFor(g.wire, service);
-  const sop = wireSop(g, speeds, st.limits);
+  const { group, isDefault } = wire!;
   const stat = staticTension(Sr);
   const speed = [...sopSpeedFindings(Sr, sop, st.restrictions), ...sopTensionFindings(Sr, sop, (d) => staticAt(stat, d))].sort((x, y) => x.t0 - y.t0);
-  return { run: r, a, speed, jar: detectJarring(Sr, sop), sop, service, group, isDefault, stat };
+  return { run: r, a, speed, jar, sop, service, group, isDefault, stat };
 }
 
 /**
@@ -402,14 +405,33 @@ export function WinchWorkbench({ host }: { host: WinchHost }) {
   }, [stateJson, restored]);
 
   const reports = (atts.data?.files ?? []).filter((a) => (a.note ?? '').startsWith('Winch data analysis'));
+  // an admin can delete a saved report (6z.60)
+  const admin = me?.role === 'admin';
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteNote, setDeleteNote] = useState<string | null>(null);
+  const deleteReport = async (a: AttRow) => {
+    if (!window.confirm(`Delete the saved report “${a.file_name}”?`)) return;
+    setDeleting(a.id); setDeleteNote(null);
+    try {
+      await api(`${host.filesUrl}/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
+      await qc.invalidateQueries({ queryKey: host.filesKey });
+    } catch (e) { setDeleteNote(`Not deleted: ${(e as Error).message}`); }
+    setDeleting(null);
+  };
   const savedReports = reports.length > 0 && (
     <details className="text-xs">
       <summary className="cursor-pointer font-semibold">Saved reports ({reports.length})</summary>
       <ul className="mt-1 space-y-0.5">
         {reports.map((a) => (
-          <li key={a.id}><a className="inline-flex items-center gap-1 text-accent-text underline" href={`/api${host.filesUrl}/${a.id}`}><FileText aria-hidden className="size-3" />{a.file_name}</a> <span className="text-text-subtle">· {a.uploaded_by_name}</span></li>
+          <li key={a.id} className="flex flex-wrap items-center gap-x-1">
+            <a className="inline-flex min-w-0 items-center gap-1 break-all text-accent-text underline" href={`/api${host.filesUrl}/${a.id}`}><FileText aria-hidden className="size-3 shrink-0" />{a.file_name}</a>
+            <span className="text-text-subtle">· {a.uploaded_by_name}</span>
+            {admin && <button type="button" onClick={() => deleteReport(a)} disabled={deleting === a.id} aria-label={`Delete the saved report ${a.file_name}`}
+              className="ml-1 inline-flex items-center gap-0.5 rounded-sm px-1 py-0.5 text-danger hover:bg-danger-subtle disabled:opacity-50"><Trash2 aria-hidden className="size-3" />{deleting === a.id ? 'Deleting…' : 'Delete'}</button>}
+          </li>
         ))}
       </ul>
+      {deleteNote && <p role="alert" className="mt-1 text-danger">{deleteNote}</p>}
     </details>
   );
   const status = <p role="status" className={cx('text-xs', saveNote && !saveNote.ok ? 'text-danger' : 'text-text-subtle')}>{saveNote?.text ?? (saved.data?.updatedAt ? `Kept with the ${host.home}, last by ${saved.data.updatedBy ?? 'someone'} on ${new Date(saved.data.updatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : `Everything here is kept with the ${host.home} as you go.`)}</p>;
