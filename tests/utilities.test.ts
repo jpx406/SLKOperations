@@ -22,7 +22,7 @@ describe('Utilities projects', () => {
     const labels = NAV.map((g) => g.label);
     expect(labels.indexOf('Utilities')).toBe(labels.indexOf('Service Quality') + 1);
     expect(NAV.find((g) => g.label === 'Utilities')!.pages.map((p) => [p.label, p.path])).toEqual([
-      ['Rig Up Diagram', UTIL_PATH.rigup], ['Tool String Diagram', UTIL_PATH.toolstring], ['Winch Report', UTIL_PATH.winch],
+      ['Rig Up Diagram', UTIL_PATH.rigup], ['Tool String Diagram', UTIL_PATH.toolstring], ['Winch Report', UTIL_PATH.winch], ['Lessons & Best Practices', '/utilities/lessons'],
     ]);
     expect(isUtilKind('winch')).toBe(true);
     expect(isUtilKind('job')).toBe(false);

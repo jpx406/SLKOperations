@@ -124,6 +124,11 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/utilities(\/[^/]+\/(duplicate|files|pdf))?$/, menu: 'utilities', action: 'edit' },
   { method: 'PUT', re: /^\/api\/utilities\/[^/]+(\/state)?$/, menu: 'utilities', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/utilities\/[^/]+(\/files\/[^/]+)?$/, menu: 'utilities', action: 'edit' },
+  // lessons and best practices (6z.57): who starts, edits, reviews and approves is checked in the route (Knowledge Hub
+  // approvers and admins start them; the chosen reviewer and approver act on them), so the menu's view right is enough
+  { method: 'POST', re: /^\/api\/lessons(\/[^/]+(\/(pictures|analyse|submit|review|approve|send-back|revise))?)?$/, menu: 'utilities', action: 'view' },
+  { method: 'PUT', re: /^\/api\/lessons\/[^/]+$/, menu: 'utilities', action: 'view' },
+  { method: 'DELETE', re: /^\/api\/lessons\/[^/]+(\/pictures\/[^/]+)?$/, menu: 'utilities', action: 'view' },
   { method: 'DELETE', re: /^\/api\/admin\/rules\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/attendance$/, menu: 'users', action: 'edit' },
   // Users & Roles: someone's Face ID devices, their Face ID switch, and the WIREGUARD user import
@@ -234,6 +239,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/winch\/state\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/joblog\/[^/]+(\/versions)?$/, menus: ['jobs'] },
   { re: /^\/api\/utilities(\/[^/]+(\/(state|files(\/[^/]+)?))?)?$/, menus: ['utilities'] },
+  { re: /^\/api\/lessons(\/(templates|logo)\/[^/]+\/[^/]+|\/[^/]+(\/(pictures\/[^/]+|source|pdf|pptx))?)?$/, menus: ['utilities', 'knowledge_hub'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
   { re: /^\/api\/database$/, menus: ['database'] },

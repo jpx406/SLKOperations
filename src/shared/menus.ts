@@ -36,6 +36,8 @@ export const NAV: Group[] = [
       { key: 'utilities', label: 'Rig Up Diagram', path: '/utilities/rig-up', screen: 'U1', milestone: '6' },
       { key: 'utilities', label: 'Tool String Diagram', path: '/utilities/tool-string', screen: 'U2', milestone: '6' },
       { key: 'utilities', label: 'Winch Report', path: '/utilities/winch', screen: 'U3', milestone: '6' },
+      // 6z.57: lessons learnt and best practices written on the company template, published to the Knowledge Hub
+      { key: 'utilities', label: 'Lessons & Best Practices', path: '/utilities/lessons', screen: 'U4', milestone: '6' },
     ],
   },
   {
