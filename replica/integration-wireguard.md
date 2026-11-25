@@ -43,7 +43,8 @@ Decided with the user on 2026-10-24. Source of facts: the WIREGUARD project (`ne
 | `GET /sop-settings`, `/sop-wire-size-thresholds`, `/wire-alloy-database`, `/kpi-settings`, `/wire-retirement-reasons` | wire limits and KPI parameters (D3) | hourly |
 | `GET /notifications` | wire alerts for G5 and the wire flags (no country filter upstream, filtered in SLK Ops) | every 15 min |
 | `GET /health` | WIREGUARD reachability | every sync |
-| `GET /` (the app shell `wireguard.html`) | build stamp from `<meta name="app-build" content="…">`, which drives the KPI parity watch | hourly |
+| `GET /` (the app shell `wireguard.html`) | build stamp from `<meta name="app-build" content="…">`, which drives the KPI parity watch | every 15 min |
+| `GET /v2-patch.js` | the KPI code, fingerprinted once per new build for the parity watch | once per build |
 
 ### Sync service account (decided 2026-10-24)
 
@@ -145,7 +146,7 @@ WIREGUARD computes its 49 KPIs **in the browser** (`v2-patch.js`: `v2Derive` bui
 
 1. **Same parameters.** SLK Ops reads WIREGUARD's `/kpi-settings`, `/sop-settings`, `/sop-wire-size-thresholds` and `/wire-alloy-database` into `wg_settings`. Thresholds and on/off switches are WIREGUARD's own, and a KPI switched off in WIREGUARD is hidden in SLK Ops too.
 2. **Same codes.** G1, C1, W14 and so on keep their codes, so a number in SLK Ops can be checked against the same card in WIREGUARD.
-3. **Parity test.** The test suite loads WIREGUARD's own `v2-patch.js` in a headless page (WIREGUARD's toolkit already does this with a mock API and exposes `window.__v2Kpi`), feeds both engines the same mirrored data, and fails if any ported KPI differs. The sync records WIREGUARD's build stamp (the `app-build` meta tag in its app shell, currently `2026-10-19T01-00`) in `wg_settings`. When it changes, SLK Ops shows "WIREGUARD updated — KPI parity not yet re-checked" to admins until the test is re-run.
+3. **Parity test.** The test suite loads WIREGUARD's own `v2-patch.js` in a headless page (WIREGUARD's toolkit already does this with a mock API and exposes `window.__v2Kpi`), feeds both engines the same mirrored data, and fails if any ported KPI differs. Every sync (15 min) records WIREGUARD's build stamp (the `app-build` meta tag in its app shell) in `wg_settings`. The first time a new build is seen, SLK Ops reads its `v2-patch.js` and fingerprints the parts the ported KPIs come from (`src/shared/kpiSource.ts`). Same fingerprint as the build the test last passed against: the build is recorded as checked in `kpi_parity_runs` and no warning shows. Different: admins see "WIREGUARD build … changed how it works out the KPIs" until the parity test is run against the new file, the port fixed if needed, and `KPI_VERIFIED` updated.
 
 **Ported in v1 (17 KPIs, the ones operations acts on):**
 

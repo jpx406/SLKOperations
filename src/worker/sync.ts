@@ -1,5 +1,6 @@
 import type { Env } from './env';
 import { WgError, wgGet, wgLogin } from './wg';
+import { checkKpiSource, KPI_VERIFIED, PORTED_KPIS, sameBuild } from '../shared/kpiSource';
 
 // Pulls WIREGUARD reference lists into the wg_* mirror with the read-only service account.
 // Upsert by natural key, never delete: rows missing upstream are marked wg_active = 0.
@@ -181,7 +182,7 @@ export async function syncResource(env: Env, res: Resource) {
   }
 }
 
-/** WIREGUARD parameters (stored whole) and its app build stamp, which the KPI parity watch compares. */
+/** WIREGUARD parameters, stored whole. */
 async function syncSettings(env: Env) {
   const started = new Date().toISOString();
   try {
@@ -192,20 +193,45 @@ async function syncSettings(env: Env) {
       stmts.push(env.DB.prepare('INSERT INTO wg_settings (key, value, wg_synced_at) VALUES (?1, ?2, ?3) ON CONFLICT (key) DO UPDATE SET value = ?2, wg_synced_at = ?3')
         .bind(key, JSON.stringify(value), at));
     }
-    const shell = await env.WIREGUARD.fetch(new Request('https://wireguard/')).then((r) => r.text()).catch(() => '');
-    const stamp = /<meta\s+name="app-build"\s+content="([^"]+)"/i.exec(shell)?.[1] ?? null;
-    if (stamp) {
-      stmts.push(env.DB.prepare(`INSERT INTO wg_settings (key, value, wg_synced_at) VALUES ('build_stamp', ?1, ?2) ON CONFLICT (key) DO UPDATE SET value = ?1, wg_synced_at = ?2`)
-        .bind(JSON.stringify(stamp), at));
-    }
     await env.DB.batch(stmts);
     await env.DB.prepare('INSERT INTO wg_sync_log (id, resource, started_at, finished_at, rows_seen, rows_upserted, error) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), 'settings', started, new Date().toISOString(), stmts.length, stmts.length, stamp ? null : 'build stamp not found').run();
-    return { resource: 'settings', upserted: stmts.length, build: stamp };
+      .bind(crypto.randomUUID(), 'settings', started, new Date().toISOString(), stmts.length, stmts.length, null).run();
+    return { resource: 'settings', upserted: stmts.length };
   } catch (e) {
     await env.DB.prepare('INSERT INTO wg_sync_log (id, resource, started_at, finished_at, error) VALUES (?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(), 'settings', started, new Date().toISOString(), (e as Error).message).run();
     return { resource: 'settings', error: (e as Error).message };
+  }
+}
+
+/**
+ * KPI parity watch, every sync: reads WIREGUARD's build stamp and, the first time a build is seen, the KPI code in its
+ * v2-patch.js. A build whose KPI code is unchanged is recorded as checked, so the warning clears by itself. A build that
+ * changed it is recorded as not matching, and stays flagged until the parity test passes against it.
+ */
+export async function watchBuild(env: Env) {
+  const started = new Date().toISOString();
+  try {
+    const shell = await env.WIREGUARD.fetch(new Request('https://wireguard/')).then((r) => r.text());
+    const stamp = /<meta\s+name="app-build"\s+content="([^"]+)"/i.exec(shell)?.[1] ?? null;
+    if (!stamp) throw new Error('build stamp not found');
+    await env.DB.prepare(`INSERT INTO wg_settings (key, value, wg_synced_at) VALUES ('build_stamp', ?1, ?2) ON CONFLICT (key) DO UPDATE SET value = ?1, wg_synced_at = ?2`)
+      .bind(JSON.stringify(stamp), started).run();
+    const seen = await env.DB.prepare('SELECT id FROM kpi_parity_runs WHERE wg_build = ? LIMIT 1').bind(stamp).first();
+    if (seen || sameBuild(stamp, KPI_VERIFIED.build)) return { resource: 'build', build: stamp };
+    const res = await env.WIREGUARD.fetch(new Request(`https://wireguard/v2-patch.js?b=${encodeURIComponent(stamp)}`));
+    if (!res.ok) throw new Error(`v2-patch.js answered ${res.status}`);
+    const r = await checkKpiSource(await res.text());
+    await env.DB.prepare('INSERT INTO kpi_parity_runs (id, wg_build, kpis_checked, kpis_failed, report, run_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), stamp, r.match ? PORTED_KPIS : 0, r.match ? 0 : PORTED_KPIS,
+        JSON.stringify({ method: 'source fingerprint', match: r.match, reason: r.reason, hash: r.hash, verified_build: KPI_VERIFIED.build }), started).run();
+    await env.DB.prepare('INSERT INTO wg_sync_log (id, resource, started_at, finished_at, rows_seen, rows_upserted, error) VALUES (?, ?, ?, ?, 1, 1, ?)')
+      .bind(crypto.randomUUID(), 'kpi parity', started, new Date().toISOString(), r.match ? null : `${stamp}: ${r.reason}`).run();
+    return { resource: 'build', build: stamp, kpiMatch: r.match };
+  } catch (e) {
+    await env.DB.prepare('INSERT INTO wg_sync_log (id, resource, started_at, finished_at, error) VALUES (?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), 'build', started, new Date().toISOString(), (e as Error).message).run();
+    return { resource: 'build', error: (e as Error).message };
   }
 }
 
@@ -228,6 +254,7 @@ export async function syncAll(env: Env, opts: { hourly?: boolean } = { hourly: t
   }
   await deriveRemainingLength(env);
   if (opts.hourly) out.push(await syncSettings(env));
+  out.push(await watchBuild(env));
   return out;
 }
 

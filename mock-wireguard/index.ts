@@ -10,7 +10,7 @@ import userFile from './users.json';
 type MockUser = (typeof userFile.users)[number];
 
 const SESSION_MS = 12 * 3600_000;
-const BUILD_STAMP = 'mock-2026-10-19T01-00';
+const BUILD_STAMP = 'mock-2026-11-17T01-00';
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });

@@ -16,7 +16,7 @@ import { Banner, Card, EmptyState, PageTitle, Skeleton, cx, inputSized } from '.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Row = Record<string, any>;
-interface Raw { wires: Row[]; drums: Row[]; jobs: Row[]; documents: Row[]; notifications: Row[]; settings: K.Settings; build: string | null; verifiedBuild: string; parityCurrent: boolean }
+interface Raw { wires: Row[]; drums: Row[]; jobs: Row[]; documents: Row[]; notifications: Row[]; settings: K.Settings; build: string | null; verifiedBuild: string; parity: 'current' | 'unchecked' | 'changed'; parityCurrent: boolean }
 
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 
@@ -243,7 +243,9 @@ export function WireKpis() {
       </PageTitle>
       <p className="-mt-3 mb-3 text-sm text-text-muted">WIREGUARD’s own KPIs, with the same codes and parameters, worked out from the synced runs, tests and alerts.</p>
       {q.data && !q.data.parityCurrent && me?.role === 'admin' && (
-        <div className="mb-3"><Banner tone="warning">WIREGUARD updated (build {q.data.build}) — KPI parity not yet re-checked against this build. Last verified: {q.data.verifiedBuild}.</Banner></div>
+        <div className="mb-3"><Banner tone="warning">{q.data.parity === 'changed'
+          ? <>WIREGUARD build {q.data.build} changed how it works out the KPIs. The numbers here may differ from WIREGUARD until SLK Ops is updated. Last matched build: {q.data.verifiedBuild}.</>
+          : <>WIREGUARD build {q.data.build} is new. SLK Ops checks its KPI code at the next sync, every 15 minutes. Last matched build: {q.data.verifiedBuild}.</>}</Banner></div>
       )}
       <div className="mb-4 flex flex-wrap gap-2">
         <Select aria-label="Year" className={inputSized('h-(--layout-control-sm) w-28')} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value })}><option value="">All years</option>{opts.years.map((y) => <option key={y}>{y}</option>)}</Select>

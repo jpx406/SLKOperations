@@ -2,35 +2,23 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as K from '../src/shared/wireKpis';
+import { checkKpiSource, KPI_SLICES, KPI_VERIFIED, kpiSource, sameBuild } from '../src/shared/kpiSource';
 
 // KPI parity: runs WIREGUARD's own dashboard code (v2-patch.js) and the SLK Ops port on the same data and compares.
 // WIREGUARD's source is not part of this repo; point WG_V2_PATCH at its v2-patch.js, or keep the sibling checkout.
 // Without it the parity cases are skipped (and say so), the port's own tests still run.
+// When it passes against a new build, set KPI_VERIFIED in src/shared/kpiSource.ts to that build and its fingerprint:
+// the fingerprint case below fails until both match the file.
 
-const SRC = process.env.WG_V2_PATCH ?? resolve(__dirname, '../../SLK__Wireguard_v2/slkwireguard-backend/Clau_updates/Oct22/v2-patch.js');
+const SRC = process.env.WG_V2_PATCH ?? resolve(__dirname, '../../SLK__Wireguard_v2/slkwireguard-backend/Clau_updates/Nov17/WIREGUARD_release_2026-11-17/v2-patch.js');
 const have = existsSync(SRC);
 const TODAY = '2026-10-25';
 
 /** The slices of WIREGUARD's file the ported KPIs depend on, found by their own markers rather than line numbers. */
 function wireguardEngine(settings: K.Settings, data: { jobs: unknown[]; maint: unknown[]; wires: unknown[]; drums: unknown[]; notifications: unknown[] }) {
-  const src = readFileSync(SRC, 'utf8');
-  const between = (start: string, end: string) => {
-    const a = src.indexOf(start); const b = src.indexOf(end, a);
-    if (a < 0 || b < 0) throw new Error(`WIREGUARD source changed: marker not found (${start.slice(0, 40)})`);
-    return src.slice(a, b);
-  };
-  const code = [
-    'function v2CardOpt(id, key, dflt) { return dflt; }',
-    between('const v2Num = (v) =>', '\n'),
-    between('function v2KpiOverrides()', 'function v2CardOpt('),
-    between('const v2DateParts = (d) => {', 'const V2_MONTH_NAMES'),
-    between('function v2Percentile(values, p) {', '// ── derived facts'),
-    between('let v2DerivCache = ', '// ── chart forms'),
-    between('const v2St = (r) =>', '\n'),
-    between('const V2_P = (key, label', 'const v2Bars = '),
-    between('const V2_KPIS = [', '// ── the section view'),
-    between('function v2IsCutOnly(j)', '\n'),
-  ].join('\n');
+  const s = kpiSource(readFileSync(SRC, 'utf8'));
+  if ('missing' in s) throw new Error(`WIREGUARD source changed: marker not found (${s.missing.slice(0, 40)})`);
+  const code = ['function v2CardOpt(id, key, dflt) { return dflt; }', s.code].join('\n');
   const SOP_SETTING_FALLBACKS = K.SOP_FALLBACKS;
   const DATA = { kpiSettings: settings.kpi, sopSettings: settings.sop, notifications: data.notifications, drums: data.drums, wires: data.wires };
   // stand-ins for WIREGUARD's page helpers: rendering only, they never change a number
@@ -66,6 +54,9 @@ describe.skipIf(!have)(`wire KPI parity with WIREGUARD (${have ? SRC : 'source n
   // the first number in a tile value (G3 wraps its unit in markup)
   const n = (s: string) => Number(/-?\d+(\.\d+)?/.exec(String(s))?.[0]);
 
+  it('the recorded fingerprint is this file\'s KPI code', async () => {
+    expect(await checkKpiSource(readFileSync(SRC, 'utf8'))).toMatchObject({ match: true });
+  });
   it('derives the same per-run facts for every run', () => {
     expect(Object.keys(ours.deriv).length).toBe(Object.keys(wgCtx.deriv).length);
     expect(ours.deriv).toEqual(wgCtx.deriv);
@@ -104,6 +95,23 @@ describe.skipIf(!have)(`wire KPI parity with WIREGUARD (${have ? SRC : 'source n
     const runs = (w: { wireSerialNumber: unknown }) => data.jobs.filter((j: { wireSerialNumber: unknown }) => j.wireSerialNumber === w.wireSerialNumber).length;
     const top = data.wires.filter(K.LIVE).map((w: { wireSerialNumber: unknown }) => Math.round((runs(w) / 220) * 1000) / 10).sort((a: number, b: number) => b - a).slice(0, 12);
     expect(K.kpiW1(ours).items.map((i) => i.value)).toEqual(top);
+  });
+});
+
+describe('KPI parity watch', () => {
+  const file = (body: string) => KPI_SLICES.map(([a, b]) => `${a} ${body} ${b === '\n' ? '' : b}\n`).join('\n');
+  it('finds the KPI code by its markers and flags a change', async () => {
+    expect(kpiSource('nothing here')).toEqual({ missing: KPI_SLICES[0][0] });
+    const r = await checkKpiSource(file('x'));
+    expect(r.match).toBe(false);
+    expect(r.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(await checkKpiSource(file('x').replace(/\n/g, '\r\n'))).toEqual(r); // line endings don't count
+    expect((await checkKpiSource(file('y'))).hash).not.toBe(r.hash);
+  });
+  it('compares builds without the mock prefix', () => {
+    expect(sameBuild('mock-' + KPI_VERIFIED.build, KPI_VERIFIED.build)).toBe(true);
+    expect(sameBuild(null, KPI_VERIFIED.build)).toBe(false);
+    expect(sameBuild('2026-12-01T01-00', KPI_VERIFIED.build)).toBe(false);
   });
 });
 
