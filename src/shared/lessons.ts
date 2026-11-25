@@ -55,6 +55,8 @@ export interface LessonContent {
   pictures: LessonPicture[]; pictures_as: PicturesAs;
   actions: LessonAction[]; actions_as: ActionsAs;
   layout: LessonLayoutChoice;
+  /** Parts kept but not shown on the page (6z.59): meta, key, description, facts, damage, analysis, actions, pic:<id>. */
+  hidden: string[];
   /** Parts written by AI and not yet checked by a person. */
   ai: Part[];
 }
@@ -63,7 +65,7 @@ export const EMPTY_CONTENT: LessonContent = {
   key_lesson: '', event_date: '', field: '', well: '', job: '', unit: '', category: '',
   description: '', description_as: 'bullets', facts: '', facts_as: 'bullets', damage: [], damage_as: 'tags',
   immediate_cause: '', root_cause: '', whys: [], analysis_as: 'side',
-  pictures: [], pictures_as: 'right', actions: [], actions_as: 'table', layout: { mode: 'auto', boxes: {} }, ai: [],
+  pictures: [], pictures_as: 'right', actions: [], actions_as: 'table', layout: { mode: 'auto', boxes: {} }, hidden: [], ai: [],
 };
 
 export const LIMITS = { title: 160, line: 120, text: 3000, damage: 8, whys: 5, actions: 10, pictures: 8, caption: 120 } as const;
@@ -103,6 +105,7 @@ export function cleanContent(v: unknown): LessonContent {
     }).filter((a) => a.action).slice(0, LIMITS.actions),
     actions_as: pick(b.actions_as, SHOW_AS.actions, 'table'),
     layout: cleanLayout(b.layout),
+    hidden: [...new Set(arr(b.hidden).filter((x): x is string => typeof x === 'string' && /^(meta|key|description|facts|damage|analysis|actions|pic:[a-z0-9-]{8,40})$/i.test(x)))].slice(0, 40),
     ai: [...new Set(arr(b.ai).filter((x): x is Part => typeof x === 'string' && x in PARTS))],
   };
 }
@@ -235,6 +238,6 @@ export function cleanDraft(raw: unknown, kind: LessonKind): { title: string; con
     actions: Array.isArray(r.actions) ? r.actions : [],
   });
   const ai = (Object.keys(PARTS) as Part[]).filter((k) => kind === 'best_practice' ? k !== 'damage' : true);
-  const { pictures: _p, pictures_as: _pa, description_as: _d, facts_as: _f, damage_as: _da, analysis_as: _a, actions_as: _ac, layout: _l, ...filled } = c;
+  const { pictures: _p, pictures_as: _pa, description_as: _d, facts_as: _f, damage_as: _da, analysis_as: _a, actions_as: _ac, layout: _l, hidden: _h, ...filled } = c;
   return { title: line(r.title, LIMITS.title), content: { ...filled, ai: ai.filter((k) => k !== 'facts' || !!c.facts) } };
 }

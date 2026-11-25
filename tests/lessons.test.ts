@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_CONTENT, cleanContent, cleanDraft, mayCreate, mayDo, nextLessonNumber, submitProblems, type LessonContent } from '../src/shared/lessons';
-import { chrome, layoutLesson, layoutProblem, measureParts, pageOps, partsOf, tidyBoxes, tint, type PageInput } from '../src/shared/lessonLayout';
+import { DESIGNS, chrome, designBoxes, fitPictureBoxes, layoutLesson, layoutProblem, measureParts, pageOps, partsOf, pictureHeight, picturesSideBySide, tidyBoxes, tint, type Design, type PageInput } from '../src/shared/lessonLayout';
 import { lessonPdf, pdfSafe } from '../src/shared/lessonPdf';
 import { lessonPptx, templateLogo, templateStyle } from '../src/shared/lessonPptx';
 import { unzip } from '../src/shared/xlsxRead';
@@ -160,6 +160,50 @@ describe('boxes placed by hand or by AI', () => {
   it('keeps a cleaned layout to known parts on the page', () => {
     const c = cleanContent({ layout: { mode: 'free', boxes: { key: { x: 10, y: 20, w: 30, h: 40 }, evil: { x: 1, y: 1, w: 50, h: 50 }, 'pic:abc': { x: 1, y: 1, w: 50, h: 50 }, description: { x: 'a' } } } });
     expect(c.layout).toEqual({ mode: 'free', boxes: { key: { x: 10, y: 20, w: 30, h: 40 } } });
+  });
+});
+
+describe('show or hide, pictures side by side, ready-made layouts', () => {
+  const two = { ...full, pictures: [...full.pictures, { id: 'pic-00000002', caption: 'Load cell', section: 'analysis' as const, w: 900, h: 1200, type: 'image/jpeg' as const }] };
+  it('hides a part from the page and keeps what is written', () => {
+    const c = cleanContent({ ...two, hidden: ['damage', 'pic:pic-00000002', 'bogus'] });
+    expect(c.hidden).toEqual(['damage', 'pic:pic-00000002']);
+    expect(c.damage).toEqual(full.damage);
+    const parts = partsOf(input(c));
+    expect(parts).not.toContain('damage');
+    expect(parts).not.toContain('pic:pic-00000002');
+    const words = pageOps(input(c), null).ops.filter((o) => o.o === 'text').map((o) => (o as { t: string }).t).join(' ');
+    expect(words).not.toContain('Potential damage');
+    expect(pageOps(input(c), null).ops.filter((o) => o.o === 'img')).toHaveLength(1);
+  });
+  it('makes a picture box exactly its picture', () => {
+    const p = two.pictures[1];
+    const h = pictureHeight(p, 120);
+    expect(h).toBeGreaterThan(160); // 120 wide at 3:4 is 160 tall, plus the caption
+    const fitted = fitPictureBoxes(input(two), { 'pic:pic-00000002': { x: 18, y: 300, w: 120, h: 400 } });
+    expect(fitted['pic:pic-00000002'].h).toBe(h);
+    const lay = layoutLesson(input({ ...two, layout: { mode: 'free', boxes: { ...tidyBoxes(layoutLesson(input(two)).regions, input(two)), ...fitted } } }));
+    const img = lay.blocks.find((b) => b.k === 'image' && b.pic === 'pic-00000002')!;
+    expect(img.w).toBeCloseTo(120, 0);
+    expect(img.h).toBeCloseTo(160, 0);
+  });
+  it('puts pictures side by side at the same height', () => {
+    const boxes = picturesSideBySide(input(two), { 'pic:pic-00000001': { x: 300, y: 400, w: 100, h: 90 }, 'pic:pic-00000002': { x: 300, y: 500, w: 80, h: 120 } });
+    const a = boxes['pic:pic-00000001'], b = boxes['pic:pic-00000002'];
+    expect(a.y).toBe(400);
+    expect(b.y).toBe(400);
+    expect(a.x + a.w).toBeLessThan(b.x);
+    expect(a.h - pictureHeight(two.pictures[0], a.w)).toBe(0);
+    // same picture height: width over shape matches
+    expect((a.w * 1200) / 1600).toBeCloseTo((b.w * 1200) / 900, 0);
+  });
+  it('offers four ready-made layouts that fit with nothing to fix', () => {
+    for (const k of Object.keys(DESIGNS) as Design[]) {
+      const boxes = designBoxes(input(two), k);
+      const lay = layoutLesson(input({ ...two, layout: { mode: 'free', boxes } }));
+      expect(lay.issues, k).toEqual([]);
+      expect(Object.keys(boxes).sort(), k).toEqual(partsOf(input(two)).sort());
+    }
   });
 });
 

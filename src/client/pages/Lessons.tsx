@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, Download, FileText, ImagePlus, LayoutTemplate, Move, Plus, Presentation, Send, Sparkles, Trash2, Undo2, Wand2, X } from 'lucide-react';
+import { ArrowLeft, Check, Columns3, Download, Eye, EyeOff, FileText, ImagePlus, LayoutGrid, LayoutTemplate, Maximize2, Move, Plus, Presentation, Send, Sparkles, Trash2, Undo2, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
   DAMAGE_SUGGESTIONS, LESSON_COMPANIES, LESSON_KINDS, LESSON_STATUS, LIMITS, SHOW_AS, headings, submitProblems,
   type LessonCompany, type LessonContent, type LessonKind, type LessonPicture, type LessonStatus, type Part, type Rect,
 } from '../../shared/lessons';
-import { PAGE, bodyOf, chrome, layoutLesson, layoutProblem, partLabel, partsOf, tidyBoxes, toOps, type LayoutIssue, type Op, type PageInput, type TemplateStyle } from '../../shared/lessonLayout';
+import {
+  DESIGNS, PAGE, bodyOf, chrome, designBoxes, fitPictureBoxes, layoutLesson, layoutProblem, partLabel, partsOf, pictureHeight, picturesSideBySide, tidyBoxes, toOps,
+  type Design, type LayoutIssue, type Op, type PageInput, type TemplateStyle,
+} from '../../shared/lessonLayout';
 import { ApiError, api } from '../api';
 import { MenuButton } from '../components/MenuButton';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
@@ -228,7 +231,9 @@ function PagePreview({ input, lessonId, logo, boxes }: { input: PageInput; lesso
   const move = (e: React.PointerEvent) => {
     if (!drag || !boxes) return;
     const p = pt(e), dx = p.x - drag.sx, dy = p.y - drag.sy, s = drag.start;
-    const next = drag.mode === 'move' ? { ...s, x: snap(s.x + dx), y: snap(s.y + dy) } : { ...s, w: Math.max(24, snap(s.w + dx)), h: Math.max(15, snap(s.h + dy)) };
+    const pic = drag.id.startsWith('pic:') ? input.content.pictures.find((p) => `pic:${p.id}` === drag.id) : null;
+    const w = Math.max(24, snap(s.w + dx));
+    const next = drag.mode === 'move' ? { ...s, x: snap(s.x + dx), y: snap(s.y + dy) } : pic ? { ...s, w, h: pictureHeight(pic, w) } : { ...s, w, h: Math.max(15, snap(s.h + dy)) };
     setLive({ ...boxes.boxes, [drag.id]: next });
   };
   const end = () => { if (drag && live && boxes) boxes.onChange(live); setDrag(null); setLive(null); };
@@ -238,7 +243,9 @@ function PagePreview({ input, lessonId, logo, boxes }: { input: PageInput; lesso
     if (!d) return;
     e.preventDefault();
     const r = boxes.boxes[id];
-    boxes.onChange({ ...boxes.boxes, [id]: e.shiftKey ? { ...r, w: Math.max(24, r.w + d[0]), h: Math.max(15, r.h + d[1]) } : { ...r, x: r.x + d[0], y: r.y + d[1] } });
+    const pic = id.startsWith('pic:') ? input.content.pictures.find((p) => `pic:${p.id}` === id) : null;
+    const w = Math.max(24, r.w + (d[0] || d[1]));
+    boxes.onChange({ ...boxes.boxes, [id]: !e.shiftKey ? { ...r, x: r.x + d[0], y: r.y + d[1] } : pic ? { ...r, w, h: pictureHeight(pic, w) } : { ...r, w: Math.max(24, r.w + d[0]), h: Math.max(15, r.h + d[1]) } });
   };
   const href = (pic: string) => (pic === '__logo__' ? logo?.url ?? '' : `/api/lessons/${lessonId}/pictures/${pic}`);
   const el = (op: Op, i: number) => {
@@ -289,6 +296,7 @@ export function LessonEditor() {
   const [note, setNote] = useState<string | null>(() => sessionStorage.getItem(`lesson-note-${id}`));
   const [dialog, setDialog] = useState<null | 'submit' | 'review' | 'approve' | 'send-back' | 'revise' | 'delete'>(null);
   const [arranging, setArranging] = useState(false);
+  const [designs, setDesigns] = useState(false);
   const tplRef = useRef<HTMLInputElement>(null);
   const loadedAt = useRef<string | null>(null);
   const d = q.data;
@@ -340,6 +348,9 @@ export function LessonEditor() {
   const problems = submitProblems(title, content, layoutProblem(laid) ?? true);
   const free = content.layout.mode === 'free';
   const setBoxes = (boxes: Record<string, Rect>) => set(null, { layout: { mode: 'free', boxes } });
+  const hidden = new Set(content.hidden);
+  const toggle = (id: string) => set(null, { hidden: hidden.has(id) ? content.hidden.filter((x) => x !== id) : [...content.hidden, id] });
+  const showSwitch = (id: string) => <ShowSwitch shown={!hidden.has(id)} onToggle={() => toggle(id)} disabled={!editable} />;
   // the boxes start where the parts sit in order down the page
   const tidy = () => {
     const auto = layoutLesson({ ...input, content: { ...content, layout: { mode: 'auto', boxes: {} } } });
@@ -396,6 +407,10 @@ export function LessonEditor() {
       <div className={cx('grid grid-cols-[minmax(0,1fr)] items-start gap-5', free ? 'lg:grid-cols-[minmax(0,1fr)_minmax(380px,560px)]' : 'lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]')}>
         <fieldset disabled={!editable} className="flex min-w-0 flex-col gap-3">
           <Section title="Header" aside={flag('header')}>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <span className="flex items-center gap-2">Event facts strip {showSwitch('meta')}</span>
+              <span className="flex items-center gap-2">{hd.key} {showSwitch('key')}</span>
+            </div>
             <Field id="le-t" label="Title"><input id="le-t" className={inputClass} value={title} maxLength={LIMITS.title} onChange={(e) => { setTitle(e.target.value); set('header', {}); }} /></Field>
             <Field id="le-key" label={`${hd.key} (one line at the top)`}><input id="le-key" className={inputClass} value={content.key_lesson} maxLength={300} onChange={(e) => set('header', { key_lesson: e.target.value })} /></Field>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -408,14 +423,14 @@ export function LessonEditor() {
             </div>
           </Section>
 
-          <Section title={hd.description} aside={flag('description')}>
+          <Section title={hd.description} hidden={hidden.has('description')} aside={<>{flag('description')}{showSwitch('description')}</>}>
             <ShowAs label={`${hd.description}: show as`} value={content.description_as} options={SHOW_AS.description} onChange={(v) => set(null, { description_as: v })} />
             <Field id="le-desc" label={content.description_as === 'timeline' ? 'One line per step, “time – what happened”' : content.description_as === 'bullets' ? 'One line per bullet' : 'Text'}>
               <textarea id="le-desc" rows={6} className={cx(inputClass, 'h-auto py-2')} value={content.description} maxLength={LIMITS.text} onChange={(e) => set('description', { description: e.target.value })} />
             </Field>
           </Section>
 
-          <Section title={hd.facts} aside={flag('facts')}>
+          <Section title={hd.facts} hidden={hidden.has('facts')} aside={<>{flag('facts')}{showSwitch('facts')}</>}>
             <ShowAs label={`${hd.facts}: show as`} value={content.facts_as} options={SHOW_AS.facts} onChange={(v) => set(null, { facts_as: v })} />
             <Field id="le-facts" label="One fact or finding per line" hint="Optional: left out of the page when empty. “Reading: what was found” puts the first part in bold.">
               <textarea id="le-facts" rows={4} className={cx(inputClass, 'h-auto py-2')} value={content.facts} maxLength={LIMITS.text} onChange={(e) => set('facts', { facts: e.target.value })} />
@@ -423,13 +438,13 @@ export function LessonEditor() {
           </Section>
 
           {l.kind === 'lesson_learnt' && (
-            <Section title="Potential damage" aside={flag('damage')}>
+            <Section title="Potential damage" hidden={hidden.has('damage')} aside={<>{flag('damage')}{showSwitch('damage')}</>}>
               <ShowAs label="Potential damage: show as" value={content.damage_as} options={SHOW_AS.damage} onChange={(v) => set(null, { damage_as: v })} />
               <Chips values={content.damage} onChange={(v) => set('damage', { damage: v })} />
             </Section>
           )}
 
-          <Section title={hd.analysis} aside={flag('analysis')}>
+          <Section title={hd.analysis} hidden={hidden.has('analysis')} aside={<>{flag('analysis')}{showSwitch('analysis')}</>}>
             <ShowAs label={`${hd.analysis}: show as`} value={content.analysis_as} options={SHOW_AS.analysis} onChange={(v) => set(null, { analysis_as: v })} />
             <div className="grid gap-3 sm:grid-cols-2">
               <Field id="le-imm" label={hd.immediate} hint="One per line. “Category: explanation” puts the category in bold.">
@@ -449,7 +464,7 @@ export function LessonEditor() {
 
           <Section title="Pictures and diagrams">
             <ShowAs label="Pictures: show as" value={content.pictures_as} options={SHOW_AS.pictures} onChange={(v) => set(null, { pictures_as: v })} />
-            <Pictures lessonId={l.id} pictures={content.pictures} editable={editable} kind={l.kind}
+            <Pictures lessonId={l.id} pictures={content.pictures} editable={editable} kind={l.kind} hidden={hidden} onToggle={toggle}
               onChange={(pics) => set(null, { pictures: pics })} onUploaded={async (f, section) => {
                 await flush();
                 const blob = await shrink(f);
@@ -458,7 +473,7 @@ export function LessonEditor() {
               }} onRemove={async (p) => { await flush(); await api(`/lessons/${l.id}/pictures/${p.id}`, { method: 'DELETE' }); reload(); }} onError={setError} />
           </Section>
 
-          <Section title={hd.actions} aside={flag('actions')}>
+          <Section title={hd.actions} hidden={hidden.has('actions')} aside={<>{flag('actions')}{showSwitch('actions')}</>}>
             <ShowAs label={`${hd.actions}: show as`} value={content.actions_as} options={SHOW_AS.actions} onChange={(v) => set(null, { actions_as: v })} />
             <Actions actions={content.actions} onChange={(a) => set('actions', { actions: a })} />
           </Section>
@@ -480,9 +495,14 @@ export function LessonEditor() {
             <fieldset disabled={!editable} className="flex flex-col gap-2">
               <Segmented label="Page layout" value={content.layout.mode} options={{ auto: 'In order', free: 'Boxes I can move' }}
                 onChange={(v) => { if (v === 'free' && !Object.keys(content.layout.boxes).length) tidy(); else set(null, { layout: { ...content.layout, mode: v } }); }} />
-              {free && <div className="flex flex-wrap gap-2">
-                {d.ai && <Button size="sm" variant="primary" loading={arranging} onClick={arrange}><Wand2 aria-hidden className="size-3.5" />Arrange with AI</Button>}
-                <Button size="sm" onClick={tidy}><Move aria-hidden className="size-3.5" />Tidy up</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => setDesigns(true)}><LayoutGrid aria-hidden className="size-3.5" />Choose a layout</Button>
+                {free && d.ai && <Button size="sm" variant="primary" loading={arranging} onClick={arrange}><Wand2 aria-hidden className="size-3.5" />Arrange with AI</Button>}
+                {free && <Button size="sm" onClick={tidy}><Move aria-hidden className="size-3.5" />Tidy up</Button>}
+              </div>
+              {free && content.pictures.some((p) => !hidden.has(`pic:${p.id}`)) && <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setBoxes(picturesSideBySide(input, content.layout.boxes))}><Columns3 aria-hidden className="size-3.5" />Pictures side by side</Button>
+                <Button size="sm" variant="ghost" onClick={() => setBoxes(fitPictureBoxes(input, content.layout.boxes))}><Maximize2 aria-hidden className="size-3.5" />Fit boxes to pictures</Button>
               </div>}
               <p className="text-xs text-text-subtle">{free ? 'Drag a box to move it, drag its corner to resize it; text shrinks to fit its box. Arrow keys move the box in focus, Shift and arrows resize it.' : 'Each part follows the one before; the text shrinks so the page fits on one page.'}</p>
               <div className="flex flex-wrap gap-2">
@@ -512,6 +532,7 @@ export function LessonEditor() {
         </div>
       </div>
 
+      {designs && <DesignsDialog input={input} lessonId={l.id} logo={logo.data ?? null} onClose={() => setDesigns(false)} onPick={(b) => { setBoxes(b); setDesigns(false); }} />}
       {dialog === 'submit' && list.data && <SubmitDialog lesson={l} data={list.data} me={d.me} problems={problems} onClose={() => setDialog(null)} onDone={reload} before={flush} />}
       {dialog && dialog !== 'submit' && (
         <StepDialog step={dialog} lesson={l} onClose={() => setDialog(null)} before={flush} onDone={(deleted) => { if (deleted) { qc.invalidateQueries({ queryKey: ['lessons'] }); window.history.back(); } else reload(); }} />
@@ -520,12 +541,51 @@ export function LessonEditor() {
   );
 }
 
-function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+function Section({ title, aside, hidden, children }: { title: string; aside?: ReactNode; hidden?: boolean; children: ReactNode }) {
   return (
     <Card className="!p-0">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5"><h2 className="font-display text-sm font-bold">{title}</h2>{aside}</div>
-      <div className="flex flex-col gap-3 p-4">{children}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+        <h2 className="font-display text-sm font-bold">{title}{hidden && <span className="ml-2 font-sans text-xs font-normal text-text-subtle">not on the page</span>}</h2>
+        {aside && <div className="flex flex-wrap items-center gap-2">{aside}</div>}
+      </div>
+      <div className={cx('flex flex-col gap-3 p-4', hidden && 'opacity-60')}>{children}</div>
     </Card>
+  );
+}
+
+/** Shows or hides a part on the page; what is written is kept either way. */
+function ShowSwitch({ shown, onToggle, disabled }: { shown: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={shown} disabled={disabled} onClick={onToggle} title={shown ? 'Shown on the page: click to hide it (the text is kept)' : 'Hidden from the page: click to show it'}
+      className={cx('inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-xs font-semibold disabled:opacity-50', shown ? 'border-success text-success' : 'border-border-strong text-text-subtle')}>
+      {shown ? <Eye aria-hidden className="size-3.5" /> : <EyeOff aria-hidden className="size-3.5" />}{shown ? 'Shown' : 'Hidden'}
+    </button>
+  );
+}
+
+/** The same content in each ready-made layout, to pick one. */
+function DesignsDialog({ input, lessonId, logo, onClose, onPick }: { input: PageInput; lessonId: string; logo: { url: string; w: number; h: number } | null; onClose: () => void; onPick: (b: Record<string, Rect>) => void }) {
+  const options = useMemo(() => (Object.keys(DESIGNS) as Design[]).map((k) => {
+    const boxes = designBoxes(input, k);
+    const shown = { ...input, content: { ...input.content, layout: { mode: 'free' as const, boxes } } };
+    return { k, boxes, shown, issues: layoutLesson(shown).issues.length };
+  }), [input]);
+  return (
+    <Dialog title="Choose a layout" onClose={onClose} wide>
+      <p className="mb-3 text-sm text-text-muted">The same content arranged four ways. Each part keeps its own box, which you can still move after.</p>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {options.map((o) => (
+          <li key={o.k} className="flex flex-col gap-2">
+            <button type="button" onClick={() => onPick(o.boxes)} className="rounded-md border border-border p-1 hover:border-accent-edge focus:border-accent-edge" aria-label={`Use the layout ${DESIGNS[o.k].label}`}>
+              <PagePreview input={o.shown} lessonId={lessonId} logo={logo} />
+            </button>
+            <div className="text-sm"><b>{DESIGNS[o.k].label}</b><p className="text-xs text-text-muted">{DESIGNS[o.k].blurb}</p>
+              {o.issues > 0 && <p className="text-xs text-danger">{o.issues} to fix after</p>}</div>
+            <Button size="sm" onClick={() => onPick(o.boxes)}>Use this layout</Button>
+          </li>
+        ))}
+      </ul>
+    </Dialog>
   );
 }
 
@@ -569,8 +629,8 @@ function Actions({ actions, onChange }: { actions: LessonContent['actions']; onC
   );
 }
 
-function Pictures({ lessonId, pictures, editable, kind, onChange, onUploaded, onRemove, onError }: {
-  lessonId: string; pictures: LessonPicture[]; editable: boolean; kind: LessonKind; onChange: (p: LessonPicture[]) => void;
+function Pictures({ lessonId, pictures, editable, kind, hidden, onToggle, onChange, onUploaded, onRemove, onError }: {
+  lessonId: string; pictures: LessonPicture[]; editable: boolean; kind: LessonKind; hidden: Set<string>; onToggle: (id: string) => void; onChange: (p: LessonPicture[]) => void;
   onUploaded: (f: File, section: 'description' | 'analysis') => Promise<void>; onRemove: (p: LessonPicture) => Promise<void>; onError: (m: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -597,6 +657,7 @@ function Pictures({ lessonId, pictures, editable, kind, onChange, onUploaded, on
                 </select>
                 <Button size="sm" variant="ghost" aria-label="Move earlier" disabled={i === 0} onClick={() => move(i, -1)}>↑</Button>
                 <Button size="sm" variant="ghost" aria-label="Move later" disabled={i === pictures.length - 1} onClick={() => move(i, 1)}>↓</Button>
+                <ShowSwitch shown={!hidden.has(`pic:${p.id}`)} onToggle={() => onToggle(`pic:${p.id}`)} disabled={!editable} />
                 {editable && <Button size="sm" variant="ghost" aria-label={`Remove picture ${i + 1}`} onClick={() => onRemove(p).catch((e: Error) => onError(e.message))}><Trash2 aria-hidden className="size-3.5" /></Button>}
               </div>
             </div>

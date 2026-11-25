@@ -238,6 +238,7 @@ const metaOf = (c: LessonContent) => ([['Event date', printDate(c.event_date)], 
 export function partsOf(inp: PageInput): PartId[] {
   const c = inp.content;
   const out: PartId[] = [];
+  const hide = new Set(c.hidden ?? []);
   if (metaOf(c).length) out.push('meta');
   if (c.key_lesson) out.push('key');
   if (lines(c.description).length) out.push('description');
@@ -246,8 +247,17 @@ export function partsOf(inp: PageInput): PartId[] {
   if (lines(c.immediate_cause).length || lines(c.root_cause).length) out.push('analysis');
   for (const p of c.pictures) out.push(`pic:${p.id}`);
   if (c.actions.length) out.push('actions');
-  return out;
+  return out.filter((id) => !hide.has(id));
 }
+/** The pictures shown on the page. */
+const shownPictures = (c: LessonContent) => c.pictures.filter((p) => !(c.hidden ?? []).includes(`pic:${p.id}`));
+
+/** The height of a picture's box at a width: the picture at its own shape, and its caption under it. */
+export function pictureHeight(p: LessonPicture, w: number, s = 9.5): number {
+  const cap = textHeight([{ runs: [{ t: `Fig 0.${p.caption ? ` ${p.caption}` : ''}` }], size: captionSize(s), align: 'c' }], w, 0);
+  return Math.round(((w * p.h) / p.w + 2 + cap) * 10) / 10;
+}
+const captionHeight = (p: LessonPicture, w: number, s = 9.5) => pictureHeight(p, w, s) - (w * p.h) / p.w;
 
 /** Draws one text part at (x, y), w wide; returns where it ends. */
 function drawPart(ctx: Ctx, inp: PageInput, id: PartId, x: number, y: number, w: number): number {
@@ -354,10 +364,13 @@ function flow(inp: PageInput, s: number, picScale: number): { blocks: Block[]; b
   let y = body.top;
   const part = (id: PartId, x: number, w: number, gap: number) => { const y0 = y; y = drawPart(ctx, inp, id, x, y, w); regions[id] = { x, y: y0, w, h: y - y0 }; y += gap; };
   const fig = (p: LessonPicture, x: number, yy: number, w: number, maxH: number) => { const end = figure(ctx, p, x, yy, w, maxH); regions[`pic:${p.id}`] = { x, y: yy, w, h: end - 5 - yy }; return end; };
+  // pictures side by side at the same height, each at its own shape, the row centred
   const row = (list: LessonPicture[], yy: number, maxH: number) => {
     for (let i = 0; i < list.length; i += 3) {
-      const r = list.slice(i, i + 3), gap = 8, cw = (W - gap * (r.length - 1)) / r.length;
-      yy = Math.max(...r.map((p, j) => fig(p, L + j * (cw + gap), yy, cw, maxH * picScale)));
+      const r = list.slice(i, i + 3), gap = 8, sumA = r.reduce((a, p) => a + p.w / p.h, 0);
+      const ih = Math.min(maxH * picScale, (W - gap * (r.length - 1)) / sumA);
+      let x = L + (W - (ih * sumA + gap * (r.length - 1))) / 2;
+      yy = Math.max(...r.map((p) => { const w = (ih * p.w) / p.h; const e = fig(p, x, yy, w, ih); x += w + gap; return e; }));
     }
     return yy;
   };
@@ -365,7 +378,7 @@ function flow(inp: PageInput, s: number, picScale: number): { blocks: Block[]; b
   const has = (id: PartId) => parts.includes(id);
   if (has('meta')) part('meta', L, W, 7);
   if (has('key')) part('key', L, W, 8);
-  const pics = c.pictures;
+  const pics = shownPictures(c);
   const right = c.pictures_as === 'right' && pics.length > 0;
   const tw = right ? W - 168 - 14 : W;
   const colTop = y;
@@ -417,7 +430,7 @@ function boxed(inp: PageInput): { blocks: Block[]; issues: LayoutIssue[]; size: 
     if (id.startsWith('pic:')) {
       const p = c.pictures.find((x) => `pic:${x.id}` === id)!;
       const ctx: Ctx = { blocks: [], s: 9.5, colour: inp.colour, figNo, picScale: 1 };
-      figure(ctx, p, r.x, r.y, r.w, r.h - captionSize(9.5) * LEAD * 2 - 2);
+      figure(ctx, p, r.x, r.y, r.w, r.h - captionHeight(p, r.w));
       out = ctx;
     } else {
       for (const s of SIZES) {
@@ -486,8 +499,11 @@ export function tidyBoxes(boxes: Record<string, Rect>, inp: PageInput): Record<s
   const snap = (v: number) => Math.round(v / 3) * 3;
   return Object.fromEntries(Object.entries(boxes).map(([id, r]) => {
     const w = Math.max(24, Math.min(body.right - body.left, snap(r.w))), h = Math.max(15, Math.min(body.bottom - body.top, snap(r.h)));
-    const x = Math.min(body.right - w, Math.max(body.left, snap(r.x))), y = Math.min(body.bottom - h, Math.max(body.top, snap(r.y)));
-    return [id, { x, y, w, h }];
+    // a picture box keeps the picture's own shape
+    const p = id.startsWith('pic:') ? inp.content.pictures.find((q) => `pic:${q.id}` === id) : null;
+    const ph = p ? pictureHeight(p, w) : h;
+    const x = Math.min(body.right - w, Math.max(body.left, snap(r.x))), y = Math.min(body.bottom - ph, Math.max(body.top, snap(r.y)));
+    return [id, { x, y, w, h: ph }];
   }));
 }
 
@@ -559,4 +575,98 @@ export function pageOps(inp: PageInput, logo: { w: number; h: number } | null) {
   const lay = layoutLesson(inp);
   const ch = chrome(inp, logo);
   return { ops: toOps([...ch.master, ...ch.slide, ...lay.blocks]), fits: lay.fits, size: lay.size };
+}
+
+// ---- picture boxes and ready-made layouts (6z.59) -------------------------------------------------------------------------
+
+/** Every picture box made exactly the picture's size at its width (no empty space around the picture). */
+export function fitPictureBoxes(inp: PageInput, boxes: Record<string, Rect>): Record<string, Rect> {
+  const out = { ...boxes };
+  for (const p of inp.content.pictures) { const r = out[`pic:${p.id}`]; if (r) out[`pic:${p.id}`] = { ...r, h: pictureHeight(p, r.w) }; }
+  return out;
+}
+
+/** Pictures in rows across the page, side by side at the same height, each box exactly its picture. */
+function pictureRows(list: LessonPicture[], x: number, y: number, w: number, maxH: number, gap = 8): { boxes: Record<string, Rect>; bottom: number } {
+  const boxes: Record<string, Rect> = {};
+  for (let i = 0; i < list.length; i += 3) {
+    const r = list.slice(i, i + 3), sumA = r.reduce((a, p) => a + p.w / p.h, 0);
+    const ih = Math.min(maxH, (w - gap * (r.length - 1)) / sumA);
+    let px = x + (w - (ih * sumA + gap * (r.length - 1))) / 2;
+    let bottom = y;
+    for (const p of r) { const pw = (ih * p.w) / p.h; const h = pictureHeight(p, pw); boxes[`pic:${p.id}`] = { x: px, y, w: pw, h }; bottom = Math.max(bottom, y + h); px += pw + gap; }
+    y = bottom + gap;
+  }
+  return { boxes, bottom: y - gap };
+}
+
+/** The shown pictures put side by side where the first one is, across the page. */
+export function picturesSideBySide(inp: PageInput, boxes: Record<string, Rect>): Record<string, Rect> {
+  const pics = shownPictures(inp.content);
+  if (!pics.length) return boxes;
+  const body = bodyOf(inp);
+  const top = Math.min(...pics.map((p) => boxes[`pic:${p.id}`]?.y ?? body.bottom - 120));
+  return { ...boxes, ...pictureRows(pics, body.left, top, body.right - body.left, 170).boxes };
+}
+
+export const DESIGNS = {
+  classic: { label: 'Pictures at the side', blurb: 'Text on the left, pictures in a column on the right' },
+  top: { label: 'Pictures on top', blurb: 'Pictures side by side under the key lesson, text below' },
+  columns: { label: 'Two columns', blurb: 'What happened on the left, why and the pictures on the right' },
+  bottom: { label: 'Pictures above the actions', blurb: 'All the text first, then the pictures side by side' },
+} as const;
+export type Design = keyof typeof DESIGNS;
+
+/**
+ * A ready-made arrangement of the same parts: each text box as tall as its text needs, each picture box exactly its
+ * picture, at the largest text size and picture size that fit the page, with the spare height shared out.
+ */
+export function designBoxes(inp: PageInput, design: Design): Record<string, Rect> {
+  const body = bodyOf(inp);
+  const parts = partsOf(inp);
+  const pics = shownPictures(inp.content).filter((p) => parts.includes(`pic:${p.id}`));
+  const has = (id: PartId) => parts.includes(id);
+  const GAP = 8, BW = body.right - body.left;
+  let best: { boxes: Record<string, Rect>; bottom: number } | null = null;
+  for (const s of [10, 9.5, 9, 8.5, 8, 7.5]) {
+    for (const picMax of [210, 170, 130, 95, 70]) {
+      const boxes: Record<string, Rect> = {};
+      const measure = (id: PartId, w: number) => { const ctx: Ctx = { blocks: [], s, colour: inp.colour, figNo: new Map(), picScale: 1 }; return Math.ceil(drawPart(ctx, inp, id, 0, 0, w)) + 1; };
+      const stack = (ids: PartId[], x: number, y: number, w: number) => { for (const id of ids.filter(has)) { const h = measure(id, w); boxes[id] = { x, y, w, h }; y += h + GAP; } return y - GAP; };
+      const column = (x: number, y: number, w: number) => {
+        for (const p of pics) { let pw = w, ih = (w * p.h) / p.w; if (ih > picMax) { ih = picMax; pw = (ih * p.w) / p.h; } const h = pictureHeight(p, pw); boxes[`pic:${p.id}`] = { x: x + (w - pw) / 2, y, w: pw, h }; y += h + GAP; }
+        return y - GAP;
+      };
+      const rows = (y: number) => { if (!pics.length) return y - GAP; const r = pictureRows(pics, body.left, y, BW, picMax, GAP); Object.assign(boxes, r.boxes); return r.bottom; };
+      let y = stack(['meta', 'key'], body.left, body.top, BW) + GAP;
+      if (!has('meta') && !has('key')) y = body.top;
+      const text: PartId[] = ['description', 'facts', 'damage', 'analysis'];
+      if (design === 'classic' && pics.length) {
+        const cw = 170, tw = BW - cw - 14;
+        y = Math.max(stack(text, body.left, y, tw), column(body.left + tw + 14, y, cw)) + GAP;
+      } else if (design === 'columns') {
+        const cw = (BW - 14) / 2;
+        const left = stack(['description', 'facts', 'damage'], body.left, y, cw);
+        let right = stack(['analysis'], body.left + cw + 14, y, cw);
+        if (pics.length) right = column(body.left + cw + 14, has('analysis') ? right + GAP : y, cw);
+        y = Math.max(left, right) + GAP;
+      } else if (design === 'top') {
+        y = rows(y) + GAP;
+        y = stack(text, body.left, y, BW) + GAP;
+      } else {
+        y = stack(text, body.left, y, BW) + GAP;
+        y = rows(y) + GAP;
+      }
+      y = stack(['actions'], body.left, y, BW);
+      if (!best || y < best.bottom) best = { boxes, bottom: y };
+      if (y <= body.bottom) {
+        // share the spare height out between the boxes, at most 1.2 times the gaps
+        const used = y - body.top, room = body.bottom - body.top;
+        const k = Math.min(1.12, room / Math.max(1, used));
+        const spread = Object.fromEntries(Object.entries(boxes).map(([id, r]) => [id, { ...r, y: body.top + (r.y - body.top) * k }]));
+        return tidyBoxes(spread, inp);
+      }
+    }
+  }
+  return tidyBoxes(best!.boxes, inp);
 }
