@@ -19,12 +19,14 @@ export type LessonStatus = keyof typeof LESSON_STATUS;
 // ---- the page content -----------------------------------------------------------------------------------------
 
 export type DescriptionAs = 'bullets' | 'paragraph' | 'timeline';
+export type FactsAs = 'bullets' | 'numbered';
 export type DamageAs = 'tags' | 'list';
 export type AnalysisAs = 'side' | 'stacked' | 'whys';
 export type PicturesAs = 'right' | 'row' | 'large';
 export type ActionsAs = 'table' | 'list';
 export const SHOW_AS = {
   description: { bullets: 'Bullets', paragraph: 'Paragraph', timeline: 'Timeline' },
+  facts: { bullets: 'Bullets', numbered: 'Numbered' },
   damage: { tags: 'Tags', list: 'List' },
   analysis: { side: 'Side by side', stacked: 'Stacked', whys: 'With 5 whys' },
   pictures: { right: 'Column at right', row: 'Row under section', large: 'One large' },
@@ -32,28 +34,36 @@ export const SHOW_AS = {
 } as const;
 
 /** The parts AI can write; each stays flagged until someone edits it or ticks it as checked. */
-export const PARTS = { header: 'Header', description: 'Description', damage: 'Potential damage', analysis: 'Analysis and findings', actions: 'Actions' } as const;
+export const PARTS = { header: 'Header', description: 'Description', facts: 'Facts and findings', damage: 'Potential damage', analysis: 'Analysis and findings', actions: 'Actions' } as const;
 export type Part = keyof typeof PARTS;
 
 export interface LessonPicture { id: string; caption: string; section: 'description' | 'analysis'; w: number; h: number; type: 'image/jpeg' | 'image/png' }
 export interface LessonAction { action: string; responsible: string; due: string }
+/** A box on the page, in points from the page's top left (540 × 780). */
+export interface Rect { x: number; y: number; w: number; h: number }
+/** How the page is laid out: in order down the page (auto), or every part as a box placed by hand or by AI (free). */
+export interface LessonLayoutChoice { mode: 'auto' | 'free'; boxes: Record<string, Rect> }
+
 export interface LessonContent {
   key_lesson: string;
   event_date: string; field: string; well: string; job: string; unit: string; category: string;
   description: string; description_as: DescriptionAs;
+  /** Facts and findings, one per line (6z.58); left out of the page when empty. */
+  facts: string; facts_as: FactsAs;
   damage: string[]; damage_as: DamageAs;
   immediate_cause: string; root_cause: string; whys: string[]; analysis_as: AnalysisAs;
   pictures: LessonPicture[]; pictures_as: PicturesAs;
   actions: LessonAction[]; actions_as: ActionsAs;
+  layout: LessonLayoutChoice;
   /** Parts written by AI and not yet checked by a person. */
   ai: Part[];
 }
 
 export const EMPTY_CONTENT: LessonContent = {
   key_lesson: '', event_date: '', field: '', well: '', job: '', unit: '', category: '',
-  description: '', description_as: 'bullets', damage: [], damage_as: 'tags',
+  description: '', description_as: 'bullets', facts: '', facts_as: 'bullets', damage: [], damage_as: 'tags',
   immediate_cause: '', root_cause: '', whys: [], analysis_as: 'side',
-  pictures: [], pictures_as: 'right', actions: [], actions_as: 'table', ai: [],
+  pictures: [], pictures_as: 'right', actions: [], actions_as: 'table', layout: { mode: 'auto', boxes: {} }, ai: [],
 };
 
 export const LIMITS = { title: 160, line: 120, text: 3000, damage: 8, whys: 5, actions: 10, pictures: 8, caption: 120 } as const;
@@ -74,6 +84,7 @@ export function cleanContent(v: unknown): LessonContent {
     event_date: isDate(date) ? date : '',
     field: line(b.field, 60), well: line(b.well, 60), job: line(b.job, 80), unit: line(b.unit, 40), category: line(b.category, 60),
     description: str(b.description, LIMITS.text), description_as: pick(b.description_as, SHOW_AS.description, 'bullets'),
+    facts: str(b.facts, LIMITS.text), facts_as: pick(b.facts_as, SHOW_AS.facts, 'bullets'),
     damage: [...new Set(arr(b.damage).map((x) => line(x, 60)).filter(Boolean))].slice(0, LIMITS.damage), damage_as: pick(b.damage_as, SHOW_AS.damage, 'tags'),
     immediate_cause: str(b.immediate_cause, 1500), root_cause: str(b.root_cause, 1500),
     whys: arr(b.whys).map((x) => line(x, 200)).filter(Boolean).slice(0, LIMITS.whys), analysis_as: pick(b.analysis_as, SHOW_AS.analysis, 'side'),
@@ -91,19 +102,37 @@ export function cleanContent(v: unknown): LessonContent {
       return { action: line(a.action, 300), responsible: line(a.responsible, 60), due: isDate(due) ? due : '' };
     }).filter((a) => a.action).slice(0, LIMITS.actions),
     actions_as: pick(b.actions_as, SHOW_AS.actions, 'table'),
+    layout: cleanLayout(b.layout),
     ai: [...new Set(arr(b.ai).filter((x): x is Part => typeof x === 'string' && x in PARTS))],
   };
 }
 
+const num = (v: unknown, lo: number, hi: number) => { const n = Number(v); return Number.isFinite(n) ? Math.round(Math.min(hi, Math.max(lo, n)) * 10) / 10 : null; };
+/** Boxes kept on the page, at least 20 × 12 pt, ids that name a part or a picture. */
+export function cleanLayout(v: unknown): LessonLayoutChoice {
+  const b = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  const boxes: Record<string, Rect> = {};
+  const raw = (b.boxes && typeof b.boxes === 'object' ? b.boxes : {}) as Record<string, unknown>;
+  for (const [id, r] of Object.entries(raw).slice(0, 40)) {
+    if (!/^(meta|key|description|facts|damage|analysis|actions|pic:[a-z0-9-]{8,40})$/i.test(id)) continue;
+    const o = (r ?? {}) as Record<string, unknown>;
+    const x = num(o.x, 0, 520), y = num(o.y, 0, 770), w = num(o.w, 20, 540), h = num(o.h, 12, 780);
+    if (x === null || y === null || w === null || h === null) continue;
+    boxes[id] = { x, y, w, h };
+  }
+  return { mode: b.mode === 'free' ? 'free' : 'auto', boxes };
+}
+
 /** What still stops a page from going for review. */
-export function submitProblems(title: string, c: LessonContent, fits: boolean): string[] {
+export function submitProblems(title: string, c: LessonContent, fits: boolean | string): string[] {
   const out: string[] = [];
   if (!title.trim()) out.push('Give it a title');
   if (!c.description.trim()) out.push('Write the description');
   if (!c.immediate_cause.trim()) out.push('Write the analysis');
   if (!c.actions.length) out.push('Add at least one action');
   if (c.ai.length) out.push(`Check the parts AI wrote: ${c.ai.map((p) => PARTS[p]).join(', ')}`);
-  if (!fits) out.push('The page runs past one page: shorten the text or use fewer pictures');
+  if (fits === false) out.push('The page runs past one page: shorten the text or use fewer pictures');
+  else if (typeof fits === 'string') out.push(fits);
   return out;
 }
 
@@ -111,8 +140,8 @@ export function submitProblems(title: string, c: LessonContent, fits: boolean): 
 
 export function headings(kind: LessonKind) {
   return kind === 'best_practice'
-    ? { title: 'Best Practice', description: 'What we do', analysis: 'Why it works', actions: 'How to apply it', key: 'The practice', immediate: 'Why it works', root: 'What it prevents' }
-    : { title: 'Lesson Learnt', description: 'Description', analysis: 'Analysis and findings', actions: 'Actions to be taken', key: 'Key lesson', immediate: 'Immediate cause', root: 'Root cause' };
+    ? { title: 'Best Practice', facts: 'Facts and findings', description: 'What we do', analysis: 'Why it works', actions: 'How to apply it', key: 'The practice', immediate: 'Why it works', root: 'What it prevents' }
+    : { title: 'Lesson Learnt', facts: 'Facts and findings', description: 'Description', analysis: 'Analysis and findings', actions: 'Actions to be taken', key: 'Key lesson', immediate: 'Immediate cause', root: 'Root cause' };
 }
 
 // ---- who may do what ---------------------------------------------------------------------------------------------
@@ -167,10 +196,10 @@ export function lessonSchema() {
   const list = { type: 'array', items: s };
   return {
     type: 'object', additionalProperties: false,
-    required: ['title', 'key_lesson', 'event_date', 'field', 'well', 'job', 'unit', 'category', 'description', 'damage', 'immediate_cause', 'root_cause', 'whys', 'actions'],
+    required: ['title', 'key_lesson', 'event_date', 'field', 'well', 'job', 'unit', 'category', 'description', 'facts', 'damage', 'immediate_cause', 'root_cause', 'whys', 'actions'],
     properties: {
       title: s, key_lesson: s, event_date: s, field: s, well: s, job: s, unit: s, category: s,
-      description: list, damage: list, immediate_cause: list, root_cause: list, whys: list,
+      description: list, facts: list, damage: list, immediate_cause: list, root_cause: list, whys: list,
       actions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['action', 'responsible', 'due'], properties: { action: s, responsible: s, due: s } } },
     },
   };
@@ -187,6 +216,7 @@ Fill every field from the report. Leave a field "" (or an empty list) when the r
 - event_date: YYYY-MM-DD of the event, or "".
 - field, well, job (the job being done, e.g. "Set PR plug"), unit (slickline unit number), category: short. ${p.categories.length ? `Prefer one of these categories when it fits: ${p.categories.join(', ')}.` : ''}
 - description: 2 to 5 short bullet sentences, in order, ${bp ? 'what crews do and when' : 'what happened and what was done to make it safe'}.
+- facts: up to 6 short facts and findings established by the report (readings, measurements, what was found on inspection), each a short sentence; [] if none.
 ${bp ? '- damage: [] (not used for a best practice).' : '- damage: 2 to 4 short potential consequences (e.g. "People injury", "Lost well barrier", "Client NPT").'}
 - immediate_cause: ${bp ? 'why the practice works, 1 to 3 lines' : '1 to 3 lines, each "Category: explanation" (e.g. "Equipment failure: the load cell gap had closed")'}.
 - root_cause: ${bp ? 'what it prevents, 1 to 3 lines' : '1 to 3 lines, each "Category: explanation"'}.
@@ -200,11 +230,11 @@ export function cleanDraft(raw: unknown, kind: LessonKind): { title: string; con
   const lines = (v: unknown) => (Array.isArray(v) ? v.map((x) => line(x, 400)).filter(Boolean) : []);
   const c = cleanContent({
     key_lesson: r.key_lesson, event_date: r.event_date, field: r.field, well: r.well, job: r.job, unit: r.unit, category: r.category,
-    description: lines(r.description).join('\n'), damage: kind === 'best_practice' ? [] : lines(r.damage),
+    description: lines(r.description).join('\n'), facts: lines(r.facts).join('\n'), damage: kind === 'best_practice' ? [] : lines(r.damage),
     immediate_cause: lines(r.immediate_cause).join('\n'), root_cause: lines(r.root_cause).join('\n'), whys: lines(r.whys),
     actions: Array.isArray(r.actions) ? r.actions : [],
   });
   const ai = (Object.keys(PARTS) as Part[]).filter((k) => kind === 'best_practice' ? k !== 'damage' : true);
-  const { pictures: _p, pictures_as: _pa, description_as: _d, damage_as: _da, analysis_as: _a, actions_as: _ac, ...filled } = c;
-  return { title: line(r.title, LIMITS.title), content: { ...filled, ai } };
+  const { pictures: _p, pictures_as: _pa, description_as: _d, facts_as: _f, damage_as: _da, analysis_as: _a, actions_as: _ac, layout: _l, ...filled } = c;
+  return { title: line(r.title, LIMITS.title), content: { ...filled, ai: ai.filter((k) => k !== 'facts' || !!c.facts) } };
 }

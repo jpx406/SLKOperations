@@ -79,7 +79,11 @@ export async function templateStyle(tpl: Uint8Array): Promise<TemplateStyle | nu
   const title = shapes.find((s) => s.y < 50 && s.text && s.textColour)?.textColour;
   if (!bar && !title) return null;
   const main = bar ?? title ?? '024800';
-  return { band: band && band !== 'FFFFFF' ? band : null, title: title ?? main, bar: main, foot: foot ?? main };
+  // the free body: below the header's bands and above the sign-off tables
+  const wide = shapes.filter((s) => s.w > 300 && s.h < 200);
+  const headBottom = Math.max(0, ...wide.filter((s) => s.y < 150).map((s) => s.y + s.h));
+  const footTop = Math.min(780, ...shapes.filter((s) => s.y > 500).map((s) => s.y));
+  return { band: band && band !== 'FFFFFF' ? band : null, title: title ?? main, bar: main, foot: foot ?? main, body: { top: Math.round(headBottom + 4), bottom: Math.round(footTop - 4) } };
 }
 
 interface Ctx { sx: number; sy: number; id: number; images: Map<string, string>; rels: string[]; media: { name: string; data: Uint8Array }[]; mediaNo: number }

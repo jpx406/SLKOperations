@@ -4,7 +4,7 @@
 // shapes on the company template. The header band and the footer tables belong to the template ("master"): the
 // PowerPoint keeps the template's own, the preview and the PDF draw the same ones here.
 
-import { COMPANY_DB, headings, printDate, type LessonCompany, type LessonContent, type LessonKind, type LessonPicture } from './lessons';
+import { COMPANY_DB, headings, printDate, type LessonCompany, type LessonContent, type LessonKind, type LessonPicture, type Rect } from './lessons';
 
 export const PAGE = { w: 540, h: 780 } as const;
 const L = 18, R = 522, W = R - L, TOP = 84, BOTTOM = 676;
@@ -182,7 +182,7 @@ export function toOps(blocks: Block[]): Op[] {
 // ---- the page ---------------------------------------------------------------------------------------------------------
 
 /** The colours of the template's header band, its title, the title bar and the sign-off header rows. */
-export interface TemplateStyle { band: string | null; title: string; bar: string; foot: string }
+export interface TemplateStyle { band: string | null; title: string; bar: string; foot: string; body?: { top: number; bottom: number } }
 export interface PageInput {
   style?: TemplateStyle | null;
   kind: LessonKind; company: LessonCompany; country: string; title: string; content: LessonContent; colour: string;
@@ -197,7 +197,7 @@ const leadRuns = (s: string, colour = INK): Run[] => {
 };
 const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean);
 
-interface Ctx { blocks: Block[]; s: number; colour: string; pics: Map<string, LessonPicture>; figNo: Map<string, number>; picScale: number }
+interface Ctx { blocks: Block[]; s: number; colour: string; figNo: Map<string, number>; picScale: number }
 
 function heading(ctx: Ctx, text: string, x: number, y: number, w: number): number {
   const hs = ctx.s + 2;
@@ -211,161 +211,284 @@ function text(ctx: Ctx, paras: Para[], x: number, y: number, w: number): number 
   ctx.blocks.push({ k: 'text', x, y, w, h, pad: 0, paras });
   return y + h;
 }
+const captionSize = (s: number) => Math.max(6.5, s - 3);
 function figure(ctx: Ctx, p: LessonPicture, x: number, y: number, w: number, maxH: number): number {
   let pw = w, ph = (w * p.h) / p.w;
-  if (ph > maxH) { ph = maxH; pw = (maxH * p.w) / p.h; }
+  if (ph > maxH) { ph = Math.max(10, maxH); pw = (ph * p.w) / p.h; }
   ctx.blocks.push({ k: 'image', x: x + (w - pw) / 2, y, w: pw, h: ph, pic: p.id });
   y += ph + 2;
   const n = ctx.figNo.get(p.id) ?? ctx.figNo.size + 1;
   ctx.figNo.set(p.id, n);
-  return text(ctx, [{ runs: [{ t: `Fig ${n}.${p.caption ? ` ${p.caption}` : ''}`, c: GREY }], size: Math.max(6.5, ctx.s - 3), align: 'c' }], x, y, w) + 5;
-}
-function pictureRow(ctx: Ctx, list: LessonPicture[], x: number, y: number, w: number, maxH: number): number {
-  for (let i = 0; i < list.length; i += 3) {
-    const row = list.slice(i, i + 3);
-    const gap = 8, cw = (w - gap * (row.length - 1)) / row.length;
-    const ends = row.map((p, j) => figure(ctx, p, x + j * (cw + gap), y, cw, maxH * ctx.picScale));
-    y = Math.max(...ends);
-  }
-  return y;
+  return text(ctx, [{ runs: [{ t: `Fig ${n}.${p.caption ? ` ${p.caption}` : ''}`, c: GREY }], size: captionSize(ctx.s), align: 'c' }], x, y, w) + 5;
 }
 
-function body(inp: PageInput, s: number, picScale: number): { blocks: Block[]; bottom: number } {
+// ---- the parts of the page ---------------------------------------------------------------------------------------------
+
+/** A part of the page: the event strip, the key lesson, each section and each picture. */
+export type PartId = 'meta' | 'key' | 'description' | 'facts' | 'damage' | 'analysis' | 'actions' | `pic:${string}`;
+export const partLabel = (id: string, kind: LessonKind, pictures: LessonPicture[] = []) => {
+  const hd = headings(kind);
+  if (id.startsWith('pic:')) { const i = pictures.findIndex((p) => `pic:${p.id}` === id); return `Fig ${i + 1}${pictures[i]?.caption ? ` · ${pictures[i].caption}` : ''}`; }
+  return ({ meta: 'Event facts', key: hd.key, description: hd.description, facts: hd.facts, damage: 'Potential damage', analysis: hd.analysis, actions: hd.actions } as Record<string, string>)[id] ?? id;
+};
+
+const metaOf = (c: LessonContent) => ([['Event date', printDate(c.event_date)], ['Field', c.field], ['Well', c.well], ['Job', c.job], ['Unit', c.unit], ['Category', c.category]] as const).filter(([, v]) => v);
+
+/** The parts that have something to show, in reading order. */
+export function partsOf(inp: PageInput): PartId[] {
   const c = inp.content;
-  const hd = headings(inp.kind);
-  const ctx: Ctx = { blocks: [], s, colour: inp.colour, pics: new Map(c.pictures.map((p) => [p.id, p])), figNo: new Map(), picScale };
-  let y = TOP;
+  const out: PartId[] = [];
+  if (metaOf(c).length) out.push('meta');
+  if (c.key_lesson) out.push('key');
+  if (lines(c.description).length) out.push('description');
+  if (lines(c.facts).length) out.push('facts');
+  if (inp.kind === 'lesson_learnt' && c.damage.length) out.push('damage');
+  if (lines(c.immediate_cause).length || lines(c.root_cause).length) out.push('analysis');
+  for (const p of c.pictures) out.push(`pic:${p.id}`);
+  if (c.actions.length) out.push('actions');
+  return out;
+}
 
-  // event facts
-  const meta = ([['Event date', printDate(c.event_date)], ['Field', c.field], ['Well', c.well], ['Job', c.job], ['Unit', c.unit], ['Category', c.category]] as const).filter(([, v]) => v);
-  if (meta.length) {
-    const cols = meta.map(() => W / meta.length);
+/** Draws one text part at (x, y), w wide; returns where it ends. */
+function drawPart(ctx: Ctx, inp: PageInput, id: PartId, x: number, y: number, w: number): number {
+  const c = inp.content, s = ctx.s, hd = headings(inp.kind);
+  if (id === 'meta') {
+    const meta = metaOf(c);
+    const cols = meta.map(() => w / meta.length);
     const rows = tableRows(cols, [
       { cells: meta.map(([k]) => ({ runs: [{ t: k.toUpperCase(), c: GREY }] })), size: 6, min: 10 },
-      { cells: meta.map(([, v]) => ({ runs: [{ t: v, b: true }] })), size: Math.max(7.5, s - 1.5) },
+      { cells: meta.map(([, v]) => ({ runs: [{ t: v, b: true }] })), size: Math.max(7, s - 1.5) },
     ]);
     rows[0].h = 10;
     const h = rows.reduce((a, r) => a + r.h, 0);
-    ctx.blocks.push({ k: 'table', x: L, y, w: W, h, cols, rows, grid: 'D1D5DB' });
-    y += h + 7;
+    ctx.blocks.push({ k: 'table', x, y, w, h, cols, rows, grid: 'D1D5DB' });
+    return y + h;
   }
-  // key lesson
-  if (c.key_lesson) {
+  if (id === 'key') {
     const paras: Para[] = [{ runs: [{ t: hd.key.toUpperCase(), b: true, c: inp.colour }], size: 6.5 }, { runs: [{ t: c.key_lesson, b: true }], size: s + 0.5, gap: 1 }];
-    const h = textHeight(paras, W - 10, 5);
-    ctx.blocks.push({ k: 'rect', x: L, y, w: W, h, fill: tint(inp.colour, 0.9) }, { k: 'rect', x: L, y, w: 3.5, h, fill: inp.colour });
-    ctx.blocks.push({ k: 'text', x: L + 8, y, w: W - 10, h, pad: 5, paras });
-    y += h + 8;
+    const h = textHeight(paras, w - 10, 5);
+    ctx.blocks.push({ k: 'rect', x, y, w, h, fill: tint(inp.colour, 0.9) }, { k: 'rect', x, y, w: 3.5, h, fill: inp.colour });
+    ctx.blocks.push({ k: 'text', x: x + 8, y, w: w - 10, h, pad: 5, paras });
+    return y + h;
   }
-
-  const pics = c.pictures;
-  const right = c.pictures_as === 'right' && pics.length > 0;
-  const tw = right ? W - 168 - 14 : W;
-  const colTop = y;
-  const after = (section: 'description' | 'analysis', yy: number) => {
-    if (right) return yy;
-    const list = pics.filter((p) => p.section === section);
-    if (!list.length) return yy;
-    if (c.pictures_as === 'large') {
-      yy = figure(ctx, list[0], L, yy + 4, W, 250 * picScale);
-      return list.length > 1 ? pictureRow(ctx, list.slice(1), L, yy, W, 120) : yy;
-    }
-    return pictureRow(ctx, list, L, yy + 4, W, 140);
-  };
-
-  // description
-  const desc = lines(c.description);
-  if (desc.length) {
-    y = heading(ctx, hd.description, L, y, tw);
+  if (id === 'description') {
+    const desc = lines(c.description);
+    y = heading(ctx, hd.description, x, y, w);
     const paras: Para[] = c.description_as === 'paragraph'
       ? desc.map((t, i) => ({ runs: [{ t }], size: s, gap: i ? 3 : 0 }))
       : c.description_as === 'timeline'
         ? desc.map((t, i) => { const m = /^(.{1,24}?)\s+[-–—:|]\s+(.+)$/.exec(t); return { runs: m ? [{ t: m[1], b: true, c: inp.colour }, { t: ` ${m[2]}` }] : [{ t }], size: s, gap: i ? 2.5 : 0 }; })
         : desc.map((t, i) => ({ runs: [{ t: t.replace(/^[-•*▪]\s*/, '') }], size: s, bullet: '•', gap: i ? 2 : 0 }));
-    y = text(ctx, paras, L, y, tw) + 4;
+    return text(ctx, paras, x, y, w);
   }
-  y = after('description', y);
-
-  // potential damage
-  if (inp.kind === 'lesson_learnt' && c.damage.length) {
-    y = heading(ctx, 'Potential damage', L, y + 2, tw);
-    if (c.damage_as === 'list') y = text(ctx, c.damage.map((t) => ({ runs: [{ t }], size: s, bullet: '•' })), L, y, tw) + 4;
-    else {
-      const ts = Math.max(7.5, s - 1), th = ts + 7;
-      let x = L;
-      for (const t of c.damage) {
-        const w = Math.min(tw, textWidth(t, ts, true) + 14);
-        if (x > L && x + w > L + tw) { x = L; y += th + 4; }
-        ctx.blocks.push({ k: 'rect', x, y, w, h: th, stroke: inp.colour, sw: 0.8 });
-        ctx.blocks.push({ k: 'text', x, y, w, h: th, pad: 0, valign: 'middle', paras: [{ runs: [{ t, b: true, c: inp.colour }], size: ts, align: 'c' }] });
-        x += w + 5;
-      }
-      y += th + 6;
+  if (id === 'facts') {
+    y = heading(ctx, hd.facts, x, y, w);
+    return text(ctx, lines(c.facts).map((t, i) => ({ runs: leadRuns(t.replace(/^[-•*▪]\s*/, '')), size: s, bullet: c.facts_as === 'numbered' ? `${i + 1}.` : '•', gap: i ? 2 : 0 })), x, y, w);
+  }
+  if (id === 'damage') {
+    y = heading(ctx, 'Potential damage', x, y, w);
+    if (c.damage_as === 'list') return text(ctx, c.damage.map((t) => ({ runs: [{ t }], size: s, bullet: '•' })), x, y, w);
+    const ts = Math.max(7, s - 1), th = ts + 7;
+    let tx = x;
+    for (const t of c.damage) {
+      const tw = Math.min(w, textWidth(t, ts, true) + 14);
+      if (tx > x && tx + tw > x + w) { tx = x; y += th + 4; }
+      ctx.blocks.push({ k: 'rect', x: tx, y, w: tw, h: th, stroke: inp.colour, sw: 0.8 });
+      ctx.blocks.push({ k: 'text', x: tx, y, w: tw, h: th, pad: 0, valign: 'middle', paras: [{ runs: [{ t, b: true, c: inp.colour }], size: ts, align: 'c' }] });
+      tx += tw + 5;
     }
+    return y + th + 2;
   }
-
-  // analysis
-  const imm = lines(c.immediate_cause), root = lines(c.root_cause);
-  if (imm.length || root.length) {
-    y = heading(ctx, hd.analysis, L, y + 2, tw);
+  if (id === 'analysis') {
+    const imm = lines(c.immediate_cause), root = lines(c.root_cause);
+    y = heading(ctx, hd.analysis, x, y, w);
     const sub = (t: string): Para => ({ runs: [{ t, b: true, u: true }], size: s });
     const causes = (ls: string[]): Para[] => ls.map((t) => ({ runs: leadRuns(t), size: s, gap: 2 }));
     // a best practice with one part needs no sub-heading under its heading
     const subs = inp.kind === 'lesson_learnt' || (imm.length > 0 && root.length > 0);
     const immParas = imm.length ? [...(subs ? [sub(hd.immediate)] : []), ...causes(imm)] : [];
     const rootParas = root.length ? [...(subs ? [sub(hd.root)] : []), ...causes(root)] : [];
-    if (c.analysis_as === 'side' && immParas.length && rootParas.length && tw >= 300) {
-      const cw = (tw - 12) / 2;
-      y = Math.max(text(ctx, immParas, L, y, cw), text(ctx, rootParas, L + cw + 12, y, cw)) + 4;
+    if (c.analysis_as === 'side' && immParas.length && rootParas.length && w >= 300) {
+      const cw = (w - 12) / 2;
+      y = Math.max(text(ctx, immParas, x, y, cw), text(ctx, rootParas, x + cw + 12, y, cw));
     } else {
-      y = text(ctx, [...immParas, ...rootParas.map((p, i) => (i === 0 ? { ...p, gap: 5 } : p))], L, y, tw) + 4;
+      y = text(ctx, [...immParas, ...rootParas.map((p, i) => (i === 0 ? { ...p, gap: 5 } : p))], x, y, w);
     }
     if (c.analysis_as === 'whys' && c.whys.length) {
-      y = text(ctx, [{ ...sub('5 whys'), gap: 2 }, ...c.whys.map((t, i) => ({ runs: [{ t: `Why ${i + 1}`, b: true, c: inp.colour }, { t: `  ${t}` }], size: s, gap: 2 }))], L, y, tw) + 4;
+      y = text(ctx, [{ ...sub('5 whys'), gap: 4 }, ...c.whys.map((t, i) => ({ runs: [{ t: `Why ${i + 1}`, b: true, c: inp.colour }, { t: `  ${t}` }], size: s, gap: 2 }))], x, y, w);
     }
+    return y;
   }
-  y = after('analysis', y);
-
-  // the picture column
-  if (right) {
-    let py = colTop;
-    for (const p of pics) py = figure(ctx, p, L + tw + 14, py, 168, 175 * picScale);
-    y = Math.max(y, py);
-  }
-
-  // actions
-  if (c.actions.length) {
-    y = heading(ctx, hd.actions, L, y + 2, W);
-    if (c.actions_as === 'list') {
-      y = text(ctx, c.actions.map((a, i) => {
+  if (id === 'actions') {
+    y = heading(ctx, hd.actions, x, y, w);
+    if (c.actions_as === 'list' || w < 300) {
+      return text(ctx, c.actions.map((a, i) => {
         const tail = [a.due ? `Deadline ${printDate(a.due)}.` : '', a.responsible ? `Responsible: ${a.responsible}` : ''].filter(Boolean).join(' ');
         return { runs: [{ t: a.action }, ...(tail ? [{ t: ` ${tail}`, b: true, c: RED }] : [])], size: s, bullet: `${i + 1}.`, gap: i ? 3 : 0 };
-      }), L, y, W) + 4;
-    } else {
-      const cols = [20, W - 20 - 100 - 72, 100, 72];
-      const hs = Math.max(7, s - 2), rs = Math.max(7.5, s - 1);
-      const rows = tableRows(cols, [
-        { cells: [{ runs: [{ t: '#', b: true, c: WHITE }], align: 'c' }, { runs: [{ t: 'Action', b: true, c: WHITE }] }, { runs: [{ t: 'Responsible', b: true, c: WHITE }] }, { runs: [{ t: 'Target date', b: true, c: WHITE }] }], size: hs, fill: inp.colour },
-        ...c.actions.map((a, i) => ({ cells: [{ runs: [{ t: String(i + 1) }], align: 'c' as const }, { runs: [{ t: a.action }] }, { runs: [{ t: a.responsible }] }, { runs: [{ t: printDate(a.due), b: true, c: RED }] }], size: rs })),
-      ]);
-      const h = rows.reduce((a, r) => a + r.h, 0);
-      ctx.blocks.push({ k: 'table', x: L, y, w: W, h, cols, rows, grid: 'D1D5DB' });
-      y += h + 4;
+      }), x, y, w);
     }
+    const resp = Math.min(100, w * 0.2), due = Math.min(72, w * 0.16);
+    const cols = [20, w - 20 - resp - due, resp, due];
+    const hs = Math.max(6.5, s - 2), rs = Math.max(7, s - 1);
+    const rows = tableRows(cols, [
+      { cells: [{ runs: [{ t: '#', b: true, c: WHITE }], align: 'c' }, { runs: [{ t: 'Action', b: true, c: WHITE }] }, { runs: [{ t: 'Responsible', b: true, c: WHITE }] }, { runs: [{ t: 'Target date', b: true, c: WHITE }] }], size: hs, fill: inp.colour },
+      ...c.actions.map((a, i) => ({ cells: [{ runs: [{ t: String(i + 1) }], align: 'c' as const }, { runs: [{ t: a.action }] }, { runs: [{ t: a.responsible }] }, { runs: [{ t: printDate(a.due), b: true, c: RED }] }], size: rs })),
+    ]);
+    const h = rows.reduce((a, r) => a + r.h, 0);
+    ctx.blocks.push({ k: 'table', x, y, w, h, cols, rows, grid: 'D1D5DB' });
+    return y + h;
   }
-  return { blocks: ctx.blocks, bottom: y };
+  return y;
 }
 
-/** The body at the largest text size that fits on the page (10.5 pt down to 8, then smaller pictures). */
-export function layoutLesson(inp: PageInput): { blocks: Block[]; fits: boolean; size: number; bottom: number } {
-  let last = { blocks: [] as Block[], bottom: 0 };
-  for (const scale of [1, 0.8, 0.62]) {
-    for (const s of [10.5, 10, 9.5, 9, 8.5, 8]) {
-      last = body(inp, s, scale);
-      if (last.bottom <= BOTTOM) return { ...last, fits: true, size: s };
+/** The body area the template leaves free between its header and its sign-off tables. */
+export const bodyOf = (inp: PageInput) => ({ top: Math.max(TOP, inp.style?.body?.top ?? TOP), bottom: Math.min(BOTTOM, inp.style?.body?.bottom ?? BOTTOM), left: L, right: R });
+
+// ---- in order down the page ---------------------------------------------------------------------------------------------
+
+function flow(inp: PageInput, s: number, picScale: number): { blocks: Block[]; bottom: number; regions: Record<string, Rect> } {
+  const c = inp.content;
+  const ctx: Ctx = { blocks: [], s, colour: inp.colour, figNo: new Map(), picScale };
+  const regions: Record<string, Rect> = {};
+  const body = bodyOf(inp);
+  let y = body.top;
+  const part = (id: PartId, x: number, w: number, gap: number) => { const y0 = y; y = drawPart(ctx, inp, id, x, y, w); regions[id] = { x, y: y0, w, h: y - y0 }; y += gap; };
+  const fig = (p: LessonPicture, x: number, yy: number, w: number, maxH: number) => { const end = figure(ctx, p, x, yy, w, maxH); regions[`pic:${p.id}`] = { x, y: yy, w, h: end - 5 - yy }; return end; };
+  const row = (list: LessonPicture[], yy: number, maxH: number) => {
+    for (let i = 0; i < list.length; i += 3) {
+      const r = list.slice(i, i + 3), gap = 8, cw = (W - gap * (r.length - 1)) / r.length;
+      yy = Math.max(...r.map((p, j) => fig(p, L + j * (cw + gap), yy, cw, maxH * picScale)));
+    }
+    return yy;
+  };
+  const parts = partsOf(inp);
+  const has = (id: PartId) => parts.includes(id);
+  if (has('meta')) part('meta', L, W, 7);
+  if (has('key')) part('key', L, W, 8);
+  const pics = c.pictures;
+  const right = c.pictures_as === 'right' && pics.length > 0;
+  const tw = right ? W - 168 - 14 : W;
+  const colTop = y;
+  const after = (section: 'description' | 'analysis') => {
+    if (right) return;
+    const list = pics.filter((p) => p.section === section);
+    if (!list.length) return;
+    if (c.pictures_as === 'large') { y = fig(list[0], L, y + 2, W, 250 * picScale); if (list.length > 1) y = row(list.slice(1), y, 120); return; }
+    y = row(list, y + 2, 140);
+  };
+  if (has('description')) part('description', L, tw, 6);
+  after('description');
+  if (has('facts')) part('facts', L, tw, 6);
+  if (has('damage')) part('damage', L, tw, 6);
+  if (has('analysis')) part('analysis', L, tw, 6);
+  after('analysis');
+  if (right) { let py = colTop; for (const p of pics) py = fig(p, L + tw + 14, py, 168, 175 * picScale); y = Math.max(y, py); }
+  if (has('actions')) part('actions', L, W, 4);
+  return { blocks: ctx.blocks, bottom: y, regions };
+}
+
+// ---- boxes placed by hand or by AI ------------------------------------------------------------------------------------
+
+export interface LayoutIssue { id: string; also?: string; kind: 'overflow' | 'overlap' | 'outside' | 'unplaced'; text: string }
+const SIZES = [10.5, 10, 9.5, 9, 8.5, 8, 7.5, 7];
+const overlaps = (a: Rect, b: Rect) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 1.5 && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 1.5;
+
+/** Each part drawn in its box at the largest size that fits; boxes that overflow, overlap or leave the page are named. */
+function boxed(inp: PageInput): { blocks: Block[]; issues: LayoutIssue[]; size: number; boxes: Record<string, Rect> } {
+  const c = inp.content;
+  const body = bodyOf(inp);
+  const parts = partsOf(inp);
+  const issues: LayoutIssue[] = [];
+  const boxes: Record<string, Rect> = { ...c.layout.boxes };
+  // a part added after the boxes were placed gets a small box at the bottom of the page, to be moved
+  let spare = 0;
+  for (const id of parts) {
+    if (boxes[id]) continue;
+    boxes[id] = { x: L + (spare % 3) * 170, y: body.bottom - 60, w: 164, h: 56 };
+    spare++;
+    issues.push({ id, kind: 'unplaced', text: `${partLabel(id, inp.kind, c.pictures)} is new: move it to its place` });
+  }
+  const blocks: Block[] = [];
+  const figNo = new Map(c.pictures.map((p, i) => [p.id, i + 1]));
+  let smallest = 10.5;
+  for (const id of parts) {
+    const r = boxes[id];
+    let out: Ctx | null = null;
+    if (id.startsWith('pic:')) {
+      const p = c.pictures.find((x) => `pic:${x.id}` === id)!;
+      const ctx: Ctx = { blocks: [], s: 9.5, colour: inp.colour, figNo, picScale: 1 };
+      figure(ctx, p, r.x, r.y, r.w, r.h - captionSize(9.5) * LEAD * 2 - 2);
+      out = ctx;
+    } else {
+      for (const s of SIZES) {
+        const ctx: Ctx = { blocks: [], s, colour: inp.colour, figNo, picScale: 1 };
+        const end = drawPart(ctx, inp, id, r.x, r.y, r.w);
+        out = ctx;
+        if (end <= r.y + r.h + 0.5) { smallest = Math.min(smallest, s); break; }
+        if (s === SIZES[SIZES.length - 1]) { smallest = Math.min(smallest, s); issues.push({ id, kind: 'overflow', text: `${partLabel(id, inp.kind, c.pictures)}: the text does not fit its box. Make the box bigger or the text shorter` }); }
+      }
+    }
+    blocks.push(...out!.blocks);
+    if (r.x < body.left - 1 || r.x + r.w > body.right + 1 || r.y < body.top - 1 || r.y + r.h > body.bottom + 1) {
+      issues.push({ id, kind: 'outside', text: `${partLabel(id, inp.kind, c.pictures)} runs outside the page area` });
     }
   }
-  return { ...last, fits: false, size: 8 };
+  for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
+    if (overlaps(boxes[parts[i]], boxes[parts[j]])) issues.push({ id: parts[j], also: parts[i], kind: 'overlap', text: `${partLabel(parts[i], inp.kind, c.pictures)} and ${partLabel(parts[j], inp.kind, c.pictures)} overlap` });
+  }
+  return { blocks, issues, size: smallest, boxes };
+}
+
+export interface Laid { blocks: Block[]; fits: boolean; size: number; bottom: number; regions: Record<string, Rect>; issues: LayoutIssue[] }
+
+/**
+ * The body of the page. In order (auto): the largest text size that fits on the page, 10.5 pt down to 8, then smaller
+ * pictures. With boxes (free): every part in its own box, shrinking its text to fit.
+ */
+export function layoutLesson(inp: PageInput): Laid {
+  const body = bodyOf(inp);
+  if (inp.content.layout.mode === 'free') {
+    const b = boxed(inp);
+    return { blocks: b.blocks, fits: b.issues.length === 0, size: b.size, bottom: Math.max(body.top, ...Object.values(b.boxes).map((r) => r.y + r.h)), regions: b.boxes, issues: b.issues };
+  }
+  let last = flow(inp, 8, 0.62);
+  for (const scale of [1, 0.8, 0.62]) {
+    for (const s of [10.5, 10, 9.5, 9, 8.5, 8]) {
+      const r = flow(inp, s, scale);
+      if (r.bottom <= body.bottom) return { ...r, fits: true, size: s, issues: [] };
+      last = r;
+    }
+  }
+  return { ...last, fits: false, size: 8, issues: [{ id: 'page', kind: 'overflow', text: 'The page runs past one page: shorten the text, use fewer pictures, or place the boxes yourself' }] };
+}
+
+/** One sentence for what stops the page, or null when it is fine. */
+export const layoutProblem = (l: Laid) => (l.fits ? null : l.issues.map((i) => i.text).join('. '));
+
+/** How tall each part needs to be at a few widths, for arranging the boxes (by AI or by hand). */
+export function measureParts(inp: PageInput, widths = [504, 330, 248, 168], s = 9.5) {
+  return partsOf(inp).map((id) => {
+    if (id.startsWith('pic:')) {
+      const p = inp.content.pictures.find((x) => `pic:${x.id}` === id)!;
+      return { id, label: partLabel(id, inp.kind, inp.content.pictures), picture: true, aspect: Math.round((p.w / p.h) * 100) / 100 };
+    }
+    const heights = Object.fromEntries(widths.map((w) => {
+      const ctx: Ctx = { blocks: [], s, colour: inp.colour, figNo: new Map(), picScale: 1 };
+      return [w, Math.ceil(drawPart(ctx, inp, id as PartId, 0, 0, w))];
+    }));
+    return { id, label: partLabel(id, inp.kind, inp.content.pictures), picture: false, heights };
+  });
+}
+
+/** Boxes snapped to a 3 pt grid and kept on the page. */
+export function tidyBoxes(boxes: Record<string, Rect>, inp: PageInput): Record<string, Rect> {
+  const body = bodyOf(inp);
+  const snap = (v: number) => Math.round(v / 3) * 3;
+  return Object.fromEntries(Object.entries(boxes).map(([id, r]) => {
+    const w = Math.max(24, Math.min(body.right - body.left, snap(r.w))), h = Math.max(15, Math.min(body.bottom - body.top, snap(r.h)));
+    const x = Math.min(body.right - w, Math.max(body.left, snap(r.x))), y = Math.min(body.bottom - h, Math.max(body.top, snap(r.y)));
+    return [id, { x, y, w, h }];
+  }));
 }
 
 // ---- the template's header and footer ------------------------------------------------------------------------------

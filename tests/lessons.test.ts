@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_CONTENT, cleanContent, cleanDraft, mayCreate, mayDo, nextLessonNumber, submitProblems, type LessonContent } from '../src/shared/lessons';
-import { chrome, layoutLesson, pageOps, tint, type PageInput } from '../src/shared/lessonLayout';
+import { chrome, layoutLesson, layoutProblem, measureParts, pageOps, partsOf, tidyBoxes, tint, type PageInput } from '../src/shared/lessonLayout';
 import { lessonPdf, pdfSafe } from '../src/shared/lessonPdf';
 import { lessonPptx, templateLogo, templateStyle } from '../src/shared/lessonPptx';
 import { unzip } from '../src/shared/xlsxRead';
@@ -122,11 +122,52 @@ describe('the page layout', () => {
   });
 });
 
+describe('boxes placed by hand or by AI', () => {
+  const withFacts = { ...full, facts: 'Load cell gap: closed to 0.2 mm\nAdjustment screws found loose', facts_as: 'numbered' as const };
+  it('adds facts and findings as a part, in order and in the AI draft', () => {
+    expect(partsOf(input(withFacts))).toEqual(['meta', 'key', 'description', 'facts', 'damage', 'analysis', 'pic:pic-00000001', 'actions']);
+    expect(layoutLesson(input(withFacts)).fits).toBe(true);
+    const ops = pageOps(input(withFacts), null).ops.filter((o) => o.o === 'text').map((o) => (o as { t: string }).t).join(' ');
+    expect(ops).toContain('Facts and findings');
+    expect(ops).toContain('Load cell gap:');
+    expect(cleanDraft({ title: 'x', facts: ['A', 'B'] }, 'lesson_learnt').content.facts).toBe('A\nB');
+    expect(cleanDraft({ title: 'x', facts: [] }, 'lesson_learnt').content.ai).not.toContain('facts');
+  });
+  it('starts the boxes where the parts sit in order, with nothing to fix', () => {
+    const auto = layoutLesson(input(withFacts));
+    const boxes = tidyBoxes(auto.regions, input(withFacts));
+    const free = layoutLesson(input({ ...withFacts, layout: { mode: 'free', boxes } }));
+    expect(free.issues).toEqual([]);
+    expect(free.fits).toBe(true);
+  });
+  it('names boxes that overlap, overflow, leave the page or are new', () => {
+    const boxes = { meta: { x: 18, y: 84, w: 504, h: 30 }, key: { x: 18, y: 100, w: 504, h: 40 }, description: { x: 18, y: 150, w: 200, h: 20 }, damage: { x: 18, y: 600, w: 504, h: 200 } };
+    const r = layoutLesson(input({ ...full, layout: { mode: 'free', boxes } }));
+    const kinds = r.issues.map((i) => i.kind);
+    expect(kinds).toEqual(expect.arrayContaining(['overlap', 'overflow', 'outside', 'unplaced']));
+    expect(r.fits).toBe(false);
+    expect(layoutProblem(r)).toMatch(/overlap/);
+    expect(submitProblems('T', full, layoutProblem(r) ?? true).join(' ')).toMatch(/overlap/);
+  });
+  it('keeps boxes on the page and snapped, and measures each part for the AI', () => {
+    expect(tidyBoxes({ key: { x: -40, y: 900, w: 700, h: 10 } }, input(full)).key).toEqual({ x: 18, y: 661, w: 504, h: 15 });
+    const m = measureParts(input(full));
+    const desc = m.find((p) => p.id === 'description')!;
+    expect(desc.picture).toBe(false);
+    expect((desc as { heights: Record<number, number> }).heights[168]).toBeGreaterThan((desc as { heights: Record<number, number> }).heights[504]);
+    expect(m.find((p) => p.id.startsWith('pic:'))).toMatchObject({ picture: true, aspect: 1.33 });
+  });
+  it('keeps a cleaned layout to known parts on the page', () => {
+    const c = cleanContent({ layout: { mode: 'free', boxes: { key: { x: 10, y: 20, w: 30, h: 40 }, evil: { x: 1, y: 1, w: 50, h: 50 }, 'pic:abc': { x: 1, y: 1, w: 50, h: 50 }, description: { x: 'a' } } } });
+    expect(c.layout).toEqual({ mode: 'free', boxes: { key: { x: 10, y: 20, w: 30, h: 40 } } });
+  });
+});
+
 const TPL = 'C:/Users/JuanCeron/OneDrive - National Energy Services Reunited Corp/Slickline_Library_Documents/Lesson Learnt/GES_NESR_Lesson_Learnt_TEMP.pptx';
 describe.skipIf(!existsSync(TPL))('the PowerPoint on a company template (local template file)', () => {
   it('reads the colours of each template', async () => {
     const dir = TPL.replace(/[^/]+$/, '');
-    expect(await templateStyle(new Uint8Array(readFileSync(TPL)))).toMatchObject({ band: null, title: '863A3A' });
+    expect(await templateStyle(new Uint8Array(readFileSync(TPL)))).toMatchObject({ band: null, title: '863A3A', body: { top: 82, bottom: 677 } });
     if (existsSync(dir + 'NESR_Lesson_Learnt_TEMP.pptx')) expect(await templateStyle(new Uint8Array(readFileSync(dir + 'NESR_Lesson_Learnt_TEMP.pptx')))).toMatchObject({ band: '006600', title: 'FFFFFF', bar: '92D050' });
     if (existsSync(dir + 'SAP_NESR_Lesson_Learnt_TEMP.pptx')) expect(await templateStyle(new Uint8Array(readFileSync(dir + 'SAP_NESR_Lesson_Learnt_TEMP.pptx')))).toMatchObject({ band: null, title: 'C00000', bar: 'C00000' });
   });

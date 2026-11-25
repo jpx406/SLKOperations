@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, Download, FileText, ImagePlus, Plus, Presentation, Send, Sparkles, Trash2, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, Download, FileText, ImagePlus, LayoutTemplate, Move, Plus, Presentation, Send, Sparkles, Trash2, Undo2, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
   DAMAGE_SUGGESTIONS, LESSON_COMPANIES, LESSON_KINDS, LESSON_STATUS, LIMITS, SHOW_AS, headings, submitProblems,
-  type LessonCompany, type LessonContent, type LessonKind, type LessonPicture, type LessonStatus, type Part,
+  type LessonCompany, type LessonContent, type LessonKind, type LessonPicture, type LessonStatus, type Part, type Rect,
 } from '../../shared/lessons';
-import { PAGE, layoutLesson, pageOps, type Op, type PageInput, type TemplateStyle } from '../../shared/lessonLayout';
+import { PAGE, bodyOf, chrome, layoutLesson, layoutProblem, partLabel, partsOf, tidyBoxes, toOps, type LayoutIssue, type Op, type PageInput, type TemplateStyle } from '../../shared/lessonLayout';
 import { ApiError, api } from '../api';
 import { MenuButton } from '../components/MenuButton';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
@@ -30,7 +30,7 @@ interface Lesson {
   reviewer: string | null; approver: string | null; reviewer_name: string; approver_name: string; created_by_name: string; submit_note: string | null; review_comment: string | null;
   sent_back_reason: string | null; source_name: string | null; kb_doc_id: string | null; doc_no: string | null; revision: number | null; change_note: string | null; updated_at: string;
 }
-interface LessonData { lesson: Lesson; can: Record<'edit' | 'submit' | 'review' | 'approve' | 'send_back' | 'delete' | 'revise', boolean>; colour: string; style: TemplateStyle | null; template: boolean; me: string }
+interface LessonData { lesson: Lesson; can: Record<'edit' | 'submit' | 'review' | 'approve' | 'send_back' | 'delete' | 'revise', boolean>; colour: string; style: TemplateStyle | null; template: boolean; templateName: string | null; ownTemplate: boolean; ai: boolean; me: string }
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const pad = (n: number | null) => (n === null ? '' : String(n).padStart(2, '0'));
@@ -201,8 +201,45 @@ function useLogo(company: LessonCompany, kind: LessonKind) {
   });
 }
 
-function PagePreview({ input, lessonId, logo }: { input: PageInput; lessonId: string; logo: { url: string; w: number; h: number } | null }) {
-  const { ops } = useMemo(() => pageOps(input, logo ? { w: logo.w, h: logo.h } : null), [input, logo]);
+interface Boxes { boxes: Record<string, Rect>; issues: LayoutIssue[]; onChange: (b: Record<string, Rect>) => void; editable: boolean }
+
+function PagePreview({ input, lessonId, logo, boxes }: { input: PageInput; lessonId: string; logo: { url: string; w: number; h: number } | null; boxes?: Boxes }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [drag, setDrag] = useState<{ id: string; mode: 'move' | 'size'; sx: number; sy: number; start: Rect } | null>(null);
+  const [live, setLive] = useState<Record<string, Rect> | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const shown = useMemo(() => (live ? { ...input, content: { ...input.content, layout: { mode: 'free' as const, boxes: live } } } : input), [input, live]);
+  const ops = useMemo(() => {
+    const ch = chrome(shown, logo ? { w: logo.w, h: logo.h } : null);
+    return toOps([...ch.master, ...ch.slide, ...layoutLesson(shown).blocks]);
+  }, [shown, logo]);
+  const free = !!boxes && input.content.layout.mode === 'free';
+  const parts = free ? partsOf(input) : [];
+  const rects = live ?? boxes?.boxes ?? {};
+  const bad = new Set((boxes?.issues ?? []).flatMap((i) => (i.also ? [i.id, i.also] : [i.id])));
+  const body = bodyOf(input);
+  const pt = (e: React.PointerEvent) => {
+    const svg = svgRef.current!;
+    const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+    const r = p.matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: r.x, y: r.y };
+  };
+  const snap = (v: number) => Math.round(v / 3) * 3;
+  const move = (e: React.PointerEvent) => {
+    if (!drag || !boxes) return;
+    const p = pt(e), dx = p.x - drag.sx, dy = p.y - drag.sy, s = drag.start;
+    const next = drag.mode === 'move' ? { ...s, x: snap(s.x + dx), y: snap(s.y + dy) } : { ...s, w: Math.max(24, snap(s.w + dx)), h: Math.max(15, snap(s.h + dy)) };
+    setLive({ ...boxes.boxes, [drag.id]: next });
+  };
+  const end = () => { if (drag && live && boxes) boxes.onChange(live); setDrag(null); setLive(null); };
+  const key = (id: string, e: React.KeyboardEvent) => {
+    if (!boxes || !boxes.editable) return;
+    const d = { ArrowLeft: [-3, 0], ArrowRight: [3, 0], ArrowUp: [0, -3], ArrowDown: [0, 3] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const r = boxes.boxes[id];
+    boxes.onChange({ ...boxes.boxes, [id]: e.shiftKey ? { ...r, w: Math.max(24, r.w + d[0]), h: Math.max(15, r.h + d[1]) } : { ...r, x: r.x + d[0], y: r.y + d[1] } });
+  };
   const href = (pic: string) => (pic === '__logo__' ? logo?.url ?? '' : `/api/lessons/${lessonId}/pictures/${pic}`);
   const el = (op: Op, i: number) => {
     if (op.o === 'rect') return <rect key={i} x={op.x} y={op.y} width={op.w} height={op.h} fill={op.fill ? `#${op.fill}` : 'none'} stroke={op.stroke ? `#${op.stroke}` : undefined} strokeWidth={op.sw} />;
@@ -211,9 +248,28 @@ function PagePreview({ input, lessonId, logo }: { input: PageInput; lessonId: st
     return <text key={i} x={op.x} y={op.y} fontSize={op.size} fontWeight={op.b ? 700 : 400} fill={`#${op.c}`} xmlSpace="preserve">{op.t}</text>;
   };
   return (
-    <svg viewBox={`0 0 ${PAGE.w} ${PAGE.h}`} role="img" aria-label="Page preview" className="block h-auto w-full bg-white shadow-md" style={{ fontFamily: 'Helvetica, Arial, sans-serif' }}>
+    <svg ref={svgRef} viewBox={`0 0 ${PAGE.w} ${PAGE.h}`} role={free ? 'group' : 'img'} aria-label="Page preview" className={cx('block h-auto w-full touch-none bg-white shadow-md', drag && 'cursor-grabbing')}
+      style={{ fontFamily: 'Helvetica, Arial, sans-serif' }} onPointerMove={move} onPointerUp={end} onPointerLeave={end}>
       <rect width={PAGE.w} height={PAGE.h} fill="#fff" />
       {ops.map(el)}
+      {free && <rect x={body.left} y={body.top} width={body.right - body.left} height={body.bottom - body.top} fill="none" stroke="#94a3b8" strokeDasharray="2 3" strokeWidth={0.6} pointerEvents="none" />}
+      {free && parts.map((id) => {
+        const r = rects[id];
+        if (!r) return null;
+        const label = partLabel(id, input.kind, input.content.pictures);
+        const colour = bad.has(id) ? '#dc2626' : selected === id ? '#1d4ed8' : '#2563eb';
+        return (
+          <g key={id}>
+            <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={bad.has(id) ? 'rgba(220,38,38,0.08)' : 'rgba(37,99,235,0.04)'} stroke={colour} strokeWidth={bad.has(id) ? 1.4 : 0.8} strokeDasharray={bad.has(id) ? undefined : '4 3'}
+              tabIndex={boxes!.editable ? 0 : -1} role="button" aria-label={`${label}${bad.has(id) ? ', has a problem' : ''}. Drag to move; arrow keys move it, Shift and arrow keys resize it`}
+              className={boxes!.editable ? 'cursor-move focus:outline-none' : ''} onFocus={() => setSelected(id)} onKeyDown={(e) => key(id, e)}
+              onPointerDown={(e) => { if (!boxes!.editable) return; e.preventDefault(); setSelected(id); const p = pt(e); setDrag({ id, mode: 'move', sx: p.x, sy: p.y, start: r }); }} />
+            <g pointerEvents="none"><rect x={r.x} y={r.y - 9} width={Math.min(r.w, label.length * 4.2 + 8)} height={9} fill={colour} /><text x={r.x + 3} y={r.y - 2.4} fontSize={6.5} fill="#fff" fontWeight={700}>{label.length > 40 ? `${label.slice(0, 38)}…` : label}</text></g>
+            {boxes!.editable && <rect x={r.x + r.w - 7} y={r.y + r.h - 7} width={10} height={10} fill={colour} className="cursor-nwse-resize" aria-hidden
+              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setSelected(id); const p = pt(e); setDrag({ id, mode: 'size', sx: p.x, sy: p.y, start: r }); }} />}
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -232,6 +288,8 @@ export function LessonEditor() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(() => sessionStorage.getItem(`lesson-note-${id}`));
   const [dialog, setDialog] = useState<null | 'submit' | 'review' | 'approve' | 'send-back' | 'revise' | 'delete'>(null);
+  const [arranging, setArranging] = useState(false);
+  const tplRef = useRef<HTMLInputElement>(null);
   const loadedAt = useRef<string | null>(null);
   const d = q.data;
   const logo = useLogo(d?.lesson.company ?? 'NESR', d?.lesson.kind ?? 'lesson_learnt');
@@ -245,18 +303,20 @@ export function LessonEditor() {
     setTitle(d.lesson.title); setContent(d.lesson.content);
   }, [d, dirty, content]);
 
+  // every change counts up; a save that finishes after a newer change leaves the page unsaved, so the server copy never overwrites it
+  const edits = useRef(0);
   const save = useMutation({
-    mutationFn: (v: { title: string; content: LessonContent }) => api<{ updated_at: string }>(`/lessons/${id}`, { method: 'PUT', json: v }),
-    onSuccess: (r) => { setSaved(r.updated_at); setDirty(false); loadedAt.current = null; qc.invalidateQueries({ queryKey: ['lesson', id] }); },
+    mutationFn: (v: { title: string; content: LessonContent; at: number }) => api<{ updated_at: string }>(`/lessons/${id}`, { method: 'PUT', json: { title: v.title, content: v.content } }).then((r) => ({ ...r, at: v.at })),
+    onSuccess: (r) => { setSaved(r.updated_at); if (r.at === edits.current) { setDirty(false); loadedAt.current = null; qc.invalidateQueries({ queryKey: ['lesson', id] }); } },
     onError: (e: ApiError) => setError(e.message),
   });
   // saved a moment after the last change
   useEffect(() => {
     if (!dirty || !content) return;
-    const t = setTimeout(() => save.mutate({ title, content }), 900);
+    const t = setTimeout(() => save.mutate({ title, content, at: edits.current }), 900);
     return () => clearTimeout(t);
   }, [dirty, title, content]); // eslint-disable-line react-hooks/exhaustive-deps
-  const flush = async () => { if (dirty && content) await save.mutateAsync({ title, content }); };
+  const flush = async () => { if (dirty && content) await save.mutateAsync({ title, content, at: edits.current }); };
   const reload = () => { setDirty(false); loadedAt.current = null; qc.invalidateQueries({ queryKey: ['lesson', id] }); qc.invalidateQueries({ queryKey: ['lessons'] }); };
 
   if (q.isLoading) return <Skeleton className="h-96" />;
@@ -267,6 +327,7 @@ export function LessonEditor() {
   const editable = d.can.edit;
   const set = (part: Part | null, patch: Partial<LessonContent>) => {
     setContent((c) => (c ? { ...c, ...patch, ai: part ? c.ai.filter((x) => x !== part) : c.ai } : c));
+    edits.current++;
     setDirty(true);
   };
   const input: PageInput = {
@@ -274,8 +335,23 @@ export function LessonEditor() {
     docNo: l.status === 'approved' ? l.doc_no : null, revision: l.status === 'approved' ? pad(l.revision) : null,
     signoff: { date: '', changes: '', prepared: l.created_by_name, reviewed: l.reviewer_name, approver: l.approver_name, position: '' },
   };
-  const fits = layoutLesson(input).fits;
-  const problems = submitProblems(title, content, fits);
+  const laid = layoutLesson(input);
+  const fits = laid.fits;
+  const problems = submitProblems(title, content, layoutProblem(laid) ?? true);
+  const free = content.layout.mode === 'free';
+  const setBoxes = (boxes: Record<string, Rect>) => set(null, { layout: { mode: 'free', boxes } });
+  // the boxes start where the parts sit in order down the page
+  const tidy = () => {
+    const auto = layoutLesson({ ...input, content: { ...content, layout: { mode: 'auto', boxes: {} } } });
+    setBoxes(tidyBoxes(auto.regions, input));
+  };
+  const arrange = async () => {
+    setError(null); setArranging(true);
+    try {
+      const r = await api<{ boxes: Record<string, Rect>; issues: LayoutIssue[] }>(`/lessons/${l.id}/arrange`, { method: 'POST', json: { title, content } });
+      setBoxes(r.boxes);
+    } catch (e) { setError((e as Error).message); } finally { setArranging(false); }
+  };
   const flag = (p: Part) => content.ai.includes(p) && (
     <span className="flex items-center gap-2"><span className="label-caps rounded-xs bg-info-subtle px-1.5 text-info">AI draft</span>
       {editable && <Button size="sm" variant="ghost" onClick={() => set(p, {})}><Check aria-hidden className="size-3.5" />Mark checked</Button>}</span>);
@@ -317,7 +393,7 @@ export function LessonEditor() {
         {d.can.delete && <Button variant="ghost" onClick={() => setDialog('delete')}><Trash2 aria-hidden className="size-4" />Delete draft</Button>}
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+      <div className={cx('grid grid-cols-[minmax(0,1fr)] items-start gap-5', free ? 'lg:grid-cols-[minmax(0,1fr)_minmax(380px,560px)]' : 'lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]')}>
         <fieldset disabled={!editable} className="flex min-w-0 flex-col gap-3">
           <Section title="Header" aside={flag('header')}>
             <Field id="le-t" label="Title"><input id="le-t" className={inputClass} value={title} maxLength={LIMITS.title} onChange={(e) => { setTitle(e.target.value); set('header', {}); }} /></Field>
@@ -336,6 +412,13 @@ export function LessonEditor() {
             <ShowAs label={`${hd.description}: show as`} value={content.description_as} options={SHOW_AS.description} onChange={(v) => set(null, { description_as: v })} />
             <Field id="le-desc" label={content.description_as === 'timeline' ? 'One line per step, “time – what happened”' : content.description_as === 'bullets' ? 'One line per bullet' : 'Text'}>
               <textarea id="le-desc" rows={6} className={cx(inputClass, 'h-auto py-2')} value={content.description} maxLength={LIMITS.text} onChange={(e) => set('description', { description: e.target.value })} />
+            </Field>
+          </Section>
+
+          <Section title={hd.facts} aside={flag('facts')}>
+            <ShowAs label={`${hd.facts}: show as`} value={content.facts_as} options={SHOW_AS.facts} onChange={(v) => set(null, { facts_as: v })} />
+            <Field id="le-facts" label="One fact or finding per line" hint="Optional: left out of the page when empty. “Reading: what was found” puts the first part in bold.">
+              <textarea id="le-facts" rows={4} className={cx(inputClass, 'h-auto py-2')} value={content.facts} maxLength={LIMITS.text} onChange={(e) => set('facts', { facts: e.target.value })} />
             </Field>
           </Section>
 
@@ -391,10 +474,36 @@ export function LessonEditor() {
         </fieldset>
 
         <div className="lg:sticky lg:top-4">
+          <div className="mb-3 rounded-lg border border-border bg-surface p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2"><LayoutTemplate aria-hidden className="size-4 text-text-muted" /><b className="text-sm">Page layout</b>
+              <span className="min-w-0 flex-1 truncate text-xs text-text-muted" title={d.templateName ?? undefined}>{d.templateName ? `${d.ownTemplate ? 'Own template' : `${l.company} template`}: ${d.templateName}` : 'No slides template: PDF only'}</span></div>
+            <fieldset disabled={!editable} className="flex flex-col gap-2">
+              <Segmented label="Page layout" value={content.layout.mode} options={{ auto: 'In order', free: 'Boxes I can move' }}
+                onChange={(v) => { if (v === 'free' && !Object.keys(content.layout.boxes).length) tidy(); else set(null, { layout: { ...content.layout, mode: v } }); }} />
+              {free && <div className="flex flex-wrap gap-2">
+                {d.ai && <Button size="sm" variant="primary" loading={arranging} onClick={arrange}><Wand2 aria-hidden className="size-3.5" />Arrange with AI</Button>}
+                <Button size="sm" onClick={tidy}><Move aria-hidden className="size-3.5" />Tidy up</Button>
+              </div>}
+              <p className="text-xs text-text-subtle">{free ? 'Drag a box to move it, drag its corner to resize it; text shrinks to fit its box. Arrow keys move the box in focus, Shift and arrows resize it.' : 'Each part follows the one before; the text shrinks so the page fits on one page.'}</p>
+              <div className="flex flex-wrap gap-2">
+                <input ref={tplRef} type="file" accept=".pptx" className="sr-only" onChange={async (e) => {
+                  const f = e.target.files?.[0]; if (!f) return;
+                  await act(() => sendFile(`/lessons/${l.id}/template`, f, { 'X-File-Name': encodeURIComponent(f.name) }));
+                  if (tplRef.current) tplRef.current.value = '';
+                  reload(); qc.invalidateQueries({ queryKey: ['lesson-logo'] });
+                }} />
+                <Button size="sm" variant="ghost" onClick={() => tplRef.current?.click()}>Use another template (.pptx)</Button>
+                {d.ownTemplate && <Button size="sm" variant="ghost" onClick={() => act(async () => { await api(`/lessons/${l.id}/template`, { method: 'DELETE' }); reload(); })}>Back to the {l.company} template</Button>}
+              </div>
+            </fieldset>
+          </div>
           <div className="rounded-lg border border-border bg-surface-3 p-3">
             <div className="mb-2 flex items-center justify-between text-sm"><b>Page 1 of 1</b>
-              <span className={fits ? 'text-success' : 'font-semibold text-danger'}>{fits ? 'Fits on one page' : 'Runs past one page'}</span></div>
-            <PagePreview input={input} lessonId={l.id} logo={logo.data ?? null} />
+              <span className={fits ? 'text-success' : 'font-semibold text-danger'}>{fits ? (free ? 'All boxes fit' : 'Fits on one page') : free ? `${laid.issues.length} to fix` : 'Runs past one page'}</span></div>
+            <PagePreview input={input} lessonId={l.id} logo={logo.data ?? null} boxes={free ? { boxes: content.layout.boxes, issues: laid.issues, onChange: setBoxes, editable } : undefined} />
+            {free && laid.issues.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1 text-xs text-danger">{laid.issues.map((i, n) => <li key={n}>• {i.text}</li>)}</ul>
+            )}
           </div>
           {l.status === 'draft' && problems.length > 0 && (
             <div className="mt-3 rounded-lg border border-border bg-surface p-3 text-sm"><b>Before it can go for review</b>

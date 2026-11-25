@@ -126,9 +126,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'DELETE', re: /^\/api\/utilities\/[^/]+(\/files\/[^/]+)?$/, menu: 'utilities', action: 'edit' },
   // lessons and best practices (6z.57): who starts, edits, reviews and approves is checked in the route (Knowledge Hub
   // approvers and admins start them; the chosen reviewer and approver act on them), so the menu's view right is enough
-  { method: 'POST', re: /^\/api\/lessons(\/[^/]+(\/(pictures|analyse|submit|review|approve|send-back|revise))?)?$/, menu: 'utilities', action: 'view' },
+  { method: 'POST', re: /^\/api\/lessons(\/[^/]+(\/(pictures|analyse|arrange|template|submit|review|approve|send-back|revise))?)?$/, menu: 'utilities', action: 'view' },
   { method: 'PUT', re: /^\/api\/lessons\/[^/]+$/, menu: 'utilities', action: 'view' },
-  { method: 'DELETE', re: /^\/api\/lessons\/[^/]+(\/pictures\/[^/]+)?$/, menu: 'utilities', action: 'view' },
+  { method: 'DELETE', re: /^\/api\/lessons\/[^/]+(\/pictures\/[^/]+|\/template)?$/, menu: 'utilities', action: 'view' },
   { method: 'DELETE', re: /^\/api\/admin\/rules\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/attendance$/, menu: 'users', action: 'edit' },
   // Users & Roles: someone's Face ID devices, their Face ID switch, and the WIREGUARD user import

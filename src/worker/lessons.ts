@@ -10,7 +10,7 @@ import {
   EMPTY_CONTENT, LESSON_KINDS, LIMITS, cleanContent, cleanDraft, fileTitle, isLessonCompany, isLessonKind, lessonPrompt, lessonSchema, mayCreate, mayDo,
   nextLessonNumber, submitProblems, type LessonCompany, type LessonContent, type LessonKind, type LessonPerson, type LessonPicture, type LessonStatus,
 } from '../shared/lessons';
-import { chrome, layoutLesson, type PageInput } from '../shared/lessonLayout';
+import { chrome, layoutLesson, layoutProblem, measureParts, partsOf, tidyBoxes, type PageInput } from '../shared/lessonLayout';
 import { lessonPdf, type PdfImage } from '../shared/lessonPdf';
 import { lessonPptx, templateLogo, templateStyle } from '../shared/lessonPptx';
 import { roleLabel } from '../shared/roles';
@@ -39,7 +39,7 @@ interface Row {
   id: string; kind: LessonKind; company: LessonCompany; country: string; title: string; content: string; status: LessonStatus;
   reviewer: string | null; approver: string | null; submit_note: string | null; review_comment: string | null; sent_back_reason: string | null; sent_back_by: string | null;
   submitted_by: string | null; submitted_at: string | null; reviewed_at: string | null; approved_at: string | null; source_name: string | null; source_key: string | null;
-  kb_doc_id: string | null; doc_no: string | null; revision: number | null; change_note: string | null; created_by: string; created_at: string; updated_by: string | null; updated_at: string;
+  kb_doc_id: string | null; doc_no: string | null; revision: number | null; change_note: string | null; template_key: string | null; template_name: string | null; created_by: string; created_at: string; updated_by: string | null; updated_at: string;
 }
 
 async function person(env: Env, user: AuthedUser): Promise<LessonPerson> {
@@ -102,9 +102,14 @@ async function holds(env: Env, username: string, right: 'can_review' | 'can_appr
 
 interface Made { input: PageInput; images: Map<string, PdfImage>; logo: (PdfImage & { w: number; h: number }) | null; template: Uint8Array | null; templateName: string | null }
 
+/** The template a lesson is made on: its own when one was brought in, else the company's. */
+function templateFor(s: CopySettings, l: Pick<Row, 'company' | 'kind' | 'template_key' | 'template_name'>) {
+  return l.template_key ? { key: l.template_key, file_name: l.template_name ?? 'Template.pptx' } : templateOf(s, l.company, l.kind);
+}
+
 async function prepare(env: Env, l: Row, c: LessonContent, extra: { docNo: string | null; revision: string | null; signoff?: PageInput['signoff'] }): Promise<Made> {
   const s = await copySettings(env);
-  const tf = templateOf(s, l.company, l.kind);
+  const tf = templateFor(s, l);
   const tpl = tf && env.FILES ? await env.FILES.get(tf.key) : null;
   const template = tpl ? new Uint8Array(await tpl.arrayBuffer()) : null;
   const logo = template ? await templateLogo(template) : null;
@@ -230,13 +235,13 @@ lessons.get('/:id', async (c) => {
   const p = await person(c.env, user);
   const s = await copySettings(c.env);
   const can = Object.fromEntries((['edit', 'submit', 'review', 'approve', 'send_back', 'delete', 'revise'] as const).map((a) => [a, mayDo(p, l, a)]));
-  const tf = templateOf(s, l.company, l.kind);
+  const tf = templateFor(s, l);
   const tplObj = tf && c.env.FILES ? await c.env.FILES.get(tf.key) : null;
   const style = tplObj ? await templateStyle(new Uint8Array(await tplObj.arrayBuffer())) : null;
   const [created, reviewer, approver] = await Promise.all([nameOf(c.env, l.created_by), nameOf(c.env, l.reviewer), nameOf(c.env, l.approver)]);
   return c.json({
     lesson: { ...l, content: contentOf(l), created_by_name: created, reviewer_name: reviewer, approver_name: approver },
-    can, colour: colourOf(s, l.company), style, template: !!tf, me: user.username,
+    can, colour: colourOf(s, l.company), style, template: !!tf, templateName: tf?.file_name ?? null, ownTemplate: !!l.template_key, ai: !!c.env.ANTHROPIC_API_KEY, me: user.username,
   });
 });
 
@@ -264,7 +269,7 @@ lessons.delete('/:id', async (c) => {
   const l = await load(c);
   if (!l) return c.json({ error: 'Not found' }, 404);
   if (!mayDo(await person(c.env, user), l, 'delete')) return c.json({ error: 'Only a draft that was never published is deleted, by whoever wrote it or an admin' }, 403);
-  const keys = [...contentOf(l).pictures.map((p) => picKey(l.id, p)), ...(l.source_key ? [l.source_key] : [])];
+  const keys = [...contentOf(l).pictures.map((p) => picKey(l.id, p)), ...(l.source_key ? [l.source_key] : []), ...(l.template_key ? [l.template_key] : [])];
   await c.env.DB.batch([c.env.DB.prepare('DELETE FROM lessons WHERE id = ?').bind(l.id), audit(c.env, user, 'delete', l.id, `Draft deleted: ${l.title}`)]);
   if (c.env.FILES && keys.length) await c.env.FILES.delete(keys).catch(() => undefined);
   return c.json({ ok: true });
@@ -417,6 +422,105 @@ lessons.post('/:id/analyse', async (c) => {
   }
 });
 
+// ---- the template and the arrangement -------------------------------------------------------------------------------
+
+/** Brings in another template for this one (raw .pptx body, X-File-Name); DELETE goes back to the company's. */
+lessons.post('/:id/template', async (c) => {
+  const user = c.get('user');
+  const l = await load(c);
+  if (!l) return c.json({ error: 'Not found' }, 404);
+  if (!mayDo(await person(c.env, user), l, 'edit')) return c.json({ error: 'It is with someone else now' }, 403);
+  if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet' }, 503);
+  const name = decodeURIComponent(c.req.header('x-file-name') ?? '');
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  const ok = checkUpload(name, bytes.length);
+  if ('error' in ok) return c.json({ error: ok.error }, 400);
+  if (!/\.pptx$/i.test(ok.name)) return c.json({ error: 'The template is a PowerPoint file (.pptx)' }, 400);
+  const parts = await unzip(bytes).catch(() => null);
+  if (!parts?.has('ppt/presentation.xml') || ![...parts.keys()].some((k) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(k))) return c.json({ error: 'This file is not a PowerPoint presentation with slide layouts' }, 400);
+  const key = `lessons/${l.id}/template/${crypto.randomUUID().slice(0, 8)} ${ok.name}`;
+  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: PPTX }, customMetadata: { name: ok.name, by: user.username } });
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE lessons SET template_key = ?, template_name = ?, updated_by = ?, updated_at = ? WHERE id = ?').bind(key, ok.name, user.username, now(), l.id),
+    audit(c.env, user, 'template', l.id, `Template “${ok.name}” brought in for ${l.title || 'untitled'}`),
+  ]);
+  if (l.template_key) await c.env.FILES.delete(l.template_key).catch(() => undefined);
+  return c.json({ ok: true, name: ok.name }, 201);
+});
+
+lessons.delete('/:id/template', async (c) => {
+  const user = c.get('user');
+  const l = await load(c);
+  if (!l) return c.json({ error: 'Not found' }, 404);
+  if (!mayDo(await person(c.env, user), l, 'edit')) return c.json({ error: 'It is with someone else now' }, 403);
+  await c.env.DB.prepare('UPDATE lessons SET template_key = NULL, template_name = NULL, updated_by = ?, updated_at = ? WHERE id = ?').bind(user.username, now(), l.id).run();
+  if (l.template_key && c.env.FILES) await c.env.FILES.delete(l.template_key).catch(() => undefined);
+  return c.json({ ok: true });
+});
+
+/**
+ * Arrange with AI: Claude places every part as a box on the page from how tall each needs to be at a few widths
+ * (and each picture's shape), for a clean, balanced one-page layout. The boxes are snapped to the page and checked;
+ * anything that still overlaps or does not fit is named so it can be fixed by hand. Nothing is saved: the page
+ * takes the boxes and saves them as usual.
+ */
+lessons.post('/:id/arrange', async (c) => {
+  const user = c.get('user');
+  const l = await load(c);
+  if (!l) return c.json({ error: 'Not found' }, 404);
+  if (!mayDo(await person(c.env, user), l, 'edit')) return c.json({ error: 'It is with someone else now' }, 403);
+  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: 'AI isn’t set up on the server. Use Tidy up, or move the boxes yourself.' }, 503);
+  const b = await c.req.json().catch(() => ({})) as { content?: unknown; title?: string };
+  const content = b.content ? cleanContent(b.content) : contentOf(l);
+  const m = await prepare(c.env, { ...l, title: typeof b.title === 'string' ? b.title : l.title }, content, { docNo: null, revision: null });
+  const parts = measureParts(m.input);
+  if (!parts.length) return c.json({ error: 'Write something first: there is nothing to arrange' }, 400);
+  const s = await loadSettings(c.env);
+  const u = await spend(c.env, user.username, 'document');
+  const blocked = limitCheck(s, u.monthMicro, u.sentToday);
+  if (blocked) return c.json({ error: `${blocked.replace('The AI Agent is switched off', 'AI is switched off')} Use Tidy up, or move the boxes yourself.` }, 429);
+  const area = { left: 18, right: 522, top: m.input.style?.body?.top ? Math.max(84, m.input.style.body.top) : 84, bottom: m.input.style?.body?.bottom ? Math.min(676, m.input.style.body.bottom) : 676 };
+  const prompt = `You lay out a one-page ${LESSON_KINDS[l.kind].toLowerCase()} for an oilfield service company, on its corporate template. Place every part below as a box on the page area, in points: x from ${area.left} to ${area.right}, y from ${area.top} to ${area.bottom} (y grows downwards).
+
+The parts, in reading order, with the height each needs (in points) at a few widths, at a comfortable 9.5 pt text size. A box can be taller than needed; text shrinks to fit a box that is shorter, down to 7 pt, so keep boxes at least as tall as needed where you can. Pictures give their shape (width / height); a picture box also needs about 12 pt under the picture for its caption.
+${JSON.stringify(parts)}
+
+Rules for a professional result:
+- No two boxes overlap. Leave 6 to 10 pt between boxes. Every box stays inside the area.
+- Keep reading order: top to bottom, then left to right. "meta" (event facts) and "key" (the key lesson) go full width at the top if present. "actions" goes full width at the bottom.
+- Put pictures next to the text they illustrate, in a column or a row, at sizes that keep their shape (box width / height close to the picture's shape plus the caption).
+- Use the whole area: share the spare height out so the page does not end with a big empty gap, and keep the columns' bottoms aligned.
+- Align box edges to each other on a 6 pt grid. Use two columns only where it helps (text beside pictures, or two short sections side by side); never make a text box narrower than 160 pt.
+Answer with every part's box.`;
+  let micro = 0, inTok = 0, outTok = 0;
+  try {
+    const schema = { type: 'object', additionalProperties: false, required: ['boxes'], properties: { boxes: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'x', 'y', 'w', 'h'], properties: { id: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } } } } } };
+    const res = await client(c.env).beta.messages.create({
+      model: s.model, max_tokens: 3000,
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema } },
+      messages: [{ role: 'user', content: prompt }],
+      ...fallbackFor(s.model),
+    });
+    micro = costMicroUsd(res.usage, s.model);
+    inTok = res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0);
+    outTok = res.usage.output_tokens;
+    const text = res.content.filter((x): x is Anthropic.Beta.BetaTextBlock => x.type === 'text').map((x) => x.text).join('');
+    let raw: { boxes?: { id: string; x: number; y: number; w: number; h: number }[] };
+    try { raw = JSON.parse(text); } catch { return c.json({ error: 'The AI answer couldn’t be read. Use Tidy up, or move the boxes yourself.' }, 502); }
+    const ids = new Set(partsOf(m.input) as string[]);
+    const boxes = tidyBoxes(Object.fromEntries((raw.boxes ?? []).filter((x) => ids.has(x.id)).map((x) => [x.id, { x: x.x, y: x.y, w: x.w, h: x.h }])), m.input);
+    const laid = layoutLesson({ ...m.input, content: { ...content, layout: { mode: 'free', boxes } } });
+    return c.json({ boxes, issues: laid.issues });
+  } catch (e) {
+    const msg = serviceError(e);
+    if (!msg) throw e;
+    return c.json({ error: `${msg} Use Tidy up, or move the boxes yourself.` }, 502);
+  } finally {
+    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+  }
+});
+
 // ---- exports ----------------------------------------------------------------------------------------------------------
 
 /** The PDF or PowerPoint as it stands (drafts carry no number yet). Approved ones open from the Knowledge Hub. */
@@ -448,7 +552,7 @@ lessons.post('/:id/:step{submit|review|approve|send-back|revise}', async (c) => 
     if (!mayDo(p, l, 'submit')) return c.json({ error: 'Only a draft is sent for review' }, 403);
     const content = contentOf(l);
     const m = await prepare(c.env, l, content, { docNo: null, revision: null });
-    const problems = submitProblems(l.title, content, layoutLesson(m.input).fits);
+    const problems = submitProblems(l.title, content, layoutProblem(layoutLesson(m.input)) ?? true);
     if (problems.length) return c.json({ error: problems.join('. ') }, 400);
     const reviewer = text('reviewer', 80), approver = text('approver', 80);
     if (!reviewer || !approver) return c.json({ error: 'Pick the reviewer and the approver' }, 400);
