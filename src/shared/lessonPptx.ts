@@ -356,7 +356,13 @@ export async function brandTemplate(nesr: Uint8Array, o: BrandOptions): Promise<
         const h = Math.max(bh, E(34)), w = Math.round((h * o.logo.w) / o.logo.h);
         const right = bx + bw, maxW = Math.max(bw, Math.round(right - E(250)));
         const fw = Math.min(w, maxW), fh = Math.round((fw * o.logo.h) / o.logo.w);
-        pic = pic.replace(off[0], `<a:off x="${right - fw}" y="${by + Math.round((bh - fh) / 2)}"/><a:ext cx="${fw}" cy="${fh}"/>`);
+        // centred on the header band (the NESR mark sat a little above its middle), else on the old box
+        let mid = by + bh / 2;
+        for (const sp of x.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)) {
+          const b = /<a:off x="-?\d+" y="(-?\d+)"\/>\s*<a:ext cx="(\d+)" cy="(\d+)"/.exec(sp[0]);
+          if (b && Number(b[1]) < E(15) && Number(b[3]) > E(30) && Number(b[3]) < E(60) && Number(b[2]) > E(400) && by >= Number(b[1]) && by < Number(b[1]) + Number(b[3])) { mid = Number(b[1]) + Number(b[3]) / 2; break; }
+        }
+        pic = pic.replace(off[0], `<a:off x="${right - fw}" y="${Math.round(mid - fh / 2)}"/><a:ext cx="${fw}" cy="${fh}"/>`);
       }
       x = x.replace(logoAt.xml, pic);
       if (rid) {

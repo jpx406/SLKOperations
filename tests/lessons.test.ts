@@ -317,6 +317,9 @@ describe.skipIf(!existsSync(NESR_TPL) || !existsSync(TPL))('a company template m
       expect(master).not.toMatch(/<a:t>[^<]*NESR/);
       expect(rels).toContain('../media/company-logo');
       expect(master).not.toContain('96DAC541');
+      // the logo is centred on the header band (10.1 to 55.4 pt on these templates)
+      const pic = /<p:pic>[\s\S]*?<a:off x="\d+" y="(\d+)"\/>\s*<a:ext cx="\d+" cy="(\d+)"/.exec(master)!;
+      expect(Math.abs((Number(pic[1]) + Number(pic[2]) / 2) / 12700 - 32.75)).toBeLessThan(1);
       expect(files.has('ppt/media/company-logo.jpeg') || files.has('ppt/media/company-logo.png')).toBe(true);
       const st = (await templateStyle(out))!;
       expect(st.bar).toBe('863A3A');
