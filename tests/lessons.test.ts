@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CONTENT, cleanContent, cleanDraft, mayCreate, mayDo, nextLessonNumber, submitProblems, type LessonContent } from '../src/shared/lessons';
 import { DESIGNS, chrome, designBoxes, fitPictureBoxes, layoutLesson, layoutProblem, measureParts, pageOps, partsOf, pictureHeight, picturesSideBySide, tidyBoxes, tint, type Design, type PageInput } from '../src/shared/lessonLayout';
 import { lessonPdf, pdfSafe } from '../src/shared/lessonPdf';
-import { lessonPptx, templateLogo, templateStyle } from '../src/shared/lessonPptx';
+import { lessonPptx, masterParts, templateLogo, templateStyle } from '../src/shared/lessonPptx';
 import { unzip } from '../src/shared/xlsxRead';
 import { imageSize } from '../src/worker/lessons';
 import { ruleFor, readAllowed } from '../src/worker/permissions';
@@ -242,5 +242,39 @@ describe.skipIf(!existsSync(TPL))('the PowerPoint on a company template (local t
     expect(new TextDecoder().decode(files.get('ppt/presentation.xml'))).toMatch(/<p:sldIdLst><p:sldId id="256" r:id="rIdLesson1"\/><\/p:sldIdLst>/);
     const blank = await unzip(await lessonPptx(tpl, [], new Map()), true);
     expect(new TextDecoder().decode(blank.get('ppt/slides/slide1.xml'))).not.toContain('<a:t>');
+  });
+});
+
+describe('the template itself on the page (6z.61)', () => {
+  const sp = (x: number, y: number, w: number, h: number, inner: string) =>
+    `<p:sp><p:nvSpPr><p:cNvPr id="1" name="s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x * 12700}" y="${y * 12700}"/><a:ext cx="${w * 12700}" cy="${h * 12700}"/></a:xfrm>${inner}`;
+  const master = `<p:cSld><p:spTree>
+    ${sp(9, 10, 522, 45, '<a:solidFill><a:srgbClr val="006600"/></a:solidFill></p:spPr></p:sp>')}
+    ${sp(15, 10, 470, 30, '</p:spPr><p:txBody><a:bodyPr wrap="none"/><a:p><a:r><a:rPr sz="2800" b="1"><a:solidFill><a:schemeClr val="bg1"/></a:solidFill></a:rPr><a:t>NESR LESSON LEARNT</a:t></a:r></a:p></p:txBody></p:sp>')}
+    ${sp(296, 19, 160, 23, '</p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="2000" b="1"><a:solidFill><a:schemeClr val="bg1"/></a:solidFill></a:rPr><a:t>Slickline</a:t></a:r></a:p></p:txBody></p:sp>')}
+    ${sp(9, 696, 45, 11, '<a:noFill/><a:ln w="9525"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></a:ln></p:spPr></p:sp>')}
+    <p:sp><p:nvSpPr><p:cNvPr id="9" name="t"/><p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:p><a:r><a:t>Click to edit</a:t></a:r></a:p></p:txBody></p:sp>
+    <p:pic><p:nvPicPr><p:cNvPr id="5" name="logo"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId2"/></p:blipFill><p:spPr><a:xfrm><a:off x="${482 * 12700}" y="${20 * 12700}"/><a:ext cx="${32 * 12700}" cy="${25 * 12700}"/></a:xfrm></p:spPr></p:pic>
+  </p:spTree></p:cSld>`;
+
+  it('reads the bars, cells, words and logo place of the slide master, leaving placeholders out', () => {
+    const parts = masterParts(master, { bg1: 'FFFFFF', tx1: '000000' });
+    expect(parts.map((p) => p.k)).toEqual(['rect', 'text', 'text', 'rect', 'logo']);
+    expect(parts[0]).toMatchObject({ fill: '006600' });
+    expect(parts[1]).toMatchObject({ t: 'NESR LESSON LEARNT', size: 28, b: true, c: 'FFFFFF' });
+    expect(parts[3]).toMatchObject({ stroke: '000000', fill: undefined });
+  });
+
+  it('draws the template’s words instead of its own, with no country added, and keeps the title clear of the next word', () => {
+    const style = { band: '006600', title: 'FFFFFF', bar: '92D050', foot: '006600', master: masterParts(master, { bg1: 'FFFFFF', tx1: '000000' }) };
+    const page = input(full, { style, country: 'Bahrain' });
+    const words = chrome(page, { w: 32, h: 25 }).master.flatMap((b) => (b.k === 'text' ? b.paras.flatMap((p) => p.runs.map((r) => r.t)) : []));
+    expect(words).toEqual(['NESR LESSON LEARNT', 'Slickline']);
+    expect(JSON.stringify(chrome(page, null))).not.toContain('Bahrain');
+    const title = chrome(page, null).master.find((b) => b.k === 'text' && b.paras[0].runs[0].t === 'NESR LESSON LEARNT')!;
+    expect(title.k === 'text' && title.x + title.w).toBeLessThanOrEqual(296);
+    expect(chrome(page, { w: 32, h: 25 }).master.some((b) => b.k === 'image' && Math.round(b.x) === 482)).toBe(true);
+    // with no template the page keeps its own header
+    expect(JSON.stringify(chrome(input(full, { country: 'Bahrain' }), null))).toContain('Slickline · Bahrain');
   });
 });

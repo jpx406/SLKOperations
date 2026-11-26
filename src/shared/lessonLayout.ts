@@ -182,7 +182,11 @@ export function toOps(blocks: Block[]): Op[] {
 // ---- the page ---------------------------------------------------------------------------------------------------------
 
 /** The colours of the template's header band, its title, the title bar and the sign-off header rows. */
-export interface TemplateStyle { band: string | null; title: string; bar: string; foot: string; body?: { top: number; bottom: number } }
+/** A fixed text on the template's slide master, in points on the page (6z.61). */
+export interface MasterText { k: 'text'; x: number; y: number; w: number; h: number; t: string; size: number; b: boolean; c: string; align: 'l' | 'c' | 'r'; valign: 'top' | 'middle' | 'bottom'; padX: number; padY: number }
+export interface TemplateStyle { band: string | null; title: string; bar: string; foot: string; body?: { top: number; bottom: number }; master?: MasterPart[] }
+/** What the template's slide master shows, in its order: bars and cells, fixed words, and where the logo sits. */
+export type MasterPart = MasterText | { k: 'rect'; x: number; y: number; w: number; h: number; fill?: string; stroke?: string; sw: number } | { k: 'logo'; x: number; y: number; w: number; h: number }
 export interface PageInput {
   style?: TemplateStyle | null;
   kind: LessonKind; company: LessonCompany; country: string; title: string; content: LessonContent; colour: string;
@@ -521,6 +525,10 @@ export function chrome(inp: PageInput, logo: { w: number; h: number } | null): {
   const col = inp.colour;
   const st: TemplateStyle = inp.style ?? { band: null, title: col, bar: col, foot: col };
   const master: Block[] = [];
+  if (st.master?.length) {
+    masterBlocks(st.master, master, logo);
+    return { master, slide: slideBlocks(inp) };
+  }
   if (st.band) master.push({ k: 'rect', x: 9, y: 10, w: 522, h: 43, fill: st.band });
   master.push({ k: 'rect', x: 9, y: 10, w: 522, h: 760, stroke: '1F2937', sw: 0.8 });
   const tsz = 22;
@@ -549,7 +557,11 @@ export function chrome(inp: PageInput, logo: { w: number; h: number } | null): {
   master.push({ k: 'text', x: 12, y: 759, w: 380, h: 11, pad: 0, valign: 'middle', paras: [{ runs: [{ t: `The controlled source document is stored on the ${COMPANY_DB[inp.company]} KNOWLEDGE DATABASE`, c: WHITE }], size: 6 }] });
   master.push({ k: 'text', x: 380, y: 759, w: 148, h: 11, pad: 0, valign: 'middle', paras: [{ runs: [{ t: 'Printed copies are uncontrolled', c: WHITE }], size: 6, align: 'r' }] });
 
-  // on the slide: title, page, sign-off
+  return { master, slide: slideBlocks(inp) };
+}
+
+/** What is written on the slide itself: the title, the number and page, and the sign-off values. */
+function slideBlocks(inp: PageInput): Block[] {
   let ts = 13;
   while (ts > 9 && textWidth(inp.title, ts, true) > 330) ts -= 0.5;
   const slide: Block[] = [
@@ -559,7 +571,73 @@ export function chrome(inp: PageInput, logo: { w: number; h: number } | null): {
   const so = inp.signoff;
   [inp.revision ?? '', printDate(so.date), so.changes, so.prepared, so.reviewed].forEach((t, i) => slide.push(cellText(FOOT_COLS[i], 696, FOOT_COLS[i + 1] - FOOT_COLS[i], 12, t, 7, false, INK)));
   [so.approver, so.position, inp.docNo ?? ''].forEach((t, i) => slide.push(cellText(APPROVAL_COLS[i + 1], 741, APPROVAL_COLS[i + 2] - APPROVAL_COLS[i + 1], 18, t, 7, false, INK)));
-  return { master, slide };
+  return slide;
+}
+
+/**
+ * The template's slide master drawn as it is (6z.61): its bars and cells, its own words where it puts them, and the
+ * logo in the logo's place. Words are drawn in Helvetica, so one that would run into the next word on its row, or
+ * past its box, is made a little smaller.
+ */
+function masterBlocks(parts: MasterPart[], out: Block[], logo: { w: number; h: number } | null) {
+  const texts = parts.filter((p): p is MasterText => p.k === 'text');
+  const cy = (q: MasterText) => q.y + q.h / 2, cx = (q: MasterText) => q.x + q.w / 2;
+  const sameRow = (a: MasterText, b: MasterText) => a !== b && Math.abs(cy(a) - cy(b)) < Math.min(a.h, b.h) / 2;
+  // the room each word has on its row: a centred word up to halfway to its neighbours (it may spill out of its own
+  // text box, as on the master); a left-aligned word up to where the next word starts
+  const room = new Map<MasterText, number>();
+  for (const p of texts) {
+    const row = texts.filter((q) => sameRow(p, q));
+    if (p.align === 'c') {
+      const half = row.reduce((m, q) => Math.min(m, Math.abs(cx(q) - cx(p))), Infinity);
+      room.set(p, Math.min(p.w * 2, Number.isFinite(half) ? half * 2 - 8 : p.w));
+    } else {
+      const starts = row.filter((q) => q.x > p.x + 2).map((q) => (q.align === 'c' ? cx(q) - Math.min(q.w, textWidth(q.t, q.size, q.b)) / 2 : q.x));
+      room.set(p, Math.min(p.align === 'l' ? Math.max(p.w, 1) : p.w, ...starts.map((s) => s - p.x - 4)));
+    }
+  }
+  // the size each word fits at, then one size for the words of a row that share a size on the master
+  const fit = new Map(texts.map((p) => [p, fitSize(p, room.get(p)!)]));
+  for (const p of texts) fit.set(p, Math.min(fit.get(p)!, ...texts.filter((q) => sameRow(p, q) && q.size === p.size && q.align === p.align).map((q) => fitSize(q, room.get(q)!))));
+  let logoDone = false;
+  for (const p of parts) {
+    if (p.k === 'rect') out.push({ k: 'rect', x: p.x, y: p.y, w: p.w, h: p.h, fill: p.fill, stroke: p.stroke, sw: p.stroke ? Math.max(0.4, Math.min(1.5, p.sw)) : undefined });
+    else if (p.k === 'logo') {
+      if (!logo || logoDone) continue;
+      // the biggest picture is the logo: fit it in the picture's box at its own shape
+      const box = parts.filter((q): q is Extract<MasterPart, { k: 'logo' }> => q.k === 'logo').sort((a, b) => b.w * b.h - a.w * a.h)[0];
+      let w = box.w, h = (box.w * logo.h) / logo.w;
+      if (h > box.h) { h = box.h; w = (box.h * logo.w) / logo.h; }
+      out.push({ k: 'image', x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h, pic: '__logo__' });
+      logoDone = true;
+    } else {
+      out.push(masterText(p, fit.get(p)!));
+    }
+  }
+}
+
+/** The largest size, up to the master's, at which every line of a word fits the room it has. */
+function fitSize(m: MasterText, room: number): number {
+  const box = Math.max(4, room - m.padX * (m.align === 'l' ? 1 : 2));
+  let size = m.size;
+  const lines = m.t.split('\n');
+  while (size > 5 && lines.some((l) => textWidth(l, size, m.b) > box)) size -= 0.25;
+  return size;
+}
+
+/** A master text as a block at its size: each line kept on one line, placed by its alignment in its box. */
+function masterText(m: MasterText, size: number): Block {
+  const lines = m.t.split('\n');
+  const paras: Para[] = lines.map((l) => ({ runs: [{ t: l, b: m.b, c: m.c }], size, align: m.align }));
+  // as wide as its longest line, placed by the alignment, so nothing wraps
+  const w = Math.max(...lines.map((l) => textWidth(l, size, m.b))) + 1;
+  const inner = m.w - m.padX * 2;
+  const x = m.align === 'c' ? m.x + m.padX + (inner - w) / 2 : m.align === 'r' ? m.x + m.w - m.padX - w : m.x + m.padX;
+  if (m.valign === 'bottom') {
+    const th = textHeight(paras, w, 0);
+    return { k: 'text', x, y: Math.max(m.y, m.y + m.h - m.padY - th), w, h: th, pad: 0, paras };
+  }
+  return { k: 'text', x, y: m.y + (m.valign === 'middle' ? 0 : m.padY), w, h: m.valign === 'middle' ? m.h : Math.max(1, m.h - m.padY * 2), pad: 0, valign: m.valign === 'middle' ? 'middle' : 'top', paras };
 }
 
 function cellText(x: number, y: number, w: number, h: number, t: string, size: number, b: boolean, c: string): Block {

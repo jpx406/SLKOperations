@@ -7,7 +7,7 @@ import { DEFAULT_COPY_SETTINGS, copySettingsOf, slideTemplate, type CopySettings
 import { GLOBAL, fileKey, placeCode } from '../shared/knowledge';
 import { DEFAULT_NUMBERING, DEFAULT_PERIODS, addMonths, type Numbering, type Periods } from '../shared/knowledgeControl';
 import {
-  EMPTY_CONTENT, LESSON_KINDS, LIMITS, cleanContent, cleanDraft, fileTitle, isLessonCompany, isLessonKind, lessonPrompt, lessonSchema, mayCreate, mayDo,
+  EMPTY_CONTENT, LESSON_COMPANIES, LESSON_KINDS, LIMITS, cleanContent, cleanDraft, fileTitle, isLessonCompany, isLessonKind, lessonPrompt, lessonSchema, mayCreate, mayDo,
   nextLessonNumber, submitProblems, type LessonCompany, type LessonContent, type LessonKind, type LessonPerson, type LessonPicture, type LessonStatus,
 } from '../shared/lessons';
 import { chrome, layoutLesson, layoutProblem, measureParts, partsOf, tidyBoxes, type PageInput } from '../shared/lessonLayout';
@@ -181,7 +181,7 @@ lessons.get('/', async (c) => {
     reviewers: people.results.filter((x) => x.can_review).map((x) => ({ username: x.username, name: x.full_name })),
     approvers: people.results.filter((x) => x.can_approve).map((x) => ({ username: x.username, name: x.full_name })),
     templates: Object.fromEntries((['NESR', 'SAPESCO', 'Gulf Energy'] as LessonCompany[]).map((co) => [co, { lesson_learnt: !!templateOf(s, co, 'lesson_learnt'), best_practice: !!templateOf(s, co, 'best_practice') }])),
-    ai: !!c.env.ANTHROPIC_API_KEY,
+    ai: !!c.env.ANTHROPIC_API_KEY, admin: user.role === 'admin',
   });
 });
 
@@ -207,6 +207,82 @@ lessons.get('/logo/:company/:kind', async (c) => {
   const logo = obj ? await templateLogo(new Uint8Array(await obj.arrayBuffer())) : null;
   if (!logo) return c.json({ error: 'No logo' }, 404);
   return new Response(logo.bytes, { headers: { 'Content-Type': logo.type, 'Cache-Control': 'private, max-age=600', 'X-Logo-Size': `${logo.w}x${logo.h}` } });
+});
+
+// ---- the company templates (admins, 6z.61): one slides template per company and kind --------------------------------
+// Kept in the same place as Knowledge Hub › Doc Control › Settings, so both always use the same files.
+
+const SLOT = (kind: LessonKind) => (kind === 'best_practice' ? 'bp' : 'slides') as 'bp' | 'slides';
+/** The file in a slot itself (not the fallback a best practice takes from the lesson template). */
+function slotFile(s: CopySettings, co: LessonCompany, kind: LessonKind) {
+  const bp = kind === 'best_practice';
+  return co === 'NESR' ? (bp ? s.nesrSlidesBp : s.nesrSlides) ?? null : (bp ? s.companies[co].slidesBp : s.companies[co].slides) ?? null;
+}
+function setSlot(s: CopySettings, co: LessonCompany, kind: LessonKind, file: CopySettings['nesrSlides']) {
+  const bp = kind === 'best_practice';
+  if (co === 'NESR') { if (bp) s.nesrSlidesBp = file; else s.nesrSlides = file; }
+  else s.companies[co] = { ...s.companies[co], ...(bp ? { slidesBp: file } : { slides: file }) };
+}
+const putCopies = (env: Env, user: AuthedUser, s: CopySettings) => env.DB.prepare(`INSERT INTO knowledge_settings (key, value, updated_by, updated_at) VALUES ('copies', ?, ?, ?)
+  ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`).bind(JSON.stringify(s), user.username, now());
+
+lessons.get('/company-templates', async (c) => {
+  if (c.get('user').role !== 'admin') return c.json({ error: 'Only admins manage the templates' }, 403);
+  const s = await copySettings(c.env);
+  const slots = await Promise.all(LESSON_COMPANIES.flatMap((co) => (Object.keys(LESSON_KINDS) as LessonKind[]).map(async (kind) => {
+    const f = slotFile(s, co, kind);
+    const used = templateOf(s, co, kind);
+    return { company: co, kind, file_name: f?.file_name ?? null, uploaded_at: f?.uploaded_at ?? null, uploaded_by: f ? await nameOf(c.env, f.uploaded_by) : null, uses: !f && used ? used.file_name : null };
+  })));
+  return c.json({ slots });
+});
+
+/** The template file itself, as uploaded. */
+lessons.get('/company-templates/:company/:kind/file', async (c) => {
+  if (c.get('user').role !== 'admin') return c.json({ error: 'Only admins manage the templates' }, 403);
+  const co = decodeURIComponent(c.req.param('company')), kind = c.req.param('kind');
+  if (!isLessonCompany(co) || !isLessonKind(kind)) return c.json({ error: 'Unknown template' }, 404);
+  const f = slotFile(await copySettings(c.env), co, kind);
+  const o = f && c.env.FILES ? await c.env.FILES.get(f.key) : null;
+  if (!f || !o) return c.json({ error: 'No template here yet' }, 404);
+  return fileResponse(o.body, PPTX, f.file_name, false);
+});
+
+/** Adds or replaces a company template (raw .pptx body, X-File-Name). */
+lessons.post('/company-templates/:company/:kind', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only admins manage the templates' }, 403);
+  if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet' }, 503);
+  const co = decodeURIComponent(c.req.param('company')), kind = c.req.param('kind');
+  if (!isLessonCompany(co) || !isLessonKind(kind)) return c.json({ error: 'Pick NESR, SAPESCO or Gulf Energy, and lesson learnt or best practice' }, 400);
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  const ok = checkUpload(decodeURIComponent(c.req.header('x-file-name') ?? ''), bytes.length);
+  if ('error' in ok) return c.json({ error: ok.error }, 400);
+  if (!/\.pptx$/i.test(ok.name)) return c.json({ error: 'The template is a PowerPoint file (.pptx)' }, 400);
+  const parts = await unzip(bytes).catch(() => null);
+  if (!parts?.has('ppt/presentation.xml') || ![...parts.keys()].some((k) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(k))) return c.json({ error: 'This file is not a PowerPoint presentation with slide layouts' }, 400);
+  if (!(await templateStyle(bytes))) return c.json({ error: 'The slide master of this file has no header or title bar to read: use the company’s lesson learnt or best practice template' }, 400);
+  const key = `knowledge/Templates/${co}/${crypto.randomUUID().slice(0, 8)} ${ok.name}`;
+  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: PPTX }, customMetadata: { name: ok.name, by: user.username } });
+  const s = await copySettings(c.env);
+  const had = slotFile(s, co, kind);
+  setSlot(s, co, kind, { key, file_name: ok.name, uploaded_at: now(), uploaded_by: user.username });
+  await c.env.DB.batch([putCopies(c.env, user, s), audit(c.env, user, 'upload', 'copies', `${co} ${LESSON_KINDS[kind].toLowerCase()} template ${had ? `replaced (was “${had.file_name}”)` : 'added'}: “${ok.name}”`, 'knowledge_settings')]);
+  return c.json({ ok: true, name: ok.name, slot: SLOT(kind) }, 201);
+});
+
+/** Removes a company template; the file stays in storage for the record. */
+lessons.delete('/company-templates/:company/:kind', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only admins manage the templates' }, 403);
+  const co = decodeURIComponent(c.req.param('company')), kind = c.req.param('kind');
+  if (!isLessonCompany(co) || !isLessonKind(kind)) return c.json({ error: 'Unknown template' }, 404);
+  const s = await copySettings(c.env);
+  const had = slotFile(s, co, kind);
+  if (!had) return c.json({ error: 'No template here' }, 404);
+  setSlot(s, co, kind, null);
+  await c.env.DB.batch([putCopies(c.env, user, s), audit(c.env, user, 'remove', 'copies', `${co} ${LESSON_KINDS[kind].toLowerCase()} template removed: “${had.file_name}”`, 'knowledge_settings')]);
+  return c.json({ ok: true });
 });
 
 lessons.post('/', async (c) => {
@@ -324,6 +400,17 @@ lessons.delete('/:id/pictures/:pid', async (c) => {
   // a published revision may still show it in its files; those are copies, so the picture itself can go
   if (c.env.FILES) await c.env.FILES.delete(picKey(l.id, pic)).catch(() => undefined);
   return c.json({ ok: true });
+});
+
+/** The logo on the template this lesson is made on (its own when one was brought in), for the page preview. */
+lessons.get('/:id/logo', async (c) => {
+  const l = await load(c);
+  if (!l) return c.json({ error: 'Not found' }, 404);
+  const tf = templateFor(await copySettings(c.env), l);
+  const obj = tf && c.env.FILES ? await c.env.FILES.get(tf.key) : null;
+  const logo = obj ? await templateLogo(new Uint8Array(await obj.arrayBuffer())) : null;
+  if (!logo) return c.json({ error: 'No logo' }, 404);
+  return new Response(logo.bytes, { headers: { 'Content-Type': logo.type, 'Cache-Control': 'private, no-cache', 'X-Logo-Size': `${logo.w}x${logo.h}` } });
 });
 
 lessons.get('/:id/source', async (c) => {

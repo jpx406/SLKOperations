@@ -26,7 +26,7 @@ interface ListRow {
 interface Person { username: string; name: string }
 interface ListData {
   lessons: ListRow[]; canCreate: boolean; places: string[]; myCountry: string; reviewers: Person[]; approvers: Person[];
-  templates: Record<LessonCompany, Record<LessonKind, boolean>>; ai: boolean;
+  templates: Record<LessonCompany, Record<LessonKind, boolean>>; ai: boolean; admin: boolean;
 }
 interface Lesson {
   id: string; kind: LessonKind; company: LessonCompany; country: string; title: string; content: LessonContent; status: LessonStatus;
@@ -78,6 +78,7 @@ export function LessonList() {
   const list = useQuery({ queryKey: ['lessons'], queryFn: () => api<ListData>('/lessons') });
   const [tab, setTab] = useState<Tab>('all');
   const [creating, setCreating] = useState(false);
+  const [templates, setTemplates] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const d = list.data;
   const rows = useMemo(() => (d?.lessons ?? []).filter((l) => tab === 'all' || (tab === 'draft' ? l.status === 'draft' : tab === 'me' ? l.withMe : l.status === 'approved')), [d, tab]);
@@ -89,6 +90,7 @@ export function LessonList() {
   return (
     <section aria-labelledby="ll-title">
       <PageTitle aside={<div className="flex flex-wrap gap-2"><MenuButton label="Blank templates" icon={<Download aria-hidden className="size-3.5" />} items={blanks} disabled={!d} />
+        {d?.admin && <Button size="sm" onClick={() => setTemplates(true)}><LayoutTemplate aria-hidden className="size-3.5" />Templates</Button>}
         {d?.canCreate && <Button size="sm" variant="primary" onClick={() => setCreating(true)}><Plus aria-hidden className="size-4" />New</Button>}</div>}>
         <span id="ll-title">Lessons &amp; Best Practices</span>
       </PageTitle>
@@ -123,8 +125,61 @@ export function LessonList() {
           ))}
         </ul>
       )}
+      {templates && <TemplatesDialog onClose={() => setTemplates(false)} />}
       {creating && d && <NewDialog data={d} onClose={() => setCreating(false)} onCreated={(id) => navigate(`/utilities/lessons/${id}`)} />}
     </section>
+  );
+}
+
+interface Slot { company: LessonCompany; kind: LessonKind; file_name: string | null; uploaded_at: string | null; uploaded_by: string | null; uses: string | null }
+
+/** Admins: every company template in one place, to download, replace or remove (6z.61). */
+function TemplatesDialog({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['lesson-company-templates'], queryFn: () => api<{ slots: Slot[] }>('/lessons/company-templates') });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const target = useRef<Slot | null>(null);
+  const path = (s: Slot) => `/lessons/company-templates/${encodeURIComponent(s.company)}/${s.kind}`;
+  const changed = () => { qc.invalidateQueries({ queryKey: ['lesson-company-templates'] }); qc.invalidateQueries({ queryKey: ['lessons'] }); qc.invalidateQueries({ queryKey: ['lesson'] }); qc.invalidateQueries({ queryKey: ['lesson-logo'] }); };
+  const send = async (f: File) => {
+    const s = target.current; if (!s) return;
+    setBusy(`${s.company}/${s.kind}`); setError(null); setNote(null);
+    try { await sendFile(path(s), f, { 'X-File-Name': encodeURIComponent(f.name) }); setNote(`${s.company} ${LESSON_KINDS[s.kind].toLowerCase()} template: ${f.name}`); changed(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(null); if (fileRef.current) fileRef.current.value = ''; }
+  };
+  const remove = async (s: Slot) => {
+    if (!window.confirm(`Remove the ${s.company} ${LESSON_KINDS[s.kind].toLowerCase()} template “${s.file_name}”?${s.kind === 'best_practice' ? ' Best practices then use the lesson learnt template.' : ' Lessons on it can only make the PDF until a new one is added.'}`)) return;
+    setError(null); setNote(null);
+    try { await api(path(s), { method: 'DELETE' }); changed(); } catch (e) { setError((e as Error).message); }
+  };
+  return (
+    <Dialog title="Company templates" onClose={onClose} wide>
+      <p className="mb-3 text-sm text-text-muted">The PowerPoint each lesson and best practice is made on. The page, the PDF and the PowerPoint take the header, the words, the colours, the logo and the sign-off tables from the template&apos;s slide master. The same files are used in Knowledge Hub › Doc Control › Settings.</p>
+      <input ref={fileRef} type="file" accept=".pptx" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) send(f); }} />
+      {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
+      {note && <div className="mb-3"><Banner tone="success">Saved: {note}</Banner></div>}
+      {q.isLoading && <Skeleton className="h-40" />}
+      {q.error && <Banner tone="danger">{(q.error as Error).message}</Banner>}
+      {q.data && (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {q.data.slots.map((s) => (
+            <li key={`${s.company}/${s.kind}`} className="flex flex-col gap-2 rounded-md border border-border p-3">
+              <div><b className="text-sm">{s.company}</b> <span className="text-sm text-text-muted">· {LESSON_KINDS[s.kind]}</span></div>
+              <p className="min-w-0 text-xs break-words">{s.file_name ? <>{s.file_name}<span className="block text-text-subtle">added {s.uploaded_at ? when(s.uploaded_at) : ''}{s.uploaded_by ? ` by ${s.uploaded_by}` : ''}</span></>
+                : s.uses ? <span className="text-text-muted">None: uses the lesson learnt template ({s.uses})</span> : <span className="text-danger">None: only the PDF can be made</span>}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" loading={busy === `${s.company}/${s.kind}`} onClick={() => { target.current = s; fileRef.current?.click(); }}>{s.file_name ? 'Replace' : 'Add'}</Button>
+                {s.file_name && <Button size="sm" variant="ghost" onClick={() => download(`${path(s)}/file`, s.file_name!).catch((e: Error) => setError(e.message))}><Download aria-hidden className="size-3.5" />Download</Button>}
+                {s.file_name && <Button size="sm" variant="ghost" aria-label={`Remove the ${s.company} ${LESSON_KINDS[s.kind]} template`} onClick={() => remove(s)}><Trash2 aria-hidden className="size-3.5" />Remove</Button>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Dialog>
   );
 }
 
@@ -192,11 +247,12 @@ function NewDialog({ data, onClose, onCreated }: { data: ListData; onClose: () =
 
 // ---- the page preview ------------------------------------------------------------------------------------------------------
 
-function useLogo(company: LessonCompany, kind: LessonKind) {
+/** The logo of the template a lesson is made on (its own template's when it has one, 6z.61). */
+function useLogo(lessonId: string, template: string | null) {
   return useQuery({
-    queryKey: ['lesson-logo', company, kind], staleTime: 600_000,
+    queryKey: ['lesson-logo', lessonId, template], staleTime: 600_000, enabled: !!lessonId,
     queryFn: async () => {
-      const res = await fetch(`/api/lessons/logo/${encodeURIComponent(company)}/${kind}`, { credentials: 'same-origin' });
+      const res = await fetch(`/api/lessons/${lessonId}/logo`, { credentials: 'same-origin' });
       if (!res.ok) return null;
       const [w, h] = (res.headers.get('x-logo-size') ?? '1x1').split('x').map(Number);
       return { url: URL.createObjectURL(await res.blob()), w, h };
@@ -300,7 +356,7 @@ export function LessonEditor() {
   const tplRef = useRef<HTMLInputElement>(null);
   const loadedAt = useRef<string | null>(null);
   const d = q.data;
-  const logo = useLogo(d?.lesson.company ?? 'NESR', d?.lesson.kind ?? 'lesson_learnt');
+  const logo = useLogo(d?.lesson.id ?? '', d?.templateName ?? null);
 
   useEffect(() => { if (note) sessionStorage.removeItem(`lesson-note-${id}`); }, [id, note]);
   // take the server copy when it changes and nothing is waiting to be saved

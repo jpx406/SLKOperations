@@ -128,6 +128,9 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   // approvers and admins start them; the chosen reviewer and approver act on them), so the menu's view right is enough
   { method: 'POST', re: /^\/api\/lessons(\/[^/]+(\/(pictures|analyse|arrange|template|submit|review|approve|send-back|revise))?)?$/, menu: 'utilities', action: 'view' },
   { method: 'PUT', re: /^\/api\/lessons\/[^/]+$/, menu: 'utilities', action: 'view' },
+  // the company templates (6z.61): admins only, checked in the route
+  { method: 'POST', re: /^\/api\/lessons\/company-templates\/[^/]+\/[^/]+$/, menu: 'utilities', action: 'view' },
+  { method: 'DELETE', re: /^\/api\/lessons\/company-templates\/[^/]+\/[^/]+$/, menu: 'utilities', action: 'view' },
   { method: 'DELETE', re: /^\/api\/lessons\/[^/]+(\/pictures\/[^/]+|\/template)?$/, menu: 'utilities', action: 'view' },
   { method: 'DELETE', re: /^\/api\/admin\/rules\/[^/]+$/, menu: 'users', action: 'edit' },
   { method: 'PUT', re: /^\/api\/admin\/users\/[^/]+\/attendance$/, menu: 'users', action: 'edit' },
@@ -239,7 +242,8 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/winch\/state\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/joblog\/[^/]+(\/versions)?$/, menus: ['jobs'] },
   { re: /^\/api\/utilities(\/[^/]+(\/(state|files(\/[^/]+)?))?)?$/, menus: ['utilities'] },
-  { re: /^\/api\/lessons(\/(templates|logo)\/[^/]+\/[^/]+|\/[^/]+(\/(pictures\/[^/]+|source|pdf|pptx))?)?$/, menus: ['utilities', 'knowledge_hub'] },
+  { re: /^\/api\/lessons\/company-templates(\/[^/]+\/[^/]+\/file)?$/, menus: ['utilities'] },
+  { re: /^\/api\/lessons(\/(templates|logo)\/[^/]+\/[^/]+|\/[^/]+(\/(pictures\/[^/]+|source|pdf|pptx|logo))?)?$/, menus: ['utilities', 'knowledge_hub'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },
   { re: /^\/api\/database$/, menus: ['database'] },

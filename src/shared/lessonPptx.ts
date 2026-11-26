@@ -5,7 +5,7 @@
 
 import { zip } from './xlsx';
 import { unzip } from './xlsxRead';
-import { PAGE, type Block, type Para, type Run, type TemplateStyle } from './lessonLayout';
+import { PAGE, type Block, type MasterPart, type Para, type Run, type TemplateStyle } from './lessonLayout';
 
 const td = new TextDecoder();
 const te = new TextEncoder();
@@ -79,11 +79,78 @@ export async function templateStyle(tpl: Uint8Array): Promise<TemplateStyle | nu
   const title = shapes.find((s) => s.y < 50 && s.text && s.textColour)?.textColour;
   if (!bar && !title) return null;
   const main = bar ?? title ?? '024800';
+  const parts = masterParts(mx, themeColours(files));
   // the free body: below the header's bands and above the sign-off tables
   const wide = shapes.filter((s) => s.w > 300 && s.h < 200);
   const headBottom = Math.max(0, ...wide.filter((s) => s.y < 150).map((s) => s.y + s.h));
   const footTop = Math.min(780, ...shapes.filter((s) => s.y > 500).map((s) => s.y));
-  return { band: band && band !== 'FFFFFF' ? band : null, title: title ?? main, bar: main, foot: foot ?? main, body: { top: Math.round(headBottom + 4), bottom: Math.round(footTop - 4) } };
+  return { band: band && band !== 'FFFFFF' ? band : null, title: title ?? main, bar: main, foot: foot ?? main, body: { top: Math.round(headBottom + 4), bottom: Math.round(footTop - 4) }, master: parts };
+}
+
+/** The theme's named colours (accent1, dk1, lt1…) as hex. */
+function themeColours(files: Map<string, Uint8Array>): Record<string, string> {
+  const key = [...files.keys()].filter((k) => /^ppt\/theme\/theme\d+\.xml$/.test(k)).sort()[0];
+  const out: Record<string, string> = { bg1: 'FFFFFF', lt1: 'FFFFFF', tx1: '000000', dk1: '000000' };
+  if (!key) return out;
+  const x = td.decode(files.get(key)!);
+  for (const m of x.matchAll(/<a:(dk1|lt1|dk2|lt2|accent\d|hlink|folHlink)>\s*<a:(?:srgbClr val="(\w+)"|sysClr[^>]*lastClr="(\w+)")/g)) out[m[1]] = (m[2] ?? m[3]).toUpperCase();
+  out.bg1 = out.lt1; out.tx1 = out.dk1; out.bg2 = out.lt2 ?? out.bg1; out.tx2 = out.dk2 ?? out.tx1;
+  return out;
+}
+
+const unxml = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&amp;/g, '&');
+
+/**
+ * What the template's slide master shows, in its own order (6z.61): the coloured bars, the outlined sign-off cells,
+ * the fixed words (the title, "Slickline", the sign-off labels, the database line) and where the logo sits, so the
+ * preview and the PDF show the template itself rather than a copy of it. Placeholders are left out: they only show
+ * on a slide when filled.
+ */
+export function masterParts(mx: string, theme: Record<string, string>): MasterPart[] {
+  const out: MasterPart[] = [];
+  const colour = (x: string | undefined) => {
+    if (!x || /^\s*<a:noFill\/>/.test(x)) return undefined;
+    const m = /<a:(srgbClr|schemeClr|prstClr|sysClr) val="(\w+)"(?:[^>]*lastClr="(\w+)")?/.exec(x);
+    if (!m) return undefined;
+    return m[1] === 'srgbClr' ? m[2].toUpperCase() : m[1] === 'sysClr' ? (m[3] ?? '000000').toUpperCase() : m[1] === 'prstClr' ? ({ white: 'FFFFFF', black: '000000' } as Record<string, string>)[m[2]] : theme[m[2]];
+  };
+  const tree = /<p:spTree>([\s\S]*)<\/p:spTree>/.exec(mx)?.[1] ?? '';
+  for (const m of tree.matchAll(/<(p:sp|p:pic)>[\s\S]*?<\/\1>/g)) {
+    const sp = m[0];
+    if (/<p:ph\b/.test(sp)) continue;
+    const o = /<a:off x="(-?\d+)" y="(-?\d+)"\/>\s*<a:ext cx="(\d+)" cy="(\d+)"/.exec(sp);
+    if (!o) continue;
+    const box = { x: Number(o[1]) / 12700, y: Number(o[2]) / 12700, w: Number(o[3]) / 12700, h: Number(o[4]) / 12700 };
+    if (m[1] === 'p:pic') { out.push({ k: 'logo', ...box }); continue; }
+    // the shape: its fill and outline, from its own properties or else its style
+    const spPr = /<p:spPr\b[\s\S]*?<\/p:spPr>/.exec(sp)?.[0] ?? '';
+    const ln = /<a:ln\b[^>]*>[\s\S]*?<\/a:ln>|<a:ln\b[^>]*\/>/.exec(spPr)?.[0];
+    const body0 = spPr.replace(/<a:ln\b[^>]*>[\s\S]*?<\/a:ln>|<a:ln\b[^>]*\/>/, '');
+    const style = /<p:style>[\s\S]*?<\/p:style>/.exec(sp)?.[0] ?? '';
+    const ownFill = /<a:(solidFill|noFill|gradFill|blipFill|pattFill)\b/.exec(body0)?.[1];
+    const fill = ownFill === 'solidFill' ? colour(/<a:solidFill>[\s\S]*?<\/a:solidFill>/.exec(body0)?.[0]) : !ownFill && /<a:fillRef idx="[1-9]/.test(style) ? colour(/<a:fillRef[\s\S]*?<\/a:fillRef>/.exec(style)?.[0]) : undefined;
+    const lnFill = ln ? /<a:(solidFill|noFill)\b/.exec(ln)?.[1] : undefined;
+    const stroke = lnFill === 'solidFill' ? colour(/<a:solidFill>[\s\S]*?<\/a:solidFill>/.exec(ln!)?.[0]) : !lnFill && /<a:lnRef idx="[1-9]/.test(style) ? colour(/<a:lnRef[\s\S]*?<\/a:lnRef>/.exec(style)?.[0]) : undefined;
+    const sw = ln && /\bw="(\d+)"/.exec(ln) ? Number(/\bw="(\d+)"/.exec(ln)![1]) / 12700 : 0.75;
+    if (fill || stroke) out.push({ k: 'rect', ...box, fill, stroke, sw });
+    const body = /<p:txBody>[\s\S]*?<\/p:txBody>/.exec(sp)?.[0];
+    if (!body) continue;
+    const paras = [...body.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)].map((p) => [...p[1].matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((t) => unxml(t[1])).join(''));
+    const t = paras.join('\n').replace(/[ \t]+/g, ' ').replace(/^\s+|\s+$/g, '');
+    if (!t) continue;
+    const rPr = /<a:rPr\b[^>]*\/>|<a:rPr\b[^>]*>[\s\S]*?<\/a:rPr>/.exec(body)?.[0] ?? '';
+    const size = Number(/\bsz="(\d+)"/.exec(rPr)?.[1] ?? /\bsz="(\d+)"/.exec(body)?.[1] ?? 1800) / 100;
+    const bodyPr = /<a:bodyPr\b[^>]*>/.exec(body)?.[0] ?? '';
+    const ins = (k: string, d: number) => { const v = new RegExp(`\\b${k}="(\\d+)"`).exec(bodyPr)?.[1]; return v ? Number(v) / 12700 : d; };
+    const algn = /<a:pPr\b[^>]*\balgn="(\w+)"/.exec(body)?.[1];
+    const anchor = /\banchor="(\w+)"/.exec(bodyPr)?.[1];
+    out.push({
+      k: 'text', ...box, t, size,
+      b: /\bb="1"/.test(rPr), c: colour(/<a:solidFill>[\s\S]*?<\/a:solidFill>/.exec(rPr)?.[0]) ?? theme.tx1 ?? '000000', align: algn === 'ctr' ? 'c' : algn === 'r' ? 'r' : 'l',
+      valign: anchor === 'ctr' ? 'middle' : anchor === 'b' ? 'bottom' : 'top', padX: ins('lIns', 7.2), padY: ins('tIns', 3.6),
+    });
+  }
+  return out;
 }
 
 interface Ctx { sx: number; sy: number; id: number; images: Map<string, string>; rels: string[]; media: { name: string; data: Uint8Array }[]; mediaNo: number }
