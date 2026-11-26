@@ -26,26 +26,57 @@ function resolve(from: string, target: string): string {
 }
 const relsIn = (x: string) => [...x.matchAll(/<Relationship\b[^>]*\/>/g)].map((m) => ({ xml: m[0], id: attr(m[0], 'Id') ?? '', type: attr(m[0], 'Type') ?? '', target: attr(m[0], 'Target') ?? '' }));
 
-/** The logo on the template's slide master: its picture, type and drawn size. */
+const numOf = (k: string) => Number(/(\d+)\.xml$/.exec(k)?.[1] ?? 0);
+
+/**
+ * What a slide on this template is built on, as PowerPoint shows it (6z.62): the layout the template's own first
+ * slide uses (else the first layout), that layout's slide master, and whether the layout shows the master's shapes.
+ * A template can hold several masters and layouts, and the first master is not always the one in use.
+ */
+export function slideFrame(files: Map<string, Uint8Array>): { layout: string; master: string | null; showMaster: boolean } | null {
+  const get = (k: string) => td.decode(files.get(k) ?? new Uint8Array());
+  const presRels = relsIn(get('ppt/_rels/presentation.xml.rels'));
+  const firstId = /<p:sldId\b[^>]*r:id="([^"]+)"/.exec(get('ppt/presentation.xml'))?.[1];
+  const slideRel = presRels.find((r) => r.id === firstId) ?? presRels.find((r) => r.type === `${REL}/slide`);
+  const slide = slideRel ? resolve('ppt/presentation.xml', slideRel.target) : null;
+  const fromSlide = slide ? relsIn(get(relsPath(slide))).find((r) => r.type === `${REL}/slideLayout`) : undefined;
+  let layout = fromSlide && slide ? resolve(slide, fromSlide.target) : null;
+  if (!layout || !files.has(layout)) layout = [...files.keys()].filter((k) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(k)).sort((a, b) => numOf(a) - numOf(b))[0] ?? null;
+  if (!layout) return null;
+  const m = relsIn(get(relsPath(layout))).find((r) => r.type === `${REL}/slideMaster`);
+  let master = m ? resolve(layout, m.target) : null;
+  if (!master || !files.has(master)) master = [...files.keys()].filter((k) => /^ppt\/slideMasters\/slideMaster\d+\.xml$/.test(k)).sort((a, b) => numOf(a) - numOf(b))[0] ?? null;
+  const head = /<p:sldLayout\b[^>]*>/.exec(get(layout))?.[0] ?? '';
+  return { layout, master, showMaster: !/showMasterSp="(0|false)"/.test(head) };
+}
+
+/** The shape trees a slide shows: the master's (unless the layout hides them), then the layout's own. */
+function frameParts(files: Map<string, Uint8Array>): { part: string; tree: string }[] {
+  const f = slideFrame(files);
+  if (!f) return [];
+  const tree = (k: string) => /<p:spTree>([\s\S]*)<\/p:spTree>/.exec(td.decode(files.get(k)!))?.[1] ?? '';
+  return [...(f.master && f.showMaster ? [{ part: f.master, tree: tree(f.master) }] : []), { part: f.layout, tree: tree(f.layout) }];
+}
+
+/** The logo on the template's master or layout (the biggest picture): its picture, type and drawn size. */
 export async function templateLogo(tpl: Uint8Array): Promise<(SlideImage & { w: number; h: number }) | null> {
   let files: Map<string, Uint8Array>;
   try { files = await unzip(tpl, true); } catch { return null; }
-  const master = [...files.keys()].filter((k) => /^ppt\/slideMasters\/slideMaster\d+\.xml$/.test(k)).sort()[0];
-  if (!master) return null;
-  const mx = td.decode(files.get(master)!);
-  const rels = relsIn(td.decode(files.get(relsPath(master)) ?? new Uint8Array()));
   let best: (SlideImage & { w: number; h: number }) | null = null;
-  for (const m of mx.matchAll(/<p:pic>[\s\S]*?<\/p:pic>/g)) {
-    const rid = /r:embed="([^"]+)"/.exec(m[0])?.[1];
-    const ext = /<a:ext cx="(\d+)" cy="(\d+)"/.exec(m[0]);
-    const rel = rels.find((r) => r.id === rid);
-    if (!rel || !ext) continue;
-    const part = resolve(master, rel.target);
-    const type = /\.png$/i.test(part) ? 'image/png' : /\.jpe?g$/i.test(part) ? 'image/jpeg' : null;
-    const bytes = files.get(part);
-    if (!type || !bytes) continue;
-    const w = Number(ext[1]), h = Number(ext[2]);
-    if (!best || w * h > best.w * best.h) best = { bytes, type, w, h };
+  for (const { part: owner, tree } of frameParts(files)) {
+    const rels = relsIn(td.decode(files.get(relsPath(owner)) ?? new Uint8Array()));
+    for (const m of tree.matchAll(/<p:pic>[\s\S]*?<\/p:pic>/g)) {
+      const rid = /r:embed="([^"]+)"/.exec(m[0])?.[1];
+      const ext = /<a:ext cx="(\d+)" cy="(\d+)"/.exec(m[0]);
+      const rel = rels.find((r) => r.id === rid);
+      if (!rel || !ext) continue;
+      const part = resolve(owner, rel.target);
+      const type = /\.png$/i.test(part) ? 'image/png' : /\.jpe?g$/i.test(part) ? 'image/jpeg' : null;
+      const bytes = files.get(part);
+      if (!type || !bytes) continue;
+      const w = Number(ext[1]), h = Number(ext[2]);
+      if (!best || w * h > best.w * best.h) best = { bytes, type, w, h };
+    }
   }
   return best;
 }
@@ -57,9 +88,10 @@ export async function templateLogo(tpl: Uint8Array): Promise<(SlideImage & { w: 
 export async function templateStyle(tpl: Uint8Array): Promise<TemplateStyle | null> {
   let files: Map<string, Uint8Array>;
   try { files = await unzip(tpl, true); } catch { return null; }
-  const master = [...files.keys()].filter((k) => /^ppt\/slideMasters\/slideMaster\d+\.xml$/.test(k)).sort()[0];
-  if (!master) return null;
-  const mx = td.decode(files.get(master)!);
+  const frame = frameParts(files);
+  if (!frame.length) return null;
+  // the master's shapes (when the layout shows them), then the layout's own, as one drawing
+  const mx = `<p:spTree>${frame.map((x) => x.tree).join('')}</p:spTree>`;
   const colourIn = (x: string) => {
     const m = /<a:solidFill>\s*<a:(srgbClr|schemeClr) val="(\w+)"/.exec(x);
     if (!m) return null;
@@ -205,6 +237,8 @@ export async function lessonPptx(tpl: Uint8Array, blocks: Block[], images: Map<s
   let ct = get('[Content_Types].xml');
   const overrideRe = (part: string) => new RegExp(`<Override\\b[^>]*PartName="/${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*/>`, 'g');
 
+  // the layout the template's own slide is on (read before its slides come out, 6z.62)
+  const frame = slideFrame(out);
   // the template's own slides (and their notes) come out
   let presRels = get('ppt/_rels/presentation.xml.rels');
   const drop = (part: string) => { out.delete(part); out.delete(relsPath(part)); ct = ct.replace(overrideRe(part), ''); };
@@ -222,7 +256,7 @@ export async function lessonPptx(tpl: Uint8Array, blocks: Block[], images: Map<s
   // the page size of the template; the layout is drawn for 540 × 780 pt and scaled to it
   const sz = /<p:sldSz\b[^>]*>/.exec(pres)?.[0] ?? '';
   const cx = Number(attr(sz, 'cx') ?? E(PAGE.w)), cy = Number(attr(sz, 'cy') ?? E(PAGE.h));
-  const layout = [...out.keys()].filter((k) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(k)).sort((a, b) => Number(/(\d+)\.xml$/.exec(a)![1]) - Number(/(\d+)\.xml$/.exec(b)![1]))[0];
+  const layout = frame?.layout;
   if (!layout) throw new Error('The company template has no slide layouts');
 
   const ctx: Ctx = { sx: cx / E(PAGE.w), sy: cy / E(PAGE.h), id: 1, images: new Map(), rels: [], media: [], mediaNo: 0 };

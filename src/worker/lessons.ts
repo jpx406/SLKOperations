@@ -248,6 +248,18 @@ lessons.get('/company-templates/:company/:kind/file', async (c) => {
   return fileResponse(o.body, PPTX, f.file_name, false);
 });
 
+/** What the app reads from a slot's template (its header, words, bars and logo place), for the admin's preview. */
+lessons.get('/company-templates/:company/:kind/style', async (c) => {
+  if (c.get('user').role !== 'admin') return c.json({ error: 'Only admins manage the templates' }, 403);
+  const co = decodeURIComponent(c.req.param('company')), kind = c.req.param('kind');
+  if (!isLessonCompany(co) || !isLessonKind(kind)) return c.json({ error: 'Unknown template' }, 404);
+  const s = await copySettings(c.env);
+  const f = slotFile(s, co, kind);
+  const o = f && c.env.FILES ? await c.env.FILES.get(f.key) : null;
+  if (!f || !o) return c.json({ error: 'No template here yet' }, 404);
+  return c.json({ style: await templateStyle(new Uint8Array(await o.arrayBuffer())), colour: colourOf(s, co) });
+});
+
 /** Adds or replaces a company template (raw .pptx body, X-File-Name). */
 lessons.post('/company-templates/:company/:kind', async (c) => {
   const user = c.get('user');

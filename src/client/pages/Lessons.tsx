@@ -3,7 +3,7 @@ import { ArrowLeft, Check, Columns3, Download, Eye, EyeOff, FileText, ImagePlus,
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
-  DAMAGE_SUGGESTIONS, LESSON_COMPANIES, LESSON_KINDS, LESSON_STATUS, LIMITS, SHOW_AS, headings, submitProblems,
+  DAMAGE_SUGGESTIONS, EMPTY_CONTENT, LESSON_COMPANIES, LESSON_KINDS, LESSON_STATUS, LIMITS, SHOW_AS, headings, submitProblems,
   type LessonCompany, type LessonContent, type LessonKind, type LessonPicture, type LessonStatus, type Part, type Rect,
 } from '../../shared/lessons';
 import {
@@ -168,6 +168,7 @@ function TemplatesDialog({ onClose }: { onClose: () => void }) {
           {q.data.slots.map((s) => (
             <li key={`${s.company}/${s.kind}`} className="flex flex-col gap-2 rounded-md border border-border p-3">
               <div><b className="text-sm">{s.company}</b> <span className="text-sm text-text-muted">· {LESSON_KINDS[s.kind]}</span></div>
+              {s.file_name && <SlotPreview slot={s} />}
               <p className="min-w-0 text-xs break-words">{s.file_name ? <>{s.file_name}<span className="block text-text-subtle">added {s.uploaded_at ? when(s.uploaded_at) : ''}{s.uploaded_by ? ` by ${s.uploaded_by}` : ''}</span></>
                 : s.uses ? <span className="text-text-muted">None: uses the lesson learnt template ({s.uses})</span> : <span className="text-danger">None: only the PDF can be made</span>}</p>
               <div className="flex flex-wrap gap-2">
@@ -181,6 +182,28 @@ function TemplatesDialog({ onClose }: { onClose: () => void }) {
       )}
     </Dialog>
   );
+}
+
+/** The header and footer the app reads from a slot's template, as a page with no content yet (6z.62). */
+function SlotPreview({ slot }: { slot: Slot }) {
+  const path = `/lessons/company-templates/${encodeURIComponent(slot.company)}/${slot.kind}`;
+  const style = useQuery({ queryKey: ['lesson-slot-style', slot.company, slot.kind, slot.file_name, slot.uploaded_at], queryFn: () => api<{ style: TemplateStyle | null; colour: string }>(`${path}/style`) });
+  const logo = useQuery({
+    queryKey: ['lesson-slot-logo', slot.company, slot.kind, slot.file_name, slot.uploaded_at],
+    queryFn: async () => {
+      const res = await fetch(`/api/lessons/logo/${encodeURIComponent(slot.company)}/${slot.kind}?v=${encodeURIComponent(slot.uploaded_at ?? '')}`, { credentials: 'same-origin' });
+      if (!res.ok) return null;
+      const [w, h] = (res.headers.get('x-logo-size') ?? '1x1').split('x').map(Number);
+      return { url: URL.createObjectURL(await res.blob()), w, h };
+    },
+  });
+  if (style.isLoading || logo.isLoading) return <Skeleton className="aspect-[540/780] w-full" />;
+  if (!style.data?.style) return <p className="text-xs text-danger">The slide master of this file has nothing the app can read.</p>;
+  const input: PageInput = {
+    style: style.data.style, kind: slot.kind, company: slot.company, country: '', title: 'Title of the lesson', content: { ...EMPTY_CONTENT, hidden: ['meta', 'key'] }, colour: style.data.colour,
+    docNo: null, revision: null, signoff: { date: '', changes: '', prepared: '', reviewed: '', approver: '', position: '' },
+  };
+  return <div className="overflow-hidden rounded-sm border border-border"><PagePreview input={input} lessonId="" logo={logo.data ?? null} /></div>;
 }
 
 function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: Record<T, string>; onChange: (v: T) => void; label: string }) {

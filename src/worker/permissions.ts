@@ -242,7 +242,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/winch\/state\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/joblog\/[^/]+(\/versions)?$/, menus: ['jobs'] },
   { re: /^\/api\/utilities(\/[^/]+(\/(state|files(\/[^/]+)?))?)?$/, menus: ['utilities'] },
-  { re: /^\/api\/lessons\/company-templates(\/[^/]+\/[^/]+\/file)?$/, menus: ['utilities'] },
+  { re: /^\/api\/lessons\/company-templates(\/[^/]+\/[^/]+\/(file|style))?$/, menus: ['utilities'] },
   { re: /^\/api\/lessons(\/(templates|logo)\/[^/]+\/[^/]+|\/[^/]+(\/(pictures\/[^/]+|source|pdf|pptx|logo))?)?$/, menus: ['utilities', 'knowledge_hub'] },
   { re: /^\/api\/employees$/, menus: ['jobs', 'attendance', 'headcount_roster'] },
   { re: /^\/api\/recon\//, menus: ['reconciliation'] },

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CONTENT, cleanContent, cleanDraft, mayCreate, mayDo, nextLessonNumber, submitProblems, type LessonContent } from '../src/shared/lessons';
 import { DESIGNS, chrome, designBoxes, fitPictureBoxes, layoutLesson, layoutProblem, measureParts, pageOps, partsOf, pictureHeight, picturesSideBySide, tidyBoxes, tint, type Design, type PageInput } from '../src/shared/lessonLayout';
 import { lessonPdf, pdfSafe } from '../src/shared/lessonPdf';
-import { lessonPptx, masterParts, templateLogo, templateStyle } from '../src/shared/lessonPptx';
+import { lessonPptx, masterParts, slideFrame, templateLogo, templateStyle } from '../src/shared/lessonPptx';
 import { unzip } from '../src/shared/xlsxRead';
 import { imageSize } from '../src/worker/lessons';
 import { ruleFor, readAllowed } from '../src/worker/permissions';
@@ -276,5 +276,27 @@ describe('the template itself on the page (6z.61)', () => {
     expect(chrome(page, { w: 32, h: 25 }).master.some((b) => b.k === 'image' && Math.round(b.x) === 482)).toBe(true);
     // with no template the page keeps its own header
     expect(JSON.stringify(chrome(input(full, { country: 'Bahrain' }), null))).toContain('Slickline · Bahrain');
+  });
+});
+
+describe('the master and layout a template slide really uses (6z.62)', () => {
+  const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const rel = (id: string, type: string, target: string) => `<Relationship Id="${id}" Type="${R}/${type}" Target="${target}"/>`;
+  const files = (layoutHead: string) => new Map(Object.entries({
+    'ppt/presentation.xml': '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId9"/></p:sldIdLst></p:presentation>',
+    'ppt/_rels/presentation.xml.rels': `<Relationships>${rel('rId1', 'slideMaster', 'slideMasters/slideMaster1.xml')}${rel('rId9', 'slide', 'slides/slide1.xml')}</Relationships>`,
+    'ppt/slides/slide1.xml': '<p:sld/>',
+    'ppt/slides/_rels/slide1.xml.rels': `<Relationships>${rel('rId1', 'slideLayout', '../slideLayouts/slideLayout4.xml')}</Relationships>`,
+    'ppt/slideLayouts/slideLayout1.xml': '<p:sldLayout/>',
+    'ppt/slideLayouts/slideLayout4.xml': `${layoutHead}<p:cSld/></p:sldLayout>`,
+    'ppt/slideLayouts/_rels/slideLayout4.xml.rels': `<Relationships>${rel('rId1', 'slideMaster', '../slideMasters/slideMaster3.xml')}</Relationships>`,
+    'ppt/slideMasters/slideMaster1.xml': '<p:sldMaster/>',
+    'ppt/slideMasters/slideMaster3.xml': '<p:sldMaster/>',
+  }).map(([k, v]) => [k, new TextEncoder().encode(v)]));
+  it('follows the template slide to its layout and that layout’s master, not the first ones', () => {
+    expect(slideFrame(files('<p:sldLayout preserve="1">'))).toEqual({ layout: 'ppt/slideLayouts/slideLayout4.xml', master: 'ppt/slideMasters/slideMaster3.xml', showMaster: true });
+  });
+  it('knows when the layout hides the master’s shapes', () => {
+    expect(slideFrame(files('<p:sldLayout showMasterSp="0" preserve="1">'))?.showMaster).toBe(false);
   });
 });
