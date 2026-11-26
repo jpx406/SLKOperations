@@ -599,6 +599,27 @@ function masterBlocks(parts: MasterPart[], out: Block[], logo: { w: number; h: n
   // the size each word fits at, then one size for the words of a row that share a size on the master
   const fit = new Map(texts.map((p) => [p, fitSize(p, room.get(p)!)]));
   for (const p of texts) fit.set(p, Math.min(fit.get(p)!, ...texts.filter((q) => sameRow(p, q) && q.size === p.size && q.align === p.align).map((q) => fitSize(q, room.get(q)!))));
+  // a word sitting in a sign-off cell or a footer bar is fitted to that cell (6z.63): centred in its row, inside its
+  // column, at a size the row and column hold, one size per row. The master's own text boxes are placed for its font
+  // and overlap the rows, so taken as they are they sit low, spill into the next column or ride on a bar's edge.
+  const rects = parts.filter((q): q is Extract<MasterPart, { k: 'rect' }> => q.k === 'rect' && q.h <= 30 && q.w >= 20);
+  const cellOf = new Map<MasterText, Extract<MasterPart, { k: 'rect' }>>();
+  for (const p of texts) {
+    const c = rects.filter((r) => cx(p) >= r.x && cx(p) <= r.x + r.w && cy(p) >= r.y && cy(p) <= r.y + r.h).sort((a, b) => a.h - b.h || a.w - b.w)[0];
+    if (c && !p.t.includes('\n')) cellOf.set(p, c);
+  }
+  const inCell = (p: MasterText, c: Extract<MasterPart, { k: 'rect' }>) => {
+    const left = p.align === 'l' ? Math.min(Math.max(p.x + p.padX, c.x + 2), c.x + c.w - 10) : c.x + 2;
+    let size = Math.min(p.size, (c.h - 1) / 1.18);
+    while (size > 5 && textWidth(p.t, size, p.b) > c.x + c.w - 2 - left) size -= 0.25;
+    return { left, size };
+  };
+  const cellSize = new Map<MasterText, number>();
+  for (const [p, c] of cellOf) cellSize.set(p, inCell(p, c).size);
+  for (const [p, c] of cellOf) {
+    const peers = [...cellOf].filter(([q, d]) => Math.abs(d.y - c.y) < 1 && Math.abs(d.h - c.h) < 1 && q.size === p.size).map(([q]) => cellSize.get(q)!);
+    cellSize.set(p, Math.min(cellSize.get(p)!, ...peers));
+  }
   let logoDone = false;
   for (const p of parts) {
     if (p.k === 'rect') out.push({ k: 'rect', x: p.x, y: p.y, w: p.w, h: p.h, fill: p.fill, stroke: p.stroke, sw: p.stroke ? Math.max(0.4, Math.min(1.5, p.sw)) : undefined });
@@ -610,6 +631,11 @@ function masterBlocks(parts: MasterPart[], out: Block[], logo: { w: number; h: n
       if (h > box.h) { h = box.h; w = (box.h * logo.w) / logo.h; }
       out.push({ k: 'image', x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h, pic: '__logo__' });
       logoDone = true;
+    } else if (cellOf.has(p)) {
+      const c = cellOf.get(p)!, size = cellSize.get(p)!, { left } = inCell(p, c);
+      const w = textWidth(p.t, size, p.b) + 1;
+      const x = p.align === 'l' ? left : p.align === 'r' ? c.x + c.w - 2 - w : c.x + (c.w - w) / 2;
+      out.push({ k: 'text', x, y: c.y, w, h: c.h, pad: 0, valign: 'middle', paras: [{ runs: [{ t: p.t, b: p.b, c: p.c }], size, align: 'l' }] });
     } else {
       out.push(masterText(p, fit.get(p)!));
     }
