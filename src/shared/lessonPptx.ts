@@ -290,3 +290,102 @@ export async function lessonPptx(tpl: Uint8Array, blocks: Block[], images: Map<s
   if (app) put('docProps/app.xml', app.replace(/<Slides>\d+<\/Slides>/, '<Slides>1</Slides>').replace(/<Notes>\d+<\/Notes>/, '<Notes>0</Notes>'));
   return zip([...out.entries()].map(([name, data]) => ({ name, data })));
 }
+
+// ---- a company template made from the NESR one (6z.64) --------------------------------------------------------------
+
+export interface BrandOptions {
+  /** The company's logo, put where the NESR logo is, at its own shape. */
+  logo: SlideImage & { w: number; h: number };
+  /** The company colour (hex) that takes the place of the NESR greens. */
+  colour: string;
+  /** The NESR colours to replace (from the settings and the NESR template's own bars). */
+  from: string[];
+  /** The name on the database line: "SAPESCO" or "GES". */
+  db: string;
+  /** solid: the header band in the company colour with white words (as NESR); white: a white band with the words in the company colour. */
+  band: 'solid' | 'white';
+}
+
+/**
+ * The NESR slides template turned into a company's: the same master, layout, sign-off tables and words, with the
+ * company logo in the logo's place, the company colour for the NESR greens, the company's name on the database line
+ * and no "NESR" in the title. Its slides are taken out and one empty slide is left, as for a blank template. All the
+ * companies then share one layout, so the page, the PDF and the PowerPoint line up the same for each.
+ */
+export async function brandTemplate(nesr: Uint8Array, o: BrandOptions): Promise<Uint8Array> {
+  let files: Map<string, Uint8Array>;
+  try { files = await unzip(nesr, true); } catch { throw new Error('The NESR template is not a PowerPoint file (.pptx)'); }
+  const frame = slideFrame(files);
+  if (!frame) throw new Error('The NESR template has no slide layout');
+  const get = (k: string) => td.decode(files.get(k) ?? new Uint8Array());
+  const put = (k: string, s: string) => files.set(k, te.encode(s));
+  const colour = o.colour.toUpperCase();
+  const from = new Set(o.from.map((c) => c.toUpperCase()).filter((c) => c && c !== 'FFFFFF' && c !== '000000'));
+  const ext = o.logo.type === 'image/png' ? 'png' : 'jpeg';
+  const media = `ppt/media/company-logo.${ext}`;
+  files.set(media, o.logo.bytes);
+  let ct = get('[Content_Types].xml');
+  if (!new RegExp(`Extension="${ext}"`, 'i').test(ct)) ct = ct.replace(/(<Types\b[^>]*>)/, `$1<Default Extension="${ext}" ContentType="${o.logo.type}"/>`);
+  put('[Content_Types].xml', ct);
+
+  // the parts a slide shows: the master (when the layout shows it) and the layout
+  const parts = [...(frame.master && frame.showMaster ? [frame.master] : []), frame.layout];
+  // the logo: the biggest picture of those parts
+  let logoAt: { part: string; xml: string } | null = null, best = 0;
+  for (const part of parts) {
+    for (const m of get(part).matchAll(/<p:pic>[\s\S]*?<\/p:pic>/g)) {
+      const e = /<a:ext cx="(\d+)" cy="(\d+)"/.exec(m[0]);
+      const area = e ? Number(e[1]) * Number(e[2]) : 0;
+      if (area > best) { best = area; logoAt = { part, xml: m[0] }; }
+    }
+  }
+  for (const part of parts) {
+    let x = get(part);
+    // the logo picture points at the company logo, fitted in the same box at its own shape
+    if (logoAt?.part === part) {
+      const rid = /r:embed="([^"]+)"/.exec(logoAt.xml)?.[1];
+      const off = /<a:off x="(-?\d+)" y="(-?\d+)"\/>\s*<a:ext cx="(\d+)" cy="(\d+)"\/>/.exec(logoAt.xml);
+      // no crop, and no vector (SVG) copy of the NESR mark, which PowerPoint would draw instead of the picture
+      let pic = logoAt.xml.replace(/<a:srcRect\b[^>]*\/>/, '')
+        .replace(/<a:ext uri="\{96DAC541-7B7A-43D3-8B79-37D633B846F1\}">[\s\S]*?<\/a:ext>/g, '')
+        .replace(/<a:extLst>\s*<\/a:extLst>/g, '');
+      if (off) {
+        const bx = Number(off[1]), by = Number(off[2]), bw = Number(off[3]), bh = Number(off[4]);
+        // the box grows to the left for a wide logo (the NESR mark is nearly square, company logos are wide)
+        // up to 34 pt tall (the header band's height, less a margin), centred where the NESR mark sits
+        const h = Math.max(bh, E(34)), w = Math.round((h * o.logo.w) / o.logo.h);
+        const right = bx + bw, maxW = Math.max(bw, Math.round(right - E(250)));
+        const fw = Math.min(w, maxW), fh = Math.round((fw * o.logo.h) / o.logo.w);
+        pic = pic.replace(off[0], `<a:off x="${right - fw}" y="${by + Math.round((bh - fh) / 2)}"/><a:ext cx="${fw}" cy="${fh}"/>`);
+      }
+      x = x.replace(logoAt.xml, pic);
+      if (rid) {
+        const rp = relsPath(part);
+        const target = `../media/${media.split('/').pop()}`;
+        put(rp, get(rp).replace(/<Relationship\b[^>]*\/>/g, (r) => (attr(r, 'Id') === rid ? r.replace(/\bTarget="[^"]*"/, `Target="${target}"`) : r)));
+      }
+    }
+    // the NESR greens become the company colour
+    x = x.replace(/<a:srgbClr val="([0-9A-Fa-f]{6})"/g, (m, c: string) => (from.has(c.toUpperCase()) ? `<a:srgbClr val="${colour}"` : m));
+    // shapes one by one: the header words, the database line, "NESR" in the words
+    x = x.replace(/<p:sp>[\s\S]*?<\/p:sp>/g, (sp) => {
+      const off = /<a:off x="-?\d+" y="(-?\d+)"\/>\s*<a:ext cx="(\d+)" cy="(\d+)"/.exec(sp);
+      const y = off ? Number(off[1]) / 12700 : 999, w = off ? Number(off[2]) / 12700 : 0, h = off ? Number(off[3]) / 12700 : 0;
+      let s = sp;
+      const isBand = y < 15 && h > 30 && h < 60 && w > 400 && !/<p:txBody>[\s\S]*<a:t>/.test(sp);
+      if (o.band === 'white' && isBand) s = s.replace(new RegExp(`<a:srgbClr val="${colour}"`, 'g'), '<a:srgbClr val="FFFFFF"');
+      const words = [...s.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]).join('');
+      if (words) {
+        // the title has no company name; elsewhere NESR becomes the company's
+        s = s.replace(/<a:t>([^<]*)<\/a:t>/g, (_m, t: string) => `<a:t>${y < 50 ? t.replace(/\bNESR\s*/g, '') : t.replace(/\bNESR\b/g, o.db)}</a:t>`);
+        if (o.band === 'white' && y < 50) s = s.replace(/(<a:rPr\b[^>]*>)\s*<a:solidFill>[\s\S]*?<\/a:solidFill>/g, `$1<a:solidFill><a:srgbClr val="${colour}"/></a:solidFill>`);
+        // the database line sits on a bar now in the company colour: its words go white
+        if (/KNOWLEDGE DATABASE/i.test(words)) s = s.replace(/(<a:rPr\b[^>]*>)\s*<a:solidFill>[\s\S]*?<\/a:solidFill>/g, `$1<a:solidFill><a:schemeClr val="bg1"/></a:solidFill>`).replace(/<a:rPr\b([^>]*)\/>/g, '<a:rPr$1><a:solidFill><a:schemeClr val="bg1"/></a:solidFill></a:rPr>');
+      }
+      return s;
+    });
+    put(part, x);
+  }
+  // one empty slide, as a blank template
+  return lessonPptx(zip([...files].map(([name, data]) => ({ name, data }))), [], new Map());
+}

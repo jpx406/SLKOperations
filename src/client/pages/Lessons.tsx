@@ -176,11 +176,42 @@ function TemplatesDialog({ onClose }: { onClose: () => void }) {
                 {s.file_name && <Button size="sm" variant="ghost" onClick={() => download(`${path(s)}/file`, s.file_name!).catch((e: Error) => setError(e.message))}><Download aria-hidden className="size-3.5" />Download</Button>}
                 {s.file_name && <Button size="sm" variant="ghost" aria-label={`Remove the ${s.company} ${LESSON_KINDS[s.kind]} template`} onClick={() => remove(s)}><Trash2 aria-hidden className="size-3.5" />Remove</Button>}
               </div>
+              {s.company !== 'NESR' && <MakeFromNesr slot={s} hasNesr={!!q.data.slots.find((x) => x.company === 'NESR' && x.file_name)} path={path(s)}
+                onDone={(name) => { setError(null); setNote(`${s.company} ${LESSON_KINDS[s.kind].toLowerCase()} template: ${name}`); changed(); }} onError={setError} />}
             </li>
           ))}
         </ul>
       )}
     </Dialog>
+  );
+}
+
+/**
+ * Makes a company template from the NESR one (6z.64): the NESR layout, sign-off tables and words, with this company's
+ * logo, colour and database name, so every company's page lines up the same.
+ */
+function MakeFromNesr({ slot, hasNesr, path, onDone, onError }: { slot: Slot; hasNesr: boolean; path: string; onDone: (name: string) => void; onError: (m: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [band, setBand] = useState<'white' | 'solid'>('white');
+  const [logo, setLogo] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!open) return <div><Button size="sm" variant="ghost" disabled={!hasNesr} title={hasNesr ? undefined : 'Add the NESR template first'} onClick={() => setOpen(true)}><Wand2 aria-hidden className="size-3.5" />Make from the NESR template</Button></div>;
+  const go = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ name: string }>(`${path}/from-nesr?band=${band}`, { method: 'POST', body: logo ?? new Uint8Array(), headers: { 'Content-Type': 'application/octet-stream' } });
+      setOpen(false); setLogo(null); onDone(r.name);
+    } catch (e) { onError((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-2 p-2 text-xs">
+      <p className="text-text-muted">The NESR template with the {slot.company} logo, colour and database name. It takes the place of this slot&apos;s file.</p>
+      <Segmented label="Header band" value={band} options={{ white: 'White band, coloured title', solid: 'Band in the company colour' }} onChange={setBand} />
+      <label className="flex flex-col gap-1"><span className="text-text-muted">Logo: {logo ? logo.name : slot.file_name ? `from the current ${slot.company} template` : 'pick the logo picture'}</span>
+        <input type="file" accept="image/png,image/jpeg" className="text-xs file:mr-2 file:rounded-sm file:border file:border-border-strong file:bg-surface file:px-2 file:py-1" onChange={(e) => setLogo(e.target.files?.[0] ?? null)} /></label>
+      <p className="text-text-subtle">A logo on a white background looks best on the white band.</p>
+      <div className="flex gap-2"><Button size="sm" variant="primary" loading={busy} onClick={go}>Make it</Button><Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button></div>
+    </div>
   );
 }
 

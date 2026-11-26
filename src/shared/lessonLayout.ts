@@ -593,6 +593,8 @@ function masterBlocks(parts: MasterPart[], out: Block[], logo: { w: number; h: n
       room.set(p, Math.min(p.w * 2, Number.isFinite(half) ? half * 2 - 8 : p.w));
     } else {
       const starts = row.filter((q) => q.x > p.x + 2).map((q) => (q.align === 'c' ? cx(q) - Math.min(q.w, textWidth(q.t, q.size, q.b)) / 2 : q.x));
+      // nor into the logo (a company logo is wider than the NESR mark it replaced, 6z.64)
+      for (const g of parts) if (g.k === 'logo' && g.x > p.x + 2 && g.y < p.y + p.h && g.y + g.h > p.y) starts.push(g.x);
       room.set(p, Math.min(p.align === 'l' ? Math.max(p.w, 1) : p.w, ...starts.map((s) => s - p.x - 4)));
     }
   }

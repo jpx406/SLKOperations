@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CONTENT, cleanContent, cleanDraft, mayCreate, mayDo, nextLessonNumber, submitProblems, type LessonContent } from '../src/shared/lessons';
 import { DESIGNS, chrome, designBoxes, fitPictureBoxes, layoutLesson, layoutProblem, measureParts, pageOps, partsOf, pictureHeight, picturesSideBySide, tidyBoxes, tint, type Design, type PageInput } from '../src/shared/lessonLayout';
 import { lessonPdf, pdfSafe } from '../src/shared/lessonPdf';
-import { lessonPptx, masterParts, slideFrame, templateLogo, templateStyle } from '../src/shared/lessonPptx';
+import { brandTemplate, lessonPptx, masterParts, slideFrame, templateLogo, templateStyle } from '../src/shared/lessonPptx';
 import { unzip } from '../src/shared/xlsxRead';
 import { imageSize } from '../src/worker/lessons';
 import { ruleFor, readAllowed } from '../src/worker/permissions';
@@ -298,5 +298,30 @@ describe('the master and layout a template slide really uses (6z.62)', () => {
   });
   it('knows when the layout hides the master’s shapes', () => {
     expect(slideFrame(files('<p:sldLayout showMasterSp="0" preserve="1">'))?.showMaster).toBe(false);
+  });
+});
+
+const NESR_TPL = 'C:/Users/JuanCeron/OneDrive - National Energy Services Reunited Corp/Slickline_Library_Documents/Lesson Learnt/NESR_Lesson_Learnt_TEMP.pptx';
+describe.skipIf(!existsSync(NESR_TPL) || !existsSync(TPL))('a company template made from the NESR one (6z.64, local template files)', () => {
+  it('puts the company logo, colour and database name on the NESR layout, and the page reads it', async () => {
+    const nesr = new Uint8Array(readFileSync(NESR_TPL));
+    const logo = (await templateLogo(new Uint8Array(readFileSync(TPL))))!;
+    const ns = (await templateStyle(nesr))!;
+    for (const band of ['solid', 'white'] as const) {
+      const out = await brandTemplate(nesr, { logo, colour: '863A3A', from: [ns.band, ns.bar, ns.foot].filter((x): x is string => !!x), db: 'GES', band });
+      const files = await unzip(out, true);
+      const master = new TextDecoder().decode(files.get('ppt/slideMasters/slideMaster1.xml'));
+      const rels = new TextDecoder().decode(files.get('ppt/slideMasters/_rels/slideMaster1.xml.rels'));
+      expect(master).not.toMatch(/006600|92D050/i);
+      expect(master).toContain('GES KNOWLEDGE DATABASE');
+      expect(master).not.toMatch(/<a:t>[^<]*NESR/);
+      expect(rels).toContain('../media/company-logo');
+      expect(master).not.toContain('96DAC541');
+      expect(files.has('ppt/media/company-logo.jpeg') || files.has('ppt/media/company-logo.png')).toBe(true);
+      const st = (await templateStyle(out))!;
+      expect(st.bar).toBe('863A3A');
+      expect(st.band).toBe(band === 'solid' ? '863A3A' : null);
+      expect((await templateLogo(out))!.bytes.length).toBe(logo.bytes.length);
+    }
   });
 });

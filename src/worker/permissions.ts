@@ -129,7 +129,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/lessons(\/[^/]+(\/(pictures|analyse|arrange|template|submit|review|approve|send-back|revise))?)?$/, menu: 'utilities', action: 'view' },
   { method: 'PUT', re: /^\/api\/lessons\/[^/]+$/, menu: 'utilities', action: 'view' },
   // the company templates (6z.61): admins only, checked in the route
-  { method: 'POST', re: /^\/api\/lessons\/company-templates\/[^/]+\/[^/]+$/, menu: 'utilities', action: 'view' },
+  { method: 'POST', re: /^\/api\/lessons\/company-templates\/[^/]+\/[^/]+(\/from-nesr)?$/, menu: 'utilities', action: 'view' },
   { method: 'DELETE', re: /^\/api\/lessons\/company-templates\/[^/]+\/[^/]+$/, menu: 'utilities', action: 'view' },
   { method: 'DELETE', re: /^\/api\/lessons\/[^/]+(\/pictures\/[^/]+|\/template)?$/, menu: 'utilities', action: 'view' },
   { method: 'DELETE', re: /^\/api\/admin\/rules\/[^/]+$/, menu: 'users', action: 'edit' },

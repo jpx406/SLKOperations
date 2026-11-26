@@ -7,12 +7,12 @@ import { DEFAULT_COPY_SETTINGS, copySettingsOf, slideTemplate, type CopySettings
 import { GLOBAL, fileKey, placeCode } from '../shared/knowledge';
 import { DEFAULT_NUMBERING, DEFAULT_PERIODS, addMonths, type Numbering, type Periods } from '../shared/knowledgeControl';
 import {
-  EMPTY_CONTENT, LESSON_COMPANIES, LESSON_KINDS, LIMITS, cleanContent, cleanDraft, fileTitle, isLessonCompany, isLessonKind, lessonPrompt, lessonSchema, mayCreate, mayDo,
+  COMPANY_DB, EMPTY_CONTENT, LESSON_COMPANIES, LESSON_KINDS, LIMITS, cleanContent, cleanDraft, fileTitle, isLessonCompany, isLessonKind, lessonPrompt, lessonSchema, mayCreate, mayDo,
   nextLessonNumber, submitProblems, type LessonCompany, type LessonContent, type LessonKind, type LessonPerson, type LessonPicture, type LessonStatus,
 } from '../shared/lessons';
 import { chrome, layoutLesson, layoutProblem, measureParts, partsOf, tidyBoxes, type PageInput } from '../shared/lessonLayout';
 import { lessonPdf, type PdfImage } from '../shared/lessonPdf';
-import { lessonPptx, templateLogo, templateStyle } from '../shared/lessonPptx';
+import { brandTemplate, lessonPptx, templateLogo, templateStyle } from '../shared/lessonPptx';
 import { roleLabel } from '../shared/roles';
 import { unzip } from '../shared/xlsxRead';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
@@ -258,6 +258,54 @@ lessons.get('/company-templates/:company/:kind/style', async (c) => {
   const o = f && c.env.FILES ? await c.env.FILES.get(f.key) : null;
   if (!f || !o) return c.json({ error: 'No template here yet' }, 404);
   return c.json({ style: await templateStyle(new Uint8Array(await o.arrayBuffer())), colour: colourOf(s, co) });
+});
+
+/**
+ * Makes a SAPESCO or Gulf Energy template from the NESR one (6z.64): the NESR template of that kind (else the NESR
+ * lesson learnt), with the company logo, colour and database name. The logo is the image sent (PNG or JPEG), else the
+ * one on the company's current template. ?band=white for a white header band with the words in the company colour.
+ */
+lessons.post('/company-templates/:company/:kind/from-nesr', async (c) => {
+  const user = c.get('user');
+  if (user.role !== 'admin') return c.json({ error: 'Only admins manage the templates' }, 403);
+  if (!c.env.FILES) return c.json({ error: 'File storage isn’t set up on the server yet' }, 503);
+  const co = decodeURIComponent(c.req.param('company')), kind = c.req.param('kind');
+  if (!isLessonCompany(co) || co === 'NESR' || !isLessonKind(kind)) return c.json({ error: 'Pick SAPESCO or Gulf Energy' }, 400);
+  const s = await copySettings(c.env);
+  const src = slotFile(s, 'NESR', kind) ?? slotFile(s, 'NESR', 'lesson_learnt');
+  const nesr = src ? await c.env.FILES.get(src.key) : null;
+  if (!src || !nesr) return c.json({ error: 'Add the NESR template first: the company one is made from it' }, 400);
+  const nesrBytes = new Uint8Array(await nesr.arrayBuffer());
+  // the logo: the picture sent, else the one on the company's current template
+  const body = new Uint8Array(await c.req.arrayBuffer());
+  let logo: (PdfImage & { w: number; h: number }) | null = null;
+  if (body.length) {
+    const size = imageSize(body);
+    if (!size || !size.w || !size.h) return c.json({ error: 'The logo is a PNG or JPEG picture' }, 400);
+    if (body.length > 4 * 1024 * 1024) return c.json({ error: 'The logo can be up to 4 MB' }, 400);
+    logo = { bytes: body, type: size.type, w: size.w, h: size.h };
+  } else {
+    for (const k of [kind, kind === 'best_practice' ? 'lesson_learnt' : 'best_practice'] as LessonKind[]) {
+      const f = slotFile(s, co, k);
+      const o = f ? await c.env.FILES.get(f.key) : null;
+      logo = o ? await templateLogo(new Uint8Array(await o.arrayBuffer())) : null;
+      if (logo) break;
+    }
+    if (!logo) return c.json({ error: `There is no ${co} template to take the logo from: add the logo picture` }, 400);
+  }
+  const ns = await templateStyle(nesrBytes);
+  const from = [...s.nesrColours, ...(ns ? [ns.band, ns.bar, ns.foot, ns.title] : [])].filter((x): x is string => !!x);
+  const band = c.req.query('band') === 'white' ? 'white' : 'solid';
+  let bytes: Uint8Array;
+  try { bytes = await brandTemplate(nesrBytes, { logo, colour: colourOf(s, co), from, db: COMPANY_DB[co], band }); }
+  catch (e) { return c.json({ error: `The template couldn’t be made: ${(e as Error).message}` }, 400); }
+  const name = `${co} ${LESSON_KINDS[kind]} (from NESR template).pptx`;
+  const key = `knowledge/Templates/${co}/${crypto.randomUUID().slice(0, 8)} ${name}`;
+  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: PPTX }, customMetadata: { name, by: user.username, from: src.file_name } });
+  const had = slotFile(s, co, kind);
+  setSlot(s, co, kind, { key, file_name: name, uploaded_at: now(), uploaded_by: user.username });
+  await c.env.DB.batch([putCopies(c.env, user, s), audit(c.env, user, 'upload', 'copies', `${co} ${LESSON_KINDS[kind].toLowerCase()} template made from the NESR template “${src.file_name}” (${band} band)${had ? `, replacing “${had.file_name}”` : ''}`, 'knowledge_settings')]);
+  return c.json({ ok: true, name }, 201);
 });
 
 /** Adds or replaces a company template (raw .pptx body, X-File-Name). */
