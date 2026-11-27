@@ -114,8 +114,13 @@ jobLogs.post('/:jobId/sent', async (c) => {
   if (!job) return c.json({ error: 'Job not found' }, 404);
   const b = (await c.req.json().catch(() => ({}))) as { version?: unknown; to?: unknown; cc?: unknown };
   const clip = (v: unknown) => (typeof v === 'string' ? v.slice(0, 500) : null);
-  await c.env.DB.prepare('UPDATE job_logs SET sent_by = ?, sent_at = ?, sent_version = ?, email_to = ?, email_cc = ? WHERE job_id = ?')
-    .bind(user.fullName, now(), Math.round(Number(b.version) || 0), clip(b.to), clip(b.cc), job.id).run();
+  const version = Math.round(Number(b.version) || 0);
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE job_logs SET sent_by = ?, sent_at = ?, sent_version = ?, email_to = ?, email_cc = ? WHERE job_id = ?')
+      .bind(user.fullName, now(), version, clip(b.to), clip(b.cc), job.id),
+    c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.username, 'send', 'job', job.id, `Job log version ${version} e-mailed${clip(b.to) ? ` to ${clip(b.to)}` : ''}`.slice(0, 1000)),
+  ]);
   return c.json({ ok: true });
 });
 

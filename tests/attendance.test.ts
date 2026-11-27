@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CODE_LIST, assignmentsOn, isCode, isWeekend, monthDays, rowSummary } from '../src/shared/attendance';
-import { cleanEmployee } from '../src/worker/roster';
+import { cleanEmployee } from '../src/worker/employees';
 import { isOpenWrite, readAllowed, ruleFor } from '../src/worker/permissions';
 
 describe('attendance codes and calendar', () => {
@@ -49,7 +49,9 @@ describe('attendance and roster rights', () => {
     expect(isOpenWrite('PUT', '/api/attendance')).toBe(true);
     expect(isOpenWrite('POST', '/api/attendance/approve')).toBe(true);
     expect(ruleFor('POST', '/api/attendance/notify')?.menu).toBe('attendance');
-    expect(ruleFor('DELETE', '/api/roster/x')?.action).toBe('delete');
+    // the old roster routes are gone: people are edited in Users & Roles (admin only), so a roster editor can't hand out access
+    expect(ruleFor('DELETE', '/api/roster/x')).toBeUndefined();
+    expect(ruleFor('PATCH', '/api/roster/x')).toBeUndefined();
   });
 });
 

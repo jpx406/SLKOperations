@@ -12,7 +12,7 @@ import { WgError, wgLogin } from './wg';
 import { wgUpsert, wgUsers, type WgListUser } from './wgUsers';
 import { syncPeople } from './people';
 import { roleKeys } from './rules';
-import { cleanEmployee } from './roster';
+import { cleanEmployee } from './employees';
 import { loadCategories } from './rules';
 import { isCode } from '../shared/attendance';
 

@@ -196,9 +196,6 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/attendance\/(holidays|notify)$/, menu: 'attendance', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/attendance\/holidays\/[^/]+$/, menu: 'attendance', action: 'edit' },
   { method: 'PUT', re: /^\/api\/attendance\/categories$/, menu: 'attendance', action: 'edit' },
-  { method: 'POST', re: /^\/api\/roster$/, menu: 'headcount_roster', action: 'edit' },
-  { method: 'PATCH', re: /^\/api\/roster\/[^/]+$/, menu: 'headcount_roster', action: 'edit' },
-  { method: 'DELETE', re: /^\/api\/roster\/[^/]+$/, menu: 'headcount_roster', action: 'delete' },
   ...(['explosive', 'hardware', 'mcr'] as const).flatMap((inv) => [
     { method: 'POST', re: new RegExp(`^/api/inventory/${inv}/(items|movements)$`), menu: `inventory_${inv}`, action: 'edit' as const },
     { method: 'PATCH', re: new RegExp(`^/api/inventory/${inv}/items/[^/]+$`), menu: `inventory_${inv}`, action: 'edit' as const },
@@ -256,7 +253,6 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/stats$/, menus: ['statistics', 'npt_analysis', 'utilization', 'competency'] },
   { re: /^\/api\/stats\/people$/, menus: ['utilization', 'competency'] },
   { re: /^\/api\/attendance(\/categories)?$/, menus: ['attendance'] },
-  { re: /^\/api\/roster$/, menus: ['headcount_roster'] },
   { re: /^\/api\/pre-job-notes(\/(contacts|by-job\/[^/]+|[^/]+(\/versions\/\d+)?))?$/, menus: ['pre_job_notes'] },
   { re: /^\/api\/jra\/[^/]+(\/approvers)?$/, menus: ['jobs'] },
   { re: /^\/api\/wires\/data$/, menus: ['wires', 'statistics'] },

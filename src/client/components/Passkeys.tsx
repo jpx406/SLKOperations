@@ -77,7 +77,7 @@ export function QrSignIn({ onSignedIn }: { onSignedIn: () => void }) {
         <>
           {/* our own SVG from uqr, not user content */}
           <div className="size-52 overflow-hidden rounded-md border border-border bg-white p-1 [&>svg]:size-full" role="img" aria-label="QR code to sign in with your phone" dangerouslySetInnerHTML={{ __html: svg }} />
-          <p className="text-sm">The phone will show this code. Check it matches:</p>
+          <p className="text-sm">Type this code on your phone when it asks:</p>
           <p className="font-mono text-3xl font-bold tracking-[0.3em]" aria-label={`Code ${qr.code.split('').join(' ')}`}>{qr.code}</p>
           <p className="font-mono text-xs text-text-subtle" aria-live="off">Expires in {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</p>
         </>
@@ -85,7 +85,7 @@ export function QrSignIn({ onSignedIn }: { onSignedIn: () => void }) {
       {(state === 'expired' || state === 'denied' || state === 'error') && (
         <div className="flex flex-col items-center gap-2">
           <p className={cx('text-sm font-semibold', state === 'denied' ? 'text-danger' : 'text-text-muted')}>
-            {state === 'expired' ? 'The code expired.' : state === 'denied' ? 'The sign-in was refused on the phone.' : `Could not make a code: ${error}`}
+            {state === 'expired' ? 'The code expired.' : state === 'denied' ? 'The sign-in was refused on the phone, or the code typed there was wrong.' : `Could not make a code: ${error}`}
           </p>
           <Button onClick={start}><RefreshCw aria-hidden className="size-4" />New code</Button>
         </div>
@@ -164,7 +164,7 @@ export function FaceIdDialog({ onClose }: { onClose: () => void }) {
           <ol className="list-decimal space-y-0.5 pl-5 text-text-muted">
             <li>Set up Face ID on your phone first (open SLK Operations Hub on the phone, sign in, then use this menu).</li>
             <li>On the laptop’s sign-in page, choose “Sign in with your phone (QR code)”.</li>
-            <li>Scan the code with the phone’s camera and approve with Face ID. The laptop signs in by itself.</li>
+            <li>Scan the code with the phone’s camera, type the four-digit code the laptop shows, and approve with Face ID. The laptop signs in by itself.</li>
           </ol>
         </div>
       </div>

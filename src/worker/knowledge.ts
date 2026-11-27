@@ -127,7 +127,9 @@ knowledge.get('/', async (c) => {
       LEFT JOIN user_roles r ON r.username = f.uploaded_by WHERE f.superseded_at IS NULL`).all<KbFile & { doc_id: string; kind: 'published' | 'source' }>(),
     staff ? c.env.DB.prepare(`SELECT id, doc_id, revision, status, reviewer, approver, sent_back_reason FROM knowledge_revisions WHERE status IN ('draft','review','approval')`).all<{ id: string; doc_id: string; revision: number; status: 'draft' | 'review' | 'approval'; reviewer: string | null; approver: string | null; sent_back_reason: string | null }>() : null,
     placesFor(c.env, user),
-    c.env.DB.prepare(`SELECT DISTINCT client FROM knowledge_docs WHERE client IS NOT NULL UNION SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND deleted_at IS NULL ORDER BY 1 LIMIT 500`).all<{ client: string }>(),
+    // the library is shared, the job accounts are the caller's countries'
+    c.env.DB.prepare(`SELECT DISTINCT client FROM knowledge_docs WHERE client IS NOT NULL UNION SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND deleted_at IS NULL
+      AND country IN (SELECT value FROM json_each(?)) ORDER BY 1 LIMIT 500`).bind(JSON.stringify(user.allCountries ?? user.countries)).all<{ client: string }>(),
     numberingOf(c.env),
     staff ? c.env.DB.prepare(`SELECT * FROM (SELECT ${PERSON_FLAGS} FROM user_roles u LEFT JOIN knowledge_people k ON k.username = u.username WHERE u.active = 1)
       WHERE can_review = 1 OR can_approve = 1 ORDER BY full_name`).all<{ username: string; full_name: string; can_review: number; can_approve: number }>() : null,

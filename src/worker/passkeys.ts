@@ -6,7 +6,7 @@ import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { Hono, type Context } from 'hono';
 import type { AppBindings, Env } from './env';
 import { authEvent } from './audit';
-import { openSession } from './session';
+import { openSession, signedInRecently } from './session';
 import { importWgUsers, wgUserActive } from './wgUsers';
 
 // Face ID / fingerprint sign-in with WebAuthn passkeys, kept by SLK Ops (WIREGUARD is never written to).
@@ -74,7 +74,8 @@ async function verifyAssertion(c: Context<AppBindings>, challengeId: string | un
       credential: { id: cred.id, publicKey: isoBase64URL.toBuffer(cred.public_key), counter: cred.counter, transports: cred.transports ? JSON.parse(cred.transports) : undefined },
     });
   } catch (e) {
-    return { error: `Face ID could not be verified: ${(e as Error).message}`, status: 400 };
+    console.error('passkey verify', (e as Error).message);
+    return { error: 'Face ID could not be verified. Try again, or sign in with your password.', status: 400 };
   }
   if (!v.verified) return { error: 'Face ID could not be verified', status: 401 };
   // a counter that stops moving forward (when the device keeps one at all) is the sign of a copied key
@@ -149,7 +150,7 @@ passkeyAuth.get('/qr/:id/status', async (c) => {
 passkeyAuth.get('/qr/:id/info', async (c) => {
   const r = await qrGet(c.env, c.req.param('id'));
   if (!r || r.status === 'used') return c.json({ status: 'expired' });
-  return c.json({ status: r.status, code: r.code, device: r.device, where: r.where, expiresAt: r.created + QR_S * 1000 });
+  return c.json({ status: r.status, device: r.device, where: r.where, expiresAt: r.created + QR_S * 1000 });
 });
 
 passkeyAuth.post('/qr/:id/options', async (c) => {
@@ -165,8 +166,14 @@ passkeyAuth.post('/qr/:id/approve', async (c) => {
   const id = c.req.param('id');
   const r = await qrGet(c.env, id);
   if (!r || r.status !== 'pending') return c.json({ error: 'This QR code has expired. Make a new one on the laptop.' }, 400);
-  const b = await c.req.json<{ challengeId?: string; response?: AuthenticationResponseJSON }>().catch(() => ({} as { challengeId?: string; response?: AuthenticationResponseJSON }));
+  const b = await c.req.json<{ challengeId?: string; response?: AuthenticationResponseJSON; code?: string }>().catch(() => ({} as { challengeId?: string; response?: AuthenticationResponseJSON; code?: string }));
   if (!b.challengeId || b.challengeId !== r.challengeId) return c.json({ error: 'Start again from the QR code' }, 400);
+  // one try: a wrong code ends this QR code, so it can't be guessed
+  if (String(b.code ?? '').trim() !== r.code) {
+    await qrPut(c.env, id, { ...r, status: 'denied' });
+    await authEvent(c, '(QR code)', 'login_failed', `QR sign-in refused: wrong code typed on the phone${r.device ? ` (laptop: ${r.device})` : ''}`).run();
+    return c.json({ error: 'That code does not match the computer. Make a new QR code on the computer and try again.' }, 400);
+  }
   const v = await verifyAssertion(c, b.challengeId, b.response);
   if ('error' in v) return c.json({ error: v.error }, v.status);
   await qrPut(c.env, id, { ...r, status: 'approved', username: v.user.username, challengeId: undefined });
@@ -200,6 +207,7 @@ passkeys.post('/register-options', async (c) => {
   const u = c.get('user');
   const row = await c.env.DB.prepare('SELECT passkey_allowed FROM user_roles WHERE username = ?').bind(u.username).first<{ passkey_allowed: number }>();
   if (!row?.passkey_allowed) return c.json({ error: 'Face ID sign-in is switched off for your account. Ask an administrator.' }, 403);
+  if (!(await signedInRecently(c, 15 * 60_000))) return c.json({ error: 'For your safety, sign out and sign in again, then set up Face ID within 15 minutes.' }, 403);
   const existing = await c.env.DB.prepare('SELECT id, transports FROM passkeys WHERE username = ?').bind(u.username).all<{ id: string; transports: string | null }>();
   const { rpID, rpName } = rp(c);
   const options = await generateRegistrationOptions({
@@ -223,7 +231,8 @@ passkeys.post('/register', async (c) => {
   try {
     v = await verifyRegistrationResponse({ response: b.response, expectedChallenge: challenge, expectedOrigin: origin, expectedRPID: rpID, requireUserVerification: true });
   } catch (e) {
-    return c.json({ error: `This device could not be set up: ${(e as Error).message}` }, 400);
+    console.error('passkey register', (e as Error).message);
+    return c.json({ error: 'This device could not be set up. Try again, or use another device.' }, 400);
   }
   if (!v.verified) return c.json({ error: 'This device could not be set up' }, 400);
   const { credential, credentialBackedUp } = v.registrationInfo;

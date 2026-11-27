@@ -1932,3 +1932,38 @@ From the full audit of 27 Nov (58 findings; the owner asked to fix all of them).
   - A manual sync writes 0 rows when nothing changed (1,208 runs, 1,283 documents).
   - Running the nightly job twice in a row: every step ran both times and the digest went out once.
   - A wrong address shows "Page not found".
+
+## 6z.68: audit fixes, part 2: security and access
+
+- **People list rights:** the old Headcount Roster routes (`/api/roster`) are gone. No page used them, and anyone with roster edit could link a row to any WIREGUARD username (their own too), mark an SLK contact, or change an email. People are edited only in Users & Roles (admin). The field check stays, in `employees.ts`. Bonus statements go to the WIREGUARD email first.
+- **Two people for approvals:**
+  - Bonus: whoever saved the split, or anyone in it, cannot approve it. An admin can, and the audit log says it was an admin override.
+  - JRA: the sender cannot name themselves as approver and is left out of the "Send to" list. Nobody decides a JRA they sent (new column `jras.sent_by`).
+  - Lessons: the reviewer and the approver must be two different people.
+  - Attendance: nobody but an admin reviews or approves their own row.
+- **Requests from other sites:** any change (POST, PUT, PATCH, DELETE) whose Origin is not the app is refused.
+- **Session cookie:**
+  - Now `__Host-slk_session`, so no other nesrapp.com site can read or plant it. **Everyone signs in again once after this deploy.**
+  - Sessions end 12 hours after sign-in, however active.
+  - Switching off Face ID for someone ends their live Face ID and QR sessions.
+  - Setting up Face ID needs a sign-in in the last 15 minutes.
+- **QR sign-in:** the phone asks for the four-digit code shown on the computer instead of showing it. A wrong code ends that QR code, so a link sent by someone else is useless.
+- **Uploaded Office files:** refused if they would expand past 150 MB or 5,000 parts.
+- **Sign-in rate limit:** 20 tries a minute per address (Cloudflare rate limiting binding `AUTH_LIMIT`).
+- **Security headers:** `public/_headers` adds frame protection, HSTS, nosniff and a referrer policy to the pages.
+- **Workers address:** `workers_dev` and preview URLs are off. The app is only served at slkops.nesrapp.com.
+- **Lists by country:** the account colours, the SDM list, the Competency seed list and the job accounts in the Knowledge Hub now follow the caller's countries.
+- **Audit log:** now records Competency team saves (at most once an hour per person and key), utility file deletes, "job log e-mailed" and diagram sample deletes.
+- **Error text:** WIREGUARD and library errors stay in the log; users see plain text.
+- **Migration 0041:**
+  - adds `jras.sent_by`;
+  - adds one people row per WIREGUARD username: duplicates keep the link on the active row with the most crews, and a unique index follows;
+  - drops the unused early Knowledge search table;
+  - recreates the two Knowledge indexes lost in earlier rebuilds.
+- **Verified:**
+  - Tests: 552 pass, including a new unzip-limit test and the roster-route check; the type check is clean.
+  - Migration 0041 applied locally.
+  - In the local app, sign-in works with the new cookie and the cookie is not visible to page scripts.
+  - With curl, a change from another Origin, or marked same-site, is refused (403), and a change from the app's own Origin works.
+  - QR info no longer carries the code, and the phone page asks for it (390 px).
+  - Face ID set-up works right after sign-in.

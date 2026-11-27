@@ -81,12 +81,14 @@ export function canFill(v: Viewer, r: SheetRow, rules: Rules | null | undefined,
 /** The first of two approvals; categories with one step have none. */
 export function canReview(v: Viewer, r: SheetRow, rules: Rules | null | undefined, cats: Category[] = DEFAULT_CATEGORIES): boolean {
   const cat = catOf(r, cats);
+  if (v.role !== 'admin' && same(v.username, r.wg_username)) return false; // nobody reviews their own row
   return !!cat?.two_step && (v.role === 'admin' || allowed(rules, reviewKey(cat.key), v.role));
 }
 
 export function canApprove(v: Viewer, r: SheetRow, rules: Rules | null | undefined, cats: Category[] = DEFAULT_CATEGORIES): boolean {
   const cat = catOf(r, cats);
   if (!cat) return false;
+  if (v.role !== 'admin' && same(v.username, r.wg_username)) return false; // nobody approves their own row
   return v.role === 'admin' || allowed(rules, approveKey(cat.key), v.role);
 }
 

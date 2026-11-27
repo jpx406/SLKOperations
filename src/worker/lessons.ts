@@ -710,6 +710,7 @@ lessons.post('/:id/:step{submit|review|approve|send-back|revise}', async (c) => 
     if (!(await holds(c.env, reviewer, 'can_review'))) return c.json({ error: 'That person is not a Knowledge Hub reviewer' }, 400);
     if (!(await holds(c.env, approver, 'can_approve'))) return c.json({ error: 'That person is not a Knowledge Hub approver' }, 400);
     if (!p.admin && (same(reviewer, user.username) || same(approver, user.username))) return c.json({ error: 'Someone else must review and approve it' }, 400);
+    if (same(reviewer, approver)) return c.json({ error: 'Pick two different people to review and to approve' }, 400);
     if (l.kb_doc_id && !text('change_note') && !l.change_note) return c.json({ error: 'Say what changes in this revision' }, 400);
     await c.env.DB.batch([
       c.env.DB.prepare(`UPDATE lessons SET status = 'review', reviewer = ?, approver = ?, submit_note = ?, submitted_by = ?, submitted_at = ?, sent_back_reason = NULL, sent_back_by = NULL,

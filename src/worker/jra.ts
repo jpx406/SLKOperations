@@ -44,7 +44,7 @@ export async function explosiveService(env: Env, jobId: string) {
   return !!(await env.DB.prepare('SELECT 1 FROM job_services s JOIN service_profiles p ON p.job_type_name = s.job_type_name WHERE s.job_id = ? AND p.is_explosive = 1 LIMIT 1').bind(jobId).first());
 }
 
-type JraRow = { id: string; job_id: string; template_id: string; status: string; answers: string; risk_score: number; approval_level: string | null; sent_to: string | null; sent_at: string | null; decided_by: string | null; decided_at: string | null; updated_at: string; form_details: string | null };
+type JraRow = { id: string; job_id: string; template_id: string; status: string; answers: string; risk_score: number; approval_level: string | null; sent_to: string | null; sent_at: string | null; sent_by: string | null; decided_by: string | null; decided_at: string | null; updated_at: string; form_details: string | null };
 
 export const jra = new Hono<AppBindings>();
 
@@ -94,7 +94,9 @@ jra.get('/:jobId/approvers', async (c) => {
   const row = await c.env.DB.prepare('SELECT approval_level FROM jras WHERE job_id = ?').bind(job.id).first<{ approval_level: string | null }>();
   const level = row?.approval_level ?? 'SDM';
   const people = await usersFor(c.env, await loadRules(c.env), jraLevelKey(level), job.country);
-  return c.json({ level, people: people.map(({ username, full_name, role }) => ({ username, full_name, role })) });
+  // the sender does not approve their own JRA
+  const me = c.get('user').username.toLowerCase();
+  return c.json({ level, people: people.filter((p) => p.username.toLowerCase() !== me).map(({ username, full_name, role }) => ({ username, full_name, role })) });
 });
 
 jra.post('/:jobId/send', async (c) => {
@@ -112,9 +114,10 @@ jra.post('/:jobId/send', async (c) => {
   const level = row.approval_level ?? 'SDM';
   const eligible = await usersFor(c.env, await loadRules(c.env), jraLevelKey(level), job.country);
   if (!eligible.some((u) => u.username.toLowerCase() === approver.toLowerCase())) return c.json({ error: `Pick someone who approves “${level}” JRAs (Users & Roles → Approvals)` }, 400);
+  if (approver.toLowerCase() === user.username.toLowerCase()) return c.json({ error: 'Send it to someone else: the person who sends a JRA does not approve it' }, 400);
   const at = new Date().toISOString();
   await c.env.DB.batch([
-    c.env.DB.prepare(`UPDATE jras SET status = 'sent', sent_to = ?, sent_at = ?, updated_at = ? WHERE id = ?`).bind(approver, at, at, row.id),
+    c.env.DB.prepare(`UPDATE jras SET status = 'sent', sent_to = ?, sent_at = ?, sent_by = ?, updated_at = ? WHERE id = ?`).bind(approver, at, user.username, at, row.id),
     audit(c.env, user, 'send', row.id, `JRA for ticket ${job.ticket_no ?? '—'} (score ${row.risk_score}, ${row.approval_level}) sent to ${approver}`),
   ]);
   return c.json({ ok: true });
@@ -129,6 +132,7 @@ jra.post('/:jobId/decide', async (c) => {
   if (!row || row.status !== 'sent') return c.json({ error: 'There is no JRA waiting for approval' }, 409);
   const may = row.sent_to?.toLowerCase() === user.username.toLowerCase() || allowed(await loadRules(c.env), 'jra.decide', user.role);
   if (!may) return c.json({ error: `Only ${row.sent_to} (or a role allowed to approve any JRA) can decide` }, 403);
+  if (row.sent_by && row.sent_by.toLowerCase() === user.username.toLowerCase()) return c.json({ error: 'You sent this JRA, so someone else must decide it' }, 403);
   const { decision, note } = await c.req.json<{ decision?: string; note?: string }>().catch(() => ({} as { decision?: string; note?: string }));
   if (decision !== 'approved' && decision !== 'rejected') return c.json({ error: 'Approve or reject' }, 400);
   const at = new Date().toISOString();

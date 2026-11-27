@@ -134,11 +134,22 @@ bonus.post('/jobs/:id/approve', async (c) => {
   const cur = await jobBonus(c.env, user, c.req.param('id'));
   if (!cur) return c.json({ error: 'Job not found' }, 404);
   if (cur.status !== 'draft') return c.json({ error: cur.status === 'approved' ? 'Already approved' : 'Save the distribution first' }, 409);
+  // two people: whoever saved the split, or anyone in it, does not approve it (an admin may, and it is logged as such)
+  const [savers, inCrew] = await c.env.DB.batch([
+    c.env.DB.prepare('SELECT DISTINCT updated_by FROM job_bonus_lines WHERE job_id = ?').bind(cur.job.id),
+    c.env.DB.prepare(`SELECT 1 FROM job_bonus_lines b JOIN employees e ON e.id = b.employee_id WHERE b.job_id = ? AND lower(e.wg_username) = lower(?) LIMIT 1`).bind(cur.job.id, user.username),
+  ]);
+  const saved = (savers.results as { updated_by: string | null }[]).some((r) => r.updated_by?.toLowerCase() === user.username.toLowerCase());
+  const mine = inCrew.results.length > 0;
+  if ((saved || mine) && user.role !== 'admin') {
+    return c.json({ error: mine ? 'You are in this distribution, so someone else must approve it' : 'You saved this distribution, so someone else must approve it' }, 403);
+  }
+  const override = saved || mine ? ` (admin override: approver ${mine ? 'is in the distribution' : 'saved it'})` : '';
   const at = new Date().toISOString();
   await c.env.DB.batch([
     await signStatement(c.env, user, 'bonus', cur.job.id),
     c.env.DB.prepare(`UPDATE job_bonus_lines SET status = 'approved', approved_by = ?, approved_at = ? WHERE job_id = ?`).bind(user.username, at, cur.job.id),
-    audit(c.env, user, 'approve', cur.job.id, `Bonus approved for ticket ${cur.job.ticket_no ?? '—'}`),
+    audit(c.env, user, 'approve', cur.job.id, `Bonus approved for ticket ${cur.job.ticket_no ?? '—'}${override}`),
   ]);
   return c.json({ ok: true, bonus: await jobBonus(c.env, user, cur.job.id) });
 });
@@ -196,8 +207,10 @@ bonus.post('/statements', async (c) => {
   const user = c.get('user');
   const s = scope(c);
   const { results } = await c.env.DB.prepare(
-    `SELECT b.id, b.employee_id, e.full_name, e.contact_email, b.amount_cents, b.currency, j.ticket_no, j.start_date
+    // the WIREGUARD email first (it can't be edited here), then the one on the people list
+    `SELECT b.id, b.employee_id, e.full_name, coalesce(nullif(u.email, ''), e.contact_email) AS contact_email, b.amount_cents, b.currency, j.ticket_no, j.start_date
      FROM job_bonus_lines b JOIN jobs j ON j.id = b.job_id JOIN employees e ON e.id = b.employee_id
+       LEFT JOIN user_roles u ON e.wg_username IS NOT NULL AND lower(u.username) = lower(e.wg_username)
      WHERE ${s.where.join(' AND ')} AND b.status = 'approved' ORDER BY e.full_name, j.start_date`,
   ).bind(...s.binds).all<{ id: string; employee_id: string; full_name: string; contact_email: string | null; amount_cents: number; currency: string; ticket_no: string | null; start_date: string | null }>();
   const byPerson = new Map<string, typeof results>();

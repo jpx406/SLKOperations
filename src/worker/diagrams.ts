@@ -113,7 +113,11 @@ diagrams.delete('/samples/:id', async (c) => {
     .bind(c.req.param('id'), JSON.stringify(user.countries)).first<{ id: string; name: string; created_by: string }>();
   if (!s) return c.json({ error: 'Sample not found' }, 404);
   if (user.role !== 'admin' && !same(s.created_by, user.username)) return c.json({ error: 'Only the person who saved it, or an admin, removes a sample' }, 403);
-  await c.env.DB.prepare('DELETE FROM diagram_samples WHERE id = ?').bind(s.id).run();
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM diagram_samples WHERE id = ?').bind(s.id),
+    c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.username, 'delete', 'diagram_sample', s.id, `Diagram sample “${s.name}” removed`),
+  ]);
   return c.json({ ok: true });
 });
 

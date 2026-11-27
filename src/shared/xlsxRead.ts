@@ -6,9 +6,27 @@ export interface Sheet { cells: Record<string, SheetCell>; validations: { ranges
 
 const dec = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#10;/g, '\n').replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&amp;/g, '&');
 
-async function inflate(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+/** Limits for an uploaded zip (xlsx, pptx, docx): a small file that expands to gigabytes is refused, not unpacked. */
+export const UNZIP_LIMITS = { totalBytes: 150 * 1024 * 1024, entries: 5000 };
+const TOO_BIG = 'This file expands to more than the app can open. Save it again from Office, or make it smaller.';
+
+/** Inflates one entry, stopping as soon as the running total would pass the budget. */
+async function inflate(data: Uint8Array, budget: { left: number }): Promise<Uint8Array> {
+  const reader = new Blob([data as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const parts: Uint8Array[] = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.byteLength;
+    if (n > budget.left) { await reader.cancel().catch(() => {}); throw new Error(TOO_BIG); }
+    parts.push(value);
+  }
+  budget.left -= n;
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (const part of parts) { out.set(part, o); o += part.byteLength; }
+  return out;
 }
 
 /** The files inside a zip, read through its central directory: the XML parts only, or with `all` every file. */
@@ -18,17 +36,23 @@ export async function unzip(bytes: Uint8Array, all = false): Promise<Map<string,
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65_557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
   if (eocd < 0) throw new Error('This file is not an Excel workbook (.xlsx)');
   const count = dv.getUint16(eocd + 10, true);
+  if (count > UNZIP_LIMITS.entries) throw new Error(TOO_BIG);
+  const budget = { left: UNZIP_LIMITS.totalBytes };
   let off = dv.getUint32(eocd + 16, true);
   const out = new Map<string, Uint8Array>();
   const td = new TextDecoder();
   for (let i = 0; i < count; i++) {
-    if (dv.getUint32(off, true) !== 0x02014b50) throw new Error('The workbook is damaged');
+    if (off + 46 > bytes.length || dv.getUint32(off, true) !== 0x02014b50) throw new Error('The workbook is damaged');
     const method = dv.getUint16(off + 10, true), size = dv.getUint32(off + 20, true);
     const nameLen = dv.getUint16(off + 28, true), extra = dv.getUint16(off + 30, true), comment = dv.getUint16(off + 32, true), local = dv.getUint32(off + 42, true);
     const name = td.decode(bytes.subarray(off + 46, off + 46 + nameLen));
     const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+    if (local + 30 > bytes.length || start + size > bytes.length) throw new Error('The workbook is damaged');
     const raw = bytes.subarray(start, start + size);
-    if (all ? !name.endsWith('/') : /\.(xml|rels)$/.test(name)) out.set(name, method === 8 ? await inflate(raw) : method === 0 ? raw : new Uint8Array());
+    if (all ? !name.endsWith('/') : /\.(xml|rels)$/.test(name)) {
+      if (method === 0) { budget.left -= size; if (budget.left < 0) throw new Error(TOO_BIG); }
+      out.set(name, method === 8 ? await inflate(raw, budget) : method === 0 ? raw : new Uint8Array());
+    }
     off += 46 + nameLen + extra + comment;
   }
   return out;

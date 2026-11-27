@@ -9,21 +9,23 @@ import { passkeyError, passkeysSupported } from '../components/Passkeys';
 import { Banner, Button } from '../components/ui';
 
 // The phone side of QR sign-in. Opened by scanning the code on a laptop: shows which computer is asking and the
-// four-digit code it shows, then signs that computer in after Face ID / fingerprint on this phone.
+// person types the four-digit code the computer shows (so a link someone else sends is useless), then that computer
+// is signed in after Face ID / fingerprint on this phone.
 
-type Info = { status: 'pending' | 'approved' | 'denied' | 'expired'; code?: string; device?: string; where?: string | null; expiresAt?: number };
+type Info = { status: 'pending' | 'approved' | 'denied' | 'expired'; device?: string; where?: string | null; expiresAt?: number };
 
 export function QrApprove() {
   const { id = '' } = useParams();
   const info = useQuery({ queryKey: ['qr-info', id], queryFn: () => api<Info>(`/auth/qr/${encodeURIComponent(id)}/info`), refetchInterval: 5000 });
   const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState('');
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const approve = async () => {
     setBusy(true); setResult(null);
     try {
       const { options, challengeId } = await api<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON']; challengeId: string }>(`/auth/qr/${encodeURIComponent(id)}/options`, { method: 'POST', json: {} });
       const response = await startAuthentication({ optionsJSON: options });
-      const r = await api<{ name: string }>(`/auth/qr/${encodeURIComponent(id)}/approve`, { method: 'POST', json: { challengeId, response } });
+      const r = await api<{ name: string }>(`/auth/qr/${encodeURIComponent(id)}/approve`, { method: 'POST', json: { challengeId, response, code } });
       setResult({ ok: true, text: `Done. The computer is signing in as ${r.name}. You can close this page.` });
     } catch (e) {
       setResult({ ok: false, text: passkeyError(e) });
@@ -61,12 +63,14 @@ export function QrApprove() {
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm">Check the computer shows this code:</p>
-              <p className="font-mono text-4xl font-bold tracking-[0.3em]">{d.code}</p>
-              <p className="mt-1 text-xs text-text-subtle">If it doesn't, or you didn't start this, press "This wasn't me".</p>
+              <label htmlFor="qr-code" className="text-sm">Type the four-digit code shown on the computer:</label>
+              <input id="qr-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                className="mx-auto mt-2 block w-40 rounded-md border border-border-strong bg-surface-2 py-2 text-center font-mono text-3xl font-bold tracking-[0.3em]" />
+              <p className="mt-1 text-xs text-text-subtle">If you didn't start this on a computer in front of you, press "This wasn't me".</p>
             </div>
             {passkeysSupported()
-              ? <Button variant="primary" size="lg" className="w-full" loading={busy} onClick={approve}><Fingerprint aria-hidden className="size-5" />Confirm with Face ID / fingerprint</Button>
+              ? <Button variant="primary" size="lg" className="w-full" loading={busy} disabled={code.length !== 4} onClick={approve}><Fingerprint aria-hidden className="size-5" />Confirm with Face ID / fingerprint</Button>
               : <Banner tone="warning">This browser can't use Face ID. Open the code with the phone's camera app in Safari or Chrome.</Banner>}
             <Button variant="ghost" className="w-full" onClick={deny}>This wasn't me</Button>
             <p className="text-center text-xs text-text-subtle">Face ID must be set up on this phone first: sign in here with your password once, then use "Face ID / fingerprint" in your account menu.</p>

@@ -143,6 +143,8 @@ attendance.post('/review', async (c) => {
   const [e] = await roster(c.env, user.countries, [String(b.employee_id ?? '')]);
   if (!e) return c.json({ error: 'Person not found' }, 404);
   const [rules, cats] = await Promise.all([loadRules(c.env), loadCategories(c.env)]);
+  const own = user.role !== 'admin' && !!e.wg_username && e.wg_username.toLowerCase() === user.username.toLowerCase();
+  if (own) return c.json({ error: 'Someone else reviews your own month' }, 403);
   if (!canReview(user, e, rules, cats)) return c.json({ error: `${e.full_name}'s month is reviewed by ${names(rules, reviewKey(e.attendance_sheet ?? ''))}.` }, 403);
   const approved = await c.env.DB.prepare('SELECT 1 FROM attendance_approvals WHERE employee_id = ? AND month = ?').bind(e.id, b.month).first();
   if (approved) return c.json({ error: 'The month is already approved. Unapprove it first.' }, 409);
@@ -165,6 +167,8 @@ attendance.post('/approve', async (c) => {
   if (!e) return c.json({ error: 'Person not found' }, 404);
   const [rules, cats] = await Promise.all([loadRules(c.env), loadCategories(c.env)]);
   const cat = cats.find((k) => k.key === e.attendance_sheet);
+  const own = user.role !== 'admin' && !!e.wg_username && e.wg_username.toLowerCase() === user.username.toLowerCase();
+  if (own) return c.json({ error: 'Someone else approves your own month' }, 403);
   if (!canApprove(user, e, rules, cats)) return c.json({ error: `${e.full_name}'s month is approved by ${names(rules, approveKey(e.attendance_sheet ?? ''))}.` }, 403);
   if (b.approved !== false && cat?.two_step) {
     const reviewed = await c.env.DB.prepare('SELECT 1 FROM attendance_reviews WHERE employee_id = ? AND month = ?').bind(e.id, b.month).first();

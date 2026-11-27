@@ -90,6 +90,11 @@ competency.put('/kv', async (c) => {
   await c.env.DB.prepare(`INSERT INTO competency_kv (key, owner, value, r2_key, size_bytes, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (key, owner) DO UPDATE SET value = excluded.value, r2_key = excluded.r2_key, size_bytes = excluded.size_bytes, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
     .bind(b.key, who, inline, stored, bytes, user.username, now()).run();
+  // team data saves are logged at most once an hour per person and key (the module saves on every change)
+  if (shared && !(await c.env.KV.get(`audit:comp:${user.username}:${b.key}`))) {
+    await audit(c.env, user, 'edit', b.key, `Competency data saved (${Math.round(bytes / 1024)} KB)`).run();
+    await c.env.KV.put(`audit:comp:${user.username}:${b.key}`, '1', { expirationTtl: 3600 });
+  }
   // a value that shrank back into the row leaves no copy behind in R2
   if (prev?.r2_key && !stored && c.env.FILES) await c.env.FILES.delete(prev.r2_key).catch(() => undefined);
   return c.json({ key: b.key, value: b.value, shared });
@@ -124,11 +129,13 @@ competency.get('/risk-data', async (c) => {
  * the person signed in finds their own record), the slickline services and their domains, and the countries.
  */
 competency.get('/slk-seed', async (c) => {
+  // the people of the caller's countries (an admin has them all)
+  const mine = JSON.stringify(c.get('user').allCountries ?? c.get('user').countries);
   const [people, services, countries] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT coalesce(wg_username, eid) AS id, full_name AS name, country, crew_role, title, contact_email AS email
-      FROM employees WHERE active = 1 ORDER BY country, full_name`),
+      FROM employees WHERE active = 1 AND country IN (SELECT value FROM json_each(?)) ORDER BY country, full_name`).bind(mine),
     c.env.DB.prepare(`SELECT job_type_name AS name, domain FROM service_profiles WHERE job_type_name <> 'Other' ORDER BY domain, job_type_name`),
-    c.env.DB.prepare('SELECT DISTINCT country FROM employees WHERE active = 1 ORDER BY country'),
+    c.env.DB.prepare('SELECT DISTINCT country FROM employees WHERE active = 1 AND country IN (SELECT value FROM json_each(?)) ORDER BY country').bind(mine),
   ]);
   // one record per ID: the same person listed in two countries keeps the first
   const seen = new Set<string>();

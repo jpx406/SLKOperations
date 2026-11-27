@@ -8,7 +8,9 @@ import { WgError, wgCountriesFor, wgGet, wgLogin } from './wg';
 import { wgUserActive } from './wgUsers';
 import { authEvent } from './audit';
 
-const COOKIE = 'slk_session';
+// __Host- keeps the cookie to this exact host: another nesrapp.com site can neither read nor plant it
+const COOKIE = '__Host-slk_session';
+const OLD_COOKIE = 'slk_session';
 const REVALIDATE_MS = 60_000;          // re-check with WIREGUARD at most once a minute
 const OUTAGE_GRACE_MS = 15 * 60_000;   // keep working this long if WIREGUARD is unreachable
 const SESSION_TTL_S = 12 * 3600;       // never outlive WIREGUARD's 12-hour token
@@ -43,6 +45,7 @@ export async function openSession(c: Context<AppBindings>, s: Pick<Session, 'use
   const session: Session = { ...s, createdAt: t, lastSeen: t, validatedAt: t };
   await c.env.KV.put(key(sessionId), JSON.stringify(session), { expirationTtl: SESSION_TTL_S });
   setCookie(c, COOKIE, sessionId, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: SESSION_TTL_S });
+  deleteCookie(c, OLD_COOKIE, { path: '/' });
   return sessionId;
 }
 
@@ -51,7 +54,8 @@ export async function logout(c: Context<AppBindings>) {
   const raw = id ? await c.env.KV.get(key(id)) : null;
   if (raw) { const s = JSON.parse(raw) as Session; await authEvent(c, s.username, 'logout', `Signed out (${s.method ?? 'password'} session)`).run(); }
   if (id) await c.env.KV.delete(key(id));
-  deleteCookie(c, COOKIE, { path: '/' });
+  deleteCookie(c, COOKIE, { path: '/', secure: true });
+  deleteCookie(c, OLD_COOKIE, { path: '/' });
 }
 
 async function revalidate(env: Env, s: Session): Promise<'ok' | 'revoked' | 'outage'> {
@@ -80,6 +84,11 @@ export async function resolveSession(c: Context<AppBindings>): Promise<Resolved>
   const s = JSON.parse(raw) as Session;
   const t = Date.now();
 
+  if (t - s.createdAt > SESSION_TTL_S * 1000) {
+    await env.KV.delete(key(id));
+    await authEvent(c, s.username, 'session_ended', 'Signed out 12 hours after sign-in').run();
+    return { error: 'Your session ended 12 hours after sign-in. Sign in again.', status: 401 };
+  }
   if (t - s.lastSeen > Number(env.IDLE_MINUTES || 60) * 60_000) {
     await env.KV.delete(key(id));
     await authEvent(c, s.username, 'session_ended', `Signed out after ${env.IDLE_MINUTES || 60} minutes without activity`).run();
@@ -100,10 +109,15 @@ export async function resolveSession(c: Context<AppBindings>): Promise<Resolved>
   s.lastSeen = t;
   await env.KV.put(key(id), JSON.stringify(s), { expirationTtl: SESSION_TTL_S });
 
-  const row = await env.DB.prepare('SELECT role, active, countries FROM user_roles WHERE username = ?').bind(s.username).first<{ role: Role; active: number; countries: string }>();
+  const row = await env.DB.prepare('SELECT role, active, countries, passkey_allowed FROM user_roles WHERE username = ?').bind(s.username).first<{ role: Role; active: number; countries: string; passkey_allowed: number | null }>();
   if (!row || !row.active) {
     await authEvent(c, s.username, 'login_failed', 'Refused: SLK Ops access is switched off').run();
     return { error: 'Your SLK Ops access is switched off. Ask an administrator.', status: 403 };
+  }
+  if (s.method && s.method !== 'password' && !row.passkey_allowed) {
+    await env.KV.delete(key(id));
+    await authEvent(c, s.username, 'session_ended', 'Face ID sign-in was switched off for this account').run();
+    return { error: 'Face ID sign-in is switched off for your account. Sign in with your password.', status: 401 };
   }
   const menus = await loadMenus(env, row.role, s.username);
   // countries belong to the SLK Ops admin (Users & Roles); admins see every country WIREGUARD has
@@ -127,3 +141,11 @@ export const requireSession: MiddlewareHandler<AppBindings> = async (c, next) =>
   await next();
 };
 
+
+/** True when the session was opened in the last few minutes: adding a sign-in method needs a fresh sign-in. */
+export async function signedInRecently(c: Context<AppBindings>, withinMs = 10 * 60_000) {
+  const id = getCookie(c, COOKIE);
+  const raw = id ? await c.env.KV.get(key(id)) : null;
+  if (!raw) return false;
+  return Date.now() - (JSON.parse(raw) as Session).createdAt < withinMs;
+}

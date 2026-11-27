@@ -16,7 +16,6 @@ import { failureRoster } from './failureRoster';
 import { filterOptions, jobLog } from './jobLog';
 import { stats } from './stats';
 import { attendance, nightlyJobDays } from './attendance';
-import { roster } from './roster';
 import { inventory } from './inventory';
 import { preJobNotes } from './preJobNotes';
 import { jra } from './jra';
@@ -38,7 +37,7 @@ import { jobs } from './jobs';
 import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
 import { audit, authEvent } from './audit';
-import { accounts } from './accounts';
+import { accounts, colorMissingAccounts } from './accounts';
 import { forms, jobForms } from './forms';
 import { isOpenWrite, readAllowed, ruleFor } from './permissions';
 import { login, logout, requireSession, resolveSession } from './session';
@@ -48,9 +47,38 @@ import { WgError } from './wg';
 const app = new Hono<AppBindings>().basePath('/api');
 
 app.onError((err, c) => {
-  if (err instanceof WgError) return c.json({ error: err.message }, err.status === 401 ? 401 : err.status >= 500 ? 503 : 400);
+  if (err instanceof WgError) {
+    // WIREGUARD's own details (addresses, paths, library messages) stay in the log
+    if (err.status >= 500) { console.error('wireguard', err.message); return c.json({ error: 'WIREGUARD can’t be reached right now. Try again in a few minutes.' }, 503); }
+    return c.json({ error: err.message }, err.status === 401 ? 401 : 400);
+  }
   console.error(err);
   return c.json({ error: 'Something went wrong on the server' }, 500);
+});
+
+// ---- requests that change something must come from this app itself -----------------------------------
+// The session cookie is SameSite=Lax, but other nesrapp.com sites count as the same site; the browser's Origin
+// header says where a request was made, so a change started from any other page is refused.
+app.use('*', async (c, next) => {
+  const m = c.req.method;
+  if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return next();
+  const origin = c.req.header('origin');
+  const ours = new Set([new URL(c.req.url).origin, ...(c.env.APP_URL ? [new URL(c.env.APP_URL).origin] : [])]);
+  const site = c.req.header('sec-fetch-site');
+  if (origin ? !ours.has(origin) : site === 'cross-site' || site === 'same-site') {
+    console.warn(`refused: ${m} ${c.req.path} from ${origin ?? site}`);
+    return c.json({ error: 'This request came from another site, so it was refused' }, 403);
+  }
+  return next();
+});
+
+// ---- sign-in attempts are limited per address (Cloudflare rate limiting, wrangler.jsonc) ---------------------
+app.use('/auth/*', async (c, next) => {
+  if (c.req.method !== 'POST' || !c.env.AUTH_LIMIT) return next();
+  const ip = c.req.header('cf-connecting-ip') ?? 'unknown';
+  const { success } = await c.env.AUTH_LIMIT.limit({ key: `auth:${ip}` });
+  if (!success) return c.json({ error: 'Too many sign-in attempts. Wait a minute and try again.' }, 429);
+  return next();
 });
 
 // ---- sign-in (WIREGUARD accounts) ----------------------------------------------------------------
@@ -66,7 +94,8 @@ app.post('/auth/login', async (c) => {
     return c.json(result);
   } catch (e) {
     if (e instanceof WgError) {
-      const msg = e.status === 401 ? 'Wrong username or password' : e.message;
+      const msg = e.status === 401 ? 'Wrong username or password' : e.status >= 500 ? 'WIREGUARD can’t be reached right now. Try again in a few minutes.' : e.message;
+      if (e.status >= 500) console.error('sign-in', e.message);
       await authEvent(c, username.trim(), 'login_failed', `Password sign-in failed: ${msg}`).run();
       return c.json({ error: msg }, e.status === 401 || e.status === 403 || e.status === 429 ? e.status : 503);
     }
@@ -173,7 +202,9 @@ app.get('/employees', async (c) => {
 // people who may be a job's SDM (Users & Roles → Approvals → "Can be the job's SDM")
 app.get('/sdms', async (c) => {
   const rules = await loadRules(c.env);
-  const people = await usersFor(c.env, rules, 'job.sdm');
+  // SDMs of the caller's countries only (admins see every country anyway)
+  const lists = await Promise.all(c.get('user').countries.map((country) => usersFor(c.env, rules, 'job.sdm', country)));
+  const people = [...new Map(lists.flat().map((p) => [p.username, p])).values()].sort((a, b) => a.full_name.localeCompare(b.full_name));
   return c.json(people.filter((p) => p.role !== 'admin' || (rules['job.sdm'] ?? []).includes('admin')).map(({ username, full_name }) => ({ username, full_name })));
 });
 
@@ -245,7 +276,6 @@ app.route('/emf', emf);
 app.route('/failure-roster', failureRoster);
 app.route('/stats', stats);
 app.route('/attendance', attendance);
-app.route('/roster', roster);
 app.route('/inventory', inventory);
 app.route('/pre-job-notes', preJobNotes);
 app.route('/jra', jra);
@@ -312,6 +342,7 @@ export default {
         await step('attendance from jobs', () => nightlyJobDays(env));
         // the people list follows the users (moved here from page views)
         await step('people sync', () => syncPeople(env));
+        await step('account colours', () => colorMissingAccounts(env));
         // housekeeping: sync log and resolved reconciliation findings older than 90 days (explained ones stay, so
         // they are not raised again)
         await step('clean-up', async () => {

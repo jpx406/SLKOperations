@@ -24,6 +24,8 @@ export interface Env {
   SIGNING_KEY?: string;
   /** R2 bucket slkops-files: attachments and the original of each uploaded JRA form. */
   FILES?: R2Bucket;
+  /** Cloudflare rate limit on sign-in requests, per address (wrangler.jsonc "ratelimits"). */
+  AUTH_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
 }
 
 export interface Session {

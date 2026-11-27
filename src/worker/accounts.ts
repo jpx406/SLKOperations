@@ -15,13 +15,21 @@ export async function ensureAccountColor(env: Env, account: unknown) {
 
 export const accounts = new Hono<AppBindings>();
 
-accounts.get('/', async (c) => {
-  const missing = await c.env.DB.prepare(
+/** Accounts used by jobs before colours existed get theirs here; run by the nightly job, not on page views. */
+export async function colorMissingAccounts(env: Env) {
+  const missing = await env.DB.prepare(
     `SELECT DISTINCT trim(location) AS account FROM jobs WHERE deleted_at IS NULL AND trim(coalesce(location, '')) <> ''
        AND trim(location) NOT IN (SELECT account FROM account_colors) ORDER BY 1`,
   ).all<{ account: string }>();
-  for (const r of missing.results) await ensureAccountColor(c.env, r.account);
-  const { results } = await c.env.DB.prepare('SELECT account, color FROM account_colors ORDER BY account').all<{ account: string; color: string }>();
+  for (const r of missing.results) await ensureAccountColor(env, r.account);
+}
+
+accounts.get('/', async (c) => {
+  // the accounts of the caller's countries; colours themselves are shared, one per account
+  const { results } = await c.env.DB.prepare(
+    `SELECT account, color FROM account_colors WHERE account IN (
+       SELECT DISTINCT trim(location) FROM jobs WHERE deleted_at IS NULL AND country IN (SELECT value FROM json_each(?))) ORDER BY account`,
+  ).bind(JSON.stringify(c.get('user').allCountries ?? c.get('user').countries)).all<{ account: string; color: string }>();
   return c.json(results);
 });
 
