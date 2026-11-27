@@ -8,7 +8,7 @@ import { NESR_LOGO_DARK_JPEG } from './brandLogo';
 import { FAMILY_OF, FORM, layoutStack, rigTotals, stringTotals, type Check, type DiagramKind, type DiagramStatus, type Row, type SheetStyle } from './diagram';
 import { PICTURES } from './diagramPictures';
 import type { PictureKey } from './partPictures';
-import { stampText } from './formPdf';
+import { stampText } from './dates';
 import { PdfDoc, textWidth, wrap } from './pdf';
 
 

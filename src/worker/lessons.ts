@@ -100,7 +100,7 @@ async function holds(env: Env, username: string, right: 'can_review' | 'can_appr
 
 // ---- making the page ----------------------------------------------------------------------------------------------
 
-interface Made { input: PageInput; images: Map<string, PdfImage>; logo: (PdfImage & { w: number; h: number }) | null; template: Uint8Array | null; templateName: string | null }
+interface Made { input: PageInput; images: Map<string, PdfImage>; logo: (PdfImage & { w: number; h: number }) | null; template: Uint8Array | null; parts: Map<string, Uint8Array> | null; templateName: string | null }
 
 /** The template a lesson is made on: its own when one was brought in, else the company's. */
 function templateFor(s: CopySettings, l: Pick<Row, 'company' | 'kind' | 'template_key' | 'template_name'>) {
@@ -112,17 +112,22 @@ async function prepare(env: Env, l: Row, c: LessonContent, extra: { docNo: strin
   const tf = templateFor(s, l);
   const tpl = tf && env.FILES ? await env.FILES.get(tf.key) : null;
   const template = tpl ? new Uint8Array(await tpl.arrayBuffer()) : null;
-  const logo = template ? await templateLogo(template) : null;
-  const style = template ? await templateStyle(template) : null;
+  // unzipped once: the logo, the style and the PowerPoint all read the same parts
+  const parts = template ? await unzip(template, true).catch(() => null) : null;
+  const logo = parts ? await templateLogo(parts) : null;
+  const style = parts ? await templateStyle(parts) : null;
+  // the pictures are fetched together, not one after another
   const images = new Map<string, PdfImage>();
   if (env.FILES) {
-    for (const p of c.pictures) {
-      const o = await env.FILES.get(picKey(l.id, p));
-      if (o) images.set(p.id, { bytes: new Uint8Array(await o.arrayBuffer()), type: p.type });
-    }
+    const files = env.FILES;
+    const got = await Promise.all(c.pictures.map(async (p) => {
+      const o = await files.get(picKey(l.id, p));
+      return o ? [p.id, { bytes: new Uint8Array(await o.arrayBuffer()), type: p.type }] as const : null;
+    }));
+    for (const g of got) if (g) images.set(g[0], g[1]);
   }
   const signoff = extra.signoff ?? { date: '', changes: '', prepared: await nameOf(env, l.created_by), reviewed: await nameOf(env, l.reviewer), approver: await nameOf(env, l.approver), position: await positionOf(env, l.approver) };
-  return { input: { style, kind: l.kind, company: l.company, country: l.country, title: l.title, content: c, colour: colourOf(s, l.company), docNo: extra.docNo, revision: extra.revision, signoff }, images, logo, template, templateName: tf?.file_name ?? null };
+  return { input: { style, kind: l.kind, company: l.company, country: l.country, title: l.title, content: c, colour: colourOf(s, l.company), docNo: extra.docNo, revision: extra.revision, signoff }, images, logo, template, parts, templateName: tf?.file_name ?? null };
 }
 const picKey = (id: string, p: Pick<LessonPicture, 'id' | 'type'>) => `lessons/${id}/pictures/${p.id}.${p.type === 'image/png' ? 'png' : 'jpg'}`;
 
@@ -130,7 +135,7 @@ async function makePdf(m: Made, title: string) { return lessonPdf(m.input, m.ima
 async function makePptx(m: Made) {
   if (!m.template) return null;
   const lay = layoutLesson(m.input);
-  return lessonPptx(m.template, [...chrome(m.input, null).slide, ...lay.blocks], m.images);
+  return lessonPptx(m.parts ?? m.template, [...chrome(m.input, null).slide, ...lay.blocks], m.images);
 }
 
 function fileResponse(body: BodyInit, type: string, name: string, inline: boolean) {

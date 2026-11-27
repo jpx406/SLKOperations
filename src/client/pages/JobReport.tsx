@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, FolderArchive, Printer } from 'lucide-react';
-import { stampText } from '../../shared/formPdf';
+import { stampText } from '../../shared/dates';
 import { useRef } from 'react';
 import { Link, useParams } from 'react-router';
 import { STAGES, stagePercent } from '../../shared/stages';

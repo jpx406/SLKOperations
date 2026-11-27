@@ -42,7 +42,7 @@ export function JobLog() {
   const navigate = useNavigate();
   const [q, setQ] = useState(params.get('q') ?? '');
   const query = [filtersToQuery(filters), params.get('q') ? `q=${encodeURIComponent(params.get('q')!)}` : ''].filter(Boolean).join('&');
-  const log = useQuery({ queryKey: ['job-log', query], queryFn: () => api<{ rows: JobLogRow[]; truncated: boolean; limit: number }>(`/job-log?${query}`), refetchInterval: 30_000 });
+  const log = useQuery({ queryKey: ['job-log', query], queryFn: () => api<{ rows: JobLogRow[]; truncated: boolean; limit: number }>(`/job-log?${query}`), staleTime: 60_000 }); // fresh again when the tab comes back into view
   const colorOf = useAccountColors();
   // grouped by account (name order), the server's order kept inside each account
   const groups = byAccount(log.data?.rows ?? [], (r) => r.location);

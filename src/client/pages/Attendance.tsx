@@ -5,7 +5,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { CODES, CODE_LIST, LEAVE, assignmentsOn, isWeekend, rowSummary, type Assignment, type Code } from '../../shared/attendance';
 import { roleLabel } from '../../shared/roles';
-import { stampText } from '../../shared/formPdf';
+import { stampText } from '../../shared/dates';
 import type { Role } from '../../shared/types';
 import { workbook } from '../../shared/xlsx';
 import { ApiError, api } from '../api';

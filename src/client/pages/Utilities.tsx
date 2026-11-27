@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Copy, FileDown, FolderOpen, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { FAMILY_OF, MAX_ROWS, diagramChecks, insertIndex, rowFromPart, type DiagramKind, type Part, type Row } from '../../shared/diagram';
 import { EMPTY_FACTS, FACT_NUM, FACT_TEXT, UTIL_LABEL, UTIL_PATH, cleanFacts, type DiagramData, type UtilFacts, type UtilKind } from '../../shared/utilities';
@@ -9,7 +9,11 @@ import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
 import { Dialog } from './knowledge/common';
 import { Catalogue, RowEditor, Sheet, Totals, type JobFacts } from './Diagrams';
-import { WinchWorkbench, type WinchHost } from './WinchData';
+import type { WinchHost } from './WinchData';
+import { lazyRetry } from '../staleBuild';
+
+// the winch tool (and its guide and demo data) loads only when a winch project is opened
+const WinchWorkbench = lazy(lazyRetry(() => import('./WinchData').then((m) => ({ default: m.WinchWorkbench }))));
 import type { Meta } from './winch/Report';
 
 // Utilities (6z.47): the Rig Up Diagram, the Tool String Diagram and the Winch Report, the same tools as on a job but
@@ -200,7 +204,7 @@ function UtilityWinch({ project }: { project: Project }) {
   return (
     <div className="space-y-3">
       <p role="status" className={cx('text-xs', note.ok ? 'text-text-subtle' : 'text-danger')}>Job details: {note.text}</p>
-      <Card className="p-4"><WinchWorkbench host={host} /></Card>
+      <Card className="p-4"><Suspense fallback={<Skeleton className="h-96" />}><WinchWorkbench host={host} /></Suspense></Card>
     </div>
   );
 }

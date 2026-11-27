@@ -1982,3 +1982,23 @@ Most of this group landed in 6z.67 (sync guards, one sync at a time, the nightly
 - **Verified:**
   - Tests: 554 pass, including the new Riyadh date tests; the type check is clean.
   - In the local app, a job log save wrote version 1 with its history entry, and a stale save was refused as a conflict without a stray version.
+
+## 6z.70: audit fixes, part 4: page speed and queries
+
+- **Pages load when opened:**
+  - Every page except sign-in, the QR page, the module picker and "Page not found" is fetched the first time it is opened, through React Router's `lazy` routes.
+  - After a deploy, a page whose file was replaced still reloads into the new version (`lazyRetry`).
+  - The first load goes from 1.72 MB to 369 kB.
+- **Competency:** the deployment and test package files (100 kB of text) load only when someone downloads a package, so the Competency chunk is 841 kB instead of 963 kB. The risk tables Job Risk Profile reads stay with Competency: they share its whole calculation, and moving them would mean rewriting that logic.
+- **Utilities:** the winch tool (with its guide and demo data) loads only when a winch project is opened.
+- **Dates on pages:** pages take the date format from `shared/dates` instead of the PDF module, so the logo and PDF writer stay out of those pages.
+- **Job Log:** no longer reloads every 30 seconds; it refreshes when the tab comes back into view. Every look-up in its query already uses an index.
+- **Reconciliation summary:** counts by date range and groups each count once, instead of scanning per unit. The numbers are the same.
+- **Lesson PDF and PowerPoint:** the template is unzipped once for the logo, the style and the slides, and the pictures are fetched together.
+- **Timers:** pages that refresh on a timer pause in a background tab. That was already the default; it is now set explicitly.
+- **Kept on purpose:** the crew list behind Utilization and Competency still reads every assignment, because the experience counts need the whole history.
+- **Verified:**
+  - Tests: 554 pass; the type check and the build are clean.
+  - The reconciliation summary gives the same per-unit counts as the old query (checked against the local database for two months).
+  - The lesson PDF and PowerPoint build (200).
+  - In a fresh tab, opening the job board, inventories, the winch utility and Career loads each page with no console errors.

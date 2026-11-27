@@ -59,9 +59,9 @@ function frameParts(files: Map<string, Uint8Array>): { part: string; tree: strin
 }
 
 /** The logo on the template's master or layout (the biggest picture): its picture, type and drawn size. */
-export async function templateLogo(tpl: Uint8Array): Promise<(SlideImage & { w: number; h: number }) | null> {
+export async function templateLogo(tpl: Uint8Array | Map<string, Uint8Array>): Promise<(SlideImage & { w: number; h: number }) | null> {
   let files: Map<string, Uint8Array>;
-  try { files = await unzip(tpl, true); } catch { return null; }
+  try { files = tpl instanceof Map ? tpl : await unzip(tpl, true); } catch { return null; }
   let best: (SlideImage & { w: number; h: number }) | null = null;
   for (const { part: owner, tree } of frameParts(files)) {
     const rels = relsIn(td.decode(files.get(relsPath(owner)) ?? new Uint8Array()));
@@ -85,9 +85,9 @@ export async function templateLogo(tpl: Uint8Array): Promise<(SlideImage & { w: 
  * The colours of the template's slide master: the header band (none when white), the header title, the title bar
  * and the sign-off header rows, so the preview and the PDF look like the PowerPoint.
  */
-export async function templateStyle(tpl: Uint8Array): Promise<TemplateStyle | null> {
+export async function templateStyle(tpl: Uint8Array | Map<string, Uint8Array>): Promise<TemplateStyle | null> {
   let files: Map<string, Uint8Array>;
-  try { files = await unzip(tpl, true); } catch { return null; }
+  try { files = tpl instanceof Map ? tpl : await unzip(tpl, true); } catch { return null; }
   const frame = frameParts(files);
   if (!frame.length) return null;
   // the master's shapes (when the layout shows them), then the layout's own, as one drawing
@@ -228,9 +228,10 @@ function shapeXml(b: Block, ctx: Ctx): string {
 }
 
 /** One slide on the template's first layout holding `blocks`; with no blocks, the blank template. */
-export async function lessonPptx(tpl: Uint8Array, blocks: Block[], images: Map<string, SlideImage>): Promise<Uint8Array> {
+export async function lessonPptx(tpl: Uint8Array | Map<string, Uint8Array>, blocks: Block[], images: Map<string, SlideImage>): Promise<Uint8Array> {
   let out: Map<string, Uint8Array>;
-  try { out = await unzip(tpl, true); } catch { throw new Error('The company template is not a PowerPoint file (.pptx)'); }
+  // a copy: the parts are changed here, and the caller may use the unzipped template again
+  try { out = tpl instanceof Map ? new Map(tpl) : await unzip(tpl, true); } catch { throw new Error('The company template is not a PowerPoint file (.pptx)'); }
   if (!out.has('ppt/presentation.xml')) throw new Error('The company template is not a PowerPoint file (.pptx)');
   const get = (k: string) => td.decode(out.get(k) ?? new Uint8Array());
   const put = (k: string, s: string) => out.set(k, te.encode(s));

@@ -135,20 +135,30 @@ recon.get('/candidates', async (c) => {
   return c.json(results);
 });
 
+const countOf = (r: D1Result, unit: string) => (r.results as { unit_number: string | null; n: number }[]).find((x) => x.unit_number === unit)?.n ?? 0;
+
 recon.get('/summary', async (c) => {
   const user = c.get('user');
   const month = c.req.query('month') ?? today().slice(0, 7);
   if (!/^\d{4}-\d{2}$/.test(month)) return c.json({ error: 'month must be YYYY-MM' }, 400);
   const cs = JSON.stringify(user.countries);
-  const [units, open, last, sdms] = await c.env.DB.batch([
+  // the month as a date range (so the date indexes are used) and each count grouped once, not once per unit
+  const first = `${month}-01`, last = `${month}-31`;
+  const [unitList, jobCounts, runCounts, findingCounts, open, lastRun, sdms] = await c.env.DB.batch([
+    c.env.DB.prepare('SELECT unit_number FROM wg_units WHERE wg_active = 1 AND country IN (SELECT value FROM json_each(?)) ORDER BY unit_number').bind(cs),
     c.env.DB.prepare(
-      `SELECT u.unit_number,
-         (SELECT count(*) FROM jobs j WHERE j.unit_number = u.unit_number AND j.deleted_at IS NULL AND j.status <> 'canceled' AND substr(j.start_date, 1, 7) = ?1) AS jobs,
-         (SELECT count(*) FROM wg_runs r JOIN wg_drums d ON d.drum_no = r.drum_no WHERE d.unit_number = u.unit_number AND r.wg_active = 1 AND r.is_cut_only = 0 AND substr(r.job_date, 1, 7) = ?1) AS runs,
-         (SELECT count(*) FROM recon_findings f LEFT JOIN jobs j ON j.id = f.job_id
-            WHERE f.status = 'open' AND (j.unit_number = u.unit_number OR (f.job_id IS NULL AND json_extract(f.detail, '$.unit') = u.unit_number))) AS open_findings
-       FROM wg_units u WHERE u.wg_active = 1 AND u.country IN (SELECT value FROM json_each(?2)) ORDER BY u.unit_number`,
-    ).bind(month, cs),
+      `SELECT unit_number, count(*) AS n FROM jobs WHERE deleted_at IS NULL AND status <> 'canceled' AND start_date BETWEEN ?1 AND ?2
+         AND country IN (SELECT value FROM json_each(?3)) GROUP BY unit_number`,
+    ).bind(first, last, cs),
+    c.env.DB.prepare(
+      `SELECT d.unit_number, count(*) AS n FROM wg_runs r JOIN wg_drums d ON d.drum_no = r.drum_no
+       WHERE r.wg_active = 1 AND r.is_cut_only = 0 AND r.job_date BETWEEN ?1 AND ?2 AND d.country IN (SELECT value FROM json_each(?3)) GROUP BY d.unit_number`,
+    ).bind(first, last, cs),
+    c.env.DB.prepare(
+      `SELECT coalesce(j.unit_number, CASE WHEN f.job_id IS NULL THEN json_extract(f.detail, '$.unit') END) AS unit_number, count(*) AS n
+       FROM recon_findings f LEFT JOIN jobs j ON j.id = f.job_id
+       WHERE f.status = 'open' AND f.country IN (SELECT value FROM json_each(?)) GROUP BY 1`,
+    ).bind(cs),
     c.env.DB.prepare(`SELECT severity, count(*) n FROM recon_findings WHERE status = 'open' AND country IN (SELECT value FROM json_each(?)) GROUP BY severity`).bind(cs),
     c.env.DB.prepare(`SELECT occurred_at, username, summary FROM audit_log WHERE entity_type = 'reconciliation' AND action = 'run' ORDER BY occurred_at DESC LIMIT 1`),
     // per SDM: jobs in the month and open findings on their jobs
@@ -163,9 +173,11 @@ recon.get('/summary', async (c) => {
   ]);
   return c.json({
     month, from: startDate(c.env),
-    units: (units.results as { jobs: number; runs: number; open_findings: number }[]).filter((u) => u.jobs || u.runs || u.open_findings),
+    units: (unitList.results as { unit_number: string }[]).map(({ unit_number }) => ({
+      unit_number, jobs: countOf(jobCounts, unit_number), runs: countOf(runCounts, unit_number), open_findings: countOf(findingCounts, unit_number),
+    })).filter((x) => x.jobs || x.runs || x.open_findings),
     open: Object.fromEntries((open.results as { severity: string; n: number }[]).map((r) => [r.severity, r.n])),
-    lastRun: last.results[0] ?? null,
+    lastRun: lastRun.results[0] ?? null,
     sdms: (sdms.results as { jobs: number; open_findings: number }[]).filter((s) => s.jobs || s.open_findings),
   });
 });

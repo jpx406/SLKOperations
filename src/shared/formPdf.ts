@@ -3,6 +3,7 @@
 // who completed and approved it, with the time of each step.
 
 import { NESR_LOGO_JPEG } from './brandLogo';
+import { stampText } from './dates';
 import { PdfDoc } from './pdf';
 
 const LOGO = { width: NESR_LOGO_JPEG.width, height: NESR_LOGO_JPEG.height, data: Uint8Array.from(atob(NESR_LOGO_JPEG.base64), (c) => c.charCodeAt(0)) };
@@ -11,8 +12,6 @@ const WARN: [number, number, number] = [0.72, 0.36, 0];
 const BAND: [number, number, number] = [0.93, 0.94, 0.95];
 const ACCENT: [number, number, number] = [0.78, 0.83, 0];
 
-/** Date and time in Riyadh, the way every approval is stamped on screen and on paper. */
-export const stampText = (iso: string) => `${new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} Riyadh`;
 
 export interface FormPdfInput {
   title: string; code: string; revision: string;

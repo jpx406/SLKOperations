@@ -1,6 +1,6 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { stampText } from '../../shared/formPdf';
+import { stampText } from '../../shared/dates';
 import { FileSpreadsheet, Mail, Printer, RotateCcw, ShieldCheck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';

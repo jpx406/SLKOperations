@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, ClipboardCheck, FolderArchive, RotateCcw, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { applies, checklistProgress, type APPLIES_IF, type FormTemplate, type JobFacts } from '../../shared/forms';
-import { stampText } from '../../shared/formPdf';
+import { stampText } from '../../shared/dates';
 import { ANSWER_LABEL, optionsOf, type Answer } from '../../shared/jra';
 import type { Stage } from '../../shared/stages';
 import { sizeText } from '../../shared/attachments';

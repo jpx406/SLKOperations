@@ -1,42 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StrictMode, Suspense, lazy } from 'react';
+import { StrictMode, Suspense, lazy, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Navigate, RouterProvider, createBrowserRouter, useLocation } from 'react-router';
 
 import { RequireAuth } from './auth';
 import { AppShell } from './components/AppShell';
-import { AdminUsers } from './pages/AdminUsers';
-import { Database } from './pages/Database';
-import { UtilityList, UtilityProject } from './pages/Utilities';
-import { LessonEditor, LessonList } from './pages/Lessons';
-import { JobBoard } from './pages/JobBoard';
-import { JobEditor } from './pages/JobEditor';
-import { JobLog } from './pages/JobLog';
-import { JobRiskProfile } from './pages/JobRiskProfile';
-import { EightMinFactsEditor, EightMinFactsList } from './pages/EightMinFacts';
-import { FailureRoster } from './pages/FailureRoster';
-import { NptAnalysis, Statistics } from './pages/Statistics';
-import { Utilization } from './pages/People';
-import { CompetencyModule } from './pages/CompetencyModule';
-import { Attendance } from './pages/Attendance';
-import { Inventory } from './pages/Inventory';
-import { PreJobNoteEditor, PreJobNotesList, PreJobNotesPrint } from './pages/PreJobNotes';
-import { JraPage } from './pages/Jra';
-import { JobLogPage, JobWinchPage } from './pages/JobSubPages';
-import { JobReport } from './pages/JobReport';
-import { Diagrams } from './pages/Diagrams';
-import { BonusAnalysis, BonusReport, BonusRules } from './pages/Bonus';
-import { SalesDashboard } from './pages/Sales';
-import { AdminData } from './pages/AdminData';
-import { FormTemplates } from './pages/FormTemplates';
-import { AuditTrail } from './pages/AuditTrail';
-import { AdminCompanies } from './pages/AdminCompanies';
-import { AiAgent } from './pages/AiAgent';
-import { KnowledgeHub } from './pages/Knowledge';
-import { QuickPlan } from './pages/QuickPlan';
-import { WireDetail, WireKpis, WiresRegister } from './pages/Wires';
-import { Reconciliation } from './pages/Reconciliation';
-import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
 import { ModulePicker } from './pages/Modules';
 import { QrApprove } from './pages/QrApprove';
@@ -47,6 +15,21 @@ import './styles.css';
 
 // a page left open across a deploy reloads into the new version instead of failing (6z.48)
 watchPreloadErrors();
+
+/**
+ * A page loaded only when it is first opened (6z.70), so the first load carries the app shell, not all 40 pages.
+ * Each import goes through lazyRetry: after a deploy, a page whose file was replaced reloads into the new version.
+ */
+function page<M>(load: () => Promise<M>, name: keyof M & string, props?: Record<string, string>) {
+  return {
+    lazy: lazyRetry(async () => {
+      const C = (await load())[name] as unknown as ComponentType<Record<string, string>>;
+      // `k` is the React key, so two routes on the same page (the three inventories) don't share state
+      const Component = props ? () => { const { k, ...rest } = props; return <C key={k} {...rest} />; } : C;
+      return { Component };
+    }),
+  };
+}
 
 // the winch analysis window (6z.41) opens on its own, without the app around it
 const WinchWindow = lazy(lazyRetry(() => import('./pages/winch/WinchWindow')));
@@ -69,70 +52,73 @@ const router = createBrowserRouter([
     path: '/',
     element: <RequireAuth><AppShell /></RequireAuth>,
     errorElement: <RouteError />,
+    // shown while the first page's file loads
+    hydrateFallbackElement: <div className="p-6 text-sm text-text-muted">Loading…</div>,
     children: [
       { index: true, element: <Navigate to="/modules" replace /> },
-      { path: 'operation/schedule', element: <Schedule /> },
-      { path: 'operation/jobs', element: <JobBoard /> },
-      { path: 'operation/jobs/:id/jra', element: <JraPage /> },
+      { path: 'operation/schedule', ...page(() => import('./pages/Schedule'), 'Schedule') },
+      { path: 'operation/jobs', ...page(() => import('./pages/JobBoard'), 'JobBoard') },
+      { path: 'operation/jobs/:id/jra', ...page(() => import('./pages/Jra'), 'JraPage') },
       // the Job log and the Winch data on pages of their own, like the JRA (6z.49)
-      { path: 'operation/jobs/:id/log', element: <JobLogPage /> },
-      { path: 'operation/jobs/:id/winch', element: <JobWinchPage /> },
-      { path: 'operation/jobs/:id/report', element: <JobReport /> },
-      { path: 'operation/jobs/:id/diagrams', element: <Diagrams /> },
-      { path: 'operation/jobs/:id/:stage?', element: <JobEditor /> },
-      { path: 'operation/pre-job-notes', element: <PreJobNotesList /> },
-      { path: 'operation/pre-job-notes/print', element: <PreJobNotesPrint /> },
-      { path: 'operation/pre-job-notes/:id', element: <PreJobNoteEditor /> },
-      { path: 'operation/job-log', element: <JobLog /> },
-      { path: 'operation/job-risk-profile', element: <JobRiskProfile /> },
-      { path: 'operation/8-min-facts', element: <EightMinFactsList /> },
-      { path: 'operation/8-min-facts/:id', element: <EightMinFactsEditor /> },
-      { path: 'operation/failure-roster', element: <FailureRoster /> },
-      { path: 'quality/statistics', element: <Statistics /> },
-      { path: 'quality/npt', element: <NptAnalysis /> },
-      { path: 'quality/utilization', element: <Utilization /> },
+      { path: 'operation/jobs/:id/log', ...page(() => import('./pages/JobSubPages'), 'JobLogPage') },
+      { path: 'operation/jobs/:id/winch', ...page(() => import('./pages/JobSubPages'), 'JobWinchPage') },
+      { path: 'operation/jobs/:id/report', ...page(() => import('./pages/JobReport'), 'JobReport') },
+      { path: 'operation/jobs/:id/diagrams', ...page(() => import('./pages/Diagrams'), 'Diagrams') },
+      { path: 'operation/jobs/:id/:stage?', ...page(() => import('./pages/JobEditor'), 'JobEditor') },
+      { path: 'operation/pre-job-notes', ...page(() => import('./pages/PreJobNotes'), 'PreJobNotesList') },
+      { path: 'operation/pre-job-notes/print', ...page(() => import('./pages/PreJobNotes'), 'PreJobNotesPrint') },
+      { path: 'operation/pre-job-notes/:id', ...page(() => import('./pages/PreJobNotes'), 'PreJobNoteEditor') },
+      { path: 'operation/job-log', ...page(() => import('./pages/JobLog'), 'JobLog') },
+      { path: 'operation/job-risk-profile', ...page(() => import('./pages/JobRiskProfile'), 'JobRiskProfile') },
+      { path: 'operation/8-min-facts', ...page(() => import('./pages/EightMinFacts'), 'EightMinFactsList') },
+      { path: 'operation/8-min-facts/:id', ...page(() => import('./pages/EightMinFacts'), 'EightMinFactsEditor') },
+      { path: 'operation/failure-roster', ...page(() => import('./pages/FailureRoster'), 'FailureRoster') },
+      { path: 'quality/statistics', ...page(() => import('./pages/Statistics'), 'Statistics') },
+      { path: 'quality/npt', ...page(() => import('./pages/Statistics'), 'NptAnalysis') },
+      { path: 'quality/utilization', ...page(() => import('./pages/People'), 'Utilization') },
       // the Competency Framework System, converted to slickline (6z.34)
-      { path: 'competency', element: <CompetencyModule /> },
-      { path: 'career', element: <CompetencyModule mode="career" /> },
+      { path: 'competency', ...page(() => import('./pages/CompetencyModule'), 'CompetencyModule') },
+      { path: 'career', ...page(() => import('./pages/CompetencyModule'), 'CompetencyModule', { mode: 'career' }) },
       // the old address, from before Competency had its own menu (6z.35)
       { path: 'quality/competency', element: <MovedTo path="/competency" /> },
-      { path: 'quality/wire-kpis', element: <WireKpis /> },
-      { path: 'wires', element: <WiresRegister /> },
-      { path: 'bonus/report', element: <BonusReport /> },
-      { path: 'bonus/analysis', element: <BonusAnalysis /> },
-      { path: 'bonus/rules', element: <BonusRules /> },
-      { path: 'sales', element: <SalesDashboard /> },
-      { path: 'wires/:serial', element: <WireDetail /> },
-      { path: 'attendance', element: <Attendance /> },
+      { path: 'quality/wire-kpis', ...page(() => import('./pages/Wires'), 'WireKpis') },
+      { path: 'wires', ...page(() => import('./pages/Wires'), 'WiresRegister') },
+      { path: 'bonus/report', ...page(() => import('./pages/Bonus'), 'BonusReport') },
+      { path: 'bonus/analysis', ...page(() => import('./pages/Bonus'), 'BonusAnalysis') },
+      { path: 'bonus/rules', ...page(() => import('./pages/Bonus'), 'BonusRules') },
+      { path: 'sales', ...page(() => import('./pages/Sales'), 'SalesDashboard') },
+      { path: 'wires/:serial', ...page(() => import('./pages/Wires'), 'WireDetail') },
+      { path: 'attendance', ...page(() => import('./pages/Attendance'), 'Attendance') },
       // the Headcount Roster is now Users & Roles (people) and its Attendance categories tab
       { path: 'attendance/roster', element: <Navigate to="/admin/users" replace /> },
-      { path: 'inventory/explosive', element: <Inventory key="explosive" inv="explosive" /> },
-      { path: 'inventory/hardware', element: <Inventory key="hardware" inv="hardware" /> },
-      { path: 'inventory/mcr', element: <Inventory key="mcr" inv="mcr" /> },
-      { path: 'wires/reconciliation', element: <Reconciliation /> },
+      { path: 'inventory/explosive', ...page(() => import('./pages/Inventory'), 'Inventory', { k: 'explosive', inv: 'explosive' }) },
+      { path: 'inventory/hardware', ...page(() => import('./pages/Inventory'), 'Inventory', { k: 'hardware', inv: 'hardware' }) },
+      { path: 'inventory/mcr', ...page(() => import('./pages/Inventory'), 'Inventory', { k: 'mcr', inv: 'mcr' }) },
+      { path: 'wires/reconciliation', ...page(() => import('./pages/Reconciliation'), 'Reconciliation') },
       // the old address, kept for bookmarks and digest emails sent before the move
       { path: 'operation/reconciliation', element: <MovedTo path="/wires/reconciliation" /> },
-      { path: 'operation/database', element: <Database /> },
+      { path: 'operation/database', ...page(() => import('./pages/Database'), 'Database') },
       // Utilities (6z.47): the tools on their own, as projects
-      { path: 'utilities/lessons', element: <LessonList /> },
-      { path: 'utilities/lessons/:id', element: <LessonEditor /> },
-      { path: 'utilities/:slug', element: <UtilityList /> },
-      { path: 'utilities/:slug/:id', element: <UtilityProject /> },
-      { path: 'admin/users', element: <AdminUsers /> },
-      { path: 'admin/data', element: <AdminData /> },
-      { path: 'admin/form-templates', element: <FormTemplates /> },
-      { path: 'admin/audit', element: <AuditTrail /> },
-      { path: 'admin/companies', element: <AdminCompanies /> },
-      { path: 'admin/ai-agent', element: <AiAgent /> },
-      { path: 'knowledge', element: <KnowledgeHub /> },
-      { path: 'operation/opportunities', element: <QuickPlan /> },
+      { path: 'utilities/lessons', ...page(() => import('./pages/Lessons'), 'LessonList') },
+      { path: 'utilities/lessons/:id', ...page(() => import('./pages/Lessons'), 'LessonEditor') },
+      { path: 'utilities/:slug', ...page(() => import('./pages/Utilities'), 'UtilityList') },
+      { path: 'utilities/:slug/:id', ...page(() => import('./pages/Utilities'), 'UtilityProject') },
+      { path: 'admin/users', ...page(() => import('./pages/AdminUsers'), 'AdminUsers') },
+      { path: 'admin/data', ...page(() => import('./pages/AdminData'), 'AdminData') },
+      { path: 'admin/form-templates', ...page(() => import('./pages/FormTemplates'), 'FormTemplates') },
+      { path: 'admin/audit', ...page(() => import('./pages/AuditTrail'), 'AuditTrail') },
+      { path: 'admin/companies', ...page(() => import('./pages/AdminCompanies'), 'AdminCompanies') },
+      { path: 'admin/ai-agent', ...page(() => import('./pages/AiAgent'), 'AiAgent') },
+      { path: 'knowledge', ...page(() => import('./pages/Knowledge'), 'KnowledgeHub') },
+      { path: 'operation/opportunities', ...page(() => import('./pages/QuickPlan'), 'QuickPlan') },
       { path: 'operation/quick-plan', element: <Navigate to="/operation/opportunities" replace /> },
       { path: '*', element: <NotFound /> },
     ],
   },
 ]);
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: true } } });
+// pages that refresh on a timer stop while the tab is in the background, and refresh when it comes back
+const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: true, refetchIntervalInBackground: false } } });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
