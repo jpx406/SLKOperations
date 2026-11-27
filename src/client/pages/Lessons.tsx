@@ -514,8 +514,8 @@ export function LessonEditor() {
         {d.can.delete && <Button variant="ghost" onClick={() => setDialog('delete')}><Trash2 aria-hidden className="size-4" />Delete draft</Button>}
       </div>
 
-      <div className={cx('grid grid-cols-[minmax(0,1fr)] items-start gap-5', free ? 'lg:grid-cols-[minmax(0,1fr)_minmax(380px,560px)]' : 'lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]')}>
-        <fieldset disabled={!editable} className="flex min-w-0 flex-col gap-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <fieldset disabled={!editable} className="flex min-w-0 flex-col gap-3 lg:order-2">
           <Section title="Header" aside={flag('header')}>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
               <span className="flex items-center gap-2">Event facts strip {showSwitch('meta')}</span>
@@ -598,7 +598,7 @@ export function LessonEditor() {
           {editable && l.status === 'draft' && list.data?.ai && <ReportDraft lessonId={l.id} onDone={(msg) => { if (msg) setError(msg); reload(); }} before={flush} />}
         </fieldset>
 
-        <div className="lg:sticky lg:top-4">
+        <div className="min-w-0 lg:sticky lg:top-4 lg:order-1">
           <div className="mb-3 rounded-lg border border-border bg-surface p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2"><LayoutTemplate aria-hidden className="size-4 text-text-muted" /><b className="text-sm">Page layout</b>
               <span className="min-w-0 flex-1 truncate text-xs text-text-muted" title={d.templateName ?? undefined}>{d.templateName ? `${d.ownTemplate ? 'Own template' : `${l.company} template`}: ${d.templateName}` : 'No slides template: PDF only'}</span></div>

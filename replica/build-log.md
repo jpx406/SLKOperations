@@ -1891,3 +1891,9 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Why:** on the Gulf Energy templates made from NESR, the logo sat high in the header. It was centred on the NESR mark's old box, about 4 pt above the middle of the header band.
 - **Now:** the logo is centred on the header band itself (the old box when there is no band). Templates made before this need "Make from the NESR template" once more.
 - **Verified:** tests 546 (the made template's logo centred on the band within 1 pt); the Gulf Energy template made with the white band opened in PowerPoint with the logo centred.
+
+## 6z.66: Lessons & Best Practices: the lesson page on the left, the form on the right, in two equal columns
+
+- **Why:** the owner asked to swap the editor screen, with the lesson page on the left and both columns the same width.
+- **Now:** on a wide screen the page preview (with its layout controls) is on the left and stays in view while scrolling, and the form is on the right. The two columns are always the same width, in both "In order" and "Boxes I can move". On a phone the order is as before: the form first, then the page.
+- **Verified:** tests 546; type check clean. In the local app at 1440 px both columns are 581 px wide, preview on the left; at 390 px the form comes first, no sideways scroll, no console errors.
