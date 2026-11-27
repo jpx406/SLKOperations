@@ -5,7 +5,8 @@ import { helpFor } from '../../shared/help';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Markdown } from './Markdown';
-import { Banner, Button, Card, cx, inputClass } from './ui';
+import { Banner, Button, cx, inputClass } from './ui';
+import { Dialog, useDialogFocus } from './Dialog';
 
 // Help (S22): the in-app guide, showing the sections for the tabs the reader has. Help assistant (S23): a side
 // panel that answers how-to questions from the same guide; it has no access to data.
@@ -25,12 +26,9 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
   const sections = helpFor(me?.menus ?? {}, me?.role === 'admin');
   const [at, setAt] = useState(sections[0]?.id ?? '');
   const s = sections.find((x) => x.id === at) ?? sections[0];
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="help-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4">
-      <Card className="flex max-h-[85vh] w-full max-w-4xl flex-col">
-        <div className="mb-3 flex items-start gap-3"><h2 id="help-title" className="flex-1 font-display text-lg font-bold">SLK Operations Hub guide</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[14rem_1fr]">
+    <Dialog title="SLK Operations Hub guide" onClose={onClose} size="xl">
+        <div className="grid grid-cols-1 gap-4 md:max-h-[calc(85vh-6rem)] md:grid-cols-[14rem_1fr]">
           <nav aria-label="Guide sections" className="overflow-y-auto">
             <ul className="space-y-0.5 text-sm">
               {sections.map((x) => <li key={x.id}><button type="button" aria-current={x.id === s?.id ? 'true' : undefined} onClick={() => setAt(x.id)}
@@ -39,8 +37,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
           </nav>
           {s && <article className="overflow-y-auto pr-1 text-sm"><h3 className="mb-2 font-display text-base font-bold">{s.title}</h3>{s.body.split('\n\n').map((p, i) => <p key={i} className="mb-3 max-w-prose">{p}</p>)}</article>}
         </div>
-      </Card>
-    </div>
+    </Dialog>
   );
 }
 
@@ -67,7 +64,8 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { input.current?.focus(); }, []);
+  const panel = useRef<HTMLElement>(null);
+  useDialogFocus(panel, onClose, input);
   useEffect(() => { end.current?.scrollIntoView({ block: 'nearest' }); }, [msgs]);
   const ask = useMutation({
     mutationFn: (history: Msg[]) => api<{ reply: string; note: string | null }>('/ai/assistant', { method: 'POST', json: { messages: history.map(({ role, content }) => ({ role, content })) } }),
@@ -81,7 +79,7 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
     setMsgs(next); setDraft(''); setError(null); ask.mutate(next);
   };
   return (
-    <aside role="dialog" aria-label="Help assistant" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+    <aside ref={panel} data-dialog-panel role="dialog" aria-label="Help assistant"
       className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col border-l border-border bg-surface shadow-xl print:hidden">
       <div className="flex items-center gap-2 border-b border-border p-3">
         <MessageCircleQuestion aria-hidden className="size-5" /><h2 className="flex-1 font-display font-bold">Help assistant</h2>

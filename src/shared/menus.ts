@@ -12,7 +12,7 @@ export const NAV: Group[] = [
     pages: [
       { key: 'schedule', label: 'Schedule', path: '/operation/schedule', screen: 'S02' },
       { key: 'jobs', label: 'Jobs', path: '/operation/jobs', screen: 'S03' },
-      { key: 'job_log', label: 'Job Log', path: '/operation/job-log', screen: 'S08', milestone: '2g' },
+      { key: 'job_log', label: 'Job List', path: '/operation/job-log', screen: 'S08', milestone: '2g' },
       // 6z.54: the Risk Tool and Crew Check out of the Competency Framework
       { key: 'job_risk_profile', label: 'Job Risk Profile', path: '/operation/job-risk-profile', screen: 'S08b', milestone: '6' },
       { key: 'pre_job_notes', label: 'Pre-Job Notes', path: '/operation/pre-job-notes', screen: 'S09', milestone: '3' },

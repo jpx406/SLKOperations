@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import { CATEGORIES, INLINE, TYPES, checkUpload, sizeText, type AttachEntity, type Category } from '../../shared/attachments';
 import { ApiError, api } from '../api';
 import { Banner, Button, cx, inputSized } from './ui';
+import { useConfirm } from './Dialog';
 
 // Files kept with a job or a Knowledge Hub entry (R2). Drop files or pick them, choose what they are, and they upload
 // one by one. Images show as thumbnails; images and PDFs open in a new tab, everything else downloads.
@@ -40,8 +41,9 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
     if (input.current) input.current.value = '';
     qc.invalidateQueries({ queryKey: ['attachments', entity, id] });
   };
+  const [ask, confirmDialog] = useConfirm();
   const remove = async (f: FileRow) => {
-    if (!window.confirm(`Remove “${f.file_name}”? It is hidden here; the audit log keeps a record.`)) return;
+    if (!(await ask({ title: `Remove “${f.file_name}”?`, body: 'It is hidden here; the audit log keeps a record.', confirm: 'Remove file', danger: true }))) return;
     try { await api(`${base}/${f.id}`, { method: 'DELETE' }); qc.invalidateQueries({ queryKey: ['attachments', entity, id] }); }
     catch (e) { setErrors([(e as ApiError).message]); }
   };
@@ -49,6 +51,7 @@ export function Attachments({ entity, id, title = 'Attachments' }: { entity: Att
 
   return (
     <section aria-label={title}>
+      {confirmDialog}
       <h2 className="mb-2 flex items-center gap-2 font-display text-base font-bold uppercase"><Paperclip aria-hidden className="size-4" />{title} <span className="font-mono text-sm font-normal text-text-muted">{files.length}</span></h2>
       {q.data && !q.data.storage && <div className="mb-2"><Banner tone="warning">File storage isn’t set up on the server yet (R2 bucket slkops-files).</Banner></div>}
       {errors.length > 0 && <div className="mb-2"><Banner tone="danger"><ul>{errors.map((e, i) => <li key={i}>{e}</li>)}</ul></Banner></div>}

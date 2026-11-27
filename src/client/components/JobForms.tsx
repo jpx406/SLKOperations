@@ -9,6 +9,7 @@ import { sizeText } from '../../shared/attachments';
 import { api } from '../api';
 import { JraBanner } from '../pages/Jra';
 import { Banner, Button, cx, inputClass } from './ui';
+import { useConfirm } from './Dialog';
 
 // The forms of one job stage (Administration → Form templates): the JRA briefing when the JRA belongs to this
 // stage, each checklist in use for the stage, and on Closure the job package. A form is filled, marked complete,
@@ -66,13 +67,15 @@ function Actions({ f, canEdit, canApprove, canReopen, busy, ready, missing, onAc
   f?: Filled; canEdit: boolean; canApprove: boolean; canReopen: boolean; busy: boolean; ready: boolean; missing: string; onAct: (a: 'complete' | 'approve' | 'reopen') => void;
 }) {
   const done = f?.status === 'completed';
+  const [ask, confirmDialog] = useConfirm();
   return (
     <>
+      {confirmDialog}
       {!done && canEdit && <Button size="sm" variant="primary" loading={busy} disabled={!ready} title={ready ? undefined : missing} onClick={() => onAct('complete')}><Check aria-hidden className="size-3.5" />Mark complete</Button>}
       {done && !f?.approved_at && (canApprove
         ? <Button size="sm" variant="primary" loading={busy} onClick={() => onAct('approve')}><ShieldCheck aria-hidden className="size-3.5" />Approve as SDM</Button>
         : <span className="text-xs text-text-muted">Waiting for the SDM to approve it</span>)}
-      {done && canReopen && <Button size="sm" loading={busy} onClick={() => { if (confirm('Reopen this form? Its approval is cleared and the change is kept in the audit trail.')) onAct('reopen'); }}><RotateCcw aria-hidden className="size-3.5" />Reopen (admin)</Button>}
+      {done && canReopen && <Button size="sm" loading={busy} onClick={async () => { if (await ask({ title: 'Reopen this form?', body: 'Its approval is cleared and the change is kept in the audit trail.', confirm: 'Reopen form', danger: true })) onAct('reopen'); }}><RotateCcw aria-hidden className="size-3.5" />Reopen (admin)</Button>}
       {!done && !ready && <span className="text-xs text-text-muted">{missing}</span>}
     </>
   );

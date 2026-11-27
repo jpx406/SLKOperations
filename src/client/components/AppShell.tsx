@@ -1,7 +1,7 @@
 import { Select } from './Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Award, BookOpen, Boxes, Cable, CalendarCheck, ChartColumn, ChevronDown, ChevronRight, ClipboardList, Clock, Database, Fingerprint, Gauge, GraduationCap, Info, TrendingUp, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, Sun, Wrench, X, type LucideIcon } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { visibleNav, type Group } from '../../shared/menus';
 import { MODULES, currentModule, moduleAccess, moduleNav, wireguardAccess } from '../../shared/modules';
@@ -13,6 +13,7 @@ import { useMe } from '../auth';
 import { SCREEN_SIZES, useDisplay, type DensityChoice } from '../display';
 import { AssistantLauncher, HelpButton } from './Help';
 import { Button, cx, rovingKeys } from './ui';
+import { useDialogFocus } from './Dialog';
 import { AboutDialog, BrandHeader, NesrLogo, PRODUCT, Wordmark } from './Brand';
 import { NewVersionBar, useNewVersion } from './NewVersionBar';
 import { FaceIdDialog, FaceIdOffer } from './Passkeys';
@@ -82,19 +83,19 @@ function SyncStatus({ canSync }: { canSync: boolean }) {
  */
 function NavDrawer({ nav, current, onClose, status }: { nav: Group[]; current: string; onClose: () => void; status: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
+  const start = useRef<HTMLElement | null>(null);
+  // the page you are on gets focus first (found before useDialogFocus runs)
+  useLayoutEffect(() => { start.current = panel.current?.querySelector<HTMLElement>('[aria-current="page"], a') ?? null; }, []);
+  useDialogFocus(panel, onClose, start);
   useEffect(() => {
-    const prev = document.activeElement as HTMLElement | null;
-    panel.current?.querySelector<HTMLElement>('[aria-current="page"], a')?.focus();
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', esc);
     const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', esc); document.body.style.overflow = overflow; prev?.focus(); };
-  }, [onClose]);
+    return () => { document.body.style.overflow = overflow; };
+  }, []);
   return (
     <div className="fixed inset-0 z-(--z-drawer) print:hidden">
       <button type="button" aria-label="Close the menu" tabIndex={-1} className="absolute inset-0 bg-bg/70" onClick={onClose} />
-      <div ref={panel} role="dialog" aria-modal="true" aria-label="Menu"
+      <div ref={panel} data-dialog-panel role="dialog" aria-modal="true" aria-label="Menu"
         className="absolute inset-y-0 left-0 flex w-[min(22rem,88vw)] flex-col border-r border-border bg-surface shadow-pop">
         <div className="flex items-center gap-2 border-b border-border px-4 py-3">
           <NesrLogo className="h-7" />

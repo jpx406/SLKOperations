@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Maximize2, Printer, RefreshCw, Sparkles, X } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { mindSize, type Digest, type MindMap, type MindNode } from '../../../shared/docDigest';
 import type { KnowledgeDoc } from '../../../shared/knowledge';
 import { ApiError, api, formatDate } from '../../api';
 import { Banner, Button, Skeleton, cx } from '../../components/ui';
 import { Dialog } from './common';
+import { useDialogFocus } from '../../components/Dialog';
 
 // Mind map of a published document (6z.16; lesson slides removed in 6z.20). Made once per revision by AI from the document and saved,
 // so checking the mind map during the job never reads the document again.
@@ -124,13 +125,20 @@ export function MindMapPanel({ doc, canRemake }: { doc: KnowledgeDoc; canRemake?
           <MindMapView map={map} />
         </>
       )}
-      {full && map && (
-        <div role="dialog" aria-modal="true" aria-label={`Mind map: ${doc.title}`} className="fixed inset-0 z-[60] overflow-y-auto bg-bg p-4 md:p-8 md:[&_li]:text-base md:[&_h3]:text-base">
-          {/* larger type full screen, to read at the unit */}
-          <div className="mb-4 flex flex-wrap items-center gap-3"><h2 className="min-w-0 flex-1 font-display text-lg font-bold">{doc.doc_no && <span className="mr-2 font-mono text-sm">{doc.doc_no}</span>}{doc.title}{doc.published_at && <span className="ml-2 text-sm font-normal text-text-muted">Rev {doc.revision}</span>}</h2><MindLegend /><Button size="sm" variant="ghost" aria-label="Close" onClick={() => setFull(false)}><X aria-hidden className="size-4" /></Button></div>
-          <MindMapView map={map} />
-        </div>
-      )}
+      {full && map && <FullScreenMap doc={doc} map={map} onClose={() => setFull(false)} />}
+    </div>
+  );
+}
+
+/** The mind map full screen: focus moves in, Tab stays inside, Escape closes it. */
+function FullScreenMap({ doc, map, onClose }: { doc: KnowledgeDoc; map: MindMap; onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useDialogFocus(panel, onClose);
+  return (
+    <div ref={panel} data-dialog-panel role="dialog" aria-modal="true" aria-label={`Mind map: ${doc.title}`} className="fixed inset-0 z-[60] overflow-y-auto bg-bg p-4 md:p-8 md:[&_li]:text-base md:[&_h3]:text-base">
+      {/* larger type full screen, to read at the unit */}
+      <div className="mb-4 flex flex-wrap items-center gap-3"><h2 className="min-w-0 flex-1 font-display text-lg font-bold">{doc.doc_no && <span className="mr-2 font-mono text-sm">{doc.doc_no}</span>}{doc.title}{doc.published_at && <span className="ml-2 text-sm font-normal text-text-muted">Rev {doc.revision}</span>}</h2><MindLegend /><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
+      <MindMapView map={map} />
     </div>
   );
 }

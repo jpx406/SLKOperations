@@ -1,12 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Check, ListChecks, Lock, Pencil, Plus, RefreshCw, Settings2, Trash2, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { JOB_STATUSES, LOG_OPTION_KINDS, hasPhrase, phraseGroups, togglePhrase, wireFinalOf, type Bha, type JobField, type LogForm, type LogOption, type LogOptionKind, type ScalarKey } from '../../shared/jobLogForm';
 import { api } from '../api';
 import { Select } from '../components/Select';
 import { Banner, Button, Card, Field, cx, inputClass } from '../components/ui';
 import { Dialog } from '../pages/knowledge/common';
+import { useConfirm, useDialogFocus } from '../components/Dialog';
 
 // The parts of the Job log added from the owner's NESR Slickline Service Report (6z.52): the full header, the
 // description checklist, and the job status, wire details, BHA per run and note.
@@ -164,9 +165,8 @@ export function PhrasePicker({ value, onChange, label, ctx }: { value: string; o
   useEffect(() => {
     if (!open) return;
     const off = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', off); document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('mousedown', off); document.removeEventListener('keydown', esc); };
+    document.addEventListener('mousedown', off);
+    return () => { document.removeEventListener('mousedown', off); };
   }, [open]);
   const all = phraseGroups((ctx.options?.custom ?? []).filter((o) => o.kind === 'phrase'));
   const groups = all.map((g) => ({ ...g, phrases: g.phrases.filter((p) => p.toLowerCase().includes(q.toLowerCase())) })).filter((g) => g.phrases.length);
@@ -174,8 +174,8 @@ export function PhrasePicker({ value, onChange, label, ctx }: { value: string; o
     <div ref={box}>
       <div ref={btn}><Button size="sm" variant="ghost" aria-label={`Choose wording for ${label}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}><ListChecks aria-hidden className="size-4" /></Button></div>
       {open && pos && (
-        <div role="dialog" aria-label={`Wording for ${label}`} style={{ left: pos.left, top: pos.top, maxHeight: Math.min(440, pos.maxH) }} className="fixed z-50 flex w-[min(26rem,calc(100vw-2rem))] flex-col rounded-md border border-border-strong bg-surface p-2 shadow-lg">
-          <input autoFocus aria-label="Filter the wording" className={cx(inputClass, 'mb-2')} placeholder="Filter…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <PopoverPanel onClose={() => setOpen(false)} label={`Wording for ${label}`} style={{ left: pos.left, top: pos.top, maxHeight: Math.min(440, pos.maxH) }} className="fixed z-50 flex w-[min(26rem,calc(100vw-2rem))] flex-col rounded-md border border-border-strong bg-surface p-2 shadow-lg">
+          <input aria-label="Filter the wording" className={cx(inputClass, 'mb-2')} placeholder="Filter…" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             {groups.map((g) => (
               <fieldset key={g.group} className="mb-2">
@@ -198,11 +198,18 @@ export function PhrasePicker({ value, onChange, label, ctx }: { value: string; o
               : <span className="text-xs text-text-subtle">Fill the ___ blanks in the description.</span>}
             <Button size="sm" variant="secondary" onClick={() => setOpen(false)}><Check aria-hidden className="size-3.5" />Done</Button>
           </div>
-        </div>
+        </PopoverPanel>
       )}
       {manage && <ManageWording ctx={ctx} onClose={() => setManage(false)} />}
     </div>
   );
+}
+
+/** The wording popover's panel: focus moves in, Tab stays inside, Escape closes it. */
+function PopoverPanel({ onClose, label, style, className, children }: { onClose: () => void; label: string; style: CSSProperties; className: string; children: ReactNode }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useDialogFocus(panel, onClose);
+  return <div ref={panel} data-dialog-panel role="dialog" aria-label={label} style={style} className={className}>{children}</div>;
 }
 
 /** Add, change and remove the wording offered in the checklist, for everyone in the country. */
@@ -215,8 +222,10 @@ function ManageWording({ ctx, onClose }: { ctx: HeaderCtx; onClose: () => void }
   const [text, setText] = useState('');
   const [editing, setEditing] = useState<{ id: string; value: string; grp: string } | null>(null);
   const add = async () => { if (await saver.add('phrase', text.trim(), grp === '+' ? newGrp.trim() : grp)) { setText(''); if (grp === '+' && newGrp.trim()) { setGrp(newGrp.trim()); setNewGrp(''); } } };
+  const [ask, confirmDialog] = useConfirm();
   return (
     <Dialog title={`${LOG_OPTION_KINDS.phrase} · ${ctx.options?.country ?? ''}`} onClose={onClose} wide>
+      {confirmDialog}
       <p className="mb-3 text-sm text-text-muted">The checklist by each work description. Changes are for everyone in {ctx.options?.country}. Use ___ for a blank to fill in. Logs that already used a wording keep their text.</p>
       {saver.error && <div className="mb-3"><Banner tone="danger">{saver.error}</Banner></div>}
       <div className="mb-4 grid gap-2 rounded-md border border-border bg-surface-2 p-3 sm:grid-cols-[12rem_1fr_auto] sm:items-end">
@@ -249,7 +258,7 @@ function ManageWording({ ctx, onClose }: { ctx: HeaderCtx; onClose: () => void }
                   <>
                     <span className="min-w-0 flex-1">{o.value}</span>
                     <Button size="sm" variant="ghost" aria-label={`Change ${o.value}`} onClick={() => setEditing({ id: o.id, value: o.value, grp: o.grp })}><Pencil aria-hidden className="size-3.5" /></Button>
-                    <Button size="sm" variant="ghost" className="text-danger" aria-label={`Remove ${o.value}`} onClick={() => { if (window.confirm(`Remove “${o.value}” from the list?`)) void saver.change(o.id, { active: false }); }}><Trash2 aria-hidden className="size-3.5" /></Button>
+                    <Button size="sm" variant="ghost" className="text-danger" aria-label={`Remove ${o.value}`} onClick={async () => { if (await ask({ title: `Remove “${o.value}” from the list?`, body: 'Logs that already used it keep their text.', confirm: 'Remove wording', danger: true })) void saver.change(o.id, { active: false }); }}><Trash2 aria-hidden className="size-3.5" /></Button>
                   </>
                 )}
               </li>
@@ -276,8 +285,10 @@ export function JobDetailsCard({ f, ro, set, toolBha, locked }: { f: LogForm; ro
   const runsInLog = [...new Set(f.rows.map((r) => r.run).filter(Boolean))];
   const missing = runsInLog.filter((r) => !f.bha.some((b) => b.run === r));
   const final = wireFinalOf({ ...f, ...locked });
+  const [ask, confirmDialog] = useConfirm();
   return (
     <Card className="mb-4 p-4">
+      {confirmDialog}
       <h2 className="mb-3 text-sm font-semibold">Job status, wire and BHA</h2>
       <fieldset className="mb-4">
         <legend className="label-caps mb-1.5 text-text-muted">Job status</legend>
@@ -319,7 +330,7 @@ export function JobDetailsCard({ f, ro, set, toolBha, locked }: { f: LogForm; ro
       {!ro && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => set({ bha: [...f.bha, { run: String(Math.max(0, ...f.bha.map((b) => Number(b.run) || 0)) + 1), text: '' }] })}><Plus aria-hidden className="size-3.5" />Add run</Button>
-          {toolBha.length > 0 && <Button size="sm" variant="ghost" onClick={() => { if (!f.bha.some((b) => b.text.trim()) || window.confirm('Replace the BHA with the tool strings saved in Preparation?')) set({ bha: toolBha.map((b) => ({ ...b })) }); }}><RefreshCw aria-hidden className="size-3.5" />Read from the tool strings</Button>}
+          {toolBha.length > 0 && <Button size="sm" variant="ghost" onClick={async () => { if (!f.bha.some((b) => b.text.trim()) || await ask({ title: 'Replace the BHA with the tool strings saved in Preparation?', body: 'The BHA typed here is replaced.', confirm: 'Replace the BHA' })) set({ bha: toolBha.map((b) => ({ ...b })) }); }}><RefreshCw aria-hidden className="size-3.5" />Read from the tool strings</Button>}
           {missing.length > 0 && <span className="text-xs text-warning">The log has run{missing.length > 1 ? 's' : ''} {missing.join(', ')} with no BHA.</span>}
         </div>
       )}

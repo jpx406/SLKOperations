@@ -1,11 +1,12 @@
 import { Select } from './Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, Plus, Trash2, UserMinus, X } from 'lucide-react';
+import { ArrowLeftRight, Plus, Trash2, UserMinus } from 'lucide-react';
 import { useState } from 'react';
 import { TOOLSTRING_COMPONENTS, preJobWireStatus, toolChecks, toolTotals, type ToolPart } from '../../shared/toolstring';
 import type { CrewMember, Employee, Job, JobCrew, Lookups, WireOptions } from '../../shared/types';
 import { api } from '../api';
 import { Banner, Button, LockHint, cx, inputClass, inputSized, radioTab, rovingKeys } from './ui';
+import { Dialog } from './Dialog';
 
 // Pieces of the job editor that hold more than one field: wire panel, toolstring builder, crew, gated detail sections.
 
@@ -250,13 +251,7 @@ function CrewChange({ job, kind, member, people, busy, onClose, onSave }: {
   const replace = kind === 'replace';
   const ok = !!date && (!replace || !!who);
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="crew-change-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4"
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="w-full max-w-md rounded-lg border border-card-edge bg-surface p-5 shadow-pop">
-        <div className="mb-3 flex items-start gap-3">
-          <h2 id="crew-change-title" className="flex-1 font-display text-lg font-bold">{replace ? `Replace ${member.full_name}` : `Take ${member.full_name} off the job`}</h2>
-          <Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button>
-        </div>
+    <Dialog title={replace ? `Replace ${member.full_name}` : `Take ${member.full_name} off the job`} onClose={onClose} size="sm">
         <div className="space-y-4">
           {replace && (
             <div>
@@ -289,8 +284,7 @@ function CrewChange({ job, kind, member, people, busy, onClose, onSave }: {
             {replace ? 'Replace' : 'Take off the job'}
           </Button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 

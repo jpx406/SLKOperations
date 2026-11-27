@@ -13,6 +13,7 @@ import { BarChart, KpiTile, saveFile } from '../components/charts';
 import { FilterBar, useFilters } from '../components/FilterBar';
 import { SignatureBadge } from '../components/Signature';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputSized } from '../components/ui';
+import { useConfirm } from '../components/Dialog';
 
 // Bonus (Administrator Manual 1 and 3): Report (per person), Analysis (trends and % of revenue), Rules (admin),
 // and the distribution on a job's Closure stage. Visible to whoever holds the Bonus tab.
@@ -44,8 +45,9 @@ export function BonusReport() {
   }, [q.data, q2]);
   const exportXlsx = () => saveFile(`bonus-report-${new Date().toISOString().slice(0, 10)}.xlsx`, workbook('Bonus report', ['Name', 'EID', 'Role', 'Jobs', 'Total bonus', 'Currency', 'Not yet approved'],
     people.map((p) => [p.name, p.eid, p.role ? ROLE_LABEL[p.role] : '', p.jobs.size, p.total / 100, p.currency, p.draft / 100]), [24, 10, 18, 7, 12, 8, 14]), XLSX);
+  const [ask, confirmDialog] = useConfirm();
   const statements = async () => {
-    if (!window.confirm(`Email each person their approved bonus for the current filters (${people.length} people)?`)) return;
+    if (!(await ask({ title: `Email each person their approved bonus for the current filters (${people.length} people)?`, confirm: 'Email statements' }))) return;
     try {
       const r = await api<{ sent: number; noEmail: string[]; mailer: boolean }>(`/bonus/statements?${filtersToQuery(filters)}`, { method: 'POST' });
       setNotice({ tone: r.mailer ? 'success' : 'warning', text: r.mailer ? `${r.sent} statement${r.sent === 1 ? '' : 's'} sent.${r.noEmail.length ? ` No email on the roster for ${r.noEmail.join(', ')}.` : ''}` : 'Email sending isn’t switched on yet (Cloudflare Email Service). Nothing was sent.' });
@@ -53,9 +55,10 @@ export function BonusReport() {
   };
   return (
     <section aria-labelledby="br-title">
+      {confirmDialog}
       <PageTitle aside={(
         <div className="flex flex-wrap gap-2 print:hidden">
-          <Button size="sm" onClick={() => window.print()} disabled={!people.length}><Printer aria-hidden className="size-4" />Download report</Button>
+          <Button size="sm" onClick={() => window.print()} disabled={!people.length}><Printer aria-hidden className="size-4" />Print</Button>
           <Button size="sm" onClick={exportXlsx} disabled={!people.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
           {me?.menus.bonus?.edit && <Button size="sm" onClick={statements} disabled={!people.length || !approved}><Mail aria-hidden className="size-4" />Email statements</Button>}
         </div>
@@ -215,6 +218,7 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
   const [lines, setLines] = useState<{ employee_id: string; crew_role: CrewRole | null; share_pct: string; amount: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ask, confirmDialog] = useConfirm();
   useEffect(() => { if (q.data) setLines(q.data.lines.map((l) => ({ employee_id: l.employee_id, crew_role: l.crew_role, share_pct: l.share_pct == null ? '' : String(l.share_pct), amount: String(l.amount_cents / 100) }))); }, [q.data]);
   if (!allowed) return null;
   if (q.isPending) return <Skeleton className="h-24" />;
@@ -231,6 +235,7 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
   };
   return (
     <div>
+      {confirmDialog}
       <p className="mb-2 text-sm">
         Pool <b className="font-mono">{money(d.pool.cents, cur)}</b>
         {d.pool.rule ? <span className="text-text-muted"> from {d.pool.rule.job_type_name}: {BASIS_LABEL[d.pool.rule.basis].toLowerCase()} {d.pool.rule.basis === 'pct_revenue' ? `${d.pool.rule.pct}%` : money(d.pool.rule.amount_cents, cur)}</span> : null}
@@ -259,7 +264,7 @@ export function BonusDistribution({ jobId }: { jobId: string }) {
       {!locked && d.crew.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button loading={busy} onClick={() => act('', { method: 'PUT', json: { lines: lines.map((l) => ({ employee_id: l.employee_id, crew_role: l.crew_role, share_pct: l.share_pct === '' ? null : Number(l.share_pct), amount_cents: Math.round((Number(l.amount) || 0) * 100) })) } })}>Save distribution</Button>
-          <Button variant="primary" loading={busy} disabled={d.status !== 'draft'} onClick={() => { if (window.confirm('Approve this distribution? It goes to the Bonus Report; corrections later need an admin.')) void act('/approve', { method: 'POST' }); }}><ShieldCheck aria-hidden className="size-4" />Approve</Button>
+          <Button variant="primary" loading={busy} disabled={d.status !== 'draft'} onClick={async () => { if (await ask({ title: 'Approve this distribution?', body: 'It goes to the Bonus Report; corrections later need an admin.', confirm: 'Approve distribution' })) void act('/approve', { method: 'POST' }); }}><ShieldCheck aria-hidden className="size-4" />Approve</Button>
           {d.status === 'proposed' && <span className="self-center text-xs text-text-subtle">Proposed from the default split. Save it before approving.</span>}
         </div>
       )}

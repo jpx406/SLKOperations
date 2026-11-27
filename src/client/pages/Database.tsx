@@ -1,6 +1,6 @@
 import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, ExternalLink, Pencil, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ExternalLink, Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { FLAG_LABEL, LIST_KINDS, PCE_KINDS, PCE_RATINGS, SERVICE_FLAGS, pressureTestDue, type ListKind } from '../../shared/database';
@@ -8,6 +8,7 @@ import { CONNECTIONS, PART_KINDS, RATINGS, SERVICES, kindsOf, type Family, type 
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Dialog } from '../components/Dialog';
 
 interface UnitRow { unit_number: string; country: string; year: number | null; wg_active: number; open_jobs: number; drums: string | null }
 interface PceRow {
@@ -278,20 +279,6 @@ function EquipmentDialog({ row, types, country, defaultType, onClose }: { row: E
   );
 }
 
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div role="dialog" aria-modal="true" aria-labelledby="db-dialog-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4"
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="max-h-full w-full max-w-xl overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-pop">
-        <div className="mb-4 flex items-start gap-3">
-          <h2 id="db-dialog-title" className="flex-1 font-display text-lg font-bold">{title}</h2>
-          <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close"><X aria-hidden className="size-4" /></Button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function CountrySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { data: me } = useMe();

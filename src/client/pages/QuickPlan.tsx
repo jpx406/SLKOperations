@@ -11,6 +11,7 @@ import { useMe } from '../auth';
 import { Attachments } from '../components/Attachments';
 import { MultiSelect } from '../components/FilterBar';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
+import { Dialog, useConfirm } from '../components/Dialog';
 
 // Opportunities (S25, Quick Plan until 6z.55): a card board for jobs that aren't tickets yet. Drag a card between
 // columns (or use the arrows), and turn a firm one into a planned job, which opens its Design stage.
@@ -43,10 +44,12 @@ export function QuickPlan() {
     await api(`/quick-plan/${c.id}/promote`, { method: 'POST', json: { job_id: r.job.id } });
     navigate(`/operation/jobs/${r.job.id}/design`);
   });
-  const remove = (c: QpCard) => { if (window.confirm(`Remove the card “${c.title}”?`)) void act(() => api(`/quick-plan/${c.id}`, { method: 'DELETE' })); };
+  const [ask, confirmDialog] = useConfirm();
+  const remove = async (c: QpCard) => { if (await ask({ title: `Remove the card “${c.title}”?`, confirm: 'Remove card', danger: true })) void act(() => api(`/quick-plan/${c.id}`, { method: 'DELETE' })); };
 
   return (
     <section aria-labelledby="qp-title">
+      {confirmDialog}
       <PageTitle aside={canEdit && <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus aria-hidden className="size-4" />New card</Button>}><span id="qp-title">Opportunities</span></PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">Jobs that may come, before they have a ticket. Move a card right as it firms up; when it’s confirmed, make it a job.</p>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
@@ -91,7 +94,7 @@ export function QuickPlan() {
                               <Button size="sm" variant="ghost" aria-label={`Move ${c.title} right`} disabled={ci === QP_COLUMNS.length - 1} onClick={() => move(c, QP_COLUMNS[ci + 1].key)}><ArrowRight aria-hidden className="size-3.5" /></Button>
                             </>}
                             <Button size="sm" variant="ghost" aria-label={canEdit ? `Edit ${c.title}` : `Open ${c.title}`} onClick={() => setEditing(c)}><Pencil aria-hidden className="size-3.5" /></Button>
-                            {canEdit && <Button size="sm" variant="ghost" aria-label={`Remove ${c.title}`} onClick={() => remove(c)}><Trash2 aria-hidden className="size-3.5" /></Button>}
+                            {canEdit && <Button size="sm" variant="ghost" aria-label={`Remove ${c.title}`} onClick={() => void remove(c)}><Trash2 aria-hidden className="size-3.5" /></Button>}
                             {canEdit && !c.promoted_job_id && q.data?.canCreateJobs && <Button size="sm" className="ml-auto" onClick={() => promote(c)}><Briefcase aria-hidden className="size-3.5" />Make it a job</Button>}
                           </div>
                         </Card>
@@ -151,15 +154,10 @@ function CardEditor({ card, options, canEdit, onClose }: { card: QpCard | null; 
   };
   const ro = !canEdit;
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="qp-edit" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) onClose(false); }}>
-      <Card className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto">
-        <div className="mb-3 flex items-start gap-3">
-          <div className="flex-1">
-            <h2 id="qp-edit" className="font-display text-lg font-bold">{card ? (ro ? card.title : 'Edit opportunity') : 'New opportunity'}</h2>
-            {card && <p className="text-xs text-text-muted">Added by {card.created_by_name ?? card.created_by ?? 'unknown'} · {formatDate(card.created_at.slice(0, 10))}</p>}
-          </div>
-          <Button size="sm" variant="ghost" aria-label="Close" onClick={() => onClose(false)}><X aria-hidden className="size-4" /></Button>
-        </div>
+    <Dialog size="lg" onClose={() => onClose(false)} title={<>
+      {card ? (ro ? card.title : 'Edit opportunity') : 'New opportunity'}
+      {card && <span className="block font-sans text-xs font-normal text-text-muted">Added by {card.created_by_name ?? card.created_by ?? 'unknown'} · {formatDate(card.created_at.slice(0, 10))}</span>}
+    </>}>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <fieldset disabled={ro || busy} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2"><Field id="qp-t" label="Title"><input id="qp-t" autoFocus className={inputClass} value={f.title} placeholder="Left empty, the card is named after its client and well" onChange={(e) => set('title', e.target.value)} /></Field></div>
@@ -201,7 +199,6 @@ function CardEditor({ card, options, canEdit, onClose }: { card: QpCard | null; 
           )}
         </div>
         {canEdit && <Button className="mt-4" variant="primary" loading={busy} disabled={!f.title.trim() && !f.client && !f.well.trim()} onClick={save}>{card ? 'Save' : 'Add card'}</Button>}
-      </Card>
-    </div>
+    </Dialog>
   );
 }

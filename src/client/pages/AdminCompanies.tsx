@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, PageTitle, Skeleton, cx, inputSized } from '../components/ui';
+import { useConfirm } from '../components/Dialog';
 
 // Administration → Companies (owner request 2026-10-28): the companies a job is run by, picked on Design and carried
 // to the SLK Activity Dashboard's Activity sheet and Daily report. Add, rename, reorder, switch off or remove one; a
@@ -20,6 +21,7 @@ export function AdminCompanies() {
   const [busy, setBusy] = useState(false);
   const canEdit = !!me?.menus.companies?.edit;
   const canDelete = !!me?.menus.companies?.delete;
+  const [ask, confirmDialog] = useConfirm();
   const run = async (fn: () => Promise<unknown>) => {
     setErr(null); setBusy(true);
     try { await fn(); } catch (e) { setErr((e as Error).message); } finally {
@@ -38,6 +40,7 @@ export function AdminCompanies() {
 
   return (
     <section aria-labelledby="co-title">
+      {confirmDialog}
       <PageTitle><span id="co-title">Companies</span></PageTitle>
       <p className="-mt-3 mb-4 max-w-3xl text-sm text-text-muted">The company that runs each job, picked on the job’s Design stage. It shows on the SLK Activity Dashboard (Activity sheet and Daily report). Renaming a company renames it on its jobs too; a company already on jobs can be switched off but not removed.</p>
       {err && <div className="mb-3"><Banner tone="danger">{err}</Banner></div>}
@@ -66,7 +69,7 @@ export function AdminCompanies() {
                   </td>
                   <td className="px-3 py-1.5">
                     <input key={c.name} aria-label={`Name of ${c.name}`} disabled={!canEdit} defaultValue={c.name} maxLength={60} className={inputSized('h-8 w-56 font-semibold')}
-                      onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.name) { if (!c.jobs || window.confirm(`Rename ${c.name} to ${v} on its ${c.jobs} job${c.jobs === 1 ? '' : 's'} too?`)) put(c, { name: v }); else e.target.value = c.name; } }}
+                      onBlur={async (e) => { const el = e.target; const v = el.value.trim(); if (v && v !== c.name) { if (!c.jobs || await ask({ title: `Rename ${c.name} to ${v} on its ${c.jobs} job${c.jobs === 1 ? '' : 's'} too?`, confirm: 'Rename company' })) put(c, { name: v }); else el.value = c.name; } }}
                       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
                   </td>
                   <td className="px-3 py-1.5">
@@ -76,7 +79,7 @@ export function AdminCompanies() {
                   <td className="px-3 py-1.5 text-xs text-text-muted">{formatDate(c.updated_at.slice(0, 10))}{c.updated_by ? ` · ${c.updated_by}` : ''}</td>
                   <td className="px-3 py-1.5 text-right">
                     {canDelete && <Button size="sm" variant="ghost" aria-label={`Remove ${c.name}`} disabled={busy || c.jobs > 0} title={c.jobs ? 'On jobs: switch it off instead' : 'Remove'}
-                      onClick={() => { if (window.confirm(`Remove ${c.name}? The audit trail keeps a record.`)) run(() => api(`/companies/${c.id}`, { method: 'DELETE' })); }}><Trash2 aria-hidden className="size-4" /></Button>}
+                      onClick={async () => { if (await ask({ title: `Remove ${c.name}?`, body: 'The audit trail keeps a record.', confirm: 'Remove company', danger: true })) run(() => api(`/companies/${c.id}`, { method: 'DELETE' })); }}><Trash2 aria-hidden className="size-4" /></Button>}
                   </td>
                 </tr>
               ))}

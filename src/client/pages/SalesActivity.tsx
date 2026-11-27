@@ -15,6 +15,7 @@ import { ActivityRecords } from '../components/ActivityRecords';
 import { MenuButton } from '../components/MenuButton';
 import type { GridLine, GridSection } from '../components/SheetGrid';
 import { Banner, Button, EmptyState, Skeleton, cx, inputSized } from '../components/ui';
+import { useConfirm } from '../components/Dialog';
 
 // Sales dashboard → Activity sheet: the billing line of every job in a revenue month, grouped by account, to fill
 // what the job doesn't hold (DMR status, ticket follow-up, partial billing …), check line by line and lock.
@@ -89,8 +90,9 @@ export function SalesActivity() {
     qc.setQueryData<ActivityData>(key, (d) => d && { ...d, lines: d.lines.map((x) => (x.id === l.id ? { ...x, data: { ...x.data, [field]: value === '' ? null : value } } : x)) });
     run(() => api(`/sales/activity/${l.id}`, { method: 'PUT', json: { values: { [field]: value } } }));
   };
-  const onLock = (ids: string[]) => {
-    if (ids.length > 1 && !window.confirm(`Mark ${ids.length} lines as checked and lock them? Only an Admin can unlock a line.`)) return;
+  const [ask, confirmDialog] = useConfirm();
+  const onLock = async (ids: string[]) => {
+    if (ids.length > 1 && !(await ask({ title: `Mark ${ids.length} lines as checked and lock them?`, body: 'Only an Admin can unlock a line.', confirm: `Lock ${ids.length} lines` }))) return;
     run(async () => { await api('/sales/activity/lock', { method: 'POST', json: { job_ids: ids } }); setSelected(new Set()); });
   };
   const onUnlock = (ids: string[]) => {
@@ -129,6 +131,7 @@ export function SalesActivity() {
 
   return (
     <div>
+      {confirmDialog}
       <div className="mb-3 flex flex-wrap items-end gap-3 print:hidden">
         <div>
           <span className="label-caps mb-1 block text-text-muted">Revenue month</span>

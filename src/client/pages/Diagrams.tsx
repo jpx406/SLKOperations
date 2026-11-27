@@ -10,6 +10,7 @@ import type { ToolPart } from '../../shared/toolstring';
 import { ApiError, api, countryScope, formatDate } from '../api';
 import { Select } from '../components/Select';
 import { Banner, Button, Card, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { useConfirm } from '../components/Dialog';
 
 // Rig Up (QAF14009) and tool string (QAF14010) diagrams of a job, opened from Preparation. The sheet in the middle is
 // the printout; the catalogue adds parts where they belong in the stack; the right side edits a row and shows the checks.
@@ -122,6 +123,7 @@ export function Diagrams() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['diagrams', id] }); setParams({ d: run > 1 ? `run-${run - 1}` : 'rigup' }, { replace: true }); },
     onError: (e: ApiError) => setError(e.message),
   });
+  const [ask, confirmDialog] = useConfirm();
   const [pdfBusy, setPdfBusy] = useState(false);
   const makePdf = async () => {
     if (dirty) { window.clearTimeout(timer.current); await save.mutateAsync(rows); }
@@ -162,6 +164,7 @@ export function Diagrams() {
 
   return (
     <section aria-labelledby="dg-title" className="-mx-1">
+      {confirmDialog}
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
         <Link to={`/operation/jobs/${id}/preparation`} className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3">
           <ArrowLeft aria-hidden className="size-3.5" />Preparation
@@ -250,7 +253,7 @@ export function Diagrams() {
               {canEdit && st !== 'reviewed' && saved && !saved.verified_at && <Button size="sm" disabled={!rows.length || dirty} loading={act.isPending} onClick={() => act.mutate('verify')}>Verify</Button>}
               {data.data?.canReview && st !== 'draft' && <Button size="sm" variant="ghost" loading={act.isPending} onClick={() => act.mutate('reopen')}>Back to draft</Button>}
               {canEdit && kind === 'toolstring' && saved && saved.pdf_rev == null && run === Math.max(...others.map((t) => t.run_no)) && (
-                <Button size="sm" variant="ghost" className="ml-auto text-danger" loading={removeRun.isPending} onClick={() => removeRun.mutate()}><Trash2 aria-hidden className="size-3.5" />Remove Run {run}</Button>
+                <Button size="sm" variant="ghost" className="ml-auto text-danger" loading={removeRun.isPending} onClick={async () => { if (await ask({ title: `Remove Run ${run}?`, body: 'Its tool string diagram is deleted.', confirm: `Remove Run ${run}`, danger: true })) removeRun.mutate(); }}><Trash2 aria-hidden className="size-3.5" />Remove Run {run}</Button>
               )}
             </div>
           </Card>
@@ -353,9 +356,10 @@ function Assembly({ rows, family, sel, onSelect }: { rows: Row[]; family: Family
   const joints = marks.map((m, i) => { const at = run; run += rows[i].length_ft ?? 0; return { y: top + m.y0, at }; });
   const pick = (i: number) => onSelect(sel === i ? null : i);
   return (
-    <svg ref={box} viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Assembly drawing, top of the stack first">
+    <svg ref={box} viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMin meet" role="group" aria-label="Assembly drawing, top of the stack first">
       <g transform={`translate(${rulerW} ${top})`}>
-        {marks.map((m) => <rect key={m.index} x={-rulerW} y={m.y0} width={W} height={m.y1 - m.y0} fill={sel === m.index ? '#e8eef5' : 'transparent'} className="cursor-pointer" onClick={() => pick(m.index)} />)}
+        {/* the balloons below are the keyboard stops; this band is the same pick for the mouse */}
+        {marks.map((m) => <rect key={m.index} aria-hidden x={-rulerW} y={m.y0} width={W} height={m.y1 - m.y0} fill={sel === m.index ? '#e8eef5' : 'transparent'} className="cursor-pointer" onClick={() => pick(m.index)} />)}
         <Shapes prims={body} />
       </g>
       {marks.length > 0 && <>
@@ -369,7 +373,9 @@ function Assembly({ rows, family, sel, onSelect }: { rows: Row[]; family: Family
       {marks.map((m, i) => {
         const py = top + (m.y0 + m.y1) / 2, by = ys[i];
         return (
-          <g key={m.index} className="cursor-pointer" onClick={() => pick(m.index)}>
+          <g key={m.index} tabIndex={0} role="button" aria-pressed={sel === m.index} aria-label={`Part ${i + 1}: ${rows[m.index]?.name ?? 'part'}`}
+            className="cursor-pointer [&:focus-visible>circle]:stroke-focus [&:focus-visible>circle]:stroke-2" onClick={() => pick(m.index)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(m.index); } }}>
             <polyline points={`${axis + 5},${py} ${bx - 14},${py} ${bx - 8},${by}`} fill="none" stroke="#15191e" strokeWidth={0.45} />
             <circle cx={bx} cy={by} r={7} fill={sel === m.index ? '#15191e' : '#ffffff'} stroke="#15191e" strokeWidth={0.8} />
             <text x={bx} y={by + 2.6} fontSize={7.5} fontWeight={700} textAnchor="middle" fill={sel === m.index ? '#ffffff' : '#15191e'} fontFamily="Inter, sans-serif">{i + 1}</text>
@@ -653,6 +659,7 @@ function StartFrom({ jobId, kind, run, rows, parts, others, legacy, onPick }: {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['diagram-samples'] }),
     onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
   });
+  const [ask, confirmDialog] = useConfirm();
   const byName = (names: string[]) => names.map((n) => parts.find((p) => p.name === n)).filter((p): p is Part => !!p).map(rowFromPart);
   const copy = (items: Row[]) => items.map((r) => ({ ...r }));
   const builtIn: { label: string; sub: string; rows: () => Row[] }[] = kind === 'rigup'
@@ -669,6 +676,7 @@ function StartFrom({ jobId, kind, run, rows, parts, others, legacy, onPick }: {
   const head = 'label-caps px-2.5 pt-2 pb-1 text-text-subtle';
   return (
     <div className="relative">
+      {confirmDialog}
       <Button size="sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>Start from ▾</Button>
       {open && (
         <div role="menu" className="absolute top-9 left-0 z-30 max-h-[70vh] w-96 overflow-y-auto rounded-lg border border-border-strong bg-surface-2 p-1.5 shadow-pop" onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
@@ -687,7 +695,7 @@ function StartFrom({ jobId, kind, run, rows, parts, others, legacy, onPick }: {
                 <span className="block text-sm font-semibold">{s.name}</span>
                 <span className="block truncate text-xs text-text-muted">{s.items.length} parts · {s.created_by_name} · {formatDate(s.created_at.slice(0, 10))}</span>
               </button>
-              <Button size="sm" variant="ghost" aria-label={`Remove the sample ${s.name}`} loading={remove.isPending && remove.variables === s.id} onClick={() => remove.mutate(s.id)}><X aria-hidden className="size-3.5" /></Button>
+              <Button size="sm" variant="ghost" aria-label={`Remove the sample ${s.name}`} loading={remove.isPending && remove.variables === s.id} onClick={async () => { if (await ask({ title: `Remove the sample ${s.name}?`, confirm: 'Remove sample', danger: true })) remove.mutate(s.id); }}><X aria-hidden className="size-3.5" /></Button>
             </div>
           ))}
 

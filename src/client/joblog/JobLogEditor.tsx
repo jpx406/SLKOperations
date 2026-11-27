@@ -6,6 +6,7 @@ import { ROW_KIND_LABEL, applyJob, dayOf, eventCount, hasSig, hours, isEmptyRow,
 import { api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, Field, Skeleton, cx, inputClass } from '../components/ui';
+import { useConfirm } from '../components/Dialog';
 import { Dialog } from '../pages/knowledge/common';
 import { HeaderCard, JobDetailsCard, PhrasePicker, type HeaderCtx } from './Sections';
 import { SignaturePad } from './SignaturePad';
@@ -65,7 +66,12 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
   });
   const setRow = (id: string, patch: Partial<LogRow>) => setForm((f) => ({ ...f, rows: f.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
   const insertBelow = (id: string) => setForm((f) => { const i = f.rows.findIndex((r) => r.id === id); const prev = f.rows[i]; const rows = f.rows.slice(); rows.splice(i + 1, 0, newRow({ date: prev?.date || f.date, run: prev?.run ?? '', time: prev ? toOf(f.rows, i) : '' })); return { ...f, rows }; });
-  const deleteRow = (id: string) => setForm((f) => { const r = f.rows.find((x) => x.id === id); if (!isEmptyRow(r) && !window.confirm('Delete this row?')) return f; const rows = f.rows.filter((x) => x.id !== id); return { ...f, rows: rows.length ? rows : [newRow({ date: f.date })] }; });
+  const [ask, confirmDialog] = useConfirm();
+  const deleteRow = async (id: string) => {
+    const r = latest.current?.form.rows.find((x) => x.id === id);
+    if (!isEmptyRow(r) && !(await ask({ title: 'Delete this row?', confirm: 'Delete row', danger: true }))) return;
+    setForm((f) => { const rows = f.rows.filter((x) => x.id !== id); return { ...f, rows: rows.length ? rows : [newRow({ date: f.date })] }; });
+  };
   const onEnter = (e: KeyboardEvent<HTMLTextAreaElement>, id: string, col: string) => {
     if (e.key !== 'Enter' || e.shiftKey) return;
     e.preventDefault();
@@ -110,6 +116,7 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
 
   return (
     <section aria-labelledby="jl-title">
+      {confirmDialog}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Link to={`/operation/jobs/${jobId}/execution`} className="inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3"><ArrowLeft aria-hidden className="size-4" />Execution</Link>
         <h1 id="jl-title" className="font-display text-xl font-extrabold uppercase">Job log · {title}</h1>
@@ -162,7 +169,7 @@ export function JobLogEditor({ jobId, title, jraLocked }: { jobId: string; title
                 <td className="w-52 px-1"><textarea rows={1} aria-label={`Row ${i + 1} remarks`} data-jl={`remark-${i}`} className={cx(cell, 'h-auto min-h-9 resize-y py-1.5')} disabled={ro} placeholder="Remarks" value={r.remark} onChange={(e) => setRow(r.id, { remark: e.target.value })} onKeyDown={(e) => onEnter(e, r.id, 'remark')} /></td>
                 <td className="w-20 whitespace-nowrap">{!ro && <>
                   <Button size="sm" variant="ghost" aria-label={`Insert a row below row ${i + 1}`} onClick={() => insertBelow(r.id)}><Plus aria-hidden className="size-3.5" /></Button>
-                  <Button size="sm" variant="ghost" className="text-danger" aria-label={`Delete row ${i + 1}`} onClick={() => deleteRow(r.id)}><X aria-hidden className="size-3.5" /></Button>
+                  <Button size="sm" variant="ghost" className="text-danger" aria-label={`Delete row ${i + 1}`} onClick={() => void deleteRow(r.id)}><X aria-hidden className="size-3.5" /></Button>
                 </>}</td>
               </tr>
             ))}</tbody>

@@ -14,6 +14,7 @@ import { ApiError, api } from '../api';
 import { MenuButton } from '../components/MenuButton';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
 import { Dialog } from './knowledge/common';
+import { useConfirm } from '../components/Dialog';
 
 // Lessons & Best Practices (Utilities, 6z.57): write a lesson learnt or best practice on the company template, by
 // hand or drafted by AI from a failure report; send it to a reviewer and an approver; once approved it is published
@@ -150,13 +151,15 @@ function TemplatesDialog({ onClose }: { onClose: () => void }) {
     try { await sendFile(path(s), f, { 'X-File-Name': encodeURIComponent(f.name) }); setNote(`${s.company} ${LESSON_KINDS[s.kind].toLowerCase()} template: ${f.name}`); changed(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(null); if (fileRef.current) fileRef.current.value = ''; }
   };
+  const [ask, confirmDialog] = useConfirm();
   const remove = async (s: Slot) => {
-    if (!window.confirm(`Remove the ${s.company} ${LESSON_KINDS[s.kind].toLowerCase()} template “${s.file_name}”?${s.kind === 'best_practice' ? ' Best practices then use the lesson learnt template.' : ' Lessons on it can only make the PDF until a new one is added.'}`)) return;
+    if (!(await ask({ title: `Remove the ${s.company} ${LESSON_KINDS[s.kind].toLowerCase()} template “${s.file_name}”?`, body: s.kind === 'best_practice' ? 'Best practices then use the lesson learnt template.' : 'Lessons on it can only make the PDF until a new one is added.', confirm: 'Remove template', danger: true }))) return;
     setError(null); setNote(null);
     try { await api(path(s), { method: 'DELETE' }); changed(); } catch (e) { setError((e as Error).message); }
   };
   return (
     <Dialog title="Company templates" onClose={onClose} wide>
+      {confirmDialog}
       <p className="mb-3 text-sm text-text-muted">The PowerPoint each lesson and best practice is made on. The page, the PDF and the PowerPoint take the header, the words, the colours, the logo and the sign-off tables from the template&apos;s slide master. The same files are used in Knowledge Hub › Doc Control › Settings.</p>
       <input ref={fileRef} type="file" accept=".pptx" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) send(f); }} />
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
@@ -752,8 +755,10 @@ function Pictures({ lessonId, pictures, editable, kind, hidden, onToggle, onChan
     catch (e) { onError((e as Error).message); } finally { setBusy(false); if (fileRef.current) fileRef.current.value = ''; }
   };
   const move = (i: number, by: number) => { const p = [...pictures]; const [x] = p.splice(i, 1); p.splice(Math.max(0, Math.min(p.length, i + by)), 0, x); onChange(p); };
+  const [ask, confirmDialog] = useConfirm();
   return (
     <div className="flex flex-col gap-3" onPaste={(e) => { if (!editable) return; const f = [...e.clipboardData.files]; if (f.length) { e.preventDefault(); upload(f); } }}>
+      {confirmDialog}
       {!pictures.length && <p className="text-sm text-text-muted">No pictures yet. Add photos, sketches or diagrams; each gets a caption and its place.</p>}
       <ul className="grid gap-3 sm:grid-cols-2">
         {pictures.map((p, i) => (
@@ -768,7 +773,7 @@ function Pictures({ lessonId, pictures, editable, kind, hidden, onToggle, onChan
                 <Button size="sm" variant="ghost" aria-label="Move earlier" disabled={i === 0} onClick={() => move(i, -1)}>↑</Button>
                 <Button size="sm" variant="ghost" aria-label="Move later" disabled={i === pictures.length - 1} onClick={() => move(i, 1)}>↓</Button>
                 <ShowSwitch shown={!hidden.has(`pic:${p.id}`)} onToggle={() => onToggle(`pic:${p.id}`)} disabled={!editable} />
-                {editable && <Button size="sm" variant="ghost" aria-label={`Remove picture ${i + 1}`} onClick={() => onRemove(p).catch((e: Error) => onError(e.message))}><Trash2 aria-hidden className="size-3.5" /></Button>}
+                {editable && <Button size="sm" variant="ghost" aria-label={`Remove picture ${i + 1}`} onClick={async () => { if (await ask({ title: `Remove picture ${i + 1}?`, body: 'It is taken off the lesson.', confirm: 'Remove picture', danger: true })) onRemove(p).catch((e: Error) => onError(e.message)); }}><Trash2 aria-hidden className="size-3.5" /></Button>}
               </div>
             </div>
           </li>

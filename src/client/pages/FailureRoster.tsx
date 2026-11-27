@@ -10,6 +10,7 @@ import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { FilterBar, useFilters } from '../components/FilterBar';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Dialog, useConfirm } from '../components/Dialog';
 
 // Failure Roster (S10): failures by month, the jobs not fully tracked, and the register with action status.
 
@@ -61,6 +62,7 @@ export function FailureRoster() {
     onSuccess: refresh, onError: (e: ApiError) => setError(e.message),
   });
   const remove = useMutation({ mutationFn: (id: string) => api(`/failure-roster/${id}`, { method: 'DELETE' }), onSuccess: refresh, onError: (e: ApiError) => setError(e.message) });
+  const [ask, confirmDialog] = useConfirm();
 
   const data = rows.data ?? [];
   const exportRows = (list: Row[], suffix: string, kind: 'xlsx' | 'csv') => {
@@ -73,6 +75,7 @@ export function FailureRoster() {
 
   return (
     <section aria-labelledby="roster-title">
+      {confirmDialog}
       <PageTitle aside={
         <div className="flex flex-wrap gap-2 print:hidden">
           <Button size="sm" onClick={() => window.print()} disabled={!data.length}><Printer aria-hidden className="size-4" />PDF report</Button>
@@ -85,11 +88,15 @@ export function FailureRoster() {
       {summary.data && gaps > 0 && (
         <div className="mb-4 print:hidden">
           <Banner tone="warning" action={<Button size="sm" variant="ghost" aria-expanded={gapsOpen} onClick={() => setGapsOpen(!gapsOpen)}>{gapsOpen ? <ChevronDown aria-hidden className="size-4" /> : <ChevronRight aria-hidden className="size-4" />}{gapsOpen ? 'Hide' : 'Show'}</Button>}>
-            {gaps} job{gaps === 1 ? '' : 's'} not fully tracked: {summary.data.nptWithout8mf.length} with NPT but no 8 Min. Facts · {summary.data.failureNotInRoster.length} flagged as failure but not in the roster
+            {gaps} job{gaps === 1 ? '' : 's'} not fully tracked: {summary.data.nptWithout8mf.length} with NPT but no Q-Incident · {summary.data.failureNotInRoster.length} flagged as failure but not in the roster
           </Banner>
           {gapsOpen && (
             <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
-              {([['NPT without 8 Min. Facts', summary.data.nptWithout8mf], ['Failure not in the roster', summary.data.failureNotInRoster]] as const).map(([t, list]) => (
+              <Card>
+                <h2 className="label-caps mb-2 text-text-muted">NPT without a Q-Incident</h2>
+                <p className="text-sm">{summary.data.nptWithout8mf.length} job{summary.data.nptWithout8mf.length === 1 ? '' : 's'}. The list, with a button to start each report, is on <Link className="font-semibold underline" to="/operation/8-min-facts">Q-Incidents</Link>.</p>
+              </Card>
+              {([['Failure not in the roster', summary.data.failureNotInRoster]] as const).map(([t, list]) => (
                 <Card key={t}>
                   <h2 className="label-caps mb-2 text-text-muted">{t}</h2>
                   {!list.length ? <p className="text-xs text-text-subtle">None</p> : (
@@ -108,7 +115,7 @@ export function FailureRoster() {
       <div className="mb-4 flex flex-wrap gap-2 print:hidden">
         <label className="flex items-center gap-2 text-xs text-text-muted">Severity
           <Select className={inputSized('h-(--layout-control-sm) w-40')} value={severity} onChange={(e) => setP('severity', e.target.value)}>
-            <option value="">All</option>{SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}<option value="none">No 8MF (added by hand)</option>
+            <option value="">All</option>{SEVERITIES.map((s) => <option key={s} value={s}>{SEVERITY_LABEL[s]}</option>)}<option value="none">No Q-Incident (added by hand)</option>
           </Select>
         </label>
         <label className="flex items-center gap-2 text-xs text-text-muted">Action
@@ -151,7 +158,7 @@ export function FailureRoster() {
 
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       {rows.isPending && <Skeleton className="h-64" />}
-      {rows.data && !data.length && <EmptyState title="No failures match">Failures arrive here when an 8 Min. Facts report is saved, or when one is added by hand.</EmptyState>}
+      {rows.data && !data.length && <EmptyState title="No failures match">Failures arrive here when a Q-Incident report is saved, or when one is added by hand.</EmptyState>}
       {data.length > 0 && (
         <Card className="overflow-x-auto p-0">
           <table className="w-full min-w-[64rem] text-sm">
@@ -178,7 +185,7 @@ export function FailureRoster() {
                     </Select>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {!r.incident_id && canDelete && <Button size="sm" variant="ghost" aria-label="Remove this hand-added row" onClick={() => { if (window.confirm('Remove this failure from the roster?')) remove.mutate(r.id); }}><Trash2 aria-hidden className="size-3.5" /></Button>}
+                    {!r.incident_id && canDelete && <Button size="sm" variant="ghost" aria-label="Remove this hand-added row" onClick={async () => { if (await ask({ title: 'Remove this failure from the roster?', confirm: 'Remove failure', danger: true })) remove.mutate(r.id); }}><Trash2 aria-hidden className="size-3.5" /></Button>}
                   </td>
                 </tr>
               ))}
@@ -198,13 +205,9 @@ function AddFailure({ onClose }: { onClose: (ok?: boolean) => void }) {
   const [error, setError] = useState<string | null>(null);
   const add = useMutation({ mutationFn: () => api('/failure-roster', { method: 'POST', json: f }), onSuccess: () => onClose(true), onError: (e: ApiError) => setError(e.message) });
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="add-fail-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <form className="w-full max-w-lg rounded-lg border border-border bg-surface p-5 shadow-pop" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
-        <div className="mb-3 flex items-start gap-3">
-          <h2 id="add-fail-title" className="flex-1 font-display text-lg font-bold">Add a failure by hand</h2>
-          <Button size="sm" variant="ghost" aria-label="Close" onClick={() => onClose()}><X aria-hidden className="size-4" /></Button>
-        </div>
-        <p className="mb-4 text-sm text-text-muted">For events without an 8 Min. Facts report, such as older failures. Failures with NPT on a job belong in an 8 Min. Facts report.</p>
+    <Dialog title="Add a failure by hand" onClose={() => onClose()} size="md">
+      <form onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
+        <p className="mb-4 text-sm text-text-muted">For events without a Q-Incident report, such as older failures. Failures with NPT on a job belong in a Q-Incident report.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {(me?.countries.length ?? 0) > 1 && (
@@ -219,6 +222,6 @@ function AddFailure({ onClose }: { onClose: (ok?: boolean) => void }) {
         </div>
         <div className="mt-4 flex gap-2"><Button type="submit" variant="primary" loading={add.isPending}>Add</Button><Button onClick={() => onClose()}>Cancel</Button></div>
       </form>
-    </div>
+    </Dialog>
   );
 }

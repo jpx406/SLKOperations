@@ -8,8 +8,9 @@ import type { Job, JobCrew } from '../../shared/types';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass, inputSized, rovingKeys } from '../components/ui';
+import { Dialog } from '../components/Dialog';
 
-// 8 Min. Facts: the list (S11) and the report editor (S12).
+// Q-Incidents (formerly 8 Min. Facts): the list (S11) and the report editor (S12).
 
 interface Incident {
   id?: string; key: string; what_happened: string; occurred_on: string; occurred_time: string; npt_hours: string; failed_items: string[];
@@ -43,7 +44,7 @@ export function EightMinFactsList() {
   const set = (k: string, v: string) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); setParams(n, { replace: true }); };
   const list = useQuery({ queryKey: ['emf', status, q], queryFn: () => api<ListRow[]>(`/emf?${new URLSearchParams({ ...(status && { status }), ...(q && { q }) })}`) });
   const navigate = useNavigate();
-  // the backlog: jobs with NPT or a failure whose 8 Min. Facts isn't done yet
+  // the backlog: jobs with NPT or a failure whose Q-Incident report isn't done yet (the Incidents Dashboard links here)
   const jobs = useQuery({ queryKey: ['jobs', '', 'all'], queryFn: () => api<Job[]>('/jobs?q=&status=all'), enabled: !!me?.menus.eight_min_facts?.edit });
   const backlog = (jobs.data ?? []).filter((j) => (j.npt_hours > 0 || j.failure === 'yes') && j.eight_min_facts_done !== 'yes' && j.status !== 'canceled');
   return (
@@ -394,17 +395,7 @@ function JobPicker({ onPick, disabled }: { onPick: (j: Pick<Job, 'id' | 'ticket_
 }
 
 function Panel({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div role="dialog" aria-modal="true" aria-labelledby="emf-panel-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4 print:hidden" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="max-h-full w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-pop">
-        <div className="mb-4 flex items-start gap-3">
-          <h2 id="emf-panel-title" className="flex-1 font-display text-lg font-bold">{title}</h2>
-          <Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
+  return <div className="print:hidden"><Dialog title={title} onClose={onClose} size="lg">{children}</Dialog></div>;
 }
 
 function HistoryPanel({ report, onClose }: { report: Report; onClose: () => void }) {
@@ -456,7 +447,7 @@ function EmailPanel({ report, onClose }: { report: Report; onClose: (sent?: Repo
   const valid = to.split(/[,;]/).map((x) => x.trim()).filter(Boolean).every((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)) && to.trim().length > 0;
   const send = async () => {
     // the mail app does the sending; SLK Ops records that it was sent
-    const href = `mailto:${encodeURIComponent(to.trim()).replace(/%40/g, '@').replace(/%2C/g, ',')}?subject=${encodeURIComponent(`8 Min. Facts ${report.log_no}: ${report.title}`)}&body=${encodeURIComponent(plainSummary(report))}`;
+    const href = `mailto:${encodeURIComponent(to.trim()).replace(/%40/g, '@').replace(/%2C/g, ',')}?subject=${encodeURIComponent(`Q-Incident ${report.log_no}: ${report.title}`)}&body=${encodeURIComponent(plainSummary(report))}`;
     window.location.href = href;
     try { const res = await api<{ report: Report }>(`/emf/${report.id}/sent`, { method: 'POST', json: { to } }); onClose(res.report); } catch (e) { setError((e as Error).message); }
   };
@@ -477,7 +468,7 @@ const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g,
 function downloadWord(r: Report) {
   const row = (k: string, v: unknown) => (v ? `<tr><th align="left" style="padding:2pt 8pt 2pt 0;color:#555">${esc(k)}</th><td>${esc(v)}</td></tr>` : '');
   const html = `<html><head><meta charset="utf-8"><title>${esc(r.log_no)}</title><style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt}h1{font-size:16pt}h2{font-size:13pt;margin-top:14pt}table{border-collapse:collapse}</style></head><body>
-<h1>8 Min. Facts ${esc(r.log_no)}: ${esc(r.title)}</h1>
+<h1>Q-Incident ${esc(r.log_no)}: ${esc(r.title)}</h1>
 <table>${row('Version', `v${r.current_version}`)}${row('Field ticket', r.ticket_no)}${row('Well', r.well)}${row('Rig', r.rig)}${row('Unit', r.unit_number)}${row('RILR', r.rilr_no)}${row('Crew', r.crew_text)}${row('Total NPT', `${r.total_npt} h`)}${row('Severity', SEVERITY_LABEL[r.severity])}${row('Last saved', `${when(r.last_saved_at)} by ${r.last_saved_by ?? '—'}`)}</table>
 ${r.incidents.map((i, n) => `<h2>Incident ${n + 1}</h2><table>${row('When', `${i.occurred_on} ${i.occurred_time ?? ''}`)}${row('NPT', `${i.npt_hours} h (${SEVERITY_LABEL[i.severity]})`)}${row('Category', i.category)}${row('What happened', i.what_happened)}${row('What failed', i.failed_items?.join(', '))}${row('Immediate actions', i.immediate_actions)}${row('Current situation', i.current_situation)}${row('Client informed', i.informed_client)}${row('NESR informed', i.informed_nesr)}</table>`).join('')}
 </body></html>`;

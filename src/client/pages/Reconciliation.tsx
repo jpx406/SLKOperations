@@ -1,12 +1,13 @@
 import { Select } from '../components/Select';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, CircleDashed, ExternalLink, Link2, Play, RotateCcw, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { CHECKS, type CheckCode, type FieldDiff, type Severity } from '../../shared/recon';
 import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { useConfirm, useDialogFocus } from '../components/Dialog';
 
 interface FindingRow {
   id: string; check_code: CheckCode; severity: Severity; status: 'open' | 'explained' | 'resolved'; job_id: string | null;
@@ -276,7 +277,9 @@ function FindingDrawer({ id, canEdit, wireguardUrl, onClose }: { id: string; can
   const [linkTo, setLinkTo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { closeRef.current?.focus(); }, []);
+  const panel = useRef<HTMLDivElement>(null);
+  useDialogFocus(panel, onClose, closeRef);
+  const [ask, confirmDialog] = useConfirm();
   const done = () => { qc.invalidateQueries({ queryKey: ['recon'] }); qc.invalidateQueries({ queryKey: ['recon-summary'] }); qc.invalidateQueries({ queryKey: ['recon-finding', id] }); };
   const explain = useMutation({
     mutationFn: (status: 'explained' | 'open') => api(`/recon/findings/${id}`, { method: 'PATCH', json: { status, explanation: note } }),
@@ -297,9 +300,9 @@ function FindingDrawer({ id, canEdit, wireguardUrl, onClose }: { id: string; can
   const pick = [...(d.data?.candidates ?? []), ...(candidates.data ?? [])].filter((j, i, a) => a.findIndex((x) => x.id === j.id) === i);
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="finding-title" className="fixed inset-0 z-50 flex justify-end bg-bg/70"
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="h-full w-full max-w-3xl overflow-y-auto border-l border-border bg-surface p-5 shadow-pop">
+    <div className="fixed inset-0 z-50 flex justify-end bg-bg/70" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={panel} data-dialog-panel role="dialog" aria-modal="true" aria-labelledby="finding-title" className="h-full w-full max-w-3xl overflow-y-auto border-l border-border bg-surface p-5 shadow-pop">
+        {confirmDialog}
         <div className="mb-4 flex items-start gap-3">
           <div className="min-w-0 flex-1">
             {d.data && <SeverityPill s={d.data.severity} />}
@@ -361,7 +364,7 @@ function FindingDrawer({ id, canEdit, wireguardUrl, onClose }: { id: string; can
                           <td className="px-2 py-1.5 text-right font-mono text-xs">{r.max_depth_ft ?? '—'}</td>
                           <td className={cx('px-2 py-1.5 text-xs', r.approval_status !== 'approved' && 'text-warning')}>{r.approval_status}</td>
                           <td className="px-2 py-1.5">
-                            {r.linked_job && canEdit && <Button size="sm" variant="ghost" onClick={() => unlink.mutate(r.wg_id)} aria-label={`Remove manual link of run ${r.wg_id}`}>Unlink</Button>}
+                            {r.linked_job && canEdit && <Button size="sm" variant="ghost" onClick={async () => { if (await ask({ title: `Unlink run ${r.wg_id}?`, body: 'The manual link to the SLK Ops job is removed. The run itself stays.', confirm: 'Unlink run', danger: true })) unlink.mutate(r.wg_id); }} aria-label={`Remove manual link of run ${r.wg_id}`}>Unlink</Button>}
                           </td>
                         </tr>
                       ))}

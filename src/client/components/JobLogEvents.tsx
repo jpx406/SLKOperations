@@ -3,6 +3,7 @@ import { CloudOff, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
 import { Banner, Button, cx, inputClass } from './ui';
+import { useConfirm } from './Dialog';
 
 // Job Log · Sequence of Events (S42) on the Execution stage. Works at a wellsite without signal: an entry is kept
 // on the device and uploaded when the connection is back. Each entry has its own id, so a retry never doubles it.
@@ -65,7 +66,9 @@ export function JobLogEvents({ jobId, canEdit }: { jobId: string; canEdit: boole
     setF({ ...f, text: '', depth: '', at: isoToLocalInput(new Date().toISOString()) });
     await sync();
   };
+  const [ask, confirmDialog] = useConfirm();
   const remove = async (e: LogEvent) => {
+    if (!(await ask({ title: 'Remove this log entry?', body: e.text.length > 120 ? `${e.text.slice(0, 120)}…` : e.text, confirm: 'Remove entry', danger: true }))) return;
     try { await api(`/jobs/${jobId}/events/${e.id}`, { method: 'DELETE' }); qc.invalidateQueries({ queryKey: ['job-events', jobId] }); } catch (x) { setError((x as Error).message); }
   };
   const list = [...(events.data ?? []), ...queue.map((p) => ({ id: p.client_id, client_id: p.client_id, occurred_at: p.occurred_at, run_no: p.run_no ? Number(p.run_no) : null, depth_ft: p.depth_ft ? Number(p.depth_ft) : null, text: p.text, created_by: null, pending: true }))]
@@ -73,6 +76,7 @@ export function JobLogEvents({ jobId, canEdit }: { jobId: string; canEdit: boole
 
   return (
     <div>
+      {confirmDialog}
       {(!online || queue.length > 0) && (
         <div className="mb-3"><Banner tone="warning" action={online && queue.length ? <Button size="sm" onClick={sync}>Upload now</Button> : undefined}>
           <span className="inline-flex items-center gap-1.5"><CloudOff aria-hidden className="size-4" />{online ? '' : 'No connection. '}{queue.length} entr{queue.length === 1 ? 'y is' : 'ies are'} kept on this device and will upload when the connection is back.</span>
@@ -88,7 +92,7 @@ export function JobLogEvents({ jobId, canEdit }: { jobId: string; canEdit: boole
               {e.depth_ft != null && <span className="font-mono text-xs">{e.depth_ft.toLocaleString()} ft</span>}
               <span className="min-w-0 flex-1">{e.text}</span>
               {'pending' in e ? <span className="text-xs text-warning">waiting to upload</span> : <span className="text-xs text-text-subtle">{e.created_by}</span>}
-              {canEdit && !('pending' in e) && <Button size="sm" variant="ghost" aria-label={`Remove entry ${e.text.slice(0, 30)}`} onClick={() => remove(e as LogEvent)}><Trash2 aria-hidden className="size-3.5" /></Button>}
+              {canEdit && !('pending' in e) && <Button size="sm" variant="ghost" aria-label={`Remove entry ${e.text.slice(0, 30)}`} onClick={() => void remove(e as LogEvent)}><Trash2 aria-hidden className="size-3.5" /></Button>}
             </li>
           ))}
         </ol>

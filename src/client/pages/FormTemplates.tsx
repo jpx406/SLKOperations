@@ -8,6 +8,7 @@ import { ApiError, api, countryScope } from '../api';
 import { useMe } from '../auth';
 import { Select } from '../components/Select';
 import { Badge, Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { useConfirm } from '../components/Dialog';
 
 // Administration → Form templates (owner request 2026-10-28). The JRA and the job checklists: each belongs to a
 // job stage and is made by hand, read from a Word or Excel file, or drafted with the AI assistant, then reviewed
@@ -54,8 +55,9 @@ export function FormTemplates() {
     try { await api(`/form-templates/${t.id}`, { method: 'PUT', json: { active: !t.active } }); await qc.invalidateQueries({ queryKey: ['form-templates'] }); }
     catch (e) { setError((e as Error).message); }
   };
+  const [ask, confirmDialog] = useConfirm();
   const remove = async (t: Listed) => {
-    if (!confirm(`Delete “${t.name}” ${t.code} Rev ${t.revision}? This can’t be undone.`)) return;
+    if (!(await ask({ title: `Delete “${t.name}” ${t.code} Rev ${t.revision}?`, body: 'This can’t be undone.', confirm: 'Delete template', danger: true }))) return;
     setError(null);
     try { await api(`/form-templates/${t.id}`, { method: 'DELETE' }); await qc.invalidateQueries({ queryKey: ['form-templates'] }); }
     catch (e) { setError((e as Error).message); }
@@ -67,6 +69,7 @@ export function FormTemplates() {
     && (!q.trim() || `${t.name} ${t.code} ${t.source_file ?? ''}`.toLowerCase().includes(q.trim().toLowerCase())));
   return (
     <section aria-labelledby="ft-title">
+      {confirmDialog}
       <PageTitle aside={canEdit && (
         <>
           <input ref={file} type="file" accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" tabIndex={-1} aria-label="Word or Excel file to read"

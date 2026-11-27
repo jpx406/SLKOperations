@@ -201,7 +201,7 @@ export function NptAnalysis() {
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker period={period} onChange={setPeriod} />
           <span className="flex gap-2 print:hidden">
-            <Button size="sm" onClick={() => window.print()} disabled={!rows.length}><Printer aria-hidden className="size-4" />Download report</Button>
+            <Button size="sm" onClick={() => window.print()} disabled={!rows.length}><Printer aria-hidden className="size-4" />Print</Button>
             <Button size="sm" onClick={exportXlsx} disabled={!withNpt.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
           </span>
         </div>

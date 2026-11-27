@@ -12,6 +12,7 @@ import { MenuButton } from '../components/MenuButton';
 import { saveFile } from '../components/charts';
 import { GroupSwitches, SheetGrid, SheetLegend, useOpenGroups, type GridLine, type GridSection } from '../components/SheetGrid';
 import { Banner, Button, Card, Skeleton, cx, inputSized } from '../components/ui';
+import { useConfirm } from '../components/Dialog';
 
 // Sales dashboard → Daily report: every unit's line for a day (what it did, where, with whom), worked out from the
 // jobs and the unit events, with what the app doesn't hold typed in (unit type, location type, remarks …). Typed
@@ -91,8 +92,9 @@ export function SalesDaily() {
     qc.setQueryData<DailyData>(key, (d) => d && { ...d, lines: d.lines.map((x) => (x.id === l.id ? { ...x, data: { ...x.data, [k]: value === '' ? null : value } } : x)) });
     run(() => api(`/sales/daily/${day}/${encodeURIComponent(l.id)}`, { method: 'PUT', json: { values: { [k]: value } } }));
   };
-  const onLock = (ids: string[]) => {
-    if (ids.length > 1 && !window.confirm(`Mark ${ids.length} units as checked for ${formatDate(day)} and lock them? Only an Admin can unlock a line.`)) return;
+  const [ask, confirmDialog] = useConfirm();
+  const onLock = async (ids: string[]) => {
+    if (ids.length > 1 && !(await ask({ title: `Mark ${ids.length} units as checked for ${formatDate(day)} and lock them?`, body: 'Only an Admin can unlock a line.', confirm: `Lock ${ids.length} units` }))) return;
     run(async () => { await api(`/sales/daily/${day}/lock`, { method: 'POST', json: { units: ids } }); setSelected(new Set()); });
   };
   const onUnlock = (ids: string[]) => {
@@ -159,6 +161,7 @@ export function SalesDaily() {
 
   return (
     <div>
+      {confirmDialog}
       <div className="mb-3 flex flex-wrap items-end gap-3 print:hidden">
         <div>
           <span className="label-caps mb-1 block text-text-muted">Day</span>

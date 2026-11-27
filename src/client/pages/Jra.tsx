@@ -10,6 +10,7 @@ import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { roleLabel } from '../../shared/roles';
 import { Banner, Button, Card, Field, ProgressBar, Skeleton, cx, inputClass, radioTab, rovingKeys } from '../components/ui';
+import { Dialog } from '../components/Dialog';
 
 // JRA (S28): answers save as you go while it is a draft; Send for approval needs every required answer;
 // the named approver (or an admin or operations manager) approves or rejects.
@@ -324,12 +325,9 @@ function SignDialog({ score, level, flags: fl, signer, form, ticket, onCancel, o
   onCancel: () => void; onSign: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onCancel(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [busy, onCancel]);
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="sign-title" className="fixed inset-0 z-(--z-modal) grid place-items-center bg-bg/70 p-4">
-      <Card className="w-full max-w-lg shadow-pop">
-        <h2 id="sign-title" className="flex items-center gap-2 font-display text-lg font-bold"><ShieldCheck aria-hidden className="size-5" />Sign this JRA</h2>
-        <p className="mt-1 text-sm text-text-muted">Approving records a digital signature with a fingerprint of these answers. If the answers change later, the signature shows it.</p>
+    <Dialog title={<span className="flex items-center gap-2"><ShieldCheck aria-hidden className="size-5" />Sign this JRA</span>} onClose={() => { if (!busy) onCancel(); }} size="md" alert hideClose>
+        <p className="text-sm text-text-muted">Approving records a digital signature with a fingerprint of these answers. If the answers change later, the signature shows it.</p>
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <dt className="label-caps text-text-muted">Job</dt><dd className="font-mono">{ticket ?? 'no ticket'} · {form}</dd>
           <dt className="label-caps text-text-muted">Risk index</dt><dd className="font-semibold">{score}</dd>
@@ -346,7 +344,6 @@ function SignDialog({ score, level, flags: fl, signer, form, ticket, onCancel, o
           <Button onClick={onCancel} disabled={busy}>Cancel</Button>
           <Button variant="primary" loading={busy} onClick={async () => { setBusy(true); try { await onSign(); } finally { setBusy(false); } }}><ShieldCheck aria-hidden className="size-4" />Approve and sign</Button>
         </div>
-      </Card>
-    </div>
+    </Dialog>
   );
 }

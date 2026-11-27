@@ -2002,3 +2002,36 @@ Most of this group landed in 6z.67 (sync guards, one sync at a time, the nightly
   - The reconciliation summary gives the same per-unit counts as the old query (checked against the local database for two months).
   - The lesson PDF and PowerPoint build (200).
   - In a fresh tab, opening the job board, inventories, the winch utility and Career loads each page with no console errors.
+
+## 6z.71: audit fixes, part 5: dialogs, confirmations and wording
+
+- **One dialog for the app** (`components/Dialog.tsx`):
+  - Opening moves keyboard focus into it, Tab stays inside, Escape closes it from anywhere, and closing returns focus to the button that opened it. A dialog opened from another closes first.
+  - About 20 hand-built dialogs now use it: Help guide, Face ID, crew change, the person in Users & Roles, holidays, approver emails, Assets Inventory, Q-Incidents panel, add failure, the inventories, JRA signing, Pre-Job Notes (delete, history, send), Opportunities card, schedule events.
+  - Panels with their own layout keep it but share the same focus handling: the menu drawer, About, the help assistant, the wording popover, the reconciliation finding, the full-screen mind map (which now closes on Escape) and the picture viewer.
+- **Confirmations:**
+  - Every browser `confirm()` is replaced by the app's confirmation, whose button says what it does.
+  - These now ask before acting:
+    - Diagrams: remove a run, remove a sample.
+    - Schedule: remove an event.
+    - Job log: remove an entry.
+    - Lessons: remove a picture.
+    - Reconciliation: unlink.
+    - Users & Roles: remove a passkey device, remove from Competency.
+    - Attendance: remove a holiday.
+    - Account menu: remove your own device.
+- **Keyboard:**
+  - Winch report scorecard rows are focusable and open with Enter or Space.
+  - Diagram parts are buttons named "Part N: name".
+  - Activity record rows already had a Fold/Unfold button, so they are unchanged.
+- **Wording:**
+  - "8 Min. Facts" left on screen is now "Q-Incident(s)": the Incidents Dashboard, the job's "Q-Incident done" field, the job report, and the Q-Incident email subject and print heading.
+  - Pre-Job Notes points to Users & Roles, not the old Headcount Roster.
+  - "Download report" buttons that open print now say "Print" (Statistics, Bonus).
+  - The cross-job list is called **Job List**, so it is no longer confused with a job's own job log.
+  - Competency and Career have a page heading for screen readers.
+- **Incident backlog:** "jobs with NPT but no Q-Incident" is listed only on Q-Incidents. The Incidents Dashboard shows the count with a link there.
+- **Verified:**
+  - Tests: 550 pass; the type check is clean.
+  - In the local app, the schedule event dialog takes focus on its first field, closes on Escape and gives focus back to "+ Maintenance Event".
+  - Removing a holiday asks first: Escape closed only the confirmation and kept the holiday, and confirming removed it.

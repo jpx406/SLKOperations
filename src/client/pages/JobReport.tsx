@@ -99,7 +99,7 @@ export function JobReport() {
             <table className="w-full"><tbody>{events.data.map((e) => <tr key={e.id} className="border-t border-border"><td className="w-40 py-0.5 font-mono text-xs">{when(e.occurred_at)}</td><td className="w-16 py-0.5 font-mono text-xs">{e.run_no != null ? `run ${e.run_no}` : ''}</td><td className="w-24 py-0.5 font-mono text-xs">{e.depth_ft != null ? `${e.depth_ft} ft` : ''}</td><td className="py-0.5">{e.text}</td></tr>)}</tbody></table>
           )}
         </section>
-        {(emf.data?.length ?? 0) > 0 && <section><h2 className="label-caps mb-1 text-text-muted">8 Min. Facts</h2><ul>{emf.data!.map((r) => <li key={r.id}>{r.log_no} · {r.title} · {r.total_npt} h · {r.severity} · {r.status}</li>)}</ul></section>}
+        {(emf.data?.length ?? 0) > 0 && <section><h2 className="label-caps mb-1 text-text-muted">Q-Incidents</h2><ul>{emf.data!.map((r) => <li key={r.id}>{r.log_no} · {r.title} · {r.total_npt} h · {r.severity} · {r.status}</li>)}</ul></section>}
         <section><h2 className="label-caps mb-1 text-text-muted">Closure</h2><table className="w-full"><tbody>
           {row('Sign-off', [`job log ${YN[j.job_log_signed ?? ''] ?? '—'}`, `ticket ${YN[j.ticket_signed ?? ''] ?? '—'}`, `wellsite audit ${YN[j.wellsite_audit ?? ''] ?? '—'}`, `runs in WIREGUARD ${YN[j.wg_runs_logged ?? ''] ?? '—'}`].join(' · '))}
           {row('Job package', j.job_package_url)}{row('Reporting', [j.report_closure_status, j.gears_no && `GEARS ${j.gears_no}`].filter(Boolean).join(' · '))}

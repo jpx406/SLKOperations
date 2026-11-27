@@ -21,6 +21,7 @@ import { saveFile } from '../components/charts';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Dialog, useConfirm } from '../components/Dialog';
 
 type Change = { menu_key: string; effect: 'grant' | 'deny'; can_edit: number };
 interface UserRow {
@@ -306,13 +307,7 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
   });
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="person-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4"
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="max-h-full w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-pop">
-        <div className="mb-1 flex items-start gap-3">
-          <h2 id="person-title" className="flex-1 font-display text-lg font-bold">{user.full_name} <span className="font-mono text-sm font-normal text-text-muted">{user.username}</span></h2>
-          <Button size="sm" variant="ghost" onClick={() => onClose()} aria-label="Close"><X aria-hidden className="size-4" /></Button>
-        </div>
+    <Dialog title={<>{user.full_name} <span className="font-mono text-sm font-normal text-text-muted">{user.username}</span></>} onClose={() => onClose()} size="lg">
         <p className="mb-4 text-sm text-text-muted">SLK Ops role: {roleLabel(user.role)}. Changes apply on the person’s next click.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border p-3">
@@ -375,8 +370,7 @@ function PersonDialog({ user, self, onClose }: { user: UserRow; self: boolean; o
         </div>
         {!self && deleting && <DeleteUser user={user} onCancel={() => setDeleting(false)} onDeactivate={() => setActive.mutate(false)} deactivating={setActive.isPending}
           onDeleted={() => { qc.invalidateQueries({ queryKey: ['admin-users'] }); onClose(`${user.full_name} was deleted`); }} />}
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -712,8 +706,10 @@ function PersonPasskeys({ user, self }: { user: UserRow; self: boolean }) {
     mutationFn: (id: string) => api(`/admin/access/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     onSuccess: refresh, onError: (e: ApiError) => setError(e.message),
   });
+  const [ask, confirmDialog] = useConfirm();
   return (
     <div className="mb-5 rounded-md border border-border p-3">
+      {confirmDialog}
       <div className="mb-2 flex flex-wrap items-center gap-3">
         <p className="label-caps flex-1 text-text-muted">Face ID / fingerprint sign-in</p>
         <label className="inline-flex items-center gap-2 text-sm">
@@ -732,7 +728,7 @@ function PersonPasskeys({ user, self }: { user: UserRow; self: boolean }) {
                 <span className="block font-semibold">{d.device_name ?? 'Device'}{d.backed_up ? <span className="ml-2 text-xs font-normal text-text-subtle">synced</span> : null}</span>
                 <span className="block text-xs text-text-subtle">Set up {d.created_at.slice(0, 10)} · {d.last_used_at ? `last used ${when(d.last_used_at)}` : 'not used yet'}</span>
               </span>
-              <Button size="sm" variant="ghost" aria-label={`Remove ${d.device_name ?? 'device'}`} loading={remove.isPending && remove.variables === d.id} onClick={() => remove.mutate(d.id)}><Trash2 aria-hidden className="size-4" /></Button>
+              <Button size="sm" variant="ghost" aria-label={`Remove ${d.device_name ?? 'device'}`} loading={remove.isPending && remove.variables === d.id} onClick={async () => { if (await ask({ title: `Remove ${d.device_name ?? 'this device'}?`, body: `${user.full_name} can no longer sign in with Face ID / fingerprint on it until it is set up again.`, confirm: 'Remove device', danger: true })) remove.mutate(d.id); }}><Trash2 aria-hidden className="size-4" /></Button>
             </li>
           ))}
         </ul>
@@ -818,9 +814,11 @@ function CategoryManager({ cats, canEdit, canDelete, onChanged }: { cats: Catego
   const create = useMutation({ mutationFn: () => api('/admin/attendance-sheets', { method: 'POST', json: add }), onSuccess: () => { setMsg({ tone: 'success', text: `Added ${add.label}. Assign roles to it below, and set who fills and approves it under Approvals.` }); setAdd({ ...add, label: '' }); onChanged(); }, onError: fail });
   const patch = useMutation({ mutationFn: (v: { key: string } & Partial<Category>) => { const { key, ...body } = v; return api(`/admin/attendance-sheets/${key}`, { method: 'PATCH', json: { ...body, two_step: body.two_step === undefined ? undefined : !!body.two_step, auto_from_jobs: body.auto_from_jobs === undefined ? undefined : !!body.auto_from_jobs } }); }, onSuccess: () => { setMsg(null); onChanged(); }, onError: fail });
   const remove = useMutation({ mutationFn: (c: CategoryRow) => api(`/admin/attendance-sheets/${c.key}`, { method: 'DELETE' }), onSuccess: (_d, c) => { setMsg({ tone: 'success', text: `Deleted ${c.label}` }); onChanged(); }, onError: fail });
+  const [ask, confirmDialog] = useConfirm();
   if (!cats) return <Skeleton className="h-48" />;
   return (
     <div>
+      {confirmDialog}
       <h2 className="label-caps mb-2 text-text-muted">Categories</h2>
       {msg && <div className="mb-3"><Banner tone={msg.tone} action={<Button size="sm" variant="ghost" aria-label="Dismiss" onClick={() => setMsg(null)}><X aria-hidden className="size-4" /></Button>}>{msg.text}</Banner></div>}
       <div className="flex flex-col gap-3">
@@ -844,7 +842,7 @@ function CategoryManager({ cats, canEdit, canDelete, onChanged }: { cats: Catego
                   {canEdit && !renaming && <Button size="sm" onClick={() => setNames({ ...names, [c.key]: c.label })}>Rename</Button>}
                   {canDelete && (
                     <Button size="sm" variant="ghost" aria-label={`Delete ${c.label}`} disabled={inUse > 0 || remove.isPending} title={inUse ? 'Still used: assign its roles and people to another category first' : undefined}
-                      onClick={() => { if (window.confirm(`Delete the ${c.label} category? Its approvals go with it.`)) remove.mutate(c); }}><Trash2 aria-hidden className="size-4" /></Button>
+                      onClick={async () => { if (await ask({ title: `Delete the ${c.label} category?`, body: 'Its approvals go with it.', confirm: 'Delete category', danger: true })) remove.mutate(c); }}><Trash2 aria-hidden className="size-4" /></Button>
                   )}
                 </span>
               </div>
@@ -972,8 +970,10 @@ function RolesPanel() {
   const remove = useMutation({ mutationFn: (r: RoleRow) => api(`/admin/roles/${r.key}`, { method: 'DELETE' }), onSuccess: (_d, r) => done(`Deleted ${r.label}`), onError: fail });
   const canEdit = !!me?.menus.users?.edit;
   const canDelete = !!me?.menus.users?.delete;
+  const [ask, confirmDialog] = useConfirm();
   return (
     <div className="max-w-5xl">
+      {confirmDialog}
       <p className="mb-3 text-sm text-text-muted">
         The roles people can hold in SLK Operations Hub. Roles marked WIREGUARD are what people get from their WIREGUARD role when they first sign in, so they can be renamed but not deleted.
         A role still held by someone can't be deleted either: give those people another role first.
@@ -1024,7 +1024,7 @@ function RolesPanel() {
                       {canEdit && !editing && <Button size="sm" onClick={() => setEdit({ ...edit, [r.key]: r.label })}>Rename</Button>}
                       {canDelete && (
                         <Button size="sm" variant="ghost" className="ml-1" disabled={!!why || remove.isPending} aria-label={`Delete ${r.label}`} title={why ?? undefined}
-                          onClick={() => { if (window.confirm(`Delete the ${r.label} role? Its tabs, attendance category and approvals go with it.`)) remove.mutate(r); }}>
+                          onClick={async () => { if (await ask({ title: `Delete the ${r.label} role?`, body: 'Its tabs, attendance category and approvals go with it.', confirm: 'Delete role', danger: true })) remove.mutate(r); }}>
                           <Trash2 aria-hidden className="size-4" />
                         </Button>
                       )}
@@ -1164,6 +1164,7 @@ function PersonCompetency({ username, name, onSaved }: { username: string; name:
     onSuccess: () => done(`${name} is no longer a Competency user`),
     onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
   });
+  const [ask, confirmDialog] = useConfirm();
   if (q.isPending) return <Skeleton className="mb-5 h-40" />;
   if (q.isError) return <div className="mb-5"><Banner tone="danger">{q.error.message}</Banner></div>;
   const roles = q.data.roles;
@@ -1171,6 +1172,7 @@ function PersonCompetency({ username, name, onSaved }: { username: string; name:
   const id = (k: string) => `comp-${k}-${username}`;
   return (
     <div className="mb-5 rounded-md border border-border border-l-4 border-l-accent-text p-3">
+      {confirmDialog}
       <p className="label-caps mb-1 text-text-muted">Competency system {cur ? '' : '· not a user yet'}</p>
       <p className="mb-3 text-xs text-text-subtle">Separate from the SLK Ops role: that one opens the app’s tabs, this one decides what {name} can see and do in Competency. Copied into the Competency employee register when Competency opens.</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1202,7 +1204,7 @@ function PersonCompetency({ username, name, onSaved }: { username: string; name:
       {msg && <div className="mt-2"><Banner tone={msg.tone}>{msg.text}</Banner></div>}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button size="sm" variant="primary" loading={save.isPending} onClick={() => save.mutate()}>{cur ? 'Save Competency profile' : 'Make a Competency user'}</Button>
-        {cur && <Button size="sm" variant="ghost" loading={remove.isPending} onClick={() => remove.mutate()}>Remove from Competency</Button>}
+        {cur && <Button size="sm" variant="ghost" loading={remove.isPending} onClick={async () => { if (await ask({ title: `Remove ${name} from Competency?`, body: 'Their Competency profile and role are removed. Whether they can open the Competency tab still follows their access in Users & Roles.', confirm: 'Remove from Competency', danger: true })) remove.mutate(); }}>Remove from Competency</Button>}
       </div>
     </div>
   );

@@ -1,10 +1,11 @@
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Fingerprint, QrCode, RefreshCw, Smartphone, Trash2, X } from 'lucide-react';
+import { Fingerprint, QrCode, RefreshCw, Smartphone, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { renderSVG } from 'uqr';
 import { ApiError, api } from '../api';
 import { Banner, Button, cx } from './ui';
+import { Dialog, useConfirm } from './Dialog';
 
 // Face ID / fingerprint on the client: sign in, the laptop's QR panel, and the person's own devices.
 // The server side and the reasoning are in src/worker/passkeys.ts.
@@ -114,7 +115,9 @@ export function MyPasskeys() {
       setMsg({ tone: 'danger', text: passkeyError(e) });
     } finally { setBusy(false); }
   };
+  const [ask, confirmDialog] = useConfirm();
   const remove = async (d: Device) => {
+    if (!(await ask({ title: `Remove ${d.device_name ?? 'this device'}?`, body: 'It can no longer sign in with Face ID / fingerprint until it is set up again.', confirm: 'Remove device', danger: true }))) return;
     try { await api(`/passkeys/${encodeURIComponent(d.id)}`, { method: 'DELETE' }); await qc.invalidateQueries({ queryKey: ['passkeys'] }); }
     catch (e) { setMsg({ tone: 'danger', text: (e as Error).message }); }
   };
@@ -122,6 +125,7 @@ export function MyPasskeys() {
   if (q.isError) return <Banner tone="danger">{q.error.message}</Banner>;
   return (
     <div className="flex flex-col gap-3">
+      {confirmDialog}
       <p className="text-sm text-text-muted">
         Sign in with Face ID, Touch ID, a fingerprint or Windows Hello instead of your password. Set it up once on each phone or computer you use.
         On a computer without it, use "Sign in with your phone (QR code)" on the sign-in page.
@@ -152,12 +156,7 @@ export function MyPasskeys() {
 /** The Face ID / fingerprint dialog: the person's devices, set up this one, and how QR sign-in works. */
 export function FaceIdDialog({ onClose }: { onClose: () => void }) {
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="faceid-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-pop">
-        <div className="mb-3 flex items-start gap-3">
-          <h2 id="faceid-title" className="flex-1 font-display text-lg font-bold">Face ID / fingerprint and QR sign-in</h2>
-          <Button size="sm" variant="ghost" aria-label="Close" onClick={onClose} autoFocus><X aria-hidden className="size-4" /></Button>
-        </div>
+    <Dialog title="Face ID / fingerprint and QR sign-in" onClose={onClose} size="sm">
         <MyPasskeys />
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3 text-sm">
           <p className="mb-1 flex items-center gap-2 font-semibold"><QrCode aria-hidden className="size-4" />Signing in on a laptop with your phone</p>
@@ -167,8 +166,7 @@ export function FaceIdDialog({ onClose }: { onClose: () => void }) {
             <li>Scan the code with the phone’s camera, type the four-digit code the laptop shows, and approve with Face ID. The laptop signs in by itself.</li>
           </ol>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 

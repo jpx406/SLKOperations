@@ -54,8 +54,8 @@ export function JobLog() {
     if (v.trim()) n.set('q', v.trim()); else n.delete('q');
     setParams(n, { replace: true });
   };
-  const exportXlsx = () => { const t = jobLogTable(rows); save(`job-log-${stamp()}.xlsx`, workbook('Job Log', t.header, t.rows, t.widths), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); };
-  const exportCsv = () => { const t = jobLogTable(rows); save(`job-log-${stamp()}.csv`, csv(t.header, t.rows), 'text/csv;charset=utf-8'); };
+  const exportXlsx = () => { const t = jobLogTable(rows); save(`job-list-${stamp()}.xlsx`, workbook('Job List', t.header, t.rows, t.widths), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); };
+  const exportCsv = () => { const t = jobLogTable(rows); save(`job-list-${stamp()}.csv`, csv(t.header, t.rows), 'text/csv;charset=utf-8'); };
 
   return (
     <section aria-labelledby="log-title">
@@ -66,7 +66,7 @@ export function JobLog() {
           <Button onClick={exportXlsx} disabled={!rows.length}><FileSpreadsheet aria-hidden className="size-4" />XLSX</Button>
         </div>
       }>
-        <span id="log-title">Job log</span>
+        <span id="log-title">Job list</span>
         {log.data && <span className="ml-3 align-middle font-mono text-sm font-normal text-text-muted">{rows.length.toLocaleString()} job{rows.length === 1 ? '' : 's'}</span>}
       </PageTitle>
       <FilterBar optionsPath="/filter-options" variant="panel">
@@ -93,7 +93,7 @@ export function JobLog() {
       {rows.length > 0 && (
         <div className="max-h-[calc(100vh-15rem)] overflow-auto rounded-lg border border-border bg-surface print:max-h-none print:overflow-visible print:border-0">
           <table className="w-max min-w-full border-separate border-spacing-0 text-sm print:text-[7pt]">
-            <caption className="sr-only">Job log, one row per job. Select a row to open the job.</caption>
+            <caption className="sr-only">Job list, one row per job. Select a row to open the job.</caption>
             <thead className="sticky top-0 z-10 bg-surface-2 print:static">
               <tr>
                 {JOB_LOG_COLUMNS.map((c, i) => (

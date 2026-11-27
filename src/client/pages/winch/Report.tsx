@@ -189,7 +189,8 @@ function ScorecardView({ p, days, pick, onPick }: { p: WinchPayload; days: boole
           ))}</tr></thead>
           <tbody>
             {sc.rows.map((r, i) => (
-              <tr key={r.label} className={cx('cursor-pointer border-t border-border hover:bg-surface-2', i === pick && 'bg-surface-2')} onClick={() => onPick(i)}>
+              <tr key={r.label} tabIndex={0} aria-current={i === pick || undefined} className={cx('cursor-pointer border-t border-border hover:bg-surface-2', i === pick && 'bg-surface-2')} onClick={() => onPick(i)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(i); } }}>
                 <td className={cx(td, 'px-2 font-semibold')}>{r.label}<span className="block font-normal text-text-subtle">{runTime(p.reports[i].run, days)}</span></td>
                 <td className={cx(td, 'px-2')}>{p.kind === 'wire' ? <>{r.service || 'Not set'}{r.defaultSpeeds && <span className="ml-1"><Pill tone="warning">default speeds</Pill></span>}</> : seasonLabel(p.seasoned)}</td>
                 {rowCells(r)}

@@ -1,6 +1,6 @@
 import { Select } from '../components/Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowLeft, Download, History, PackagePlus, Pencil, Plus, Printer, Scale, Search, Trash2, Truck, Undo2, X } from 'lucide-react';
+import { Archive, ArrowLeft, Download, History, PackagePlus, Pencil, Plus, Printer, Scale, Search, Trash2, Truck, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
@@ -12,6 +12,7 @@ import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { KpiTile, saveFile } from '../components/charts';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized, rovingKeys } from '../components/ui';
+import { Dialog, useConfirm } from '../components/Dialog';
 
 // Explosive (S18), Hardware (S19) and MCR (S29) inventories: stock by location from the ledger, movements,
 // history with undo, and the per-well job reconciliation (S20).
@@ -164,16 +165,6 @@ export function Inventory({ inv }: { inv: Inv }) {
   );
 }
 
-function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  return (
-    <div role="dialog" aria-modal="true" aria-labelledby="inv-dlg" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className={cx('max-h-full w-full overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-pop', wide ? 'max-w-3xl' : 'max-w-xl')}>
-        <div className="mb-3 flex items-start gap-3"><h2 id="inv-dlg" className="flex-1 font-display text-lg font-bold">{title}</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function ItemDialog({ inv, country, item, cats, onClose }: { inv: Inv; country: string; item: Item | null; cats: string[]; onClose: (msg?: string) => void }) {
   const [f, setF] = useState({ category: item?.category ?? cats[0], description: item?.description ?? '', part_no: item?.part_no ?? '', sap_no: item?.sap_no ?? '', uom: item?.uom ?? 'ea', size: item?.size ?? '', par_level: item?.par_level != null ? String(item.par_level) : '' });
@@ -188,7 +179,7 @@ function ItemDialog({ inv, country, item, cats, onClose }: { inv: Inv; country: 
     } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   return (
-    <Modal title={item ? `Edit ${item.description}` : 'Add item'} onClose={() => onClose()}>
+    <Dialog title={item ? `Edit ${item.description}` : 'Add item'} onClose={() => onClose()}>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       <form className="grid grid-cols-1 gap-4 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save(); }}>
         <Field id="it-cat" label="Category"><input id="it-cat" list="it-cats" className={inputClass} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} /></Field>
@@ -204,7 +195,7 @@ function ItemDialog({ inv, country, item, cats, onClose }: { inv: Inv; country: 
           {item && <Button className="ml-auto" variant="ghost" onClick={() => save({ archived: !item.archived_at })}><Archive aria-hidden className="size-4" />{item.archived_at ? 'Restore' : 'Archive'}</Button>}
         </div>
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -266,7 +257,7 @@ function MoveDialog({ inv, data, bal, initial, job, onClose }: { inv: Inv; data:
     } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   return (
-    <Modal title={KIND_LABEL[kind]} onClose={() => onClose()} wide>
+    <Dialog title={KIND_LABEL[kind]} onClose={() => onClose()} wide>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       <div className="grid grid-cols-1 gap-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -310,7 +301,7 @@ function MoveDialog({ inv, data, bal, initial, job, onClose }: { inv: Inv; data:
         <Field id="mv-note" label="Note"><input id="mv-note" className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Waybill, PO or reason" /></Field>
         <div className="flex gap-2"><Button variant="primary" loading={busy} onClick={submit} disabled={!lines.some((l) => l.item_id && Number(l.qty) > 0)}>Record</Button><Button onClick={() => onClose()}>Cancel</Button></div>
       </div>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -343,7 +334,7 @@ function ConsumeDialog({ inv, data, onClose }: { inv: Inv; data: Data; onClose: 
     } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   return (
-    <Modal title="Consumption & return" onClose={() => onClose()} wide>
+    <Dialog title="Consumption & return" onClose={() => onClose()} wide>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
       {recon.isPending ? <Skeleton className="h-32" /> : !groups.length ? <p className="text-sm text-text-muted">Nothing is out at a well right now. Mobilize first.</p> : (
         <div className="space-y-4">
@@ -372,19 +363,21 @@ function ConsumeDialog({ inv, data, onClose }: { inv: Inv; data: Data; onClose: 
           )}
         </div>
       )}
-    </Modal>
+    </Dialog>
   );
 }
 
 function HistoryView({ inv, country, canEdit, onBack, onChange }: { inv: Inv; country: string; canEdit: boolean; onBack: () => void; onChange: () => void }) {
   const moves = useQuery({ queryKey: ['inv-moves', inv, country], queryFn: () => api<Move[]>(`/inventory/${inv}/movements?country=${encodeURIComponent(country)}`) });
   const [error, setError] = useState<string | null>(null);
+  const [ask, confirmDialog] = useConfirm();
   const undo = async (m: Move) => {
-    if (!window.confirm(`Undo ${KIND_LABEL[m.kind]} of ${m.qty} × ${m.description}? A reversing movement is recorded; nothing is deleted.`)) return;
+    if (!(await ask({ title: `Undo ${KIND_LABEL[m.kind]} of ${m.qty} × ${m.description}?`, body: 'A reversing movement is recorded; nothing is deleted.', confirm: 'Undo movement' }))) return;
     try { await api(`/inventory/${inv}/movements/${m.id}/undo?country=${encodeURIComponent(country)}`, { method: 'POST' }); setError(null); onChange(); } catch (e) { setError((e as ApiError).message); }
   };
   return (
     <section aria-labelledby="hist-title">
+      {confirmDialog}
       <div className="mb-4 flex items-center gap-3"><Button size="sm" onClick={onBack}><ArrowLeft aria-hidden className="size-4" />Back to items</Button><h1 id="hist-title" className="font-display text-xl font-extrabold uppercase">Movement history</h1></div>
       <p className="mb-3 text-sm text-text-muted">Movements are never edited or deleted. Undo records the opposite movement, and only while the stock is still where the original put it.</p>
       {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}

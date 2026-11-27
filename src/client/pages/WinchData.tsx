@@ -18,6 +18,7 @@ import type { Job } from '../../shared/types';
 import { api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Field, Skeleton, cx, inputClass } from '../components/ui';
+import { useConfirm } from '../components/Dialog';
 import { GuidePanel, RuleFields, useGuide } from './winch/Guide';
 import { RunsView, seasonLabel, type ChannelSeries, type Meta, type RunReport, type WinchPayload } from './winch/Report';
 
@@ -409,8 +410,9 @@ export function WinchWorkbench({ host }: { host: WinchHost }) {
   const admin = me?.role === 'admin';
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteNote, setDeleteNote] = useState<string | null>(null);
+  const [ask, confirmDialog] = useConfirm();
   const deleteReport = async (a: AttRow) => {
-    if (!window.confirm(`Delete the saved report “${a.file_name}”?`)) return;
+    if (!(await ask({ title: `Delete the saved report “${a.file_name}”?`, confirm: 'Delete report', danger: true }))) return;
     setDeleting(a.id); setDeleteNote(null);
     try {
       await api(`${host.filesUrl}/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
@@ -496,6 +498,7 @@ export function WinchWorkbench({ host }: { host: WinchHost }) {
   if (!restored) return <Skeleton className="h-40" />;
   return (
     <div className="space-y-5">
+      {confirmDialog}
       {restoreNote && <Banner tone="warning">{restoreNote}</Banner>}
       <div className="flex flex-wrap items-start justify-between gap-2">{status}{savedReports}</div>
       <div className="flex flex-wrap items-center gap-2">

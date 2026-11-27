@@ -1,7 +1,8 @@
 import { X } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { VERSION_TEXT } from '../version';
 import { Button, cx } from './ui';
+import { useDialogFocus } from './Dialog';
 
 // The NESR mark: white on the dark theme, dark on Sunlight and on paper. Both are in the page so switching
 // themes never waits on an image.
@@ -54,19 +55,14 @@ export function BrandHeader({ className }: { className?: string }) {
 /** About SLK Operations Hub: a small window with the version, the authors and what the app is, like every app's About box. */
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const prev = document.activeElement as HTMLElement | null;
-    box.current?.querySelector<HTMLElement>('button')?.focus();
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('keydown', esc); prev?.focus(); };
-  }, [onClose]);
+  const closeBtn = useRef<HTMLButtonElement>(null);
+  useDialogFocus(box, onClose, closeBtn);
   return (
     <div className="fixed inset-0 z-(--z-modal) grid place-items-center p-4 print:hidden">
       <button type="button" aria-label="Close About" tabIndex={-1} className="absolute inset-0 bg-bg/70" onClick={onClose} />
-      <div ref={box} role="dialog" aria-modal="true" aria-labelledby="about-title"
+      <div ref={box} data-dialog-panel role="dialog" aria-modal="true" aria-labelledby="about-title"
         className="relative w-fit max-w-[min(24rem,100%)] rounded-lg border border-border bg-surface p-5 text-center shadow-pop">
-        <Button size="sm" variant="ghost" className="absolute top-2 right-2" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button>
+        <Button ref={closeBtn} size="sm" variant="ghost" className="absolute top-2 right-2" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button>
         <NesrLogo className="mx-auto mt-2 h-14" />
         <h2 id="about-title" className="mt-3"><span className="sr-only">About </span><Wordmark className="text-xl" /></h2>
         <p className="label-caps mt-1 text-text-muted">{TAGLINE}</p>

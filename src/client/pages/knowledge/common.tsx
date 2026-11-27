@@ -1,11 +1,11 @@
-import { BookOpen, Download, FileText, Film, Image as ImageIcon, Printer, QrCode, X } from 'lucide-react';
-import { useEffect } from 'react';
+import { BookOpen, Download, FileText, Film, Image as ImageIcon, Printer, QrCode } from 'lucide-react';
 import { renderSVG } from 'uqr';
 import { TYPES, checkUpload } from '../../../shared/attachments';
 import type { KbFile, KnowledgeDoc } from '../../../shared/knowledge';
 import { REV_STATUS, type Controller, type Numbering, type RevStatus } from '../../../shared/knowledgeControl';
 import { ApiError, api } from '../../api';
-import { Button, Card, cx } from '../../components/ui';
+import { Button, cx } from '../../components/ui';
+import { Dialog } from '../../components/Dialog';
 
 // Pieces shared by the Knowledge Hub screens (6z.14).
 
@@ -31,17 +31,8 @@ export async function uploadFile(docId: string, file: File, kind: 'published' | 
   return api<{ revision: number }>(`/knowledge/${docId}/files?kind=${kind}${live ? '&live=1' : ''}`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) } });
 }
 
-export function Dialog({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
-  return (
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4">
-      <Card className={cx('max-h-[90vh] w-full overflow-y-auto', wide ? 'max-w-3xl' : 'max-w-xl')}>
-        <div className="mb-3 flex items-start gap-3"><h2 className="min-w-0 flex-1 font-display text-lg font-bold">{title}</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
-        {children}
-      </Card>
-    </div>
-  );
-}
+/** The app's shared dialog (components/Dialog.tsx): focus moves in, Tab stays inside, Escape closes it. */
+export { Dialog };
 
 const TONE: Record<RevStatus | 'unpublished', string> = {
   draft: 'border-border text-text-muted', review: 'border-warning text-warning', approval: 'border-warning text-warning', approved: 'border-success text-success',

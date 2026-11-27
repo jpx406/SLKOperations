@@ -12,6 +12,7 @@ import type { JobStatus } from '../../shared/types';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, EmptyState, Field, Skeleton, cx, inputClass } from '../components/ui';
+import { Dialog, useConfirm } from '../components/Dialog';
 import { ReconBanner } from '../components/ReconBanner';
 import { AccountLegend, useAccountColors } from '../components/Accounts';
 import { NO_ACCOUNT, tint } from '../../shared/accounts';
@@ -459,14 +460,13 @@ function EventDialog({ init, units, onClose }: { init: { event?: SEvent; unit?: 
   });
   const tone = maint ? 'text-maint' : 'text-status-event';
   const missing = !unit ? 'Pick the unit.' : !start ? 'Enter the start date.' : maint && !end ? 'Enter the end date.' : null;
+  const [ask, confirmDialog] = useConfirm();
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="ev-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <form className="w-full max-w-lg rounded-xl border border-border bg-surface p-7 shadow-pop" onSubmit={(e) => { e.preventDefault(); setError(null); setConflict(null); if (missing) { setError(missing); return; } save.mutate(false); }}>
-        <div className="mb-4 flex items-start gap-3">
-          <h2 id="ev-title" className={cx('flex-1 font-display text-xl font-extrabold uppercase', tone)}>{ev ? (maint ? 'Maintenance event' : 'Unit status event') : maint ? 'New maintenance event' : 'New unit status event'}</h2>
-          <Button size="sm" variant="ghost" onClick={() => onClose()} aria-label="Close"><X aria-hidden className="size-4" /></Button>
-        </div>
-        {!maint && <p className="-mt-2 mb-4 text-sm text-text-muted">Days inside this period adjust that unit's utilization calculation.</p>}
+    <Dialog size="md" onClose={() => onClose()}
+      title={<span className={cx('text-xl font-extrabold uppercase', tone)}>{ev ? (maint ? 'Maintenance event' : 'Unit status event') : maint ? 'New maintenance event' : 'New unit status event'}</span>}>
+      {confirmDialog}
+      <form onSubmit={(e) => { e.preventDefault(); setError(null); setConflict(null); if (missing) { setError(missing); return; } save.mutate(false); }}>
+        {!maint && <p className="mb-4 text-sm text-text-muted">Days inside this period adjust that unit's utilization calculation.</p>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Field id="ev-unit" label="Unit">
@@ -504,13 +504,13 @@ function EventDialog({ init, units, onClose }: { init: { event?: SEvent; unit?: 
           </div>
         )}
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          {ev && <Button variant="danger" loading={del.isPending} onClick={() => del.mutate()}>Remove event</Button>}
+          {ev && <Button variant="danger" loading={del.isPending} onClick={async () => { if (await ask({ title: `Remove this event from unit ${unit}?`, body: `${maint ? detail : BLOCK_LABEL[kind]}, ${start} to ${end || 'ongoing'}.`, confirm: 'Remove event', danger: true })) del.mutate(); }}>Remove event</Button>}
           <span className="ml-auto flex gap-2">
             <Button onClick={() => onClose()}>Cancel</Button>
             {!conflict && <Button type="submit" variant="primary" size="lg" loading={save.isPending}>Save Event</Button>}
           </span>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

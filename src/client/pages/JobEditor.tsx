@@ -528,7 +528,7 @@ export function JobEditor() {
               aside={failureOpen ? 'Failure = Yes on Execution' : 'Not needed: no failure on this job'}>
             {!failureOpen ? <LockHint>Opens when Failure is Yes on Execution (failed runs set it to Yes).</LockHint> : (
               <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
-                {select('eight_min_facts_done', '8 Min. Facts done', YES_NO)}
+                {select('eight_min_facts_done', 'Q-Incident done', YES_NO)}
                 {select('prelim_report', 'Preliminary report', YES_NO)}
                 {select('final_report', 'Final report', YES_NO)}
                 {select('report_closure_status', 'Report status', [{ value: 'open', label: 'Open' }, { value: 'pending_review', label: 'Pending review' }, { value: 'closed', label: 'Closed' }, { value: 'na', label: 'N/A' }])}
@@ -633,7 +633,7 @@ function ExplosivesPrompt({ job }: { job: Job | null }) {
 type Party = { vendor: string; po_no: string; po_value: string; currency: string };
 const BLANK_PARTY: Party = { vendor: '', po_no: '', po_value: '', currency: 'SAR' };
 
-/** Vendors brought in for the job, with their PO. Up to five; they show in the Job Log. */
+/** Vendors brought in for the job, with their PO. Up to five; they show in the Job List. */
 function ThirdParties({ jobId, canEdit }: { jobId: string; canEdit: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({

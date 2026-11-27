@@ -13,6 +13,7 @@ import { useMe } from '../auth';
 import { saveFile } from '../components/charts';
 import { SignedToggle } from '../components/Signature';
 import { Banner, Button, Card, EmptyState, Field, Skeleton, cx, inputClass, inputSized, rovingKeys } from '../components/ui';
+import { Dialog, useConfirm } from '../components/Dialog';
 
 // Attendance (S17), laid out like the WL Operations Hub sheet: one card per sheet, one row per person, one column
 // per day. Who fills and who approves each sheet follows the roles (shared/attendanceSheets.ts):
@@ -216,14 +217,19 @@ export function Attendance() {
     saveFile(`attendance-${month}.html`, html, 'text/html;charset=utf-8');
   };
   const options = (get: (p: Person) => string) => [...new Set(all.map(get))].sort();
-  const changeMonth = (v: string) => { if (nPending && !window.confirm('Leave this month without saving your changes?')) return; const n = new URLSearchParams(params); n.set('month', v || thisMonth()); setParams(n, { replace: true }); };
+  const [ask, confirmDialog] = useConfirm();
+  const changeMonth = async (v: string) => {
+    if (nPending && !(await ask({ title: 'Leave this month without saving your changes?', body: 'The changes you have not saved are lost.', confirm: 'Leave without saving', danger: true }))) return;
+    const n = new URLSearchParams(params); n.set('month', v || thisMonth()); setParams(n, { replace: true });
+  };
 
   return (
     <section aria-labelledby="att-title">
+      {confirmDialog}
       <div className="mb-4 flex flex-wrap items-end gap-x-4 gap-y-3">
         <h1 id="att-title" className="mr-2 font-display text-3xl font-extrabold tracking-wide uppercase">Attendance sheet</h1>
         <label className="block"><span className="label-caps mb-1 block text-text-muted">Month</span>
-          <input type="month" className={inputSized('w-44 font-mono')} value={month} onChange={(e) => changeMonth(e.target.value)} />
+          <input type="month" className={inputSized('w-44 font-mono')} value={month} onChange={(e) => void changeMonth(e.target.value)} />
         </label>
         {sheet?.full && FILTERS.map(([k, label, get]) => (
           <label key={k} className="block"><span className="label-caps mb-1 block text-text-muted">{label}</span>
@@ -471,19 +477,20 @@ function Holidays({ sheet, onClose }: { sheet: Sheet; onClose: () => void }) {
     try { await api('/attendance/holidays', { method: 'POST', json: f }); setF({ ...f, name: '' }); setError(null); qc.invalidateQueries({ queryKey: ['attendance', sheet.month] }); }
     catch (e) { setError((e as Error).message); }
   };
-  const remove = async (id: string) => {
+  const [ask, confirmDialog] = useConfirm();
+  const remove = async (id: string, name: string) => {
+    if (!(await ask({ title: `Remove ${name}?`, body: 'It is no longer shaded on the sheet.', confirm: 'Remove holiday', danger: true }))) return;
     try { await api(`/attendance/holidays/${id}`, { method: 'DELETE' }); setError(null); qc.invalidateQueries({ queryKey: ['attendance', sheet.month] }); }
     catch (e) { setError((e as Error).message); }
   };
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="hol-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <Card className="w-full max-w-lg">
-        <div className="mb-3 flex items-start gap-3"><h2 id="hol-title" className="flex-1 font-display text-lg font-bold">Public holidays</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
+    <Dialog title="Public holidays" onClose={onClose} size="md">
+        {confirmDialog}
         <p className="mb-3 text-sm text-text-muted">Holidays are shaded on the sheet. Islamic holidays move every year, so enter them when the dates are announced.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <ul className="mb-3 divide-y divide-border text-sm">
           {sheet.holidays.map((h) => <li key={h.id} className="flex items-center gap-2 py-1.5"><span className="font-mono text-xs">{h.day}</span><span className="flex-1">{h.name}</span><span className="text-xs text-text-subtle">{h.country}</span>
-            <Button size="sm" variant="ghost" aria-label={`Remove ${h.name}`} onClick={() => remove(h.id)}><Trash2 aria-hidden className="size-3.5" /></Button></li>)}
+            <Button size="sm" variant="ghost" aria-label={`Remove ${h.name}`} onClick={() => void remove(h.id, h.name)}><Trash2 aria-hidden className="size-3.5" /></Button></li>)}
           {!sheet.holidays.length && <li className="py-1.5 text-text-subtle">None this month.</li>}
         </ul>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -492,8 +499,7 @@ function Holidays({ sheet, onClose }: { sheet: Sheet; onClose: () => void }) {
           <Field id="hol-name" label="Name"><input id="hol-name" className={inputClass} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. National Day" /></Field>
         </div>
         <Button className="mt-3" variant="primary" onClick={add} disabled={!f.name.trim() || !f.day || !f.country}>Add holiday</Button>
-      </Card>
-    </div>
+    </Dialog>
   );
 }
 
@@ -514,9 +520,7 @@ function Categories({ countries, sheets, data, onClose }: { countries: string[];
     catch (e) { setError((e as Error).message); }
   };
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="cat-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <Card className="max-h-[85vh] w-full max-w-2xl overflow-y-auto">
-        <div className="mb-3 flex items-start gap-3"><h2 id="cat-title" className="flex-1 font-display text-lg font-bold">Approver emails</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
+    <Dialog title="Approver emails" onClose={onClose} size="lg">
         <p className="mb-3 text-sm text-text-muted">Notify emails everyone with the approving role in that country, using their email from WIREGUARD. Add an address here only for an approver without an SLK Ops account.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <ul className="divide-y divide-border">
@@ -531,7 +535,6 @@ function Categories({ countries, sheets, data, onClose }: { countries: string[];
             );
           })}
         </ul>
-      </Card>
-    </div>
+    </Dialog>
   );
 }

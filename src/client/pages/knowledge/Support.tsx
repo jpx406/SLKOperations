@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { INLINE, TYPES, VIDEO, checkUpload, sizeText, type Category } from '../../../shared/attachments';
 import { ApiError, api, formatDate } from '../../api';
 import { Banner, Button, cx } from '../../components/ui';
+import { useConfirm, useDialogFocus } from '../../components/Dialog';
 
 // Support files of a Knowledge Hub entry (6z.17): pictures, videos and documents kept below the document, for
 // everyone to view and download. Editors add and remove them. Stored as the entry's attachments in R2.
@@ -54,8 +55,9 @@ export function SupportFiles({ docId }: { docId: string }) {
     if (input.current) input.current.value = '';
     refresh();
   };
+  const [ask, confirmDialog] = useConfirm();
   const remove = async (f: SupportFile) => {
-    if (!window.confirm(`Remove “${f.file_name}”? It is hidden; the audit log keeps a record.`)) return;
+    if (!(await ask({ title: `Remove “${f.file_name}”?`, body: 'It is hidden; the audit log keeps a record.', confirm: 'Remove file', danger: true }))) return;
     try { await api(`/attachments/knowledge/${encodeURIComponent(docId)}/${f.id}`, { method: 'DELETE' }); refresh(); }
     catch (e) { setErrors([(e as ApiError).message]); }
   };
@@ -70,6 +72,7 @@ export function SupportFiles({ docId }: { docId: string }) {
 
   return (
     <section aria-label="Support files" className="mt-4 rounded-md border border-border p-3">
+      {confirmDialog}
       <h3 className="flex items-center gap-2 font-display text-sm font-bold"><Paperclip aria-hidden className="size-4" />Support files <span className="font-mono text-xs font-normal text-text-muted">{files.length}</span></h3>
       {errors.length > 0 && <div className="mt-2"><Banner tone="danger"><ul>{errors.map((e, i) => <li key={i}>{e}</li>)}</ul></Banner></div>}
       {canEdit && (
@@ -133,17 +136,18 @@ export function SupportFiles({ docId }: { docId: string }) {
 
 function Lightbox({ docId, pictures, index, onIndex, onClose }: { docId: string; pictures: SupportFile[]; index: number; onIndex: (i: number) => void; onClose: () => void }) {
   const f = pictures[index];
+  const panel = useRef<HTMLDivElement>(null);
+  useDialogFocus(panel, onClose);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowRight') onIndex(Math.min(pictures.length - 1, index + 1));
       if (e.key === 'ArrowLeft') onIndex(Math.max(0, index - 1));
     };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [index, pictures.length, onClose, onIndex]);
+  }, [index, pictures.length, onIndex]);
   return (
-    <div role="dialog" aria-modal="true" aria-label={f.file_name} className="fixed inset-0 z-[70] flex flex-col bg-black/90 p-4">
+    <div ref={panel} data-dialog-panel role="dialog" aria-modal="true" aria-label={f.file_name} className="fixed inset-0 z-[70] flex flex-col bg-black/90 p-4">
       <div className="flex items-center gap-2 text-sm text-white">
         <span className="min-w-0 flex-1 truncate">{f.file_name} · {index + 1} of {pictures.length}</span>
         <a className="inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-white/10" href={supportUrl(docId, f)} download={f.file_name}><Download aria-hidden className="size-4" />Download</a>

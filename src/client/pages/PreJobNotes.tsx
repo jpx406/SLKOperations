@@ -10,6 +10,7 @@ import { ApiError, api, formatDate } from '../api';
 import { useMe } from '../auth';
 import { saveFile } from '../components/charts';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass, inputSized } from '../components/ui';
+import { Dialog } from '../components/Dialog';
 
 // Pre-Job Notes: list (S09), editor (S26) and Confirm & Send (S27).
 
@@ -101,9 +102,7 @@ function DeleteNote({ row, onClose }: { row: { id: string; log_no: string; ticke
     try { await api(`/pre-job-notes/${row.id}`, { method: 'DELETE', json: { confirm: typed } }); onClose(true); } catch (e) { setError((e as ApiError).message); } finally { setBusy(false); }
   };
   return (
-    <div role="alertdialog" aria-modal="true" aria-labelledby="del-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <Card className="w-full max-w-md">
-        <h2 id="del-title" className="mb-2 font-display text-lg font-bold">Delete {row.log_no}?</h2>
+    <Dialog title={`Delete ${row.log_no}?`} onClose={() => onClose()} size="sm" alert hideClose>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         {step === 1 ? (
           <>
@@ -116,8 +115,7 @@ function DeleteNote({ row, onClose }: { row: { id: string; log_no: string; ticke
             <div className="mt-4 flex gap-2"><Button variant="danger" loading={busy} disabled={typed.trim().toUpperCase() !== row.log_no} onClick={go}>Delete permanently</Button><Button onClick={() => onClose()}>Keep it</Button></div>
           </>
         )}
-      </Card>
-    </div>
+    </Dialog>
   );
 }
 
@@ -227,7 +225,7 @@ export function PreJobNoteEditor() {
       </div>
       {error && <div className="mb-3 print:hidden"><Banner tone="danger">{error}</Banner></div>}
       {notice && <div className="mb-3 print:hidden"><Banner tone="success">{notice}</Banner></div>}
-      {contactsQ.data && !contacts.length && <div className="mb-3 print:hidden"><Banner tone="warning">The SLK Contacts list is empty. Ask the attendance administrator to mark contacts in the Headcount Roster.</Banner></div>}
+      {contactsQ.data && !contacts.length && <div className="mb-3 print:hidden"><Banner tone="warning">The SLK Contacts list is empty. Ask an administrator to mark contacts in Users &amp; Roles.</Banner></div>}
 
       <div className="hidden print:block">{note && job && <NoteDocument note={{ ...note, content: c }} contacts={contacts} job={job} />}</div>
       <div className="space-y-4 print:hidden">
@@ -298,13 +296,10 @@ export function PreJobNoteEditor() {
 
 function NoteHistory({ note, onClose }: { note: Note; onClose: () => void }) {
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="hist-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <Card className="w-full max-w-md">
-        <div className="mb-3 flex items-start gap-3"><h2 id="hist-title" className="flex-1 font-display text-lg font-bold">History of {note.log_no}</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={onClose}><X aria-hidden className="size-4" /></Button></div>
+    <Dialog title={`History of ${note.log_no}`} onClose={onClose} size="sm">
         <p className="mb-3 text-sm text-text-muted">Every save is kept, newest first. Saved versions can’t be edited or deleted here.</p>
         <ul className="divide-y divide-border text-sm">{note.versions.map((v) => <li key={v.version} className="flex gap-3 py-1.5"><span className="font-mono font-semibold">v{v.version}</span><span className="flex-1">{v.saved_by}</span><span className="font-mono text-xs text-text-muted">{when(v.saved_at)}</span></li>)}</ul>
-      </Card>
-    </div>
+    </Dialog>
   );
 }
 
@@ -350,9 +345,7 @@ function SendNote({ note, job, contacts, onClose }: { note: Note; job: { ticket_
     await mark('eml');
   };
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="send-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <Card className="max-h-full w-full max-w-xl overflow-y-auto">
-        <div className="mb-3 flex items-start gap-3"><h2 id="send-title" className="flex-1 font-display text-lg font-bold">Confirm &amp; send {note.log_no}</h2><Button size="sm" variant="ghost" aria-label="Close" onClick={() => onClose()}><X aria-hidden className="size-4" /></Button></div>
+    <Dialog title={`Confirm & send ${note.log_no}`} onClose={() => onClose()} size="md">
         <p className="mb-3 text-sm text-text-muted">Either way the note is marked Sent. For a PDF copy, use Print / PDF and attach it.</p>
         {error && <div className="mb-3"><Banner tone="danger">{error}</Banner></div>}
         <div className="space-y-3">
@@ -365,8 +358,7 @@ function SendNote({ note, job, contacts, onClose }: { note: Note; job: { ticket_
           <Button onClick={downloadEml}><Download aria-hidden className="size-4" />Download .eml instead</Button>
         </div>
         <p className="mt-2 text-xs text-text-subtle">Open in mail app also copies the note text to your clipboard, ready to paste.</p>
-      </Card>
-    </div>
+    </Dialog>
   );
 }
 

@@ -55,6 +55,8 @@ export function CompetencyModule({ mode = 'competency' }: { mode?: 'competency' 
   return (
     // the module brings its own header and tabs, full width under the SLK Ops bar
     <div className="-mx-4 -my-5 md:-mx-5">
+      {/* the module draws its own visual header; this names the page for screen readers */}
+      <h1 className="sr-only">{mode === 'career' ? 'Career Development' : 'Competency'}</h1>
       <Boundary>
         <Suspense fallback={<div className="p-5"><Skeleton className="h-96" /></div>}>
           <CompetencyApp key={mode} host={host} />
