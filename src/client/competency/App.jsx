@@ -5622,25 +5622,14 @@ function OnlineExams({ state, set }) {
   const parseAI = async () => {
     setImpBusy(true); setImpErr(""); setImpPrev(null);
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
+      // read by the app's own AI route (its key, budget and usage log), never straight from the browser
+      const response = await fetch("/api/ai/exam-import", {
+        method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content:
-`You convert exam content pasted from Microsoft Forms (or any quiz text) into strict JSON.
-Return ONLY a JSON object, no markdown fences, no commentary, shaped exactly:
-{"title": string, "questions": [{"q": string, "opts": [string,...], "correct": [zero-based indices of correct options], "multi": boolean, "pts": number}]}
-Rules: Questions commonly start with a leading number ("1.", "1)", "1 ") — strip that numbering from "q". Options are commonly lettered A), B), C), D), E) — strip the letter/punctuation from each option's text. The correct answer(s) are marked with an asterisk (*), which may appear right before the letter (e.g. "*B)"), right after it, or anywhere in that option's line — treat any option whose line contains "*" as correct, and strip the "*" out of the stored option text. Also recognize other clear markers (checkmark, "Correct answer:", "(correct)") when no asterisk is present. If nothing is marked, use an empty correct array for that question. Default pts 1. multi=true whenever more than one option is marked correct, or the question says to select all that apply.
-CONTENT:
-` + impText }],
-        }),
+        body: JSON.stringify({ text: impText }),
       });
-      const data = await response.json();
-      const text = (data.content || []).filter(i2 => i2.type === "text").map(i2 => i2.text).join("\n");
-      const clean = text.split("```json").join("").split("```").join("").trim();
-      const parsed = JSON.parse(clean);
+      const parsed = await response.json().catch(() => ({}));
+      if (!response.ok) { setImpErr(parsed.error || "Could not read that content. Try the simple format below."); setImpBusy(false); return; }
       if (!validateQs(parsed.questions)) throw new Error("shape");
       setImpPrev({ title: parsed.title || impTitle || "Imported exam", questions: normQs(parsed.questions) });
     } catch (err) { setImpErr("Could not parse that content into questions. Check the paste includes the questions and options, or try the simple format below."); }

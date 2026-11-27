@@ -4,6 +4,7 @@ import { AI_MODELS, STARTER_PROMPTS, checkSettings, costMicroUsd, limitCheck, pa
 import { assistantPrompt, helpFor } from '../shared/help';
 import { roleLabel } from '../shared/roles';
 import type { AppBindings, Env } from './env';
+import { mayEdit as mayEditCompetency } from './competency';
 
 // AI Agent (S35). Answers questions from the asker's own data: every tool is a GET through the app itself,
 // with the asker's cookie and country switch, so permissions and countries apply exactly as in the browser.
@@ -93,6 +94,50 @@ export async function assistantChat(c: Context<AppBindings>) {
 }
 
 interface ChatIn { messages?: { role?: string; content?: unknown }[] }
+
+const EXAM_PROMPT = `You convert exam content pasted from Microsoft Forms (or any quiz text) into strict JSON.
+Return ONLY a JSON object, no markdown fences, no commentary, shaped exactly:
+{"title": string, "questions": [{"q": string, "opts": [string,...], "correct": [zero-based indices of correct options], "multi": boolean, "pts": number}]}
+Rules: Questions commonly start with a leading number ("1.", "1)", "1 ") — strip that numbering from "q". Options are commonly lettered A), B), C), D), E) — strip the letter/punctuation from each option's text. The correct answer(s) are marked with an asterisk (*), which may appear right before the letter (e.g. "*B)"), right after it, or anywhere in that option's line — treat any option whose line contains "*" as correct, and strip the "*" out of the stored option text. Also recognize other clear markers (checkmark, "Correct answer:", "(correct)") when no asterisk is present. If nothing is marked, use an empty correct array for that question. Default pts 1. multi=true whenever more than one option is marked correct, or the question says to select all that apply.`;
+
+/** Competency exam import: pasted quiz text in, questions out. Uses the app's key, budget and usage log. */
+export async function examImport(c: Context<AppBindings>) {
+  const user = c.get('user');
+  if (!(await mayEditCompetency(c.env, user))) return c.json({ error: 'Your role can read Competency but not change it' }, 403);
+  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: 'AI import isn’t set up yet: the Anthropic API key is missing on the server. Use the simple format instead.' }, 503);
+  const s = await loadSettings(c.env);
+  const u = await spend(c.env, user.username, 'document');
+  const blocked = limitCheck(s, u.monthMicro, u.sentToday);
+  if (blocked) return c.json({ error: blocked }, 429);
+  const { text } = await c.req.json<{ text?: unknown }>().catch(() => ({} as { text?: unknown }));
+  if (typeof text !== 'string' || !text.trim()) return c.json({ error: 'Paste the exam questions first' }, 400);
+  if (text.length > 60_000) return c.json({ error: 'That is too long to import at once. Split it into parts.' }, 413);
+  let micro = 0, inTok = 0, outTok = 0;
+  try {
+    const res = await client(c.env).beta.messages.create({
+      model: s.model, max_tokens: 16000, output_config: { effort: 'low' },
+      system: EXAM_PROMPT, messages: [{ role: 'user', content: `CONTENT:\n${text}` }], ...fallbackFor(s.model),
+    });
+    micro = costMicroUsd(res.usage, s.model);
+    inTok = res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0);
+    outTok = res.usage.output_tokens;
+    const out = res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map((b) => b.text).join('\n')
+      .replace(/```json|```/g, '').trim();
+    try {
+      const parsed = JSON.parse(out) as { title?: unknown; questions?: unknown };
+      return c.json({ title: typeof parsed.title === 'string' ? parsed.title : '', questions: Array.isArray(parsed.questions) ? parsed.questions : [] });
+    } catch {
+      return c.json({ error: res.stop_reason === 'max_tokens' ? 'That exam is too long to read at once. Split it into parts.' : 'Could not read questions from that text. Try the simple format.' }, 422);
+    }
+  } catch (e) {
+    const msg = serviceError(e);
+    if (!msg) throw e;
+    return c.json({ error: msg }, 502);
+  } finally {
+    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+  }
+}
 
 export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
   const user = c.get('user');

@@ -328,6 +328,7 @@ export function JobEditor() {
             </div>
             {job && <PreJobNotePanel jobId={job.id} />}
             <ServicesPicker job={job} options={L?.jobTypes ?? []} profiles={L?.serviceProfiles ?? []} canEdit={editable('run_details')} onSaved={adopt} />
+            {job && <ThirdParties jobId={job.id} canEdit={editable('run_details')} />}
           </Card>
         )}
 
@@ -626,6 +627,64 @@ function ExplosivesPrompt({ job }: { job: Job | null }) {
       )}
       {canView && recon.isSuccess && !mine.length && <p className="mt-1 text-xs text-text-subtle">No explosives recorded against this job yet.</p>}
     </div>
+  );
+}
+
+type Party = { vendor: string; po_no: string; po_value: string; currency: string };
+const BLANK_PARTY: Party = { vendor: '', po_no: '', po_value: '', currency: 'SAR' };
+
+/** Vendors brought in for the job, with their PO. Up to five; they show in the Job Log. */
+function ThirdParties({ jobId, canEdit }: { jobId: string; canEdit: boolean }) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['third-parties', jobId],
+    queryFn: () => api<{ parties: { vendor: string; po_no: string | null; po_value_cents: number | null; currency: string }[] }>(`/jobs/${jobId}/third-parties`),
+  });
+  const [rows, setRows] = useState<Party[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const loaded: Party[] = (q.data?.parties ?? []).map((p) => ({ vendor: p.vendor, po_no: p.po_no ?? '', po_value: p.po_value_cents == null ? '' : String(p.po_value_cents / 100), currency: p.currency }));
+  const list = rows ?? loaded;
+  const edit = (i: number, k: keyof Party, v: string) => { setSaved(false); setRows(list.map((r, j) => (j === i ? { ...r, [k]: v } : r))); };
+  const save = async () => {
+    setBusy(true); setError(null);
+    try {
+      await api(`/jobs/${jobId}/third-parties`, { method: 'PUT', json: { parties: list } });
+      await qc.invalidateQueries({ queryKey: ['third-parties', jobId] });
+      setRows(null); setSaved(true);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  if (q.isError) return <p className="mt-6 text-xs text-danger">Third parties could not be loaded: {(q.error as Error).message}</p>;
+  if (!q.data) return null;
+  if (!canEdit && !list.length) return null;
+  return (
+    <fieldset className="mt-6" aria-busy={busy}>
+      <legend className="label-caps mb-2 text-text-muted">Third parties <span className="normal-case tracking-normal text-text-subtle">(vendor and PO, up to 5)</span></legend>
+      {error && <p className="mb-2 text-xs text-danger">{error}</p>}
+      <div className="flex flex-col gap-2">
+        {list.map((r, i) => (
+          <div key={i} className="grid gap-2 rounded-md border border-border p-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_80px_auto]">
+            <label className="sr-only" htmlFor={`tp-v-${i}`}>Vendor {i + 1}</label>
+            <input id={`tp-v-${i}`} className={inputClass} placeholder="Vendor" value={r.vendor} disabled={!canEdit} onChange={(e) => edit(i, 'vendor', e.target.value)} />
+            <label className="sr-only" htmlFor={`tp-po-${i}`}>PO number {i + 1}</label>
+            <input id={`tp-po-${i}`} className={inputClass} placeholder="PO number" value={r.po_no} disabled={!canEdit} onChange={(e) => edit(i, 'po_no', e.target.value)} />
+            <label className="sr-only" htmlFor={`tp-val-${i}`}>PO value {i + 1}</label>
+            <input id={`tp-val-${i}`} className={inputClass} inputMode="decimal" placeholder="PO value" value={r.po_value} disabled={!canEdit} onChange={(e) => edit(i, 'po_value', e.target.value)} />
+            <label className="sr-only" htmlFor={`tp-cur-${i}`}>Currency {i + 1}</label>
+            <input id={`tp-cur-${i}`} className={inputClass} maxLength={3} value={r.currency} disabled={!canEdit} onChange={(e) => edit(i, 'currency', e.target.value.toUpperCase())} />
+            {canEdit && <Button size="sm" variant="ghost" onClick={() => { setSaved(false); setRows(list.filter((_, j) => j !== i)); }}>Remove</Button>}
+          </div>
+        ))}
+      </div>
+      {canEdit && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {list.length < 5 && <Button size="sm" onClick={() => { setSaved(false); setRows([...list, BLANK_PARTY]); }}>Add a third party</Button>}
+          {rows && <Button size="sm" variant="primary" loading={busy} onClick={save}>Save third parties</Button>}
+          {saved && !rows && <span className="text-xs text-success">Saved</span>}
+        </div>
+      )}
+    </fieldset>
   );
 }
 

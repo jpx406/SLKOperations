@@ -471,7 +471,10 @@ function Holidays({ sheet, onClose }: { sheet: Sheet; onClose: () => void }) {
     try { await api('/attendance/holidays', { method: 'POST', json: f }); setF({ ...f, name: '' }); setError(null); qc.invalidateQueries({ queryKey: ['attendance', sheet.month] }); }
     catch (e) { setError((e as Error).message); }
   };
-  const remove = async (id: string) => { await api(`/attendance/holidays/${id}`, { method: 'DELETE' }); qc.invalidateQueries({ queryKey: ['attendance', sheet.month] }); };
+  const remove = async (id: string) => {
+    try { await api(`/attendance/holidays/${id}`, { method: 'DELETE' }); setError(null); qc.invalidateQueries({ queryKey: ['attendance', sheet.month] }); }
+    catch (e) { setError((e as Error).message); }
+  };
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="hol-title" className="fixed inset-0 z-50 grid place-items-center bg-bg/70 p-4" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
       <Card className="w-full max-w-lg">

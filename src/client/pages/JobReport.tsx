@@ -60,6 +60,12 @@ export function JobReport() {
         <Button size="sm" onClick={exportPackage} disabled={crew.isPending || events.isPending}><FolderArchive aria-hidden className="size-4" />Job package (.zip)</Button>
         <span className="text-xs text-text-muted">The package holds this report, the job data and its tables, for filing with the signed documents.</span>
       </div>
+      {(() => {
+        const failed = [crew.isError && 'crew', events.isError && 'sequence of events', emf.isError && 'Q-Incidents', jra.isError && 'JRA', pjn.isError && 'Pre-Job Notes'].filter(Boolean);
+        return failed.length > 0 && (
+          <Banner tone="danger">Parts of this report did not load ({failed.join(', ')}), so they are missing below. Reload the page before printing or filing it.</Banner>
+        );
+      })()}
       <article ref={ref} className="space-y-4 rounded-lg border border-border bg-surface p-6 text-sm print:border-0 print:p-0">
         <header className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-accent-edge pb-2">
           <h1 className="font-display text-xl font-extrabold uppercase">Job report · {j.ticket_no ?? 'no ticket'}</h1>

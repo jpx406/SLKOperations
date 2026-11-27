@@ -167,7 +167,11 @@ lessons.get('/', async (c) => {
       coalesce(u3.full_name, l.reviewer) AS reviewer_name, coalesce(u4.full_name, l.approver) AS approver_name
     FROM lessons l LEFT JOIN user_roles u1 ON u1.username = l.updated_by LEFT JOIN user_roles u2 ON u2.username = l.created_by
       LEFT JOIN user_roles u3 ON u3.username = l.reviewer LEFT JOIN user_roles u4 ON u4.username = l.approver
-    ORDER BY l.updated_at DESC LIMIT 500`).all<Row & { updated_by_name: string; created_by_name: string; reviewer_name: string | null; approver_name: string | null }>();
+    -- the same rule as visible(), applied before the limit so nobody's list comes up short
+    WHERE ?1 = 1 OR l.country = ?2 OR l.country IN (SELECT value FROM json_each(?3))
+      OR lower(l.created_by) = lower(?4) OR lower(l.reviewer) = lower(?4) OR lower(l.approver) = lower(?4)
+    ORDER BY l.updated_at DESC LIMIT 500`).bind(user.role === 'admin' ? 1 : 0, GLOBAL, JSON.stringify(user.allCountries ?? user.countries), user.username)
+    .all<Row & { updated_by_name: string; created_by_name: string; reviewer_name: string | null; approver_name: string | null }>();
   const s = await copySettings(c.env);
   const people = await c.env.DB.prepare(`SELECT u.username, u.full_name, coalesce(k.can_review, CASE WHEN u.role = 'admin' THEN 1 ELSE 0 END) AS can_review,
       coalesce(k.can_approve, CASE WHEN u.role = 'admin' THEN 1 ELSE 0 END) AS can_approve

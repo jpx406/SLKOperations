@@ -7,7 +7,7 @@ import { passkeyAdmin, passkeyAuth, passkeys } from './passkeys';
 import { loadRules, rulesApi, usersFor } from './rules';
 import { importWgUsers, wgUserActive } from './wgUsers';
 import { syncPeople } from './people';
-import { aiAdminGet, aiAdminPut, aiChat, aiStatus, assistantChat } from './ai';
+import { aiAdminGet, aiAdminPut, aiChat, aiStatus, assistantChat, examImport } from './ai';
 import { database } from './database';
 import { logOptions } from './logOptions';
 import { diagrams } from './diagrams';
@@ -270,6 +270,7 @@ app.route('/recon', recon);
 // AI Agent: each tool reads through this same app with the asker's cookie and country switch
 app.get('/ai/status', aiStatus);
 app.post('/ai/assistant', assistantChat);
+app.post('/ai/exam-import', examImport);
 app.post('/ai/chat', (c) => aiChat(c, (path) => {
   const headers = new Headers();
   for (const h of ['cookie', 'x-slk-country']) { const v = c.req.header(h); if (v) headers.set(h, v); }
@@ -283,20 +284,50 @@ export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     if (event.cron === '0 1 * * *') {
-      // 04:00 Riyadh: fresh pull, then reconcile every country WIREGUARD shares with the sync account
+      // 04:00 Riyadh: fresh pull, then reconcile every country WIREGUARD shares with the sync account.
+      // Each step runs on its own: one failing is logged and the rest still run.
       ctx.waitUntil((async () => {
-        await syncAll(env, { hourly: true });
-        const { results } = await env.DB.prepare('SELECT DISTINCT country FROM wg_units WHERE wg_active = 1').all<{ country: string }>();
-        await runReconciliation(env, results.map((r) => r.country), 'nightly');
-        await sendDigests(env);
+        const step = async (name: string, run: () => Promise<unknown>) => {
+          try { await run(); } catch (e) {
+            console.error(`nightly: ${name} failed`, e);
+            await env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
+              .bind(crypto.randomUUID(), 'nightly', 'failed', 'nightly', name, `Nightly ${name} failed: ${(e as Error).message}`.slice(0, 500)).run().catch(() => {});
+          }
+        };
+        await step('WIREGUARD sync', () => syncAll(env, { hourly: true }));
+        await step('reconciliation', async () => {
+          const { results } = await env.DB.prepare('SELECT DISTINCT country FROM wg_units WHERE wg_active = 1').all<{ country: string }>();
+          await runReconciliation(env, results.map((r) => r.country), 'nightly');
+        });
+        // the digest goes out once a day, even if the nightly job is run again
+        await step('digest email', async () => {
+          const key = `digest:${new Date(event.scheduledTime).toISOString().slice(0, 10)}`;
+          if (await env.KV.get(key)) return;
+          await sendDigests(env);
+          await env.KV.put(key, '1', { expirationTtl: 3 * 86400 });
+        });
         // WIREGUARD's people: names, emails, employee IDs and who is still active (Users & Roles)
-        await importWgUsers(env, 'nightly sync').catch((e) => console.error('WIREGUARD user import failed', e));
+        await step('WIREGUARD user import', () => importWgUsers(env, 'nightly sync'));
         // the month's attendance days from the jobs, ready before anyone opens the sheet
-        await nightlyJobDays(env).catch((e) => console.error('attendance from jobs failed', e));
+        await step('attendance from jobs', () => nightlyJobDays(env));
+        // the people list follows the users (moved here from page views)
+        await step('people sync', () => syncPeople(env));
+        // housekeeping: sync log and resolved reconciliation findings older than 90 days (explained ones stay, so
+        // they are not raised again)
+        await step('clean-up', async () => {
+          const cut = new Date(event.scheduledTime - 90 * 86400_000).toISOString();
+          await env.DB.batch([
+            env.DB.prepare('DELETE FROM wg_sync_log WHERE started_at < ?').bind(cut),
+            env.DB.prepare("DELETE FROM recon_findings WHERE status = 'resolved' AND coalesce(resolved_at, last_seen_at) < ?").bind(cut),
+          ]);
+        });
       })());
       return;
     }
-    // runs every 15 minutes; documents, settings and the build stamp only on the hour
-    ctx.waitUntil(syncAll(env, { hourly: new Date(event.scheduledTime).getUTCMinutes() < 15 }));
+    // runs every 15 minutes; documents, settings and the build stamp only on the hour. The nightly job does its own
+    // full pull at 01:00 UTC, so the quarter-hour run then is skipped.
+    const at = new Date(event.scheduledTime);
+    if (at.getUTCHours() === 1 && at.getUTCMinutes() < 15) return;
+    ctx.waitUntil(syncAll(env, { hourly: at.getUTCMinutes() < 15 }));
   },
 } satisfies ExportedHandler<Env>;

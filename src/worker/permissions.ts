@@ -81,7 +81,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/job-forms\/[^/]+\/[^/]+\/files\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/job-forms\/[^/]+\/[^/]+\/files\/[^/]+$/, menu: 'jobs', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/jobs\/[^/]+$/, menu: 'jobs', action: 'edit' },
-  { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/services$/, menu: 'jobs', action: 'edit' },
+  { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/(services|third-parties)$/, menu: 'jobs', action: 'edit' },
   { method: 'PUT', re: /^\/api\/jobs\/[^/]+\/(headcount|crew)$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/jobs\/[^/]+\/crew\/[^/]+\/(remove|replace|restore)$/, menu: 'jobs', action: 'edit' },
   { method: 'POST', re: /^\/api\/jobs\/[^/]+\/events$/, menu: 'jobs', action: 'edit' },
@@ -177,8 +177,7 @@ export const WRITE_RULES: { method: string; re: RegExp; menu: string; action: ke
   { method: 'POST', re: /^\/api\/knowledge\/manuals\/(folders|folders\/[^/]+\/(files|remove)|files\/[^/]+\/remove)$/, menu: 'knowledge_hub', action: 'view' },
   // asking the agent only reads; its tools go through READ_RULES with the asker's own session
   { method: 'POST', re: /^\/api\/ai\/chat$/, menu: 'ai_agent', action: 'view' },
-  { method: 'POST', re: /^\/api\/ai\/assistant$/, menu: 'ai_assistant', action: 'view' },
-  { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists|parts|equipment|equipment-types)$/, menu: 'database', action: 'edit' },
+  { method: 'POST', re: /^\/api\/ai\/assistant$/, menu: 'ai_assistant', action: 'view' },  { method: 'POST', re: /^\/api\/database\/(pce|grease-panels|lists|parts|equipment|equipment-types)$/, menu: 'database', action: 'edit' },
   { method: 'PATCH', re: /^\/api\/database\/(pce|grease-panels|lists|parts|equipment|equipment-types)\/[^/]+$/, menu: 'database', action: 'edit' },
   { method: 'DELETE', re: /^\/api\/database\/(pce|grease-panels|parts)\/[^/]+$/, menu: 'database', action: 'delete' },
   // rig up and tool string diagrams (Preparation); who may edit or review is checked in the route
@@ -234,7 +233,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/form-templates(\/[^/]+)?$/, menus: ['form_templates'] },
   { re: /^\/api\/job-forms\/[^/]+$/, menus: ['jobs'] },
   { re: /^\/api\/jobs(\/[^/]+)?$/, menus: ['jobs', 'schedule'] },
-  { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options|events)$/, menus: ['jobs'] },
+  { re: /^\/api\/jobs\/[^/]+\/(crew|wire-options|events|third-parties)$/, menus: ['jobs'] },
   // the winch guidelines and the job's line, for the winch data on the Closure tab (6z.42)
   // the guidelines are reference values from SOP-04: anyone signed in reads them (6z.44)
   { re: /^\/api\/winch\/guide(\/version)?$/, menus: 'any' },
@@ -259,7 +258,7 @@ export const READ_RULES: { re: RegExp; menus: string[] | 'any' }[] = [
   { re: /^\/api\/attendance(\/categories)?$/, menus: ['attendance'] },
   { re: /^\/api\/roster$/, menus: ['headcount_roster'] },
   { re: /^\/api\/pre-job-notes(\/(contacts|by-job\/[^/]+|[^/]+(\/versions\/\d+)?))?$/, menus: ['pre_job_notes'] },
-  { re: /^\/api\/jra\/[^/]+$/, menus: ['jobs'] },
+  { re: /^\/api\/jra\/[^/]+(\/approvers)?$/, menus: ['jobs'] },
   { re: /^\/api\/wires\/data$/, menus: ['wires', 'statistics'] },
   { re: /^\/api\/bonus\/(rules|lines|revenue)$/, menus: ['bonus'] },
   { re: /^\/api\/bonus\/jobs\/[^/]+$/, menus: ['jobs'] },
@@ -298,6 +297,8 @@ export const OPEN_WRITES: { method: string; re: RegExp }[] = [
   // the Competency data store serves Competency and Career Development (6z.40): the route checks either right
   { method: 'PUT', re: /^\/api\/competency\/kv$/ },
   { method: 'DELETE', re: /^\/api\/competency\/kv$/ },
+  // Competency exam import: the route checks the Competency edit right (menus or Competency's own user list)
+  { method: 'POST', re: /^\/api\/ai\/exam-import$/ },
   { method: 'POST', re: /^\/api\/auth\/login$/ },
   { method: 'POST', re: /^\/api\/auth\/logout$/ },
   // attendance saves and approvals follow the sheet rules row by row (shared/attendanceSheets.ts): a manager who

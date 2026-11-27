@@ -1897,3 +1897,38 @@ Every label, message and empty state was written here. No code, assets or copy f
 - **Why:** the owner asked to swap the editor screen, with the lesson page on the left and both columns the same width.
 - **Now:** on a wide screen the page preview (with its layout controls) is on the left and stays in view while scrolling, and the form is on the right. The two columns are always the same width, in both "In order" and "Boxes I can move". On a phone the order is as before: the form first, then the page.
 - **Verified:** tests 546; type check clean. In the local app at 1440 px both columns are 581 px wide, preview on the left; at 390 px the form comes first, no sideways scroll, no console errors.
+
+## 6z.67: audit fixes, part 1: features that did not work
+
+From the full audit of 27 Nov (58 findings; the owner asked to fix all of them). This part fixes what was broken.
+
+- **JRA "Send to"** now lists the approvers: the approvers list had no read rule, so it was refused for everyone.
+- **Competency "Import with AI"** goes through the app's own AI route (`POST /api/ai/exam-import`), with the app's key, monthly budget and usage log. It called Anthropic straight from the browser with no key, so it could never work. Only people who can change Competency can use it.
+- **WIREGUARD sync:**
+  - Documents and alerts that missed one pull come back when WIREGUARD lists them again.
+  - Rows are only rewritten when something changed, so an unchanged pull writes nothing. It was rewriting every run every 15 minutes.
+  - Rows missing from a pull are marked inactive by their key.
+  - An empty pull, or one that drops more than a fifth of a list, is kept as it was and noted in the sync log. Before, it would have hidden the whole list.
+  - Remaining length is only written for wires whose figure changed.
+  - Only one sync runs at a time; the button says so if one is already running.
+- **Nightly job:**
+  - Each step (sync, reconciliation, digest, user import, attendance from jobs, people list, clean-up) runs on its own. A failure is written to the audit log and the rest still run. Before, one failure skipped everything after it.
+  - The digest goes out once a day even if the job runs again.
+  - The quarter-hour sync is skipped at 01:00 UTC, when the nightly job does its own full pull.
+  - Sync log entries and resolved reconciliation findings older than 90 days are deleted. Explained findings stay, so they are not raised again.
+- **Third parties** (vendor, PO number, PO value, currency, up to five) can be entered in the job's Design stage and show in the Job Log column, which was always empty.
+- **Utility projects:**
+  - Deleting a project or one of its files also removes the stored file once no copy uses it.
+  - The file delete is now logged and answers "not found" when there is no such file.
+- **Job report:** shows a warning when any part (crew, events, Q-Incidents, JRA, Pre-Job Notes) failed to load, instead of leaving it out quietly.
+- **Attendance:** removing a holiday shows an error if it fails.
+- **Page not found:** a wrong address now says "Page not found" with a link home, instead of "planned for milestone 4". The leftover "not built yet" route list is gone.
+- **Lessons list:** filtered by country before the 500 limit, so nobody's list comes up short.
+- **Verified:**
+  - Tests: 546 pass; the type check is clean.
+  - JRA approvers answer 200 with the eligible people.
+  - Third parties save and show in the Job Log row.
+  - The exam import route answers with a clear message when the AI key is missing.
+  - A manual sync writes 0 rows when nothing changed (1,208 runs, 1,283 documents).
+  - Running the nightly job twice in a row: every step ran both times and the digest went out once.
+  - A wrong address shows "Page not found".

@@ -27,7 +27,7 @@ const sharedFlag = (v: unknown) => v === true || v === '1' || v === 'true' || v 
 type Row = { value: string | null; r2_key: string | null };
 
 /** Changing the team's Competency data: the Competency edit right in SLK Ops, or a Competency role that edits (6z.35). */
-async function mayEdit(env: Env, user: AuthedUser): Promise<boolean> {
+export async function mayEdit(env: Env, user: AuthedUser): Promise<boolean> {
   // Career Development (6z.40) works on the same data: its edit right changes it too
   if (user.menus.competency?.edit || user.menus.career_development?.edit) return true;
   const row = await env.DB.prepare('SELECT can_edit FROM competency_users WHERE username = ?').bind(user.username).first<{ can_edit: number }>();

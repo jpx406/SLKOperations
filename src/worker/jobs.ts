@@ -370,6 +370,40 @@ jobs.put('/:id/services', async (c) => {
   return c.json({ job: await getJob(c.env, user, id) });
 });
 
+// Third parties on the job (vendor and PO), up to five; shown in the Job Log
+jobs.get('/:id/third-parties', async (c) => {
+  const job = await getJob(c.env, c.get('user'), c.req.param('id'));
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const { results } = await c.env.DB.prepare('SELECT slot, vendor, po_no, po_value_cents, currency FROM job_third_parties WHERE job_id = ? ORDER BY slot').bind(job.id).all();
+  return c.json({ parties: results });
+});
+jobs.put('/:id/third-parties', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  if (!canEditField(user.role, 'run_details', await loadRules(c.env)) || !canEditStage(user.menus, 'design')) return c.json({ error: 'Your role cannot change third parties' }, 403);
+  const job = await getJob(c.env, user, id);
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  const { parties } = await c.req.json<{ parties?: { vendor?: unknown; po_no?: unknown; po_value?: unknown; currency?: unknown }[] }>().catch(() => ({ parties: [] }));
+  const rows = (Array.isArray(parties) ? parties : [])
+    .map((p) => ({ vendor: String(p.vendor ?? '').trim().slice(0, 120), po_no: String(p.po_no ?? '').trim().slice(0, 60) || null,
+      value: p.po_value === '' || p.po_value == null ? null : Number(p.po_value), currency: String(p.currency ?? 'SAR').trim().toUpperCase() || 'SAR' }))
+    .filter((p) => p.vendor);
+  if (rows.length > 5) return c.json({ error: 'Up to 5 third parties per job' }, 400);
+  for (const p of rows) {
+    if (p.value !== null && (!Number.isFinite(p.value) || p.value < 0)) return c.json({ error: `PO value for ${p.vendor} must be a positive number` }, 400);
+    if (!/^[A-Z]{3}$/.test(p.currency)) return c.json({ error: 'Currency is a three-letter code, for example SAR' }, 400);
+  }
+  const at = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM job_third_parties WHERE job_id = ?').bind(id),
+    ...rows.map((p, i) => c.env.DB.prepare('INSERT INTO job_third_parties (id, job_id, slot, vendor, po_no, po_value_cents, currency) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(), id, i + 1, p.vendor, p.po_no, p.value === null ? null : Math.round(p.value * 100), p.currency)),
+    c.env.DB.prepare('UPDATE jobs SET updated_by = ?, updated_at = ? WHERE id = ?').bind(user.username, at, id),
+    audit(c.env, user, 'edit', id, `third parties: ${rows.map((p) => p.vendor).join(', ') || '(none)'}`),
+  ]);
+  return c.json({ ok: true });
+});
+
 const CREW_ROLES = ['slickline_supervisor', 'slickline_operator', 'assistant_operator', 'helper'] as const;
 const HEAD_CAP = { supervisors: 3, operators: 6, assistant_operators: 6, helpers: 6 } as const;
 

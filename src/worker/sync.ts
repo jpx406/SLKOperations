@@ -34,27 +34,31 @@ interface Resource {
   path: string;
   table: string;
   upsert: (env: Env, row: any, at: string) => D1PreparedStatement | null;
-  where: string; // columns that identify a row, for the deactivate step
+  where: string; // columns that identify a row
+  /** SQL for a row's key and the same key from a WIREGUARD row: rows not seen in a pull are marked inactive by key. */
+  keySql: string;
+  key: (row: any) => string | null;
   hourly?: boolean; // pulled on the hour only (plus on demand)
 }
 
 const listResource = (name: string, path: string, table: string): Resource => ({
-  name, path, table, where: 'name, country',
+  name, path, table, where: 'name, country', keySql: "name || char(31) || country", key: (r: ListRow) => (r.name && r.country ? `${r.name}\u001f${r.country}` : null),
   upsert: (env, r: ListRow, at) => (r.name && r.country)
     ? env.DB.prepare(
         `INSERT INTO ${table} (name, country, wg_active, wg_synced_at) VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT (name, country) DO UPDATE SET wg_active = ?3, wg_synced_at = ?4`,
+         ON CONFLICT (name, country) DO UPDATE SET wg_active = ?3, wg_synced_at = ?4 WHERE ${table}.wg_active IS NOT excluded.wg_active`,
       ).bind(r.name, r.country, r.active === 0 || r.active === false ? 0 : 1, at)
     : null,
 });
 
 export const RESOURCES: Resource[] = [
   {
-    name: 'units', path: '/units', table: 'wg_units', where: 'unit_number',
+    name: 'units', path: '/units', table: 'wg_units', where: 'unit_number', keySql: 'unit_number', key: (r) => (r.unit_number && r.country ? String(r.unit_number) : null),
     upsert: (env, r: { unit_number: string; country: string | null; year: number | null }, at) => (r.unit_number && r.country)
       ? env.DB.prepare(
           `INSERT INTO wg_units (unit_number, country, year, wg_active, wg_synced_at) VALUES (?1, ?2, ?3, 1, ?4)
-           ON CONFLICT (unit_number) DO UPDATE SET country = ?2, year = ?3, wg_active = 1, wg_synced_at = ?4`,
+           ON CONFLICT (unit_number) DO UPDATE SET country = ?2, year = ?3, wg_active = 1, wg_synced_at = ?4
+           WHERE wg_units.country IS NOT excluded.country OR wg_units.year IS NOT excluded.year OR wg_units.wg_active = 0`,
         ).bind(r.unit_number, r.country, r.year ?? null, at)
       : null,
   },
@@ -63,29 +67,31 @@ export const RESOURCES: Resource[] = [
   listResource('fields', '/fields', 'wg_fields'),
   listResource('rigs', '/rigs', 'wg_rigs'),
   {
-    name: 'drums', path: '/drums', table: 'wg_drums', where: 'drum_no',
+    name: 'drums', path: '/drums', table: 'wg_drums', where: 'drum_no', keySql: 'drum_no', key: (r) => (r.drum_no ? String(r.drum_no) : null),
     upsert: (env, r: WgDrum, at) => r.drum_no
       ? env.DB.prepare(
           `INSERT INTO wg_drums (drum_no, drum_position, unit_number, country, field, wg_active, raw, wg_synced_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-           ON CONFLICT (drum_no) DO UPDATE SET drum_position = ?2, unit_number = ?3, country = ?4, field = ?5, wg_active = ?6, raw = ?7, wg_synced_at = ?8`,
+           ON CONFLICT (drum_no) DO UPDATE SET drum_position = ?2, unit_number = ?3, country = ?4, field = ?5, wg_active = ?6, raw = ?7, wg_synced_at = ?8
+           WHERE wg_drums.raw IS NOT excluded.raw OR wg_drums.wg_active IS NOT excluded.wg_active`,
         ).bind(r.drum_no, r.drum_position ?? null, r.slickline_unit ?? null, r.country ?? null, r.field ?? null, r.active === 0 ? 0 : 1, JSON.stringify(r), at)
       : null,
   },
   {
-    name: 'wires', path: '/wires', table: 'wg_wires', where: 'wire_serial_number',
+    name: 'wires', path: '/wires', table: 'wg_wires', where: 'wire_serial_number', keySql: 'wire_serial_number', key: (r) => (r.wire_serial_number ? String(r.wire_serial_number) : null),
     upsert: (env, r: WgWire, at) => r.wire_serial_number
       ? env.DB.prepare(
           `INSERT INTO wg_wires (wire_serial_number, wire_grade, wire_size, manufacturer, drum_no, spooled_length_ft, status, rated_mbl_lb, country, raw, wg_active, wg_synced_at)
            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11)
            ON CONFLICT (wire_serial_number) DO UPDATE SET wire_grade = ?2, wire_size = ?3, manufacturer = ?4, drum_no = ?5, spooled_length_ft = ?6,
-             status = ?7, rated_mbl_lb = ?8, country = ?9, raw = ?10, wg_active = 1, wg_synced_at = ?11`,
+             status = ?7, rated_mbl_lb = ?8, country = ?9, raw = ?10, wg_active = 1, wg_synced_at = ?11
+           WHERE wg_wires.raw IS NOT excluded.raw OR wg_wires.wg_active = 0`,
         ).bind(String(r.wire_serial_number), r.wire_grade ?? null, r.wire_size != null ? String(r.wire_size) : null, r.manufacturer ?? null,
           r.drum_no ?? null, toNum(r.spooled_length), r.status ?? null, toNum(r.rated_mbl), r.country ?? null, JSON.stringify(r), at)
       : null,
   },
   {
     // every status, so runs still awaiting approval are visible to reconciliation
-    name: 'runs', path: '/jobs?status=all', table: 'wg_runs', where: 'wg_id',
+    name: 'runs', path: '/jobs?status=all', table: 'wg_runs', where: 'wg_id', keySql: 'wg_id', key: (r) => (r.id && r.job_date ? String(r.id) : null),
     upsert: (env, r: WgRun, at) => r.id && r.job_date
       ? env.DB.prepare(
           `INSERT INTO wg_runs (wg_id, job_date, drss_number, field_ticket, run_number, wire_serial_number, drum_no, country, job_name, location, rig,
@@ -96,7 +102,8 @@ export const RESOURCES: Resource[] = [
              country = ?8, job_name = ?9, location = ?10, rig = ?11, field_name = ?12, well = ?13, well_type = ?14, max_depth_ft = ?15, max_tension_lb = ?16,
              jarring_minutes = ?17, jarring_impact_count = ?18, wire_cut_ft = ?19, hours_working = ?20, remaining_length_ft = ?21, h2s_percent = ?22,
              co2_percent = ?23, supervisor_name = ?24, approval_status = ?25, approved_at = ?26, entered_at = ?27, is_cut_only = ?28, raw = ?29,
-             wg_active = 1, wg_synced_at = ?30`,
+             wg_active = 1, wg_synced_at = ?30
+           WHERE wg_runs.raw IS NOT excluded.raw OR wg_runs.wg_active = 0`,
         ).bind(r.id, String(r.job_date).slice(0, 10), r.drss_number ?? null, r.field_ticket ?? null, toNum(r.run_number), r.wire_serial_number != null ? String(r.wire_serial_number) : null,
           r.drum_no ?? null, r.country ?? null, r.job_name ?? null, r.location ?? null, r.rig ?? null, r.field_name ?? null, r.well_rig ?? null, r.well_type ?? null,
           toNum(r.max_depth), toNum(r.max_tension), toNum(r.jarring_minutes), toNum(r.jarring_impact_count), toNum(r.wire_cut_feet), toNum(r.hours_working),
@@ -105,20 +112,21 @@ export const RESOURCES: Resource[] = [
       : null,
   },
   {
-    name: 'documents', path: '/documents?status=all', table: 'wg_documents', where: 'wg_id', hourly: true,
+    name: 'documents', path: '/documents?status=all', table: 'wg_documents', where: 'wg_id', keySql: 'wg_id', key: (r) => (r.id ? String(r.id) : null), hourly: true,
     upsert: (env, r: WgDocument, at) => r.id
       ? env.DB.prepare(
           `INSERT INTO wg_documents (wg_id, doc_type, wire_serial_number, drum_no, test_type, result, test_date, expiry_date, approval_status, raw, wg_synced_at)
            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
            ON CONFLICT (wg_id) DO UPDATE SET doc_type = ?2, wire_serial_number = ?3, drum_no = ?4, test_type = ?5, result = ?6, test_date = ?7,
-             expiry_date = ?8, approval_status = ?9, raw = ?10, wg_synced_at = ?11`,
+             expiry_date = ?8, approval_status = ?9, raw = ?10, wg_synced_at = ?11, wg_active = 1
+           WHERE wg_documents.raw IS NOT excluded.raw OR wg_documents.wg_active = 0`,
         ).bind(r.id, r.doc_type ?? null, r.wire_serial_number != null ? String(r.wire_serial_number) : null, r.drum_no ?? null, r.test_type ?? null,
           r.result ?? null, r.test_date ?? null, r.expiry_date ?? null, (r.approval_status ?? 'pending').toLowerCase(), JSON.stringify(r), at)
       : null,
   },
   {
     // WIREGUARD sends every country's alerts; the country is resolved here from the wire or drum
-    name: 'notifications', path: '/notifications', table: 'wg_notifications', where: 'wg_id',
+    name: 'notifications', path: '/notifications', table: 'wg_notifications', where: 'wg_id', keySql: 'wg_id', key: (r) => (r.id ? String(r.id) : null),
     upsert: (env, r: WgNotification, at) => r.id
       ? env.DB.prepare(
           `INSERT INTO wg_notifications (wg_id, occurred_at, severity, code, message, wire_serial_number, drum_no, country, is_read, resolved_at, raw, wg_synced_at)
@@ -126,7 +134,8 @@ export const RESOURCES: Resource[] = [
              coalesce((SELECT country FROM wg_wires WHERE wire_serial_number = ?6), (SELECT country FROM wg_drums WHERE drum_no = ?7)), ?8, ?10, ?11, ?9)
            ON CONFLICT (wg_id) DO UPDATE SET severity = ?3, code = ?4, message = ?5, wire_serial_number = ?6, drum_no = ?7,
              country = coalesce((SELECT country FROM wg_wires WHERE wire_serial_number = ?6), (SELECT country FROM wg_drums WHERE drum_no = ?7)),
-             is_read = ?8, resolved_at = ?10, raw = ?11, wg_synced_at = ?9`,
+             is_read = ?8, resolved_at = ?10, raw = ?11, wg_synced_at = ?9, wg_active = 1
+           WHERE wg_notifications.raw IS NOT excluded.raw OR wg_notifications.wg_active = 0 OR wg_notifications.country IS NULL`,
         ).bind(r.id, r.occurred_at ?? new Date().toISOString(), r.severity ?? r.sev ?? null, r.code ?? null, r.message ?? null,
           r.wire_serial_number != null ? String(r.wire_serial_number) : null, r.drum_no ?? null, r.read ? 1 : 0, at, r.resolved_at ?? null, JSON.stringify(r))
       : null,
@@ -167,14 +176,32 @@ export async function syncResource(env: Env, res: Resource) {
     const stmts = rows.map((r) => res.upsert(env, r, at)).filter((s): s is D1PreparedStatement => !!s);
     // rows without a country are Admin-only in WIREGUARD; they are skipped here and counted
     const skipped = rows.length - stmts.length;
-    for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
-    const gone = await env.DB.prepare(`UPDATE ${res.table} SET wg_active = 0 WHERE wg_synced_at < ? AND wg_active = 1`).bind(at).run();
+    // unchanged rows are not rewritten (each upsert only writes when something differs)
+    let written = 0;
+    for (let i = 0; i < stmts.length; i += 100) {
+      const done = await env.DB.batch(stmts.slice(i, i + 100));
+      written += done.reduce((n, d) => n + (d.meta.changes ?? 0), 0);
+    }
+    const seen = new Set(rows.map((r) => res.key(r)).filter((k): k is string => !!k));
+    const { results: active } = await env.DB.prepare(`SELECT ${res.keySql} AS k FROM ${res.table} WHERE wg_active = 1`).all<{ k: string }>();
+    const missing = active.map((a) => a.k).filter((k) => !seen.has(k));
+    // an empty pull, or one that drops more than a fifth of the list, is taken as a WIREGUARD problem, not real removals
+    const suspicious = missing.length > 0 && (rows.length === 0 || (missing.length > 5 && missing.length > active.length * 0.2));
+    let gone = 0;
+    if (!suspicious) {
+      for (let i = 0; i < missing.length; i += 400) {
+        const r = await env.DB.prepare(`UPDATE ${res.table} SET wg_active = 0 WHERE wg_active = 1 AND ${res.keySql} IN (SELECT value FROM json_each(?))`)
+          .bind(JSON.stringify(missing.slice(i, i + 400))).run();
+        gone += r.meta.changes ?? 0;
+      }
+    }
+    const notes = [skipped ? `${skipped} rows without a country skipped` : '', suspicious ? `${missing.length} of ${active.length} rows missing from WIREGUARD: kept active, check the WIREGUARD list` : ''].filter(Boolean).join('; ');
+    if (suspicious) console.warn('sync: kept rows active', res.name, missing.length, active.length);
     await env.DB.prepare(
       `INSERT INTO wg_sync_log (id, resource, started_at, finished_at, rows_seen, rows_upserted, rows_deactivated, error)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(logId, res.name, started, new Date().toISOString(), rows.length, stmts.length, gone.meta.changes ?? 0,
-      skipped ? `${skipped} rows without a country skipped` : null).run();
-    return { resource: res.name, rows: rows.length, upserted: stmts.length, deactivated: gone.meta.changes ?? 0 };
+    ).bind(logId, res.name, started, new Date().toISOString(), rows.length, written, gone, notes || null).run();
+    return { resource: res.name, rows: rows.length, upserted: written, deactivated: gone, ...(suspicious ? { warning: notes } : {}) };
   } catch (e) {
     await env.DB.prepare('INSERT INTO wg_sync_log (id, resource, started_at, finished_at, error) VALUES (?, ?, ?, ?, ?)')
       .bind(logId, res.name, started, new Date().toISOString(), (e as Error).message).run();
@@ -237,25 +264,31 @@ export async function watchBuild(env: Env) {
 
 /** Remaining length on each wire = the latest approved run's figure in WIREGUARD's job log. */
 async function deriveRemainingLength(env: Env) {
-  await env.DB.prepare(
-    `UPDATE wg_wires SET remaining_length_ft = (
-       SELECT r.remaining_length_ft FROM wg_runs r
+  const latest = `(SELECT r.remaining_length_ft FROM wg_runs r
        WHERE r.wire_serial_number = wg_wires.wire_serial_number AND r.wg_active = 1 AND r.approval_status = 'approved' AND r.remaining_length_ft IS NOT NULL
-       ORDER BY r.job_date DESC, r.run_number DESC LIMIT 1)`,
-  ).run();
+       ORDER BY r.job_date DESC, r.run_number DESC LIMIT 1)`;
+  await env.DB.prepare(`UPDATE wg_wires SET remaining_length_ft = ${latest} WHERE remaining_length_ft IS NOT ${latest}`).run();
 }
 
 /** Full pull on demand; the 15-minute cron skips the hourly resources except on the hour. */
-export async function syncAll(env: Env, opts: { hourly?: boolean } = { hourly: true }) {
-  const out = [];
-  for (const r of RESOURCES) {
-    if (r.hourly && !opts.hourly) continue;
-    out.push(await syncResource(env, r));
+const LOCK_KEY = 'wg:sync-lock';
+
+export async function syncAll(env: Env, opts: { hourly?: boolean } = { hourly: true }): Promise<{ resource: string; error?: string; [k: string]: unknown }[]> {
+  if (await env.KV.get(LOCK_KEY)) return [{ resource: 'all', error: 'A WIREGUARD sync is already running. Try again in a few minutes.' }];
+  await env.KV.put(LOCK_KEY, new Date().toISOString(), { expirationTtl: 600 });
+  try {
+    const out: { resource: string; error?: string; [k: string]: unknown }[] = [];
+    for (const r of RESOURCES) {
+      if (r.hourly && !opts.hourly) continue;
+      out.push(await syncResource(env, r));
+    }
+    try { await deriveRemainingLength(env); } catch (e) { out.push({ resource: 'remaining length', error: (e as Error).message }); }
+    if (opts.hourly) out.push(await syncSettings(env));
+    out.push(await watchBuild(env));
+    return out;
+  } finally {
+    await env.KV.delete(LOCK_KEY);
   }
-  await deriveRemainingLength(env);
-  if (opts.hourly) out.push(await syncSettings(env));
-  out.push(await watchBuild(env));
-  return out;
 }
 
 export async function syncStatus(env: Env) {

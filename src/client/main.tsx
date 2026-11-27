@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Navigate, RouterProvider, createBrowserRouter, useLocation } from 'react-router';
-import { NAV } from '../shared/menus';
+
 import { RequireAuth } from './auth';
 import { AppShell } from './components/AppShell';
 import { AdminUsers } from './pages/AdminUsers';
@@ -40,7 +40,7 @@ import { Schedule } from './pages/Schedule';
 import { SignIn } from './pages/SignIn';
 import { ModulePicker } from './pages/Modules';
 import { QrApprove } from './pages/QrApprove';
-import { Stub } from './pages/Stub';
+import { NotFound } from './pages/NotFound';
 import { RouteError } from './components/RouteError';
 import { lazyRetry, watchPreloadErrors } from './staleBuild';
 import './styles.css';
@@ -51,7 +51,6 @@ watchPreloadErrors();
 // the winch analysis window (6z.41) opens on its own, without the app around it
 const WinchWindow = lazy(lazyRetry(() => import('./pages/winch/WinchWindow')));
 
-const BUILT = new Set(['/operation/schedule', '/operation/jobs', '/operation/job-log', '/operation/job-risk-profile', '/operation/pre-job-notes', '/inventory/explosive', '/inventory/hardware', '/inventory/mcr', '/attendance', '/attendance/roster', '/quality/statistics', '/quality/npt', '/quality/utilization', '/competency', '/career', '/quality/competency', '/quality/wire-kpis', '/wires', '/bonus/report', '/bonus/analysis', '/bonus/rules', '/sales', '/operation/8-min-facts', '/operation/failure-roster', '/wires/reconciliation', '/operation/database', '/admin/users', '/admin/data', '/admin/form-templates', '/admin/audit', '/admin/companies', '/admin/ai-agent', '/knowledge', '/operation/opportunities', '/utilities/rig-up', '/utilities/tool-string', '/utilities/winch', '/utilities/lessons']);
 
 /** Sends an old address to the page's new one, keeping its filters (?severity=high ...). */
 function MovedTo({ path }: { path: string }) {
@@ -128,8 +127,7 @@ const router = createBrowserRouter([
       { path: 'knowledge', element: <KnowledgeHub /> },
       { path: 'operation/opportunities', element: <QuickPlan /> },
       { path: 'operation/quick-plan', element: <Navigate to="/operation/opportunities" replace /> },
-      ...NAV.flatMap((g) => g.pages).filter((p) => !BUILT.has(p.path)).map((p) => ({ path: p.path.slice(1), element: <Stub /> })),
-      { path: '*', element: <Stub /> },
+      { path: '*', element: <NotFound /> },
     ],
   },
 ]);

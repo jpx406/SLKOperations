@@ -114,16 +114,27 @@ utilities.post('/:id/duplicate', async (c) => {
   return c.json({ id, name }, 201);
 });
 
+/** Removes stored files no project points at any more (a duplicated project shares its original's files). */
+async function dropUnusedFiles(env: Env, keys: string[]) {
+  if (!env.FILES || !keys.length) return;
+  const { results } = await env.DB.prepare('SELECT DISTINCT r2_key FROM utility_files WHERE r2_key IN (SELECT value FROM json_each(?))').bind(JSON.stringify(keys)).all<{ r2_key: string }>();
+  const used = new Set(results.map((r) => r.r2_key));
+  const unused = [...new Set(keys)].filter((k) => !used.has(k));
+  if (unused.length) await env.FILES.delete(unused).catch((e) => console.error('utility files not removed from storage', e));
+}
+
 utilities.delete('/:id', async (c) => {
   const user = c.get('user');
   const p = await project(c);
   if (!p) return c.json({ error: 'Project not found' }, 404);
   if (!mayDelete(user, p)) return c.json({ error: 'Only whoever made the project, or an admin, can delete it' }, 403);
+  const { results: files } = await c.env.DB.prepare('SELECT r2_key FROM utility_files WHERE project_id = ?').bind(p.id).all<{ r2_key: string }>();
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM utility_files WHERE project_id = ?').bind(p.id),
     c.env.DB.prepare('DELETE FROM utility_projects WHERE id = ?').bind(p.id),
     audit(c.env, user, 'delete', p.id, `${UTIL_LABEL[p.kind]} project “${p.name}”`),
   ]);
+  await dropUnusedFiles(c.env, files.map((f) => f.r2_key));
   return c.json({ ok: true });
 });
 
@@ -199,7 +210,13 @@ utilities.get('/:id/files/:fileId', async (c) => {
 utilities.delete('/:id/files/:fileId', async (c) => {
   const p = await project(c);
   if (!p) return c.json({ error: 'Project not found' }, 404);
-  await c.env.DB.prepare('DELETE FROM utility_files WHERE id = ? AND project_id = ?').bind(c.req.param('fileId'), p.id).run();
+  const f = await c.env.DB.prepare('SELECT file_name, r2_key FROM utility_files WHERE id = ? AND project_id = ?').bind(c.req.param('fileId'), p.id).first<{ file_name: string; r2_key: string }>();
+  if (!f) return c.json({ error: 'File not found' }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM utility_files WHERE id = ? AND project_id = ?').bind(c.req.param('fileId'), p.id),
+    audit(c.env, c.get('user'), 'delete', p.id, `file “${f.file_name}” from ${UTIL_LABEL[p.kind]} project “${p.name}”`),
+  ]);
+  await dropUnusedFiles(c.env, [f.r2_key]);
   return c.json({ ok: true });
 });
 
