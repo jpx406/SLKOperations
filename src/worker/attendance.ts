@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { riyadhDay, riyadhMonth } from '../shared/dates';
 import { EMAIL_RE, MONTH_RE, approvalEmail, isCode, monthDays, rowSummary, type Code } from '../shared/attendance';
 import { approveKey, canApprove, canFill, canReview, canSee, reviewKey, type Category, type SheetRow } from '../shared/attendanceSheets';
 import { roleLabel } from '../shared/roles';
@@ -21,7 +22,7 @@ const audit = (env: Env, user: AuthedUser, action: string, entity: string, id: s
 
 type Person = SheetRow & { id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null; reports_to_id: string | null; reports_to_name: string | null; user_role: string };
 
-const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const today = () => riyadhDay();
 const names = (rules: Rules, key: string) => (rules[key] ?? []).map(roleLabel).join(' or ') || 'an Admin';
 
 /**
@@ -50,7 +51,7 @@ export const attendance = new Hono<AppBindings>();
 
 attendance.get('/', async (c) => {
   const user = c.get('user');
-  const month = c.req.query('month') ?? new Date().toISOString().slice(0, 7);
+  const month = c.req.query('month') ?? riyadhMonth();
   if (!MONTH_RE.test(month)) return c.json({ error: 'month must be YYYY-MM' }, 400);
   const days = monthDays(month);
   const [first, last] = [days[0], days[days.length - 1]];

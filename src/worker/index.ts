@@ -38,6 +38,7 @@ import { recon, runReconciliation } from './recon';
 import { unitEvents } from './unitEvents';
 import { audit, authEvent } from './audit';
 import { accounts, colorMissingAccounts } from './accounts';
+import { riyadhMonth } from '../shared/dates';
 import { forms, jobForms } from './forms';
 import { isOpenWrite, readAllowed, ruleFor } from './permissions';
 import { login, logout, requireSession, resolveSession } from './session';
@@ -209,7 +210,7 @@ app.get('/sdms', async (c) => {
 });
 
 app.get('/schedule', async (c) => {
-  const month = c.req.query('month') ?? new Date().toISOString().slice(0, 7);
+  const month = c.req.query('month') ?? riyadhMonth(); // the month in Riyadh, like attendance and reconciliation
   if (!/^\d{4}-\d{2}$/.test(month)) return c.json({ error: 'month must be YYYY-MM' }, 400);
   const first = `${month}-01`;
   const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);

@@ -83,18 +83,20 @@ jobLogs.put('/:jobId', async (c) => {
     row = await load(c.env, job.id);
   }
   if (!row) return c.json({ error: 'The job log could not be started' }, 500);
-  // only one save can move the version on from `base`
-  const upd = await c.env.DB.prepare('UPDATE job_logs SET current_version = ?, form = ?, saved_by = ?, saved_at = ? WHERE id = ? AND current_version = ?')
-    .bind(next, text, user.fullName, at, row.id, base).run();
+  // only one save can move the version on from `base`; the version row is written in the same transaction, and only
+  // when the move happened, so the history never has a gap
+  const signed = hasSig(form.engSig) && hasSig(form.fmSig);
+  const [upd] = await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE job_logs SET current_version = ?, form = ?, saved_by = ?, saved_at = ? WHERE id = ? AND current_version = ?')
+      .bind(next, text, user.fullName, at, row.id, base),
+    c.env.DB.prepare('INSERT INTO job_log_versions (id, log_id, version, form, change_summary, created_by) SELECT ?, ?, ?, ?, ?, ? WHERE changes() = 1')
+      .bind(crypto.randomUUID(), row.id, next, text, summary, user.fullName),
+  ]);
   if (!upd.meta.changes) {
     const cur = (await load(c.env, job.id))!;
     return c.json({ conflict: true, version: cur.current_version, serverForm: coerceForm(JSON.parse(cur.form)), savedBy: cur.saved_by });
   }
-  const signed = hasSig(form.engSig) && hasSig(form.fmSig);
-  await c.env.DB.batch([
-    c.env.DB.prepare('INSERT INTO job_log_versions (id, log_id, version, form, change_summary, created_by) VALUES (?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), row.id, next, text, summary, user.fullName),
-    ...(signed ? [c.env.DB.prepare(`UPDATE jobs SET job_log_signed = 'yes', updated_at = ? WHERE id = ? AND coalesce(job_log_signed, '') <> 'yes'`).bind(at, job.id)] : []),
-  ]);
+  if (signed) await c.env.DB.prepare(`UPDATE jobs SET job_log_signed = 'yes', updated_at = ? WHERE id = ? AND coalesce(job_log_signed, '') <> 'yes'`).bind(at, job.id).run();
   return c.json({ conflict: false, version: next, savedBy: user.fullName, savedAt: at, logId: row.id, createdBy: row.created_by, jobLogSigned: signed });
 });
 

@@ -1967,3 +1967,18 @@ From the full audit of 27 Nov (58 findings; the owner asked to fix all of them).
   - With curl, a change from another Origin, or marked same-site, is refused (403), and a change from the app's own Origin works.
   - QR info no longer carries the code, and the phone page asks for it (390 px).
   - Face ID set-up works right after sign-in.
+
+## 6z.69: audit fixes, part 3: data and background jobs
+
+Most of this group landed in 6z.67 (sync guards, one sync at a time, the nightly steps, clean-up) and 6z.68 (one people row per user, the old search table and lost indexes). Also:
+
+- **Sales locking:** each line's lock and its audit row are saved together. If a later batch fails, the answer says how many lines were done instead of a bare error.
+- **Job log saves:** the version number and its history entry are written in one transaction, and the entry only when the version moved. A failed save can no longer leave a gap in the history.
+- **Deleted jobs:** their Q-Incidents reports and Pre-Job Notes leave the lists. Signatures and the approved JRA's PDF still read them, as history.
+- **Riyadh time:** the schedule and attendance default to the Riyadh month (they used the UTC month for the first three hours of each month). `src/shared/dates.ts` holds the shared Riyadh helpers.
+- **Page views that wrote:**
+  - The people sync now writes only rows that are out of step, so opening the people list, attendance or admin pages writes nothing on most visits.
+  - Colours for old accounts are given by the nightly job instead of on every Schedule view.
+- **Verified:**
+  - Tests: 554 pass, including the new Riyadh date tests; the type check is clean.
+  - In the local app, a job log save wrote version 1 with its history entry, and a stale save was refused as a conflict without a stray version.

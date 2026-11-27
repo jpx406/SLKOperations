@@ -14,6 +14,14 @@ import type { AppBindings, AuthedUser, Env } from './env';
 
 export const sales = new Hono<AppBindings>();
 
+/** Runs (line, audit) statement pairs in batches; returns how many lines were done. */
+async function batchPairs(env: Env, stmts: D1PreparedStatement[]): Promise<{ lines: number; error?: string }> {
+  for (let i = 0; i < stmts.length; i += 90) {
+    try { await env.DB.batch(stmts.slice(i, i + 90)); } catch (e) { console.error('sales batch', e); return { lines: i / 2, error: 'the database refused a save' }; }
+  }
+  return { lines: stmts.length / 2 };
+}
+
 sales.get('/jobs', async (c) => {
   const f = parseFilters(new URL(c.req.url).searchParams);
   delete f.status;
@@ -201,7 +209,10 @@ sales.post('/activity/:action{lock|unlock}', async (c) => {
     audit(c.env, user, lock ? 'review' : 'reopen', l.id,
       lock ? `Activity sheet ${l.app.ticket ?? l.job_id} checked and locked` : `Activity sheet ${l.app.ticket ?? l.job_id} unlocked${body.reason ? `: ${String(body.reason).slice(0, 300)}` : ''}`),
   ]);
-  for (let i = 0; i < stmts.length; i += 90) await c.env.DB.batch(stmts.slice(i, i + 90));
+  // each line and its audit row go in the same batch (pairs, 90 statements = 45 lines), so a line is never half done;
+  // if a later batch fails, the answer says how many were done
+  const done = await batchPairs(c.env, stmts);
+  if (done.error) return c.json({ error: `Stopped after ${done.lines} of ${stmts.length / 2} lines: ${done.error}. Try again for the rest.`, changed: done.lines }, 500);
   return c.json({ ok: true, changed: todo.length });
 });
 
@@ -392,7 +403,10 @@ sales.post('/daily/:day/:action{lock|unlock}', async (c) => {
     audit(c.env, user, lock ? 'review' : 'reopen', `${day} ${l.id}`,
       lock ? `Daily report ${day} ${l.id} checked and locked` : `Daily report ${day} ${l.id} unlocked${body.reason ? `: ${String(body.reason).slice(0, 300)}` : ''}`),
   ]);
-  for (let i = 0; i < stmts.length; i += 90) await c.env.DB.batch(stmts.slice(i, i + 90));
+  // each line and its audit row go in the same batch (pairs, 90 statements = 45 lines), so a line is never half done;
+  // if a later batch fails, the answer says how many were done
+  const done = await batchPairs(c.env, stmts);
+  if (done.error) return c.json({ error: `Stopped after ${done.lines} of ${stmts.length / 2} lines: ${done.error}. Try again for the rest.`, changed: done.lines }, 500);
   return c.json({ ok: true, changed: lines.length });
 });
 

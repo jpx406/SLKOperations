@@ -32,7 +32,7 @@ async function checkContacts(env: Env, country: string, ids: string[]) {
 export const preJobNotes = new Hono<AppBindings>();
 
 preJobNotes.get('/', async (c) => {
-  const where = [inC];
+  const where = [inC, 'j.deleted_at IS NULL']; // notes of deleted jobs leave the list
   const binds: unknown[] = [JSON.stringify(c.get('user').countries)];
   const status = c.req.query('status');
   if (status === 'sent' || status === 'not_sent') { where.push('n.status = ?'); binds.push(status); }

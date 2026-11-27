@@ -77,7 +77,7 @@ export const emf = new Hono<AppBindings>();
 emf.get('/', async (c) => {
   const status = c.req.query('status');
   const q = (c.req.query('q') ?? '').trim().replace(/[%_]/g, '');
-  const where = [inC];
+  const where = [inC, 'j.deleted_at IS NULL']; // reports of deleted jobs leave the list
   const binds: unknown[] = [JSON.stringify(c.get('user').countries)];
   if (status === 'saved' || status === 'sent') { where.push('r.status = ?'); binds.push(status); }
   if (q) { where.push('(r.log_no LIKE ? OR r.title LIKE ? OR r.well LIKE ? OR j.ticket_no LIKE ?)'); binds.push(...Array(4).fill(`%${q}%`)); }

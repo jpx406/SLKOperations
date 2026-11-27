@@ -23,7 +23,12 @@ export async function syncPeople(env: Env) {
          full_name = (SELECT u.full_name FROM user_roles u WHERE lower(u.username) = lower(employees.wg_username)),
          active = (SELECT CASE WHEN u.active = 1 AND coalesce(u.wg_active, 1) = 1 THEN 1 ELSE 0 END FROM user_roles u WHERE lower(u.username) = lower(employees.wg_username)),
          contact_email = coalesce(contact_email, (SELECT u.email FROM user_roles u WHERE lower(u.username) = lower(employees.wg_username)))
-       WHERE wg_username IS NOT NULL AND EXISTS (SELECT 1 FROM user_roles u WHERE lower(u.username) = lower(employees.wg_username))`,
+       WHERE wg_username IS NOT NULL AND EXISTS (SELECT 1 FROM user_roles u WHERE lower(u.username) = lower(employees.wg_username))
+         -- only rows that are out of step are written, so a page that calls this writes nothing on most visits
+         AND EXISTS (SELECT 1 FROM user_roles u WHERE lower(u.username) = lower(employees.wg_username) AND (
+           employees.full_name IS NOT u.full_name
+           OR employees.active IS NOT (CASE WHEN u.active = 1 AND coalesce(u.wg_active, 1) = 1 THEN 1 ELSE 0 END)
+           OR (employees.contact_email IS NULL AND u.email IS NOT NULL)))`,
     ),
   ]);
 }
