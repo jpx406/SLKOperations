@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { riyadhShort } from '../../shared/dates';
 import { ArrowLeft } from 'lucide-react';
 import { Suspense, lazy } from 'react';
 import { Link, useParams } from 'react-router';
@@ -14,7 +15,7 @@ import { useJraLock } from './Jra';
 // the JRA is: the stage stays short, and the work has the whole screen.
 
 const WinchDataCard = lazy(lazyRetry(() => import('./WinchData')));
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => riyadhShort(iso);
 const openBtn = 'inline-flex h-(--layout-control-sm) items-center rounded-md bg-accent px-3 text-sm font-semibold text-on-accent hover:bg-accent-hover';
 const backBtn = 'inline-flex h-(--layout-control-sm) items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-3 text-xs font-semibold hover:bg-surface-3';
 

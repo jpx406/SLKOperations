@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { checkCard, isColumn, readServices, reorder, type QpCard, type QpFields } from '../shared/quickPlan';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Opportunities (S25, Quick Plan until 6z.55). Cards are working notes for early scheduling talks, kept per country.
 // Turning one into a job creates the job through the normal job route (with its checks) and then links the card here.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'quick_plan_cards', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'quick_plan_cards', id, summary);
 
 export const quickPlan = new Hono<AppBindings>();
 

@@ -50,8 +50,6 @@ export const RULE_DEFAULTS: Rules = {
   },
 };
 
-export const RULE_SET_LABEL: Record<RuleSetKey, string> = { post: 'Post-seasoning (seasoned cable)', seasoning: 'Seasoning procedures' };
-
 /** Each rule: its label, the limits that can be edited (with a short name each) and the guideline text. */
 export const RULE_FIELDS: { key: RuleKey; label: string; fields: 'tiers' | { f: string; label: string; unit: string }[]; text: string }[] = [
   { key: 'nearSurface', label: 'POOH speed near surface', fields: 'tiers', text: 'Within [d1] ft: [v1] fpm · [d2] ft: [v2] fpm · [d3] ft: [v3] fpm' },
@@ -71,35 +69,6 @@ export const RULE_FIELDS: { key: RuleKey; label: string; fields: 'tiers' | { f: 
 ];
 
 export const fmt = (n: number | null | undefined, d = 0) => (n == null || Number.isNaN(n) ? '—' : Number(n).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d }));
-
-export function ruleText(R: RuleSet, key: RuleKey): string {
-  let s = RULE_FIELDS.find((r) => r.key === key)!.text;
-  if (key === 'nearSurface') {
-    R.nearSurface.tiers.forEach(([d, v], i) => { s = s.replace(`[d${i + 1}]`, fmt(d)).replace(`[v${i + 1}]`, fmt(v)); });
-    return s;
-  }
-  for (const [f, v] of Object.entries(R[key])) s = s.split(`[${f}]`).join(fmt(v as number));
-  return s;
-}
-
-/** A saved rule set from storage or a JSON file, or null when it is not one. */
-export function checkRules(o: unknown): Rules | null {
-  if (!o || typeof o !== 'object') return null;
-  const r = o as Partial<Rules>;
-  for (const k of ['post', 'seasoning'] as const) {
-    const s = r[k];
-    if (!s || typeof s !== 'object') return null;
-    for (const f of RULE_FIELDS) {
-      const v = (s as unknown as Record<string, unknown>)[f.key];
-      if (!v || typeof v !== 'object') return null;
-      if (f.fields === 'tiers') {
-        const t = (v as { tiers?: unknown }).tiers;
-        if (!Array.isArray(t) || t.length !== 3 || t.some((x) => !Array.isArray(x) || x.length !== 2 || x.some((n) => typeof n !== 'number'))) return null;
-      } else if (f.fields.some((x) => typeof (v as Record<string, unknown>)[x.f] !== 'number')) return null;
-    }
-  }
-  return r as Rules;
-}
 
 // ---------------------------------------------------------------- reading files
 
@@ -257,7 +226,8 @@ function fillTvd(st: Station[]) {
   }
 }
 
-/** Zones from the four depths: vertical to KOP, a straight build to 30° and on to 90° at the lateral. */
+/** Zones from the four depths: vertical to KOP, a straight build to 30° and on to 90° at the lateral. Builds the
+ *  directional wells the zone and TVD checks are tested on. */
 export function manualSurvey(kop: number, p30: number, lat: number, td: number): Survey | null {
   if ([kop, p30, lat, td].some((n) => Number.isNaN(n)) || !(kop < p30 && p30 < lat && lat <= td)) return null;
   const st: Station[] = [{ md: 0, inc: 0, tvd: 0 }, { md: kop, inc: 0, tvd: 0 }, { md: p30, inc: 30, tvd: 0 }, { md: lat, inc: 90, tvd: 0 }, { md: td, inc: 90, tvd: 0 }];
@@ -272,32 +242,6 @@ export function verticalSurvey(td: number): Survey {
 }
 
 export interface SurveyMapping { md: number; inc: number; tvd: number; unit: keyof typeof UNIT_DEPTH; kopInc: number; latInc: number }
-export function guessSurveyMapping(t: Table): SurveyMapping {
-  return {
-    md: Math.max(0, guessCol(t.header, [/^md$/, /meas/, /depth/, /^dept/])), inc: Math.max(0, guessCol(t.header, [/inc/, /angle/, /devi/])),
-    tvd: guessCol(t.header, [/tvd/, /vert/]), unit: 'ft', kopInc: 3, latInc: 88,
-  };
-}
-
-/** Zones from a directional survey file; the lateral falls back to TD when the well never reaches the angle. */
-export function fileSurvey(t: Table, m: SurveyMapping, name: string): Survey | null {
-  const k = UNIT_DEPTH[m.unit];
-  const st = t.data.map((r) => ({ md: num(r[m.md]) * k, inc: num(r[m.inc]), tvd: m.tvd >= 0 ? num(r[m.tvd]) * k : NaN }))
-    .filter((s) => !Number.isNaN(s.md) && !Number.isNaN(s.inc)).sort((a, b) => a.md - b.md);
-  if (st.length < 2) return null;
-  if (st.some((s) => Number.isNaN(s.tvd))) fillTvd(st);
-  const at = (target: number) => {
-    for (let i = 1; i < st.length; i++) {
-      if (st[i].inc >= target) { const a = st[i - 1], b = st[i]; return b.inc === a.inc ? b.md : a.md + ((target - a.inc) / (b.inc - a.inc)) * (b.md - a.md); }
-    }
-    return NaN;
-  };
-  const kop = at(m.kopInc), p30 = at(30), td = st[st.length - 1].md;
-  let lat = at(m.latInc);
-  if (Number.isNaN(kop) || Number.isNaN(p30)) return null;
-  if (Number.isNaN(lat)) lat = td;
-  return { kop, p30, lat, td, stations: st, source: name };
-}
 
 export function tvdAt(sv: Survey, md: number): number {
   const st = sv.stations;
@@ -541,8 +485,6 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 export const hms = (t: number) => { const d = new Date(t * 1000); return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`; };
 export const hm = (t: number) => { const d = new Date(t * 1000); return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`; };
 export const dur = (s: number) => (s < 60 ? '<1m' : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.floor(s / 3600)}h ${pad2(Math.round((s % 3600) / 60))}m`);
-export const whereText = (v: Finding) => `${ZONE_NAMES[v.zone]} · ${v.dir === 'STOP' ? v.phase : v.dir}`;
-
 export function findingsCsv(a: Analysis): string {
   const rows: (string | number)[][] = [['time', 'lasted_s', 'depth_from_ft', 'depth_to_ft', 'zone', 'direction', 'rule', 'worst', 'unit', 'limit_side', 'limit', 'delta', 'type']];
   [...a.viol, ...a.advice].sort((x, y) => x.t0 - y.t0).forEach((v) => rows.push([

@@ -5,6 +5,7 @@ import {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { Hono, type Context } from 'hono';
 import type { AppBindings, Env } from './env';
+import { logRow } from './lib';
 import { authEvent } from './audit';
 import { openSession, signedInRecently } from './session';
 import { importWgUsers, wgUserActive } from './wgUsers';
@@ -43,8 +44,7 @@ async function sha256(s: string) {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 const audit = (env: Env, username: string, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), username, action, 'passkey', id, summary.slice(0, 1000)).run();
+  logRow(env, username, action, 'passkey', id, summary).run();
 
 interface UserRow { username: string; full_name: string; wg_role: string | null; countries: string; active: number; passkey_allowed: number }
 interface PasskeyRow { id: string; username: string; public_key: string; counter: number; transports: string | null; device_name: string | null }

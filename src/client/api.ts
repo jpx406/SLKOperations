@@ -27,6 +27,20 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
   return body as T;
 }
 
+/**
+ * A request whose answer is a file (PDF, picture, workbook), not JSON: the same country switch and sign-out handling
+ * as api(), the Response is returned as it is for the caller to read.
+ */
+export async function apiRaw(path: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(`/api${path}`, {
+    credentials: 'same-origin',
+    ...init,
+    headers: { ...(countryScope() ? { 'X-SLK-Country': countryScope()! } : {}), ...init.headers },
+  });
+  if (res.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new CustomEvent('slk:signed-out'));
+  return res;
+}
+
 // Job dates and times are entered in the site's local time. Saudi Arabia and Bahrain are UTC+3 with no DST.
 const OFFSET_MIN = 180;
 
@@ -44,4 +58,12 @@ export function localInputToIso(v: string): string | null {
 export function formatDate(d: string | null): string {
   if (!d) return '—';
   return new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** Hands the browser a file to save. */
+export function saveFile(name: string, data: BlobPart, type: string) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

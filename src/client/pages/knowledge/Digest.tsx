@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { escHtml } from '../../../shared/html';
 import { Maximize2, Printer, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { mindSize, type Digest, type MindMap, type MindNode } from '../../../shared/docDigest';
@@ -151,7 +152,7 @@ export function MindMapDialog({ doc, onClose, canRemake }: { doc: KnowledgeDoc; 
 function printMap(doc: KnowledgeDoc, map: MindMap) {
   const w = window.open('', '_blank', 'width=900,height=700');
   if (!w) return;
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const esc = escHtml;
   // the same numbered cards as the screen, in print colours
   const COLORS = ['#1565c0', '#2e7d32', '#b26b00', '#6a1b9a', '#00838f', '#5b6470'];
   const chip = (g: MindNode) => `<i class="c ${g.kind || 'plain'}">${esc(g.label)}</i>`;

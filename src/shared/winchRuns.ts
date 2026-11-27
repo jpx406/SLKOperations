@@ -92,21 +92,6 @@ export const SOP_DEFAULTS: SopRules = {
   detect: { stationaryFt: 30, windowSec: 60, upMinLb: 150, upPct: 15, downPct: 10, gapSec: 120, minSec: 3, mergeSec: 30, tensionSec: 5 },
 };
 
-/** Saved SOP-04 limits, or null when they do not read; missing fields take the defaults. */
-export function checkSopRules(o: unknown): SopRules | null {
-  if (!o || typeof o !== 'object') return null;
-  const x = o as Record<string, unknown>;
-  const out = structuredClone(SOP_DEFAULTS) as unknown as Record<string, unknown>;
-  for (const [k, v] of Object.entries(SOP_DEFAULTS)) {
-    if (k === 'detect') {
-      const d = (x.detect && typeof x.detect === 'object' ? x.detect : {}) as Record<string, unknown>;
-      for (const dk of Object.keys(SOP_DEFAULTS.detect)) if (typeof d[dk] === 'number' && Number.isFinite(d[dk])) (out.detect as Record<string, number>)[dk] = d[dk] as number;
-    } else if (typeof v === 'boolean') { if (typeof x[k] === 'boolean') out[k] = x[k]; }
-    else if (typeof x[k] === 'number' && Number.isFinite(x[k])) out[k] = x[k];
-  }
-  return out as unknown as SopRules;
-}
-
 /** The jar-up limit in lbs: the MAT if set, else matPct of the breaking strength; null when neither is known. */
 export function jarUpLimit(R: SopRules): { limit: number; from: string } | null {
   if (R.mat > 0) return { limit: R.mat, from: 'MAT' };

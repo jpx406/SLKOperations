@@ -1,4 +1,6 @@
 import { Select } from '../components/Select';
+import { riyadhStamp } from '../../shared/dates';
+import { escHtml } from '../../shared/html';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, FileText, History, Mail, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -28,7 +30,7 @@ interface ListRow {
   created_by: string | null; last_saved_at: string; sent_by: string | null; ticket_no: string | null; incidents: number;
 }
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+const when = (iso: string | null) => riyadhStamp(iso);
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 let keySeq = 0;
 const blankIncident = (date = today()): Incident => ({
@@ -462,7 +464,7 @@ function EmailPanel({ report, onClose }: { report: Report; onClose: (sent?: Repo
   );
 }
 
-const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = escHtml;
 
 /** A Word document (HTML that Word opens as .doc), so no conversion library is needed. */
 function downloadWord(r: Report) {

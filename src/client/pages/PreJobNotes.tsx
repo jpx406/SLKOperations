@@ -1,4 +1,6 @@
 import { Select } from '../components/Select';
+import { riyadhStamp } from '../../shared/dates';
+import { escHtml } from '../../shared/html';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, Download, FileSpreadsheet, History, Mail, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -18,7 +20,7 @@ interface Row { id: string; log_no: string; status: 'sent' | 'not_sent'; current
 interface Note { id: string; log_no: string; status: 'sent' | 'not_sent'; current_version: number; content: NoteContent; prepared_by: string | null; saved_at: string; sent_at: string | null; sent_by: string | null; job_id: string; ticket_no: string | null; well: string | null; rig: string | null; unit_number: string | null; start_date: string | null; end_date: string | null; versions: { version: number; saved_by: string | null; saved_at: string }[] }
 interface Contact { id: string; full_name: string; title: string; contact_email: string | null; contact_mobile: string | null }
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+const when = (iso: string | null) => riyadhStamp(iso);
 
 export function PreJobNotesList() {
   const [params, setParams] = useSearchParams();
@@ -303,7 +305,7 @@ function NoteHistory({ note, onClose }: { note: Note; onClose: () => void }) {
   );
 }
 
-const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = escHtml;
 
 /** The email body as HTML (for the .eml) and as text (for the mail app). */
 function noteEmail(note: Note, job: { ticket_no: string | null; rig: string | null; well: string | null }, contacts: Contact[]) {

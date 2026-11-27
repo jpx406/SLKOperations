@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { riyadhShort } from '../../shared/dates';
 import { ArrowLeft, Check, Columns3, Download, Eye, EyeOff, FileText, ImagePlus, LayoutGrid, LayoutTemplate, Maximize2, Move, Plus, Presentation, Send, Sparkles, Trash2, Undo2, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
@@ -10,7 +11,7 @@ import {
   DESIGNS, PAGE, bodyOf, chrome, designBoxes, fitPictureBoxes, layoutLesson, layoutProblem, partLabel, partsOf, pictureHeight, picturesSideBySide, tidyBoxes, toOps,
   type Design, type LayoutIssue, type Op, type PageInput, type TemplateStyle,
 } from '../../shared/lessonLayout';
-import { ApiError, api } from '../api';
+import { ApiError, api, apiRaw } from '../api';
 import { MenuButton } from '../components/MenuButton';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
 import { Dialog } from './knowledge/common';
@@ -36,7 +37,7 @@ interface Lesson {
 }
 interface LessonData { lesson: Lesson; can: Record<'edit' | 'submit' | 'review' | 'approve' | 'send_back' | 'delete' | 'revise', boolean>; colour: string; style: TemplateStyle | null; template: boolean; templateName: string | null; ownTemplate: boolean; ai: boolean; me: string }
 
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => riyadhShort(iso);
 const pad = (n: number | null) => (n === null ? '' : String(n).padStart(2, '0'));
 const STATUS_TONE: Record<LessonStatus, string> = { draft: 'border-border text-text-muted', review: 'border-info text-info', approval: 'border-warning text-warning', approved: 'border-success text-success' };
 function StatusPill({ status, children }: { status: LessonStatus; children?: ReactNode }) {
@@ -45,7 +46,7 @@ function StatusPill({ status, children }: { status: LessonStatus; children?: Rea
 
 /** Fetches a file and saves it, so an error shows as a message instead of a downloaded error page. */
 async function download(path: string, fallbackName: string) {
-  const res = await fetch(`/api${path}`, { credentials: 'same-origin' });
+  const res = await apiRaw(path);
   if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Download failed (${res.status})`);
   const name = /filename\*=UTF-8''([^;]+)/.exec(res.headers.get('content-disposition') ?? '')?.[1];
   const url = URL.createObjectURL(await res.blob());
@@ -225,7 +226,7 @@ function SlotPreview({ slot }: { slot: Slot }) {
   const logo = useQuery({
     queryKey: ['lesson-slot-logo', slot.company, slot.kind, slot.file_name, slot.uploaded_at],
     queryFn: async () => {
-      const res = await fetch(`/api/lessons/logo/${encodeURIComponent(slot.company)}/${slot.kind}?v=${encodeURIComponent(slot.uploaded_at ?? '')}`, { credentials: 'same-origin' });
+      const res = await apiRaw(`/lessons/logo/${encodeURIComponent(slot.company)}/${slot.kind}?v=${encodeURIComponent(slot.uploaded_at ?? '')}`);
       if (!res.ok) return null;
       const [w, h] = (res.headers.get('x-logo-size') ?? '1x1').split('x').map(Number);
       return { url: URL.createObjectURL(await res.blob()), w, h };
@@ -309,7 +310,7 @@ function useLogo(lessonId: string, template: string | null) {
   return useQuery({
     queryKey: ['lesson-logo', lessonId, template], staleTime: 600_000, enabled: !!lessonId,
     queryFn: async () => {
-      const res = await fetch(`/api/lessons/${lessonId}/logo`, { credentials: 'same-origin' });
+      const res = await apiRaw(`/lessons/${lessonId}/logo`);
       if (!res.ok) return null;
       const [w, h] = (res.headers.get('x-logo-size') ?? '1x1').split('x').map(Number);
       return { url: URL.createObjectURL(await res.blob()), w, h };

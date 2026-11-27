@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { GUIDE_DEFAULTS, checkGuide, lineKind, type WinchLine } from '../shared/winchGuide';
 import type { AppBindings } from './env';
+import { logRow } from './lib';
 import { getJob } from './jobs';
 
 // Winch guidelines (6z.42): the Speed and Jarring Guidelines for slickline wire and the seasoning rules for braided
@@ -35,8 +36,7 @@ winch.put('/guide', async (c) => {
     c.env.DB.prepare(`INSERT INTO knowledge_settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
       .bind(KEY, JSON.stringify(guide), user.username, now),
-    c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'edit', 'winch_guide', KEY, `winch guidelines: ${guide.wire.groups.length} speed rows, braided seasoned after ${guide.braided.seasonedRuns} runs`),
+    logRow(c.env, user.username, 'edit', 'winch_guide', KEY, `winch guidelines: ${guide.wire.groups.length} speed rows, braided seasoned after ${guide.braided.seasonedRuns} runs`),
   ]);
   return c.json({ guide, saved: true, updatedAt: now, updatedBy: user.fullName, canEdit: true, version: now });
 });

@@ -2,13 +2,13 @@ import { Hono } from 'hono';
 import { SEVERITIES } from '../shared/emf';
 import { filterSql, parseFilters } from '../shared/filters';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Failure Roster (S10): one row per 8 Min. Facts incident (kept in step by the 8MF save), plus rows added by hand.
 // Filters are the standard bar applied to the linked job; rows without a job only match when no job filter is set.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'failure_roster', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'failure_roster', id, summary);
 
 const ACTION = ['open', 'in_progress', 'closed'] as const;
 

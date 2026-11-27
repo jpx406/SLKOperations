@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  RULE_DEFAULTS, analyse, autoTimeMode, buildSamples, checkRules, demoRun, fileSurvey, findingsCsv, guessMapping, guessSurveyMapping,
-  limitFor, manualSurvey, mappingProblems, parseTable, parseTime, ruleText, tvdAt, zoneOf, type Sample,
+  RULE_DEFAULTS, analyse, autoTimeMode, buildSamples, demoRun, findingsCsv, guessMapping,
+  limitFor, manualSurvey, mappingProblems, parseTable, parseTime, tvdAt, zoneOf, type Sample,
 } from '../src/shared/winchData';
 
 // a repeatable random source, so the demo run is the same every time
@@ -50,30 +50,9 @@ describe('winch data: well zones', () => {
     expect(manualSurvey(9000, 8000, 10000, 12000)).toBeNull();
   });
 
-  it('finds KOP, the 30° point and the lateral in a survey file', () => {
-    const t = parseTable('MD,Inc,Azi\n0,0,0\n5000,2,0\n6000,4,0\n8000,30,0\n9000,60,0\n10000,90,0\n15000,90,0\n');
-    const sv = fileSurvey(t, guessSurveyMapping(t), 'survey.csv')!;
-    expect(sv.kop).toBeCloseTo(5500);
-    expect(sv.p30).toBe(8000);
-    expect(sv.lat).toBeCloseTo(9933.3, 0);
-    expect(sv.td).toBe(15000);
-  });
 });
 
 describe('winch data: rules', () => {
-  it('writes the guideline text from the limits', () => {
-    expect(ruleText(RULE_DEFAULTS.post, 'nearSurface')).toBe('Within 100 ft: 100 fpm · 250 ft: 200 fpm · 1,000 ft: 500 fpm');
-    expect(ruleText(RULE_DEFAULTS.post, 'curveTension')).toBe('1,800 – 2,100 lbs in the heel');
-  });
-
-  it('only takes a rules file with both sets complete', () => {
-    expect(checkRules(structuredClone(RULE_DEFAULTS))).not.toBeNull();
-    expect(checkRules({ post: RULE_DEFAULTS.post })).toBeNull();
-    const broken = structuredClone(RULE_DEFAULTS) as unknown as { post: { maxPooh: { limit: unknown } } };
-    broken.post.maxPooh.limit = '800';
-    expect(checkRules(broken)).toBeNull();
-  });
-
   it('applies the near-surface tiers and the TVD rule for RIH tension', () => {
     const sv = manualSurvey(7278, 9853, 10934, 26415)!;
     const s = (o: Partial<Sample>): Sample => ({ t: 0, depth: 0, ten: 0, sp: 0, dir: 'POOH', dt: 1, phase: 'POOH', zone: 0, tvd: 0, ...o });

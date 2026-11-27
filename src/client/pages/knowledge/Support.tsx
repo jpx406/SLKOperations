@@ -23,12 +23,6 @@ export function useSupport(docId: string) {
   return useQuery({ queryKey: ['attachments', 'knowledge', docId], queryFn: () => api<Data>(`/attachments/knowledge/${encodeURIComponent(docId)}`) });
 }
 
-/** The pictures of an entry, oldest first, for its slides. */
-export function usePictures(docId: string) {
-  const q = useSupport(docId);
-  return (q.data?.files ?? []).filter(isPicture).sort((a, b) => a.uploaded_at.localeCompare(b.uploaded_at));
-}
-
 export function SupportFiles({ docId }: { docId: string }) {
   const qc = useQueryClient();
   const q = useSupport(docId);

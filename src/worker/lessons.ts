@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { riyadhDay } from '../shared/dates';
 import type Anthropic from '@anthropic-ai/sdk';
 import { checkUpload } from '../shared/attachments';
 import { costMicroUsd, limitCheck } from '../shared/ai';
@@ -17,6 +18,7 @@ import { roleLabel } from '../shared/roles';
 import { unzip } from '../shared/xlsxRead';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { aiUsageRow, knowledgeSetting, logRow, sendEmail } from './lib';
 
 // Lessons and best practices written in the app (Utilities, 6z.57). Knowledge Hub approvers and admins start one on
 // a company template, by hand or drafted by AI from a failure report; it goes to a reviewer and an approver chosen
@@ -27,13 +29,12 @@ import type { AppBindings, AuthedUser, Env } from './env';
 type C = Context<AppBindings>;
 const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const now = () => new Date().toISOString();
-const riyadhToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const riyadhToday = () => riyadhDay();
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 const pad = (n: number) => String(n).padStart(2, '0');
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string, type = 'lessons') =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, type, id, summary.slice(0, 1000));
+  logRow(env, user.username, action, type, id, summary);
 
 interface Row {
   id: string; kind: LessonKind; company: LessonCompany; country: string; title: string; content: string; status: LessonStatus;
@@ -47,10 +48,7 @@ async function person(env: Env, user: AuthedUser): Promise<LessonPerson> {
   const admin = user.role === 'admin';
   return { username: user.username, admin, reviewer: row ? !!row.can_review : admin, approver: row ? !!row.can_approve : admin };
 }
-async function setting<T>(env: Env, key: string, fallback: T): Promise<T> {
-  const r = await env.DB.prepare('SELECT value FROM knowledge_settings WHERE key = ?').bind(key).first<{ value: string }>();
-  return r ? { ...fallback, ...(JSON.parse(r.value) as T) } : fallback;
-}
+const setting = knowledgeSetting;
 const copySettings = async (env: Env): Promise<CopySettings> => copySettingsOf(await setting<CopySettings>(env, 'copies', DEFAULT_COPY_SETTINGS));
 const colourOf = (s: CopySettings, co: LessonCompany) => (co === 'NESR' ? s.nesrColours[0] ?? '024800' : s.companies[co].colour).toUpperCase();
 const templateOf = (s: CopySettings, co: LessonCompany, kind: LessonKind) => slideTemplate(s, co, kind === 'best_practice' ? 'bp' : 'slides')?.file ?? null;
@@ -80,7 +78,7 @@ async function notify(c: C, username: string | null, subject: string, text: stri
     WHERE u.username = ? AND u.active = 1`).bind(username).first<{ email: string | null }>();
   if (!r?.email) return;
   const link = `${c.env.APP_URL ?? 'https://slkops.nesrapp.com'}/utilities/lessons`;
-  const send = c.env.EMAIL.send({ to: r.email, from: { email: c.env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations Hub' }, subject,
+  const send = sendEmail(c.env, { to: r.email, subject,
     text: `${text}\n\nOpen Lessons & best practices: ${link}`, html: `<p>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p><p><a href="${link}">Open Lessons &amp; best practices</a></p>` })
     .catch((e: Error) => console.error('lesson email not sent', e.message));
   try { c.executionCtx.waitUntil(send); } catch { await send; }
@@ -573,8 +571,7 @@ lessons.post('/:id/analyse', async (c) => {
     if (!msg) throw e;
     return c.json({ error: `${msg} You can fill in the page by hand.` }, 502);
   } finally {
-    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+    await aiUsageRow(c.env, user.username, 'document', s.model, inTok, outTok, micro).run();
   }
 });
 
@@ -672,8 +669,7 @@ Answer with every part's box.`;
     if (!msg) throw e;
     return c.json({ error: `${msg} Use Tidy up, or move the boxes yourself.` }, 502);
   } finally {
-    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+    await aiUsageRow(c.env, user.username, 'document', s.model, inTok, outTok, micro).run();
   }
 });
 

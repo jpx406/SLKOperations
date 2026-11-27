@@ -97,8 +97,3 @@ export function canSee(v: Viewer, r: SheetRow, rules: Rules | null | undefined, 
   return SEE_ALL.includes(v.role) || canFill(v, r, rules, cats) || canReview(v, r, rules, cats) || canApprove(v, r, rules, cats) || same(v.username, r.wg_username);
 }
 
-/** The roles of a rule as words, for the sheet's headings ("Foreman", "SDM, Ops Manager"). */
-export const rolesText = (rules: Rules | null | undefined, key: string, label: (r: Role) => string) => {
-  const list = rules?.[key] ?? [];
-  return list.length ? list.map(label).join(', ') : 'Admin';
-};

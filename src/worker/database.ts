@@ -2,14 +2,14 @@ import { Hono, type Context } from 'hono';
 import { LIST_KINDS, SERVICE_FLAGS, cleanListValue, cleanPce } from '../shared/database';
 import { cleanPart } from '../shared/diagram';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { ensureEquipmentTypes } from './logOptions';
 
 // Equipment Database (S24). WIREGUARD units are shown read-only; PCE, grease panels, local lists and
 // service profiles are kept here. Nothing is hard-deleted while a job still points at it.
 
 const audit = (env: Env, user: AuthedUser, action: string, entity: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, entity, id, summary.slice(0, 1000));
+  logRow(env, user.username, action, entity, id, summary);
 
 const OPEN = `j.deleted_at IS NULL AND j.status IN ('planned','ongoing')`;
 const inC = 'country IN (SELECT value FROM json_each(?))';

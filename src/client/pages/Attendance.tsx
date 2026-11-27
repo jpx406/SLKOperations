@@ -1,4 +1,5 @@
 import { Select } from '../components/Select';
+import { escHtml } from '../../shared/html';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Check, Download, ExternalLink, FileSpreadsheet, Mail, MousePointerClick, Save, Search, Tags, Trash2, X } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
@@ -210,7 +211,7 @@ export function Attendance() {
   };
   const exportHtml = () => {
     const t = table(flat);
-    const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const esc = escHtml;
     const html = `<!doctype html><meta charset="utf-8"><title>Attendance ${month}</title><style>body{font:12px sans-serif}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:2px 4px;text-align:center}td:nth-child(2){text-align:left}</style>
 <h1>Attendance ${month}</h1><table><tr>${t.header.map((h) => `<th>${esc(h)}</th>`).join('')}</tr>${t.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table>
 <p>${CODE_LIST.map((c) => `${c} = ${CODES[c]}`).join(' · ')}</p>`;

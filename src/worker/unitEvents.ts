@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { MAINTENANCE_TYPES, OPEN_END } from '../shared/unitEvents';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Unit blocks on the schedule (S37 maintenance, S38 loan / transferred / junk / backup on location).
 // They stop bookings (see blockConflict in jobs.ts) and count as unavailable days in utilization.
@@ -23,8 +24,7 @@ function shape(kind: Kind, detail: string | null | undefined, ends_on: string | 
 }
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'unit_event', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'unit_event', id, summary);
 
 /** Open jobs a block would sit on top of; the person must confirm before the block is saved. */
 async function bookedJobs(env: Env, unit: string, from: string, to: string) {

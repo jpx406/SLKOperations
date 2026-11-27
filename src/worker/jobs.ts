@@ -9,6 +9,7 @@ import { FAILURE_FOLLOW_UP, STAGE_FIELDS, canEditStage } from '../shared/stages'
 import { parseToolstring, toolTotals } from '../shared/toolstring';
 import type { Job } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { logEvents } from './jobLogs';
 
 // Jobs: board, editor, create-on-first-save, autosave patches with per-field rights and a conflict check.
@@ -176,8 +177,7 @@ function updateStatements(env: Env, id: string, patch: Record<string, unknown>, 
 }
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'job', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'job', id, summary);
 
 /** Turns a D1 constraint error into a sentence a person can act on. */
 function constraintMessage(e: unknown): string | null {

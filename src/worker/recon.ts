@@ -1,13 +1,15 @@
 import { Hono } from 'hono';
+import { riyadhDay } from '../shared/dates';
 import { CHECKS, reconcile, type CheckCode, type ReconJob, type ReconRun } from '../shared/recon';
 import { buildDigest } from '../shared/digest';
 import { digestInputs } from './digest';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Reconciliation (S46): SLK Ops jobs vs WIREGUARD runs. Read-only towards WIREGUARD: every action here
 // changes SLK Ops records only (manual links, explanations). Fixes to runs are made in WIREGUARD.
 
-const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const today = () => riyadhDay();
 
 /** Runs older than this are never reported as unlinked (history from before SLK Ops existed). */
 const startDate = (env: Env) => env.RECON_START_DATE || '2026-10-01';
@@ -56,14 +58,12 @@ export async function runReconciliation(env: Env, countries: string[], by: strin
        AND fingerprint NOT IN (SELECT value FROM json_each(?3))`,
   ).bind(at, c, JSON.stringify(findings.map((f) => f.fingerprint))).run();
 
-  await env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), by, 'run', 'reconciliation', countries.join(','), `${findings.length} findings, ${resolved.meta.changes ?? 0} resolved since last run`).run();
+  await logRow(env, by, 'run', 'reconciliation', countries.join(','), `${findings.length} findings, ${resolved.meta.changes ?? 0} resolved since last run`).run();
   return { findings: findings.length, resolved: resolved.meta.changes ?? 0, jobs: jobs.length, runs: runsR.results.length, from };
 }
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'reconciliation', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'reconciliation', id, summary);
 
 export const recon = new Hono<AppBindings>();
 

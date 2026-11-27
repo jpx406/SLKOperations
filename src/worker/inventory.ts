@@ -1,13 +1,13 @@
 import { Hono, type Context } from 'hono';
 import { DEFAULT_LOCATIONS, INVENTORIES, checkMovement, reconcile, type Inventory, type LedgerRow, type Location } from '../shared/inventory';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Inventories (S18–S20, S29, S39), one country at a time. Each inventory has its own tab and rights
 // (explosives apart from slickline hardware). Movements are append-only; undo writes the opposite movement.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'inventory', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'inventory', id, summary);
 
 type C = Context<AppBindings>;
 

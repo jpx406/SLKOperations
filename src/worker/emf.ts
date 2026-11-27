@@ -1,14 +1,14 @@
 import { Hono } from 'hono';
 import { cleanReport, nextLogNo, reportTotals, type ReportInput } from '../shared/emf';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { getJob } from './jobs';
 
 // 8 Min. Facts (S11, S12). Every save is a new immutable version. Saving also updates the job
 // (NPT = sum of its reports' NPT, Failure = Yes, 8MF = Yes) and keeps one Failure Roster row per incident.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'eight_min_facts', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'eight_min_facts', id, summary);
 
 const inC = 'r.country IN (SELECT value FROM json_each(?))';
 

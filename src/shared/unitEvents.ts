@@ -4,7 +4,6 @@
 export const MAINTENANCE_TYPES = ['Cable Maintenance', 'Mechanic', 'Electrical', 'Hydraulic', 'Pressure Test', 'Inspection / Certification', 'Other'] as const;
 
 export const STATUS_KINDS = ['loan', 'transferred', 'junk', 'backup_on_location'] as const;
-export type StatusKind = (typeof STATUS_KINDS)[number];
 
 export const EVENT_LABEL: Record<string, string> = {
   maintenance: 'Maintenance', loan: 'Loan', transferred: 'Transferred', junk: 'Junk', backup_on_location: 'Backup on location',

@@ -6,6 +6,7 @@
 // Pure functions on bytes and strings, used by the Worker and the tests.
 
 import { zip } from './xlsx';
+import { escHtml } from './html';
 import { unzip } from './xlsxRead';
 
 export const COPY_COMPANIES = ['SAPESCO', 'Gulf Energy'] as const;
@@ -134,7 +135,7 @@ export function nesrNumber(no: string | null, prefix: string): string | null {
 // on each paragraph's whole text; a change touches only the runs it covers, so the rest keeps its formatting.
 
 const unesc = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&amp;/g, '&');
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = escHtml;
 
 interface Run { s: number; e: number; text: string }
 interface Para { runs: Run[]; texts: string[] }

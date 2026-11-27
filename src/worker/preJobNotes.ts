@@ -1,14 +1,14 @@
 import { Hono } from 'hono';
 import { cleanNote, pjnNo } from '../shared/pjn';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { getJob } from './jobs';
 
 // Pre-Job Notes (S09, S26, S27). One note per job; every save is a new immutable version.
 // Only an admin deletes a note, with two confirmations, and the versions go with it (Administrator Manual 8.1).
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'pre_job_note', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'pre_job_note', id, summary);
 
 const inC = 'n.country IN (SELECT value FROM json_each(?))';
 type NoteRow = { id: string; country: string; job_id: string; ticket_no: string | null; log_no: string; status: string; current_version: number; content: string; prepared_by: string | null; saved_at: string; sent_at: string | null; sent_by: string | null };

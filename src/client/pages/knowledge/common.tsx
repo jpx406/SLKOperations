@@ -1,9 +1,10 @@
 import { BookOpen, Download, FileText, Film, Image as ImageIcon, Printer, QrCode } from 'lucide-react';
+import { escHtml } from '../../../shared/html';
 import { renderSVG } from 'uqr';
 import { TYPES, checkUpload } from '../../../shared/attachments';
 import type { KbFile, KnowledgeDoc } from '../../../shared/knowledge';
 import { REV_STATUS, type Controller, type Numbering, type RevStatus } from '../../../shared/knowledgeControl';
-import { ApiError, api } from '../../api';
+import { ApiError, api, saveFile } from '../../api';
 import { Button, cx } from '../../components/ui';
 import { Dialog } from '../../components/Dialog';
 
@@ -50,13 +51,7 @@ export const docLink = (id: string, fileId?: string) => `${window.location.origi
 export type SupportBrief = NonNullable<KnowledgeDoc['support']>[number];
 const qrSvg = (link: string) => renderSVG(link, { border: 2, ecc: 'M', whiteColor: '#ffffff', blackColor: '#0b121a' });
 
-function saveBlob(blob: Blob, name: string) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
+const saveBlob = (blob: Blob, name: string) => saveFile(name, blob, blob.type);
 
 /** The QR code with its link, and buttons to save it as SVG or PNG or print it as a label. With `file`, it opens that support file. */
 export function QrBlock({ doc, file }: { doc: KnowledgeDoc; file?: SupportBrief }) {
@@ -77,7 +72,7 @@ export function QrBlock({ doc, file }: { doc: KnowledgeDoc; file?: SupportBrief 
   const print = () => {
     const w = window.open('', '_blank', 'width=420,height=560');
     if (!w) return;
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const esc = escHtml;
     w.document.write(`<!doctype html><title>QR ${esc(name)}</title><body style="font-family:sans-serif;text-align:center;margin:24px">
       <div style="width:260px;margin:auto">${svg}</div><p style="font-weight:700;margin:8px 0 2px">${esc(doc.doc_no ?? '')}</p><p style="margin:0">${esc(doc.title)}</p>
       ${file ? `<p style="margin:4px 0 0;font-weight:700">${esc(file.file_name)}</p>` : ''}

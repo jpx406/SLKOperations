@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, FolderArchive, Printer } from 'lucide-react';
-import { stampText } from '../../shared/dates';
+import { riyadhStamp, stampText } from '../../shared/dates';
 import { useRef } from 'react';
 import { Link, useParams } from 'react-router';
 import { STAGES, stagePercent } from '../../shared/stages';
@@ -19,7 +19,7 @@ import { Banner, Button, Skeleton } from '../components/ui';
 
 const ROLE: Record<string, string> = { slickline_supervisor: 'Supervisor', slickline_operator: 'Operator', assistant_operator: 'Assistant operator', helper: 'Helper' };
 const YN: Record<string, string> = { yes: 'Yes', no: 'No', na: 'N/A', other: 'Other' };
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+const when = (iso: string | null) => riyadhStamp(iso);
 
 export function JobReport() {
   const { id = '' } = useParams();

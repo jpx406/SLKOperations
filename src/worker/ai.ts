@@ -1,9 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { riyadhDay } from '../shared/dates';
 import type { Context } from 'hono';
 import { AI_MODELS, STARTER_PROMPTS, checkSettings, costMicroUsd, limitCheck, parseSettings, shapeResult, systemPrompt, toolPaths, toolsFor, trim, type AiSettings } from '../shared/ai';
 import { assistantPrompt, helpFor } from '../shared/help';
 import { roleLabel } from '../shared/roles';
 import type { AppBindings, Env } from './env';
+import { aiUsageRow, logRow } from './lib';
 import { mayEdit as mayEditCompetency } from './competency';
 
 // AI Agent (S35). Answers questions from the asker's own data: every tool is a GET through the app itself,
@@ -87,8 +89,7 @@ export async function assistantChat(c: Context<AppBindings>) {
     if (!msg) throw e;
     return c.json({ error: msg }, 502);
   } finally {
-    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'assistant', s.model, inTok, outTok, micro).run();
+    await aiUsageRow(c.env, user.username, 'assistant', s.model, inTok, outTok, micro).run();
   }
   return c.json({ reply, note, sentToday: u.sentToday + 1, dailyLimit: s.messages_per_user_day });
 }
@@ -134,8 +135,7 @@ export async function examImport(c: Context<AppBindings>) {
     if (!msg) throw e;
     return c.json({ error: msg }, 502);
   } finally {
-    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+    await aiUsageRow(c.env, user.username, 'document', s.model, inTok, outTok, micro).run();
   }
 }
 
@@ -155,7 +155,7 @@ export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
   const tools: Anthropic.Beta.BetaTool[] = allowed.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
   const system = systemPrompt({
     fullName: user.fullName, role: roleLabel(user.role), countries: user.countries, tools: allowed.map((t) => t.name),
-    today: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }),
+    today: riyadhDay(),
   });
   const api = client(c.env);
   const messages: Anthropic.Beta.BetaMessageParam[] = history;
@@ -164,8 +164,7 @@ export async function aiChat(c: Context<AppBindings>, self: Fetcher) {
   let reply = '';
   let note: string | null = null;
 
-  const record = () => c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, 'agent', s.model, inTok, outTok, micro).run();
+  const record = () => aiUsageRow(c.env, user.username, 'agent', s.model, inTok, outTok, micro).run();
 
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
@@ -256,8 +255,7 @@ export async function aiAdminPut(c: Context<AppBindings>) {
       `INSERT INTO ai_settings (key, value, updated_by) VALUES (?, ?, ?)
        ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
     ).bind(k, JSON.stringify(v), user.username)),
-    c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'update', 'ai_settings', 'ai', `AI Agent settings: ${entries.map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join(', ')}`),
+    logRow(c.env, user.username, 'update', 'ai_settings', 'ai', `AI Agent settings: ${entries.map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join(', ')}`),
   ]);
   return c.json({ settings: await loadSettings(c.env) });
 }

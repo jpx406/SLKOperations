@@ -16,6 +16,7 @@ import { readXlsx } from '../shared/xlsxRead';
 import { costMicroUsd, limitCheck } from '../shared/ai';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { aiUsageRow, logRow } from './lib';
 import { getJob } from './jobs';
 
 // Administration → Form templates (owner request 2026-10-28): the JRA and the job checklists, each in a job stage.
@@ -31,8 +32,7 @@ type Row = {
 };
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'form_template', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'form_template', id, summary);
 
 export function fromRow(r: Row): FormTemplate {
   const q = JSON.parse(r.questions) as Pick<Template, 'sections' | 'questions' | 'title' | 'notes' | 'exemption_points'>;
@@ -240,8 +240,7 @@ forms.post('/ai', async (c) => {
     if (!msg) throw e;
     return c.json({ error: msg }, 502);
   } finally {
-    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'agent', s.model, inTok, outTok, micro).run();
+    await aiUsageRow(c.env, user.username, 'agent', s.model, inTok, outTok, micro).run();
   }
 });
 
@@ -260,8 +259,7 @@ type FormRow = {
 type PkgFile = { id: string; package_item: string; file_name: string; size_bytes: number; uploaded_by: string; uploaded_at: string; r2_key: string };
 
 const jobAudit = (env: Env, user: AuthedUser, action: string, jobId: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'job', jobId, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'job', jobId, summary);
 
 const slug = (v: string | null | undefined) => (v ?? '').trim().replace(/[\\/:*?"<>|#%]+/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 

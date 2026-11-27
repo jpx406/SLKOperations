@@ -15,7 +15,7 @@ import {
 } from '../../shared/winchGuide';
 import { demoLineminder, demoLineminderPair } from '../../shared/winchDemo';
 import type { Job } from '../../shared/types';
-import { api } from '../api';
+import { api, apiRaw } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Field, Skeleton, cx, inputClass } from '../components/ui';
 import { useConfirm } from '../components/Dialog';
@@ -356,7 +356,7 @@ export function WinchWorkbench({ host }: { host: WinchHost }) {
       const missing: string[] = [];
       for (const x of st.files) {
         try {
-          const res = await fetch(`/api${host.filesUrl}/${encodeURIComponent(x.attId)}`, { credentials: 'same-origin' });
+          const res = await apiRaw(`${host.filesUrl}/${encodeURIComponent(x.attId)}`);
           if (!res.ok) throw new Error(String(res.status));
           list.push(readFile(await res.arrayBuffer(), x.name, x.id, x.attId));
         } catch { missing.push(x.name); }
@@ -452,7 +452,7 @@ export function WinchWorkbench({ host }: { host: WinchHost }) {
     const errs: string[] = [];
     for (const a of rows) {
       try {
-        const res = await fetch(`/api${host.filesUrl}/${encodeURIComponent(a.id)}`, { credentials: 'same-origin' });
+        const res = await apiRaw(`${host.filesUrl}/${encodeURIComponent(a.id)}`);
         if (!res.ok) throw new Error(`could not be opened (${res.status})`);
         const r = addFile(await res.arrayBuffer(), a.file_name, list);
         if (typeof r === 'string') { errs.push(r); continue; }

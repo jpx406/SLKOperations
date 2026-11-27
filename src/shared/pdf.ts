@@ -1,6 +1,8 @@
 // A small PDF writer for text documents (the approved JRA): A4 or A3 pages, Helvetica and Helvetica-Bold, word-wrapped
 // lines, rules and filled boxes. No dependencies, so it runs in the Worker. Text is encoded as WinAnsi (Windows-1252).
 
+import { textWidth as measure } from './helvetica';
+
 // in points; SLIDE is 16:9 (960 x 540 landscape), the same size as a PowerPoint widescreen slide
 const PAPER = { A4: [595.28, 841.89], A3: [841.89, 1190.55], SLIDE: [540, 960] } as const;
 
@@ -12,9 +14,6 @@ function binary(data: Uint8Array): string {
 }
 
 // Helvetica glyph widths (per 1000) for characters 32–126, from the standard font metrics
-const HELV = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
-  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
-  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
 
 // Windows-1252 codes for the typographic characters people type; anything else outside Latin-1 is replaced
 const CP1252: Record<string, number> = { '€': 0x80, '‚': 0x82, '„': 0x84, '…': 0x85, '•': 0x95, '–': 0x96, '—': 0x97, '‘': 0x91, '’': 0x92, '“': 0x93, '”': 0x94, '™': 0x99 };
@@ -34,9 +33,9 @@ export function toWinAnsi(s: string): number[] {
   return out;
 }
 
+/** Width in points, with the real bold widths (shared with the lesson page, helvetica.ts). */
 export function textWidth(s: string, size: number, bold = false): number {
-  const w = toWinAnsi(s).reduce((a, c) => a + (c >= 32 && c <= 126 ? HELV[c - 32] : 556), 0);
-  return (w * size * (bold ? 1.07 : 1)) / 1000;
+  return measure(s, size, bold);
 }
 
 /** Splits text into lines no wider than `width`, keeping the author's line breaks. */

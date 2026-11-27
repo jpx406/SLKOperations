@@ -2,6 +2,7 @@
 // with its answer, points and what it triggered, the score and approval level, and the digital signature.
 
 import { ANSWER_LABEL, approvalLevel, exemptions, flags, pointsFor, riskScore, type Answer, type Template } from './jra';
+import { stampText } from './dates';
 import { NESR_LOGO_JPEG } from './brandLogo';
 import { PdfDoc } from './pdf';
 
@@ -20,7 +21,7 @@ const ACCENT: [number, number, number] = [0.78, 0.83, 0];
 const GREY: [number, number, number] = [0.42, 0.42, 0.42];
 const WARN: [number, number, number] = [0.72, 0.36, 0];
 const BAND: [number, number, number] = [0.93, 0.94, 0.95];
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' Riyadh';
+const when = stampText;
 
 export function jraPdf(p: JraPdfInput): Uint8Array {
   const { template: t, answers } = p;

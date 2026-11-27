@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cleanLines, defaultLines, money, poolFor, type CrewMember, type CrewRole, type Rule } from '../shared/bonus';
 import { filterSql, parseFilters } from '../shared/filters';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow, sendEmail } from './lib';
 import { getJob } from './jobs';
 import { revokeStatement, signStatement } from './signatures';
 import { allowed } from '../shared/approvalRules';
@@ -11,8 +12,7 @@ import { loadRules } from './rules';
 // The distribution on Closure is for the roles under Users & Roles → Approvals → Bonus, on completed jobs; approval locks it.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'bonus', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'bonus', id, summary);
 
 const ROLES: CrewRole[] = ['slickline_supervisor', 'slickline_operator', 'assistant_operator', 'helper'];
 
@@ -224,7 +224,7 @@ bonus.post('/statements', async (c) => {
     if (!c.env.EMAIL) break;
     const total = lines.reduce((a, l) => a + l.amount_cents, 0);
     const text = [`Dear ${p.full_name},`, '', 'Your approved bonus for the selected period:', '', ...lines.map((l) => `${l.start_date ?? '—'} · ticket ${l.ticket_no ?? '—'} · ${money(l.amount_cents, l.currency)}`), '', `Total: ${money(total, p.currency)}`, '', 'Questions go to your SDM.'].join('\n');
-    await c.env.EMAIL.send({ to: p.contact_email, from: { email: c.env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations Hub' }, subject: 'Your bonus statement', text, html: `<pre style="font-family:Arial,sans-serif">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>` });
+    await sendEmail(c.env, { to: p.contact_email, subject: 'Your bonus statement', text });
     await c.env.DB.prepare('UPDATE job_bonus_lines SET statement_sent_at = ? WHERE id IN (SELECT value FROM json_each(?))').bind(at, JSON.stringify(lines.map((l) => l.id))).run();
     sent++;
   }

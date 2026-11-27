@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { riyadhDay } from '../shared/dates';
 import { filterSql, parseFilters } from '../shared/filters';
 import {
   ACTIVITY_FIELDS, DAILY_FIELDS, FORMAT_KEYS, cleanValue, clientFor, dailyStatus, formatOf, snapshotOf,
@@ -6,6 +7,7 @@ import {
 } from '../shared/salesSheets';
 import { manHours, travelKm } from '../shared/metrics';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Sales Dashboard (Administrator Manual 2), decided 2026-10-24: an aggregate of the revenue entered on each job.
 // There is no separate revenue dataset, so no "Add jobs" or "Upload clean revenue"; Find/Edit opens the job.
@@ -43,7 +45,7 @@ sales.get('/jobs', async (c) => {
 // ---------------------------------------------------------------------------------------------------------------
 // shared pieces
 
-const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const today = () => riyadhDay();
 const isDay = (d: string | undefined | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
 const isMonth = (m: string | undefined | null): m is string => !!m && /^\d{4}-(0[1-9]|1[0-2])$/.test(m);
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -53,8 +55,7 @@ const parse = (s: unknown): Values => { try { return s ? JSON.parse(String(s)) :
 const isAdmin = (u: AuthedUser) => u.role === 'admin';
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'sales', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'sales', id, summary);
 
 async function pickedFormats(env: Env, countries: string[]) {
   const { results } = await env.DB.prepare('SELECT account, format FROM sales_account_formats WHERE country IN (SELECT value FROM json_each(?))').bind(JSON.stringify(countries)).all<{ account: string; format: string }>();

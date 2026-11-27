@@ -1,4 +1,5 @@
 import { Select } from '../components/Select';
+import { riyadhShort } from '../../shared/dates';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, CircleDashed, ExternalLink, Link2, Play, RotateCcw, X } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -30,7 +31,7 @@ const SEV_STYLE: Record<Severity, string> = {
   low: 'bg-sev-light text-on-sev',
   info: 'bg-neutral-subtle text-neutral',
 };
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
+const when = (iso: string | null) => riyadhShort(iso);
 const jobLabel = (j: JobLite) => `${j.ticket_no ?? 'No ticket'} · ${j.unit_number ?? 'no unit'} · ${j.start_date ? formatDate(j.start_date) : 'no date'}${j.well ? ` · well ${j.well}` : ''}`;
 
 /** What the morning email would say to the person looking, sent after the nightly check. */

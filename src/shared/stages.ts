@@ -8,7 +8,6 @@ export type Stage = (typeof STAGES)[number];
 
 /** Each stage has its own right in Users & Roles (view / edit), next to Jobs. */
 export const stageMenu = (s: Stage) => `job_${s}`;
-export const STAGE_MENUS = STAGES.map(stageMenu);
 export const STAGE_LABEL: Record<Stage, string> = { design: '01 Design', preparation: '02 Preparation', execution: '03 Execution', closure: '04 Closure' };
 type Rights = Record<string, { view: boolean; edit: boolean } | undefined>;
 export const canSeeStage = (menus: Rights, s: Stage) => !!menus[stageMenu(s)]?.view;

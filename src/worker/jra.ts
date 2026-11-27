@@ -3,6 +3,7 @@ import { DEFAULT_TEMPLATE, approvalLevel, cleanAnswers, jraReasons, progress, ri
 import { jraPdf } from '../shared/jraPdf';
 import { ROLE_LABEL } from '../shared/roles';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { getJob } from './jobs';
 import { storeAttachment } from './attachments';
 import { signStatement } from './signatures';
@@ -12,8 +13,7 @@ import { loadRules, usersFor } from './rules';
 // JRA (S28) for one job: answer, score live, send to an SDM, approve or reject. Approved answers are locked.
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'jra', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'jra', id, summary);
 
 /** The country's active template; the default is stored on first use so later revisions don't change old JRAs. */
 async function template(env: Env, country: string): Promise<{ id: string; t: Template }> {

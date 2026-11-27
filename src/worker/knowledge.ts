@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { riyadhDay } from '../shared/dates';
 import { checkUpload } from '../shared/attachments';
 import { GLOBAL, checkDoc, fileKey, folderName, nextQaf, type KbFile, type KnowledgeDoc } from '../shared/knowledge';
 import {
@@ -17,6 +18,7 @@ const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.doc
 import { unzip } from '../shared/xlsxRead';
 import { client, fallbackFor, loadSettings, serviceError, spend } from './ai';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { aiUsageRow, knowledgeSetting, logRow, sendEmail } from './lib';
 import { copyId, stampPdf, stampText } from './stamp';
 
 // Knowledge Hub with document control (S21, 6z.13, 6z.14), after the NESR Document Control app.
@@ -27,11 +29,10 @@ import { copyId, stampPdf, stampText } from './stamp';
 
 type C = Context<AppBindings>;
 const now = () => new Date().toISOString();
-const riyadhToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const riyadhToday = () => riyadhDay();
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string, type = 'knowledge_docs') =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, type, id, summary.slice(0, 1000));
+  logRow(env, user.username, action, type, id, summary);
 
 async function controller(env: Env, user: AuthedUser): Promise<Controller> {
   const row = await env.DB.prepare('SELECT can_review, can_approve FROM knowledge_people WHERE username = ?').bind(user.username).first<{ can_review: number; can_approve: number }>();
@@ -65,10 +66,7 @@ async function numberingOf(env: Env): Promise<Numbering> {
   return { ...n, prefix: { ...DEFAULT_NUMBERING.prefix, ...n.prefix } };
 }
 
-async function setting<T>(env: Env, key: string, fallback: T): Promise<T> {
-  const r = await env.DB.prepare('SELECT value FROM knowledge_settings WHERE key = ?').bind(key).first<{ value: string }>();
-  return r ? { ...fallback, ...(JSON.parse(r.value) as T) } : fallback;
-}
+const setting = knowledgeSetting;
 
 /** Countries an entry may be filed under: every active country for admins, the person's own for everyone else. */
 async function placesFor(env: Env, user: AuthedUser): Promise<string[]> {
@@ -106,7 +104,7 @@ async function notify(c: C, username: string | null, subject: string, text: stri
     WHERE u.username = ? AND u.active = 1`).bind(username).first<{ email: string | null }>();
   if (!r?.email) return;
   const link = `${c.env.APP_URL ?? 'https://slkops.nesrapp.com'}/knowledge?view=queue`;
-  const send = c.env.EMAIL.send({ to: r.email, from: { email: c.env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations Hub' }, subject,
+  const send = sendEmail(c.env, { to: r.email, subject,
     text: `${text}\n\nOpen the Knowledge Hub queue: ${link}`, html: `<p>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p><p><a href="${link}">Open the Knowledge Hub queue</a></p>` })
     .catch((e: Error) => console.error('knowledge email not sent', e.message));
   try { c.executionCtx.waitUntil(send); } catch { await send; }
@@ -488,8 +486,7 @@ knowledge.post('/analyse', async (c) => {
     if (!msg) throw e;
     return c.json({ error: `${msg} You can fill in the fields by hand.` }, 502);
   } finally {
-    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+    await aiUsageRow(c.env, user.username, 'document', s.model, inTok, outTok, micro).run();
   }
 });
 
@@ -622,8 +619,7 @@ knowledge.post('/:id/digest', async (c) => {
     if (!msg) throw e;
     return c.json({ error: msg }, 502);
   } finally {
-    await c.env.DB.prepare('INSERT INTO ai_usage (id, username, feature, model, input_tokens, output_tokens, cost_microusd) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'document', s.model, inTok, outTok, micro).run();
+    await aiUsageRow(c.env, user.username, 'document', s.model, inTok, outTok, micro).run();
   }
 });
 

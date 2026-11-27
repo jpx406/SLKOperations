@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { G_PER_LB, MM_PER_FT, UMS_PER_FTMIN, channelTable, guessChannels, isTdat, parseTdat, tdatChecks, tdatTable, unitFor, writeTdat } from '../src/shared/lineminder';
 import { demoLineminder } from '../src/shared/winchDemo';
 import { buildSamples, guessMapping, type Sample } from '../src/shared/winchData';
-import { SOP_DEFAULTS, checkSopRules, detectJarring, jarUpLimit, parseRestrictions, sopSpeedFindings, splitRuns } from '../src/shared/winchRuns';
+import { SOP_DEFAULTS, detectJarring, jarUpLimit, parseRestrictions, sopSpeedFindings, splitRuns } from '../src/shared/winchRuns';
 
 // 6z.41: Lineminder (.da_tdat) files read in the app, runs, SOP-04 speed and jarring checks
 
@@ -115,8 +115,6 @@ describe('runs and SOP-04', () => {
     expect(jarUpLimit(SOP_DEFAULTS)).toBeNull();
     expect(jarUpLimit({ ...SOP_DEFAULTS, mbs: 2000 })).toEqual({ limit: 1200, from: '60% of the breaking strength' });
     expect(jarUpLimit({ ...SOP_DEFAULTS, mbs: 2000, mat: 1100 })).toEqual({ limit: 1100, from: 'MAT' });
-    expect(checkSopRules({ surfaceSpeed: 25, spang: true, detect: { gapSec: 90 }, junk: 1 })).toMatchObject({ surfaceSpeed: 25, spang: true, detect: { gapSec: 90, upMinLb: 150 } });
-    expect(checkSopRules('x')).toBeNull();
     expect(parseRestrictions('650 SSSV, 7450 ft X nipple\n9000')).toEqual([{ depth: 650, label: 'SSSV' }, { depth: 7450, label: 'X nipple' }, { depth: 9000, label: 'restriction' }]);
   });
 });

@@ -2,6 +2,7 @@
 // and the nightly email are the same text.
 
 import { CHECKS, type CheckCode, type Severity } from './recon';
+import { escHtml } from './html';
 
 export interface DigestFinding {
   id: string; check_code: CheckCode; severity: Severity; country: string; first_seen_at: string; summary: string;
@@ -10,7 +11,7 @@ export interface DigestFinding {
 export interface Recipient { username: string; full_name: string; role: string; countries: string[]; email: string | null }
 
 const ORDER: Severity[] = ['high', 'medium', 'low', 'info'];
-const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = escHtml;
 
 /**
  * SDMs get the findings on their own jobs plus every high one in their countries; managers and admins get

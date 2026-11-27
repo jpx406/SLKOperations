@@ -1,5 +1,6 @@
 import { defaultRoleFor } from '../shared/roles';
 import type { Env } from './env';
+import { logRow } from './lib';
 import { syncPeople } from './people';
 import { fetchAsSync } from './sync';
 
@@ -61,8 +62,7 @@ export async function importWgUsers(env: Env, by: string) {
   await syncPeople(env); // everyone imported is on attendance (on the sheet their role is assigned to)
   const added = list.filter((u) => !existing.has(u.username.toLowerCase())).length;
   const inactive = list.filter((u) => !isActive(u)).length;
-  await env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), by, 'import', 'user', 'wireguard', `Imported ${list.length} WIREGUARD users (${added} new, ${list.length - added} updated, ${inactive} inactive in WIREGUARD)`).run();
+  await logRow(env, by, 'import', 'user', 'wireguard', `Imported ${list.length} WIREGUARD users (${added} new, ${list.length - added} updated, ${inactive} inactive in WIREGUARD)`).run();
   return { total: list.length, added, updated: list.length - added, inactive };
 }
 

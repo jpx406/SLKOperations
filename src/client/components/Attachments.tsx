@@ -1,4 +1,5 @@
 import { Select } from './Select';
+import { riyadhStamp } from '../../shared/dates';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Eye, Paperclip, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -11,7 +12,7 @@ import { useConfirm } from './Dialog';
 // one by one. Images show as thumbnails; images and PDFs open in a new tab, everything else downloads.
 
 interface FileRow { id: string; category: Category; file_name: string; content_type: string; size_bytes: number; note: string | null; uploaded_by_name: string; uploaded_at: string }
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => riyadhStamp(iso);
 const ACCEPT = Object.keys(TYPES).map((e) => `.${e}`).join(',');
 
 export function Attachments({ entity, id, title = 'Attachments' }: { entity: AttachEntity; id: string; title?: string }) {

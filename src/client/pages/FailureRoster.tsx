@@ -1,4 +1,5 @@
 import { Select } from '../components/Select';
+import { riyadhDay } from '../../shared/dates';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Download, FileSpreadsheet, Plus, Printer, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
@@ -6,7 +7,7 @@ import { Link, useSearchParams } from 'react-router';
 import { SEVERITIES, SEVERITY_LABEL, type Severity } from '../../shared/emf';
 import { MONTHS, filtersToQuery } from '../../shared/filters';
 import { csv, workbook, type Cell } from '../../shared/xlsx';
-import { ApiError, api, formatDate } from '../api';
+import { ApiError, api, formatDate, saveFile } from '../api';
 import { useMe } from '../auth';
 import { FilterBar, useFilters } from '../components/FilterBar';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, SeverityPill, Skeleton, cx, inputClass, inputSized } from '../components/ui';
@@ -24,14 +25,9 @@ interface Summary { byMonth: { month: string; n: number; severe: number }[]; npt
 
 const ACTION_LABEL = { open: 'Open', in_progress: 'In progress', closed: 'Closed' } as const;
 const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`;
-const stamp = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const stamp = () => riyadhDay();
 
-function save(name: string, data: BlobPart, type: string) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const a = Object.assign(document.createElement('a'), { href: url, download: name });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+const save = saveFile;
 
 const HEADER = ['Date', 'Well', 'RILR', '8MF', 'Severity', 'Field ticket', 'Unit', 'Category', 'NPT h', 'Action status', 'What happened', 'Notes'];
 const toCells = (r: Row): Cell[] => [r.occurred_on, r.well, r.rilr_refs.join(', '), r.log_no ?? 'No 8MF', r.severity ? SEVERITY_LABEL[r.severity] : null,

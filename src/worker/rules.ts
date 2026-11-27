@@ -2,12 +2,12 @@ import { Hono } from 'hono';
 import { STATIC_RULES, jraLevelKey, jraLevelRule, resolveRules, type Rules } from '../shared/approvalRules';
 import { DEFAULT_CATEGORIES, categoryRules, type Category } from '../shared/attendanceSheets';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Roles and approval rules as data (Users & Roles → Roles and → Approvals). See shared/approvalRules.ts.
 
 const audit = (env: Env, user: AuthedUser, action: string, entity: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, entity, id, summary.slice(0, 1000));
+  logRow(env, user.username, action, entity, id, summary);
 
 export async function roleKeys(env: Env): Promise<string[]> {
   const { results } = await env.DB.prepare('SELECT key FROM roles').all<{ key: string }>();

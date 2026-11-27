@@ -298,23 +298,3 @@ export function kpiW1(c: Ctx) {
   return { items, bands, limit: lim, warning: warn };
 }
 
-export const KPI_INFO: { id: string; section: 'general' | 'compliance' | 'jobs' | 'maintenance' | 'integrity'; title: string; about: string }[] = [
-  { id: 'G1', section: 'general', title: 'Runs logged', about: 'Volume of work in the selection.' },
-  { id: 'G2', section: 'general', title: 'Hours worked', about: 'Exposure of the fleet.' },
-  { id: 'G3', section: 'general', title: 'Wire cut', about: 'Consumption in the selection, shop cuts included.' },
-  { id: 'G4', section: 'general', title: 'Active wires', about: 'Wires in service, the registry and drums.' },
-  { id: 'G5', section: 'general', title: 'Open alerts', about: 'Critical, warning and suspicious items open now.' },
-  { id: 'G6', section: 'general', title: 'Awaiting approval', about: 'Runs and maintenance pending in WIREGUARD, and the oldest.' },
-  { id: 'C12', section: 'general', title: 'Compliance score', about: 'Mean of pre-job test, cut-back on trips, cut-back on jarring and tension, equally weighted.' },
-  { id: 'C1', section: 'compliance', title: 'Pre-job test compliance', about: 'A passing Wrap or Torsional test before each job, and a Tension test within its window.' },
-  { id: 'C2', section: 'compliance', title: 'Cut-back on trips', about: 'Cut back and re-terminated every few trips (SOP limit).' },
-  { id: 'C3', section: 'compliance', title: 'Cut-back on jarring', about: 'Cut back after the SOP number of impacts or minutes of jarring since the last cut.' },
-  { id: 'C4', section: 'compliance', title: 'Tension within limit', about: 'Max tension within the new-wire and used-wire share of rated MBL.' },
-  { id: 'C5', section: 'compliance', title: 'Discard rule respected', about: 'Active wires past the OD or run-count retirement threshold. Should be zero.' },
-  { id: 'C6', section: 'compliance', title: 'MPI currency', about: 'Active drums with a valid MPI certificate.' },
-  { id: 'J7', section: 'jobs', title: 'Tension utilisation per run', about: 'Each run’s max tension as a share of rated MBL, against the limits.' },
-  { id: 'J9', section: 'jobs', title: 'Runs over the tension limit', about: 'How often the tension rule is broken, per month.' },
-  { id: 'M5', section: 'maintenance', title: 'Time since last passing test', about: 'Which wires in service are due a pre-job test.' },
-  { id: 'W14', section: 'integrity', title: 'Wires needing attention first', about: 'Least length left, most worn, or most worked.' },
-  { id: 'W1', section: 'integrity', title: 'Life consumed', about: 'Runs against the retirement limit.' },
-];

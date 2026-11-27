@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { checkProfile, planImport, rolesFromDataset, type CompetencyProfile, type SheetProfileRow } from '../shared/competencyUsers';
 
 // Storage for the Competency module (6z.34): the NESR Competency Framework System keeps its data through a
@@ -12,8 +13,7 @@ export const competency = new Hono<AppBindings>();
 
 const now = () => new Date().toISOString();
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'competency_kv', id, summary);
+  logRow(env, user.username, action, 'competency_kv', id, summary);
 /** Values up to this many bytes stay in the D1 row; larger ones go to R2. */
 export const INLINE_MAX = 256 * 1024;
 /** One value at most: the dataset grows with the team, but a runaway write is refused. */

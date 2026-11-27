@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { roleLabel } from '../shared/roles';
 import type { Role } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { exportPackage, importApply, importDryRun } from './dataPackage';
 import { MENU_KEYS, effectiveMenus } from './permissions';
 import { USER_MODULES, WG_RIGHT, applyModules, parseUserModules, type UserModules } from '../shared/modules';
@@ -22,8 +23,7 @@ import { isCode } from '../shared/attendance';
 const USERNAME = /^NESR-\d+$/i;
 
 const audit = (env: Env, user: AuthedUser, action: string, entity: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, entity, id, summary.slice(0, 1000));
+  logRow(env, user.username, action, entity, id, summary);
 
 async function activeAdmins(env: Env): Promise<number> {
   const r = await env.DB.prepare(`SELECT count(*) AS n FROM user_roles WHERE role = 'admin' AND active = 1`).first<{ n: number }>();

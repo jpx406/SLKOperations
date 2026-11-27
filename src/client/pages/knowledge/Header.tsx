@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Files, Plus } from 'lucide-react';
+import { riyadhShort } from '../../../shared/dates';
 import type { ReactNode } from 'react';
 import type { CompetencyProfile } from '../../../shared/competencyUsers';
 import { api } from '../../api';
@@ -15,7 +15,7 @@ import type { Library } from './common';
 const BAND = 'bg-[#1B2420] text-[#F2F5F0]';
 const CELL_EDGE = 'border-[#3C4A42]';
 
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => riyadhShort(iso);
 
 /** What the person is in the Knowledge Hub's document control. */
 export function knowledgeRole(me: Library['me']): string {
@@ -78,5 +78,3 @@ export function BandButton({ children, onClick, primary }: { children: ReactNode
     </button>
   );
 }
-
-export const AddIcons = { several: Files, add: Plus };

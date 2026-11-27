@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { CATEGORIES, INLINE, checkUpload, isAttachEntity, isCategory, type AttachEntity, type Category } from '../shared/attachments';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Attachments in R2. Access follows the record: a job's files need the jobs tab (to upload or remove, its edit right),
 // a Knowledge Hub entry's need the knowledge_hub tab, and both stay inside the person's countries.
@@ -8,8 +9,7 @@ import type { AppBindings, AuthedUser, Env } from './env';
 const MENU: Record<AttachEntity, string> = { job: 'jobs', knowledge: 'knowledge_hub', opportunity: 'quick_plan' };
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'attachments', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'attachments', id, summary);
 
 /** The record's country, or null when it doesn't exist or isn't in the person's countries. */
 async function recordCountry(env: Env, user: AuthedUser, entity: AttachEntity, id: string): Promise<string | null> {

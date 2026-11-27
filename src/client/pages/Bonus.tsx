@@ -5,7 +5,7 @@ import { FileSpreadsheet, Mail, Printer, RotateCcw, ShieldCheck } from 'lucide-r
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { BASIS_LABEL, ROLE_LABEL, bonusShare, money, type Basis, type CrewRole, type Line } from '../../shared/bonus';
-import { filtersToQuery } from '../../shared/filters';
+import { filtersToQuery, MONTHS } from '../../shared/filters';
 import { workbook } from '../../shared/xlsx';
 import { ApiError, api } from '../api';
 import { useMe } from '../auth';
@@ -20,7 +20,6 @@ import { useConfirm } from '../components/Dialog';
 
 interface BLine { employee_id: string; full_name: string; eid: string; crew_role: CrewRole | null; amount_cents: number; currency: string; status: string; statement_sent_at: string | null; job_id: string; ticket_no: string | null; start_date: string | null; well: string | null; field: string | null; location: string | null; revenue_cents: number | null; services: string[] }
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function useLines(approved: boolean) {
   const [filters] = useFilters();

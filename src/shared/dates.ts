@@ -10,9 +10,13 @@ export const riyadhDay = (at: Date | number = Date.now()) => new Date(+at + OFFS
 /** This month in Riyadh as YYYY-MM. */
 export const riyadhMonth = (at: Date | number = Date.now()) => riyadhDay(at).slice(0, 7);
 
-/** A moment as "27 Nov 2026, 14:05" in Riyadh time ("—" when empty). */
-export const riyadhStamp = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleString('en-GB', { timeZone: RIYADH, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+/** A moment as "27 Nov 2026, 14:05" in Riyadh time (`empty` when there is none). */
+export const riyadhStamp = (iso: string | null | undefined, empty = '—') =>
+  iso ? new Date(iso).toLocaleString('en-GB', { timeZone: RIYADH, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : empty;
+
+/** The same without the year, "27 Nov, 14:05", for recent things. */
+export const riyadhShort = (iso: string | null | undefined, empty = '—') =>
+  iso ? new Date(iso).toLocaleString('en-GB', { timeZone: RIYADH, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : empty;
 
 /** The same with " Riyadh" after it, for printed documents. */
 export const stampText = (iso: string) => `${riyadhStamp(iso)} Riyadh`;

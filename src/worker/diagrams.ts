@@ -8,6 +8,7 @@ import { canEditStage } from '../shared/stages';
 import type { Job } from '../shared/types';
 import { storeAttachment } from './attachments';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { getJob } from './jobs';
 import { loadRules } from './rules';
 
@@ -24,8 +25,7 @@ interface DiagramRow {
 }
 
 const audit = (env: Env, user: AuthedUser, action: string, jobId: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'job', jobId, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'job', jobId, summary);
 
 const label = (kind: DiagramKind, run: number) => (kind === 'rigup' ? `rig up diagram (${FORM.rigup.code})` : `Run ${run} tool string diagram (${FORM.toolstring.code})`);
 const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -115,8 +115,7 @@ diagrams.delete('/samples/:id', async (c) => {
   if (user.role !== 'admin' && !same(s.created_by, user.username)) return c.json({ error: 'Only the person who saved it, or an admin, removes a sample' }, 403);
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM diagram_samples WHERE id = ?').bind(s.id),
-    c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'delete', 'diagram_sample', s.id, `Diagram sample “${s.name}” removed`),
+    logRow(c.env, user.username, 'delete', 'diagram_sample', s.id, `Diagram sample “${s.name}” removed`),
   ]);
   return c.json({ ok: true });
 });

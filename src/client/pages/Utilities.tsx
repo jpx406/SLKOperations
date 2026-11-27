@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { riyadhStamp } from '../../shared/dates';
 import { ArrowLeft, Copy, FileDown, FolderOpen, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { FAMILY_OF, MAX_ROWS, diagramChecks, insertIndex, rowFromPart, type DiagramKind, type Part, type Row } from '../../shared/diagram';
 import { EMPTY_FACTS, FACT_NUM, FACT_TEXT, UTIL_LABEL, UTIL_PATH, cleanFacts, type DiagramData, type UtilFacts, type UtilKind } from '../../shared/utilities';
-import { ApiError, api, countryScope } from '../api';
+import { ApiError, api, apiRaw } from '../api';
 import { useMe } from '../auth';
 import { Banner, Button, Card, EmptyState, Field, PageTitle, Skeleton, cx, inputClass } from '../components/ui';
 import { Dialog } from './knowledge/common';
@@ -24,7 +25,7 @@ interface ProjectListRow { id: string; name: string; updated_at: string; updated
 interface Project { id: string; kind: UtilKind; name: string; data: Record<string, unknown>; updated_at: string; updated_by_name: string | null; canEdit: boolean; canDelete: boolean }
 
 const KIND_OF_SLUG: Record<string, UtilKind> = { 'rig-up': 'rigup', 'tool-string': 'toolstring', winch: 'winch' };
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => riyadhStamp(iso);
 const BLURB: Record<UtilKind, string> = {
   rigup: 'Rig up diagrams (QAF14009) on their own: type the job details, build the stack and make the PDF.',
   toolstring: 'Tool string diagrams (QAF14010) on their own: type the job details, build the string and make the PDF.',
@@ -256,7 +257,7 @@ function UtilityDiagram({ kind, project }: { kind: Exclude<UtilKind, 'winch'>; p
     try {
       // the latest rows first, so the PDF has them
       await api(`/utilities/${project.id}`, { method: 'PUT', json: { data: { facts, rows, run, rev } } });
-      const res = await fetch(`/api/utilities/${project.id}/pdf?style=${style}`, { method: 'POST', credentials: 'same-origin', headers: countryScope() ? { 'X-SLK-Country': countryScope()! } : {} });
+      const res = await apiRaw(`/utilities/${project.id}/pdf?style=${style}`, { method: 'POST' });
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `PDF failed (${res.status})`);
       const url = URL.createObjectURL(await res.blob());
       if (w) w.location.href = url; else window.location.href = url;

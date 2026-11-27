@@ -2,6 +2,7 @@ import { filterSql, parseFilters } from '../shared/filters';
 import { Hono } from 'hono';
 import type { Lookups } from '../shared/types';
 import type { AppBindings, Env } from './env';
+import { logRow } from './lib';
 import { admin } from './admin';
 import { passkeyAdmin, passkeyAuth, passkeys } from './passkeys';
 import { loadRules, rulesApi, usersFor } from './rules';
@@ -153,8 +154,7 @@ app.get('/wg/status', async (c) => c.json(await syncStatus(c.env)));
 app.get('/wg/account', async (c) => c.json({ status: await wgUserActive(c.env, c.get('user').username, true) }));
 app.post('/wg/sync', async (c) => {
   const results = await syncAll(c.env);
-  await c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), c.get('user').username, 'run', 'sync', 'wireguard', 'Synced WIREGUARD lists by hand').run();
+  await logRow(c.env, c.get('user').username, 'run', 'sync', 'wireguard', 'Synced WIREGUARD lists by hand').run();
   return c.json({ results });
 });
 
@@ -321,8 +321,7 @@ export default {
         const step = async (name: string, run: () => Promise<unknown>) => {
           try { await run(); } catch (e) {
             console.error(`nightly: ${name} failed`, e);
-            await env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-              .bind(crypto.randomUUID(), 'nightly', 'failed', 'nightly', name, `Nightly ${name} failed: ${(e as Error).message}`.slice(0, 500)).run().catch(() => {});
+            await logRow(env, 'nightly', 'failed', 'nightly', name, `Nightly ${name} failed: ${(e as Error).message}`.slice(0, 500)).run().catch(() => {});
           }
         };
         await step('WIREGUARD sync', () => syncAll(env, { hourly: true }));

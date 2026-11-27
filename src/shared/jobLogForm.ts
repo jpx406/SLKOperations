@@ -9,13 +9,15 @@
 // (read from the run's tool string) and a note. A new log starts with the three lines every log must have:
 // arrival on location first, then a rig up and a rig down line with the work between them.
 
+import { riyadhDay } from './dates';
+import { MONTHS } from './filters';
+
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export const uid = () => ((globalThis as { crypto?: { randomUUID?: () => string } }).crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`);
 
 /** Today in Riyadh as YYYY-MM-DD. */
-export const todayISO = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+export const todayISO = () => riyadhDay();
 
 export const dayOf = (iso: string) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');

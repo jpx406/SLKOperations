@@ -5,6 +5,7 @@ import { approveKey, canApprove, canFill, canReview, canSee, reviewKey, type Cat
 import { roleLabel } from '../shared/roles';
 import type { Rules } from '../shared/approvalRules';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow, sendEmail } from './lib';
 import { AUTO_BY, syncJobDays } from './jobDays';
 import { syncPeople } from './people';
 import { loadCategories, loadRules } from './rules';
@@ -17,8 +18,7 @@ import { revokeStatement, signStatement } from './signatures';
 // Saves, reviews and approvals are checked row by row on the server.
 
 const audit = (env: Env, user: AuthedUser, action: string, entity: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, entity, id, summary.slice(0, 1000));
+  logRow(env, user.username, action, entity, id, summary);
 
 type Person = SheetRow & { id: string; country: string; eid: string; full_name: string; title: string; account: string; crew_role: string | null; reports_to_id: string | null; reports_to_name: string | null; user_role: string };
 
@@ -281,7 +281,7 @@ attendance.post('/notify', async (c) => {
     category: cat.label, month, by: user.fullName, url: `${c.env.APP_URL}/attendance?month=${month}`,
     people: people.map((p) => ({ name: p.full_name, eid: p.eid, approved: done.has(p.id), ...rowSummary(days.map((d) => codes.get(`${p.id}|${d}`))) })),
   });
-  for (const addr of to) await c.env.EMAIL.send({ to: addr, from: { email: c.env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations Hub' }, subject: mail.subject, html: mail.html, text: mail.text });
+  for (const addr of to) await sendEmail(c.env, { to: addr, subject: mail.subject, html: mail.html, text: mail.text });
   await audit(c.env, user, 'notify', 'attendance_categories', `${b.country}|${cat.key}`, `${month} ${cat.label} (${step.endsWith('review') ? 'review' : 'approval'}): sent to ${to.join(', ')}`).run();
   return c.json({ ok: true, to: to.join(', ') });
 });

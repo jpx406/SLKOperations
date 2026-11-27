@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { LOG_OPTION_DEFAULTS, PHRASE_GROUPS, cleanLogOption, type LogOption, type LogOptionKind } from '../shared/jobLogForm';
 import { canEditStage } from '../shared/stages';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // The job log's pick lists (6z.53), one set per country: the work description wording (seeded from the owner's
 // job log the first time a country opens a log) and the header values a job may not have. Whoever edits the job
@@ -12,8 +13,7 @@ export const logOptions = new Hono<AppBindings>();
 const mayEdit = (u: AuthedUser) => !!u.menus.jobs?.edit && canEditStage(u.menus, 'execution');
 const duplicate = (e: unknown) => /UNIQUE constraint failed/.test((e as Error).message ?? '');
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'job_log_options', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'job_log_options', id, summary);
 
 /** The types a country starts with in the equipment list; the job log reads memory gauges and pick ups. */
 export async function ensureEquipmentTypes(env: Env, country: string) {

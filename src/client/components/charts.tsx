@@ -9,12 +9,8 @@ import { Button, Card, cx } from './ui';
 
 type B = Omit<Bucket, 'value'> & { value: number | null };
 
-export function saveFile(name: string, data: BlobPart, type: string) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const a = Object.assign(document.createElement('a'), { href: url, download: name });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+import { saveFile } from '../api';
+export { saveFile };
 
 /** Prints only one element: marks it, prints, then clears the mark. */
 export function printOnly(el: HTMLElement | null) {

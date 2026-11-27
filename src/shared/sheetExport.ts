@@ -3,6 +3,7 @@
 // column, so what is printed is what was on screen. The Excel file always has every column.
 
 import { NESR_LOGO_JPEG } from './brandLogo';
+import { MONTHS } from './filters';
 import { PdfDoc, textWidth, wrap } from './pdf';
 import { shownValue, usesField, type SheetField, type SheetLine, type Value } from './salesSheets';
 import type { Cell, SheetSpec } from './xlsx';
@@ -29,7 +30,7 @@ export function visibleColumns(fields: SheetField[], groups: readonly Group[], l
 // ---------------------------------------------------------------------------------------------------------------
 // Writing values
 
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MON = MONTHS;
 const riyadh = (iso: string) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;

@@ -2035,3 +2035,31 @@ Most of this group landed in 6z.67 (sync guards, one sync at a time, the nightly
   - Tests: 550 pass; the type check is clean.
   - In the local app, the schedule event dialog takes focus on its first field, closes on Escape and gives focus back to "+ Maintenance Event".
   - Removing a holiday asks first: Escape closed only the confirmation and kept the holiday, and confirming removed it.
+
+## 6z.72: audit fixes, part 6: duplication and dead code
+
+- **Server helpers** (`src/worker/lib.ts`):
+  - One audit-log row (`logRow`): the 25 copies in route files now call it, and so do the other hand-written inserts.
+  - One e-mail sender (`sendEmail`) for the digest, attendance, bonus statements, the Knowledge Hub and Lessons.
+  - One AI-usage row (`aiUsageRow`).
+  - One Knowledge Hub settings loader.
+  - Each upload already shares its check (`checkUpload`); the steps after it differ by table and stay with their routes.
+- **Riyadh time everywhere** (`src/shared/dates.ts`):
+  - The server's "today" helpers, the job log form, the JRA PDF and about 15 page formats use the shared helpers.
+  - Lessons and Utilities showed the browser's time zone; they now show Riyadh time.
+  - Formats that differ on purpose (seconds in the audit trail, a two-digit year in inventories, "never" for last sign-in) keep their own.
+- **One Helvetica measure** (`src/shared/helvetica.ts`): the PDF writer now uses the real bold widths, as the lesson page does, instead of normal widths plus 7%. The pdf-lib exports (job log, winch report) measure with pdf-lib's own font metrics, so they already agree.
+- **One HTML escape** (`src/shared/html.ts`) for printed pages, e-mails and exports. Three copies missed `>`, and none escaped quotes.
+- **Small repeats:**
+  - The months list comes from `shared/filters`.
+  - One file-save helper in `api.ts`. The Knowledge copies never freed memory, and the chart module no longer comes with it.
+  - `apiRaw` for file downloads, so PDFs, logos and winch files carry the country switch and sign out on 401 like everything else.
+- **Dead code removed:**
+  - The old tool string builder in `jobParts.tsx`.
+  - The unused `mayDownload` rule (downloads follow `mayOpen`).
+  - The winch file-survey import and old rule checks: the guide's own check replaced them, and horizontal-well rules were dropped. `manualSurvey` stays to build test wells.
+  - Unused exports in `wireKpis`, `attendanceSheets`, `fieldPolicy`, `stages`, `unitEvents`, the Knowledge header and support files, and `personOf`.
+  - The old roster routes went in 6z.68.
+- **Verified:**
+  - Tests: 550 pass (the 4 that only checked removed code are gone); the server tests (6z.73) pass; the type check is clean.
+  - In the local app, pages that print dates, lesson logos and winch files load as before.

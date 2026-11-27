@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { riyadhStamp } from '../../shared/dates';
 import { FileWarning, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useState } from 'react';
 import type { SignatureState, SignedEntity } from '../../shared/signature';
@@ -10,7 +11,7 @@ import { cx } from './ui';
 interface Sig { id: string; full_name: string; username: string; role: string; signed_at: string; fingerprint: string; revoked_at: string | null; revoked_by: string | null; revoke_reason: string | null; state: SignatureState; text: string }
 
 const TONE: Record<SignatureState, string> = { valid: 'text-success', unsealed: 'text-success', changed: 'text-danger', tampered: 'text-danger', revoked: 'text-text-subtle' };
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => riyadhStamp(iso);
 
 export function SignatureBadge({ type, id, className }: { type: SignedEntity; id: string; className?: string }) {
   const q = useQuery({ queryKey: ['signatures', type, id], queryFn: () => api<{ signatures: Sig[] }>(`/signatures/${type}/${encodeURIComponent(id)}`) });

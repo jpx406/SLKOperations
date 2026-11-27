@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Administration → Companies (owner request 2026-10-28): the companies a job can be run by (NESR, SAPESCO …),
 // picked on the job's Design stage. A rename follows through to the jobs that use the company; a company in use
@@ -8,8 +9,7 @@ import type { AppBindings, AuthedUser, Env } from './env';
 export const companies = new Hono<AppBindings>();
 
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'company', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'company', id, summary);
 
 const cleanName = (v: unknown) => String(v ?? '').trim().replace(/\s+/g, ' ').slice(0, 60);
 

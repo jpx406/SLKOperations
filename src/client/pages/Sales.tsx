@@ -3,7 +3,7 @@ import { FileSpreadsheet, Printer, Search } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { money } from '../../shared/bonus';
-import { filtersToQuery } from '../../shared/filters';
+import { filtersToQuery, MONTHS } from '../../shared/filters';
 import { workbook } from '../../shared/xlsx';
 import { api, formatDate } from '../api';
 import { BarChart, KpiTile, saveFile } from '../components/charts';
@@ -17,7 +17,6 @@ import { SalesDaily } from './SalesDaily';
 // Activity sheet and the Daily report that replace the two Excel workbooks (owner request 2026-10-28).
 
 interface SJob { id: string; ticket_no: string | null; status: string; start_date: string | null; location: string | null; field: string | null; unit_number: string | null; well: string | null; revenue_cents: number | null; revenue_currency: string; sdm: string | null; services: string[]; domains: string[]; bonus_cents: number }
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const quarter = (d: string) => `${d.slice(0, 4)} Q${Math.ceil(Number(d.slice(5, 7)) / 3)}`;
 
 function SalesRevenue({ views }: { views: ReactNode }) {

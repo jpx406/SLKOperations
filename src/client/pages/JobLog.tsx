@@ -1,27 +1,21 @@
 import { useQuery } from '@tanstack/react-query';
+import { riyadhDay } from '../../shared/dates';
 import { Download, FileSpreadsheet, Printer, Search } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { activeFilterCount, filtersToQuery } from '../../shared/filters';
 import { JOB_LOG_COLUMNS, displayValue, jobLogTable, type JobLogRow } from '../../shared/jobLog';
 import { csv, workbook } from '../../shared/xlsx';
-import { api } from '../api';
+import { api, saveFile } from '../api';
 import { FilterBar, useFilters } from '../components/FilterBar';
 import { AccountLegend, useAccountColors } from '../components/Accounts';
 import { NO_ACCOUNT, byAccount, tint } from '../../shared/accounts';
 import { Banner, Button, EmptyState, PageTitle, Skeleton, StatusPill, cx, inputSized } from '../components/ui';
 import type { JobStatus } from '../../shared/types';
 
-const stamp = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+const stamp = () => riyadhDay();
 
-function save(name: string, data: BlobPart, type: string) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const a = Object.assign(document.createElement('a'), { href: url, download: name });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+const save = saveFile;
 
 // JRA state as a pill like the job status: sent waiting (ongoing colours), approved (completed), draft and rejected muted
 const JRA_PILL: Record<string, string> = {

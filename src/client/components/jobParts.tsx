@@ -1,8 +1,8 @@
 import { Select } from './Select';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, Plus, Trash2, UserMinus } from 'lucide-react';
+import { ArrowLeftRight, UserMinus } from 'lucide-react';
 import { useState } from 'react';
-import { TOOLSTRING_COMPONENTS, preJobWireStatus, toolChecks, toolTotals, type ToolPart } from '../../shared/toolstring';
+import { preJobWireStatus, toolChecks, toolTotals, type ToolPart } from '../../shared/toolstring';
 import type { CrewMember, Employee, Job, JobCrew, Lookups, WireOptions } from '../../shared/types';
 import { api } from '../api';
 import { Banner, Button, LockHint, cx, inputClass, inputSized, radioTab, rovingKeys } from './ui';
@@ -64,72 +64,6 @@ export function WirePanel({ job, canEdit, onPick }: { job: Job; canEdit: boolean
     </div>
   );
 }
-
-const BLANK: ToolPart = { component: 'Stem', od_in: null, length_ft: null, weight_lb: null };
-
-/** Edits the toolstring top to bottom and shows totals and checks as you type. Saves the whole list on each change. */
-export function ToolstringBuilder({ value, canEdit, onChange, ctx }: {
-  value: ToolPart[]; canEdit: boolean; onChange: (parts: ToolPart[]) => void;
-  ctx: { minRestrictionIn: number | null; pceBoreIn: number | null; lubricatorFt: number | null };
-}) {
-  const rows = value;
-  const set = onChange;
-  const edit = (i: number, k: keyof ToolPart, v: string) =>
-    set(rows.map((r, j) => (j !== i ? r : { ...r, [k]: k === 'component' ? v : v === '' ? null : Number(v) })));
-  const t = toolTotals(rows);
-  const checks = toolChecks(t, ctx);
-  return (
-    <div>
-      {rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
-            <caption className="sr-only">Toolstring, rope socket at the top</caption>
-            <thead><tr className="text-left text-xs text-text-muted">
-              <th className="w-8 py-1 font-semibold">#</th><th className="py-1 font-semibold">Component</th>
-              <th className="w-24 py-1 font-semibold">OD in</th><th className="w-24 py-1 font-semibold">Length ft</th><th className="w-24 py-1 font-semibold">Weight lb</th><th className="w-10" />
-            </tr></thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} className="border-t border-border">
-                  <td className="py-1.5 font-mono text-xs text-text-subtle">{i + 1}</td>
-                  <td className="py-1.5 pr-2">
-                    <Select aria-label={`Part ${i + 1} component`} className={inputClass} disabled={!canEdit} value={r.component} onChange={(e) => edit(i, 'component', e.target.value)}>
-                      {[...new Set([...TOOLSTRING_COMPONENTS, r.component])].map((c) => <option key={c}>{c}</option>)}
-                    </Select>
-                  </td>
-                  {(['od_in', 'length_ft', 'weight_lb'] as const).map((k) => (
-                    <td key={k} className="py-1.5 pr-2">
-                      <input aria-label={`Part ${i + 1} ${k.replace('_', ' ')}`} className={inputClass} type="number" min={0} step="any" inputMode="decimal"
-                        disabled={!canEdit} value={r[k] ?? ''} onChange={(e) => edit(i, k, e.target.value)} />
-                    </td>
-                  ))}
-                  <td className="py-1.5">
-                    <Button variant="ghost" size="sm" aria-label={`Remove part ${i + 1}`} disabled={!canEdit} onClick={() => set(rows.filter((_, j) => j !== i))}>
-                      <Trash2 aria-hidden className="size-4" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <div className="mt-2 flex flex-wrap items-center gap-3">
-        <Button size="sm" disabled={!canEdit || rows.length >= 20} onClick={() => set([...rows, rows.length ? BLANK : { ...BLANK, component: 'Rope socket' }])}>
-          <Plus aria-hidden className="size-4" />Add part
-        </Button>
-        <dl className="flex flex-wrap gap-x-5 gap-y-1 text-xs" aria-live="polite">
-          <Tot k="Length" v={t.length_ft} u="ft" /><Tot k="Max OD" v={t.max_od_in} u="in" /><Tot k="Weight" v={t.weight_lb} u="lb" /><Tot k="Stem" v={t.stem_weight_lb} u="lb" />
-        </dl>
-      </div>
-      {checks.length > 0 && <div className="mt-3 space-y-2">{checks.map((c) => <Banner key={c.text} tone={c.level}>{c.text}</Banner>)}</div>}
-    </div>
-  );
-}
-
-const Tot = ({ k, v, u }: { k: string; v: number | null; u: string }) => (
-  <div className="flex gap-1"><dt className="text-text-muted">{k}</dt><dd className="font-mono font-semibold">{v ?? '—'}{v != null && ` ${u}`}</dd></div>
-);
 
 const ROLES: { role: CrewMember['crew_role']; head: keyof JobCrew['headcount']; label: string }[] = [
   { role: 'slickline_supervisor', head: 'supervisors', label: 'Supervisors' },

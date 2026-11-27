@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { riyadhShort } from '../../shared/dates';
 import { ArrowDown, ArrowLeft, ArrowUp, Copy, FileDown, Plus, Search, Send, ShieldCheck, Trash2, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
@@ -7,7 +8,7 @@ import {
   layoutStack, pictureFor, stringTotals, type DiagramKind, type DiagramStatus, type Family, type Part, type PartKind, type Prim, type Row, type SheetStyle,
 } from '../../shared/diagram';
 import type { ToolPart } from '../../shared/toolstring';
-import { ApiError, api, countryScope, formatDate } from '../api';
+import { ApiError, api, apiRaw, formatDate } from '../api';
 import { Select } from '../components/Select';
 import { Banner, Button, Card, Skeleton, cx, inputClass, inputSized } from '../components/ui';
 import { useConfirm } from '../components/Dialog';
@@ -34,7 +35,7 @@ const STATUS: Record<DiagramStatus, { label: string; cls: string }> = {
   sent: { label: 'Waiting for SDM review', cls: 'bg-warning-subtle text-warning' },
   reviewed: { label: 'Approved by the SDM', cls: 'bg-success-subtle text-success' },
 };
-const stamp = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const stamp = (iso: string | null) => riyadhShort(iso, '');
 const fmt = (n: number | null | undefined, d = 2) => (n == null ? '—' : n.toFixed(d));
 const readUnit = () => { try { return localStorage.getItem('slk-diagram-unit') === 'm' ? 'm' : 'ft'; } catch { return 'ft'; } };
 const readStyle = (): SheetStyle => { try { return localStorage.getItem('slk-diagram-style') === 'data' ? 'data' : 'sheet'; } catch { return 'sheet'; } };
@@ -130,7 +131,7 @@ export function Diagrams() {
     setPdfBusy(true); setError(null);
     const w = window.open('', '_blank');
     try {
-      const res = await fetch(`/api/diagrams/${id}/${kind}/${run}/pdf?style=${style}`, { method: 'POST', credentials: 'same-origin', headers: countryScope() ? { 'X-SLK-Country': countryScope()! } : {} });
+      const res = await apiRaw(`/diagrams/${id}/${kind}/${run}/pdf?style=${style}`, { method: 'POST' });
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `PDF failed (${res.status})`);
       const url = URL.createObjectURL(await res.blob());
       if (w) w.location.href = url; else window.location.href = url;

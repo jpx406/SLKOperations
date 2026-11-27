@@ -3,6 +3,7 @@ import { bhaFromStrings, coerceForm, hasSig, rowsAsEvents, type JobForLog } from
 import { canEditStage } from '../shared/stages';
 import type { Job } from '../shared/types';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 import { getJob } from './jobs';
 import { logOptionsFor } from './logOptions';
 
@@ -120,8 +121,7 @@ jobLogs.post('/:jobId/sent', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE job_logs SET sent_by = ?, sent_at = ?, sent_version = ?, email_to = ?, email_cc = ? WHERE job_id = ?')
       .bind(user.fullName, now(), version, clip(b.to), clip(b.cc), job.id),
-    c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'send', 'job', job.id, `Job log version ${version} e-mailed${clip(b.to) ? ` to ${clip(b.to)}` : ''}`.slice(0, 1000)),
+    logRow(c.env, user.username, 'send', 'job', job.id, `Job log version ${version} e-mailed${clip(b.to) ? ` to ${clip(b.to)}` : ''}`.slice(0, 1000)),
   ]);
   return c.json({ ok: true });
 });

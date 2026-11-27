@@ -33,8 +33,3 @@ export async function syncPeople(env: Env) {
   ]);
 }
 
-/** The employees row of a user, made if missing. */
-export async function personOf(env: Env, username: string) {
-  await syncPeople(env);
-  return env.DB.prepare('SELECT * FROM employees WHERE lower(wg_username) = lower(?)').bind(username).first<{ id: string; country: string; full_name: string }>();
-}

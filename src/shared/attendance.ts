@@ -1,6 +1,7 @@
 // Attendance (S17): the day codes from the user manual's legend, weekend and holiday shading,
 // and the "on leave while assigned to a job" flag.
 
+import { escHtml } from './html';
 export const CODES = {
   P: 'Present', A: 'Absent', AL: 'Paid vacation', SL: 'Sick leave', UL: 'Unpaid leave', EL: 'Exam leave', PL: 'Paternity leave',
   HL: 'Hajj leave', MAL: 'Marriage leave', JBFS: 'Field bonus + food', JO: 'Field bonus without food', FA: 'Food allowance only',
@@ -48,7 +49,6 @@ export const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 /** The sheet groups people by reporting line; each group is an attendance category with its own approver. */
 export const groupLabel = (groupName: string | null) => (groupName ? `Reports to ${groupName}` : 'No reporting line');
 
-const escHtml = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** "Ready for approval" email to a category's approver: one line per person with the month's totals. */
 export function approvalEmail(p: { category: string; month: string; by: string; url: string; people: { name: string; eid: string; present: number; field: number; leave: number; blank: number; approved: boolean }[] }) {

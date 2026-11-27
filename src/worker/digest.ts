@@ -1,5 +1,6 @@
 import { buildDigest, type DigestFinding, type Recipient } from '../shared/digest';
 import type { Env } from './env';
+import { sendEmail, logRow } from './lib';
 
 // Sends the reconciliation digest after the nightly run. Uses the EMAIL binding (Cloudflare Email Service) when it is
 // configured and the sender domain is onboarded; without it the run is recorded and nothing is sent.
@@ -31,14 +32,13 @@ export async function sendDigests(env: Env, now = new Date()) {
     if (!r.email) { noEmail++; continue; }
     if (!env.EMAIL) { skipped++; continue; }
     try {
-      await env.EMAIL.send({ to: r.email, from: { email: env.EMAIL_FROM ?? 'slkops@nesrapp.com', name: 'SLK Operations Hub' }, subject: d.subject, html: d.html, text: d.text });
+      await sendEmail(env, { to: r.email, subject: d.subject, html: d.html, text: d.text });
       sent++;
     } catch (e) {
       console.error('digest not sent', r.username, (e as Error).message);
       skipped++;
     }
   }
-  await env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), 'nightly', 'digest', 'reconciliation', null, `digest: ${sent} sent, ${noEmail} without an email on the roster, ${skipped} skipped${env.EMAIL ? '' : ' (no EMAIL binding)'}`).run();
+  await logRow(env, 'nightly', 'digest', 'reconciliation', null, `digest: ${sent} sent, ${noEmail} without an email on the roster, ${skipped} skipped${env.EMAIL ? '' : ' (no EMAIL binding)'}`).run();
   return { sent, noEmail, skipped, mailer: !!env.EMAIL };
 }

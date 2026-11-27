@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { riyadhShort } from '../../shared/dates';
 import { CloudOff, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, api, isoToLocalInput, localInputToIso } from '../api';
@@ -14,7 +15,7 @@ interface Pending { jobId: string; client_id: string; occurred_at: string; run_n
 const KEY = 'slk-joblog-queue';
 const readQueue = (): Pending[] => { try { return JSON.parse(localStorage.getItem(KEY) ?? '[]') as Pending[]; } catch { return []; } };
 const writeQueue = (q: Pending[]) => { try { localStorage.setItem(KEY, JSON.stringify(q)); } catch { /* storage blocked: the entry stays on screen until it uploads */ } };
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => riyadhShort(iso);
 
 /** Uploads what is waiting for this job; a server refusal is dropped with its message, a network failure keeps it. */
 async function flushQueue(jobId: string): Promise<{ sent: number; refused: string[] }> {

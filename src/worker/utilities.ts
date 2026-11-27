@@ -4,6 +4,7 @@ import { FAMILY_OF, FORM, cleanRows, diagramChecks, type Row, type SheetStyle } 
 import { diagramPdf } from '../shared/diagramPdf';
 import { UTIL_LABEL, cleanFacts, copyName, isUtilKind, type DiagramData, type UtilKind } from '../shared/utilities';
 import type { AppBindings, AuthedUser, Env } from './env';
+import { logRow } from './lib';
 
 // Utilities (6z.47): projects for the Rig Up Diagram, the Tool String Diagram and the Winch Report, not tied to a job.
 // Anyone with the Utilities right sees the projects of their countries; editing needs the edit right; deleting is for
@@ -16,8 +17,7 @@ interface ProjectRow { id: string; country: string; kind: UtilKind; name: string
 
 const now = () => new Date().toISOString();
 const audit = (env: Env, user: AuthedUser, action: string, id: string, summary: string) =>
-  env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, action, 'utility_project', id, summary.slice(0, 1000));
+  logRow(env, user.username, action, 'utility_project', id, summary);
 const parse = (s: string): Record<string, unknown> => { try { const o = JSON.parse(s); return o && typeof o === 'object' ? o : {}; } catch { return {}; } };
 const cleanName = (v: unknown) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, 120) : '');
 

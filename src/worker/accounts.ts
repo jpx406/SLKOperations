@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { isColor, nextColor } from '../shared/accounts';
 import type { AppBindings, Env } from './env';
+import { logRow } from './lib';
 
 // Account colours (owner request 2026-10-28): one light colour per account, given when its first job is created.
 // Accounts used by jobs before colours existed get theirs the first time the list is read.
@@ -45,8 +46,7 @@ accounts.put('/:account', async (c) => {
       `INSERT INTO account_colors (account, color, updated_by) VALUES (?1, ?2, ?3)
        ON CONFLICT (account) DO UPDATE SET color = ?2, updated_by = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
     ).bind(account, color, user.username),
-    c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), user.username, 'edit', 'account_color', account, `${account} colour ${color}`),
+    logRow(c.env, user.username, 'edit', 'account_color', account, `${account} colour ${color}`),
   ]);
   return c.json({ ok: true });
 });

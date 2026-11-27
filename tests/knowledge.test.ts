@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  checkDoc, docPrefix, fileKey, filterLibrary, groupByPlace, lessonOfWeek, mayDownload, placeCode, proceduresForJob, reviewState, type KnowledgeDoc,
+  checkDoc, docPrefix, fileKey, filterLibrary, groupByPlace, lessonOfWeek, placeCode, proceduresForJob, reviewState, type KnowledgeDoc,
 } from '../src/shared/knowledge';
 import { readAllowed, ruleFor } from '../src/worker/permissions';
 
@@ -43,12 +43,6 @@ describe('knowledge hub', () => {
     expect(fileKey(d, 2, 'source', 'abcdef123456', 'SOP.docx')).toBe('knowledge/SOPs/Global/NESR/SOP-GL-NESR-001 Rig up rig down/Rev 2/editable/abcdef12 SOP.docx');
     expect(fileKey({ ...d, section: 'client', company: null, client: 'Saudi Aramco', country: 'Saudi Arabia', doc_no: null }, 0, 'published', 'x1234567', 'a.pdf'))
       .toBe('knowledge/Client procedures/Saudi Arabia/Saudi Aramco/Rig up rig down/Rev 0/document/x1234567 a.pdf');
-  });
-  it('lets everyone download the current document, admins everything else', () => {
-    expect(mayDownload({ kind: 'published', superseded: false }, false)).toBe(true);
-    expect(mayDownload({ kind: 'published', superseded: true }, false)).toBe(false);
-    expect(mayDownload({ kind: 'source', superseded: false }, false)).toBe(false);
-    expect(mayDownload({ kind: 'source', superseded: true }, true)).toBe(true);
   });
   it('lists Global first, then each country A to Z', () => {
     const g = groupByPlace([doc({ id: '1', country: 'Saudi Arabia' }), doc({ id: '2', country: 'Global' }), doc({ id: '3', country: 'Bahrain' }), doc({ id: '4', country: 'Global' })]);

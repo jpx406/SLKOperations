@@ -1,4 +1,5 @@
 import { Select } from '../components/Select';
+import { riyadhShort } from '../../shared/dates';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CloudDownload, ExternalLink, FileDown, FileUp, Fingerprint, Plus, RefreshCw, Search, Smartphone, Trash2, UserCheck, UserX, X } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
@@ -39,7 +40,7 @@ interface Matrix { roles: Role[]; menus: string[]; rows: { role: Role; menu_key:
 interface AuditRow { occurred_at: string; username: string; action: string; entity_type: string; entity_id: string; summary: string }
 
 const menuLabel = (k: string) => MENU_LABELS[k] ?? k;
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
+const when = (iso: string | null) => riyadhShort(iso, 'never');
 
 function useConfig() {
   return useQuery({ queryKey: ['config'], queryFn: () => api<{ wireguardUrl: string }>('/config'), staleTime: Infinity });

@@ -9,7 +9,7 @@ import {
   DEFAULT_NUMBERING, DEFAULT_PERIODS, REGISTER_FILTERS, REGISTER_HEADER, REV_STATUS, editableProblem, expiryState, formatNumber, groupFiles, guessType, numberPrefix, registerCells, registerMatches, splitBase,
   type Numbering, type Periods, type RegisterFilter, type RegisterRow, type Revision,
 } from '../../../shared/knowledgeControl';
-import { ApiError, api, formatDate } from '../../api';
+import { ApiError, api, formatDate, saveFile } from '../../api';
 import { BarChart, KpiTile } from '../../components/charts';
 import { Banner, Button, Card, EmptyState, Field, Skeleton, cx, inputClass, inputSized } from '../../components/ui';
 import { Dialog, RevPill, isEditable, linkBtn, today, uploadFile, type Library } from './common';
@@ -19,13 +19,7 @@ import { CompanyTemplates } from './Copies';
 // the document register (with its export), the archive of retired documents, the reference manuals library,
 // the settings (numbering, periods, reviewers and approvers) and batch upload.
 
-const saveFile = (data: BlobPart, name: string, type: string) => {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([data], { type }));
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-};
+const saveAs = (data: BlobPart, name: string, type: string) => saveFile(name, data, type);
 
 // ---- queue ----------------------------------------------------------------------------------------------------
 
@@ -187,8 +181,8 @@ export function Register({ onOpen }: { onOpen: (id: string) => void }) {
   const exportAs = (kind: 'xlsx' | 'csv') => {
     const cells = rows.map((r) => registerCells(r, flagsOf(r)));
     const name = `Knowledge Hub register ${now}${filter === 'all' ? '' : ` (${REGISTER_FILTERS[filter]})`}`;
-    if (kind === 'xlsx') saveFile(workbook('Register', REGISTER_HEADER, cells, [18, 44, 16, 26, 14, 18, 10, 6, 26, 20, 12, 12, 12, 28, 10]), `${name}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    else saveFile(csv(REGISTER_HEADER, cells), `${name}.csv`, 'text/csv');
+    if (kind === 'xlsx') saveAs(workbook('Register', REGISTER_HEADER, cells, [18, 44, 16, 26, 14, 18, 10, 6, 26, 20, 12, 12, 12, 28, 10]), `${name}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    else saveAs(csv(REGISTER_HEADER, cells), `${name}.csv`, 'text/csv');
   };
   return (
     <>

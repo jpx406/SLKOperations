@@ -165,11 +165,6 @@ export function fileKey(d: Pick<KnowledgeDoc, 'section' | 'country' | 'company' 
   return parts.join('/');
 }
 
-/** Everyone downloads the current document file; old revisions and the editable version are for admins. */
-export function mayDownload(f: { kind: 'published' | 'source'; superseded: boolean }, isAdmin: boolean): boolean {
-  return isAdmin || (f.kind === 'published' && !f.superseded);
-}
-
 /** Groups for the SOP and client lists: Global first, then each country A to Z. */
 export function groupByPlace<T extends { country: string }>(docs: T[]): { place: string; docs: T[] }[] {
   const m = new Map<string, T[]>();

@@ -1,4 +1,5 @@
 import { JOB_STATUSES, dateShort, exportRows, hasSig, hours, wireFinalOf, type LogForm, type Sig } from '../../shared/jobLogForm';
+import { escHtml } from '../../shared/html';
 import { workbookSheets } from '../../shared/xlsx';
 
 // The Job log's files (6z.51), made on the device so they also work with no signal: the PDF (pdf-lib, already in
@@ -218,7 +219,7 @@ export function xlsxBlob(f: LogForm): Blob {
 
 // ---- Word
 
-const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = escHtml;
 export function docBlob(f: LogForm): Blob {
   const h = hours(f);
   const cell = (v: unknown, s = '') => `<td style="border:1px solid #999;padding:2pt 4pt;${s}">${esc(v)}</td>`;

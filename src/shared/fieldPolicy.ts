@@ -43,7 +43,6 @@ export const FIELD_POLICY: Record<string, Policy> = {
 };
 
 export const EDITABLE_FIELDS = Object.keys(FIELD_POLICY);
-export const JSON_FIELDS = EDITABLE_FIELDS.filter((f) => FIELD_POLICY[f].kind === 'json');
 
 export const canEditField = (role: Role, field: string, rules?: Rules | null) =>
   role === 'admin' || (!!FIELD_POLICY[field] && allowed(rules, FIELD_POLICY[field].rule, role));

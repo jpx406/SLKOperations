@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import { EXPORT_ONLY, IMMUTABLE, IMPORT_ORDER, PACKAGE_FORMAT, PACKAGE_VERSION, checkPackage, diffTable, keyOf, type Row, type TableDiff } from '../shared/dataPackage';
 import type { AppBindings, Env } from './env';
+import { logRow } from './lib';
 
 // Admin data export and import (Administrator Manual 7). Admin role only. Import requires a backup export made by
 // the same admin in the last 15 minutes, a dry run, and a typed confirmation; it never deletes.
@@ -23,8 +24,7 @@ export async function exportPackage(c: Context<AppBindings>) {
   const id = crypto.randomUUID();
   const counts = Object.entries(tables).map(([k, v]) => `${k} ${v.length}`).join(', ');
   // the export id doubles as the backup receipt an import has to show
-  await c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, 'export', 'data', id, `Whole-board export: ${counts}`.slice(0, 1000)).run();
+  await logRow(c.env, user.username, 'export', 'data', id, `Whole-board export: ${counts}`.slice(0, 1000)).run();
   return c.json({ format: PACKAGE_FORMAT, version: PACKAGE_VERSION, exported_at: new Date().toISOString(), by: user.username, backup_id: id, tables });
 }
 
@@ -93,13 +93,11 @@ export async function importApply(c: Context<AppBindings>) {
     for (let i = 0; i < stmts.length; i += CHUNK) {
       try { await c.env.DB.batch(stmts.slice(i, i + CHUNK)); written += Math.min(CHUNK, stmts.length - i); }
       catch (e) {
-        await c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-          .bind(crypto.randomUUID(), user.username, 'import', 'data', body.backup_id, `Import stopped in ${t} after ${written} rows: ${(e as Error).message}`.slice(0, 1000)).run();
+        await logRow(c.env, user.username, 'import', 'data', body.backup_id, `Import stopped in ${t} after ${written} rows: ${(e as Error).message}`.slice(0, 1000)).run();
         return c.json({ error: `Stopped in ${t} after ${written} rows: ${(e as Error).message}. Restore from backup ${body.backup_id} if needed.`, written }, 500);
       }
     }
   }
-  await c.env.DB.prepare('INSERT INTO audit_log (id, username, action, entity_type, entity_id, summary) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), user.username, 'import', 'data', body.backup_id, `Import applied: ${diffs.map((d) => `${d.table} +${d.added} ~${d.changed}`).join(', ')}`.slice(0, 1000)).run();
+  await logRow(c.env, user.username, 'import', 'data', body.backup_id, `Import applied: ${diffs.map((d) => `${d.table} +${d.added} ~${d.changed}`).join(', ')}`.slice(0, 1000)).run();
   return c.json({ ok: true, written, diffs });
 }
