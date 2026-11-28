@@ -49,7 +49,7 @@ function useConfig() {
 export function AdminUsers() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'people';
-  const tabs = [['people', 'People'], ['roles', 'Roles'], ['matrix', 'Role permissions'], ['competency', 'Competency users'], ['approvals', 'Approvals'], ['attendance', 'Attendance categories'], ['reconcile', 'Reconciliation'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
+  const tabs = [['people', 'Users'], ['roles', 'Roles'], ['matrix', 'Role permissions'], ['competency', 'Competency users'], ['approvals', 'Approvals'], ['attendance', 'Attendance categories'], ['reconcile', 'Reconciliation'], ['sync', 'WIREGUARD sync'], ['history', 'Recent changes']] as const;
   return (
     <section aria-labelledby="admin-title">
       <PageTitle><span id="admin-title">Users &amp; roles</span></PageTitle>
@@ -1160,12 +1160,8 @@ function PersonCompetency({ username, name, onSaved }: { username: string; name:
     onSuccess: () => done(`Competency profile saved for ${name}`),
     onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
   });
-  const remove = useMutation({
-    mutationFn: () => api(`/competency/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
-    onSuccess: () => done(`${name} is no longer a Competency user`),
-    onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
-  });
-  const [ask, confirmDialog] = useConfirm();
+  const isAdmin = useMe().data?.role === 'admin';
+  const [deleting, setDeleting] = useState(false);
   if (q.isPending) return <Skeleton className="mb-5 h-40" />;
   if (q.isError) return <div className="mb-5"><Banner tone="danger">{q.error.message}</Banner></div>;
   const roles = q.data.roles;
@@ -1173,7 +1169,6 @@ function PersonCompetency({ username, name, onSaved }: { username: string; name:
   const id = (k: string) => `comp-${k}-${username}`;
   return (
     <div className="mb-5 rounded-md border border-border border-l-4 border-l-accent-text p-3">
-      {confirmDialog}
       <p className="label-caps mb-1 text-text-muted">Competency system {cur ? '' : '· not a user yet'}</p>
       <p className="mb-3 text-xs text-text-subtle">Separate from the SLK Ops role: that one opens the app’s tabs, this one decides what {name} can see and do in Competency. Copied into the Competency employee register when Competency opens.</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1205,9 +1200,38 @@ function PersonCompetency({ username, name, onSaved }: { username: string; name:
       {msg && <div className="mt-2"><Banner tone={msg.tone}>{msg.text}</Banner></div>}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button size="sm" variant="primary" loading={save.isPending} onClick={() => save.mutate()}>{cur ? 'Save Competency profile' : 'Make a Competency user'}</Button>
-        {cur && <Button size="sm" variant="ghost" loading={remove.isPending} onClick={async () => { if (await ask({ title: `Remove ${name} from Competency?`, body: 'Their Competency profile and role are removed. Whether they can open the Competency tab still follows their access in Users & Roles.', confirm: 'Remove from Competency', danger: true })) remove.mutate(); }}>Remove from Competency</Button>}
+        {cur && isAdmin && !deleting && <Button size="sm" variant="ghost" onClick={() => setDeleting(true)}><Trash2 aria-hidden className="size-4" />Delete Competency user</Button>}
       </div>
+      {cur && isAdmin && deleting && <DeleteCompetencyUser username={username} name={name} onCancel={() => setDeleting(false)} onDeleted={() => { setDeleting(false); done(`${name} is no longer a Competency user`); }} />}
     </div>
+  );
+}
+
+/** Delete a Competency user: admins only, confirmed with their own WIREGUARD password. Their Competency records stay. */
+function DeleteCompetencyUser({ username, name, onCancel, onDeleted }: { username: string; name: string; onCancel: () => void; onDeleted: () => void }) {
+  const qc = useQueryClient();
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const del = useMutation({
+    mutationFn: () => api(`/competency/users/${encodeURIComponent(username)}`, { method: 'DELETE', json: { password } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['competency-users'] }); onDeleted(); },
+    onError: (e: ApiError) => { setError(e.message); setPassword(''); },
+  });
+  const submit = (e: FormEvent) => { e.preventDefault(); setError(null); del.mutate(); };
+  const pid = `comp-del-password-${username}`;
+  return (
+    <form onSubmit={submit} className="mt-3 flex flex-col gap-2 rounded-md border border-danger/40 bg-danger-subtle/40 p-3 text-sm" aria-label={`Delete ${name} from Competency`}>
+      <p className="font-semibold">Delete {name} from Competency?</p>
+      <p className="text-text-muted">Their Competency role and profile are removed. Their records in the Competency register stay, and so does their SLK Ops account.</p>
+      <Field id={pid} label="Your WIREGUARD password" hint="To confirm it is you">
+        <input id={pid} type="password" autoComplete="current-password" className={`${inputClass} max-w-xs`} value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
+      </Field>
+      {error && <Banner tone="danger">{error}</Banner>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" size="sm" variant="danger" loading={del.isPending} disabled={!password}>Delete</Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </form>
   );
 }
 
@@ -1217,6 +1241,9 @@ function CompetencyUsers() {
   const users = useQuery({ queryKey: ['admin-users'], queryFn: () => api<UserRow[]>('/admin/users') });
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState('');
+  const isAdmin = useMe().data?.role === 'admin';
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   if (q.isPending) return <Skeleton className="h-64" />;
   if (q.isError) return <Banner tone="danger">{q.error.message}</Banner>;
   const listed = new Set(q.data.profiles.map((p) => p.username.toLowerCase()));
@@ -1233,7 +1260,7 @@ function CompetencyUsers() {
       </div>
       <CompetencyExcel profiles={q.data.profiles} users={users.data ?? []} />
       {pick && <PersonCompetency username={pick.username} name={pick.full_name} onSaved={() => setAdding('')} />}
-      {!q.data.profiles.length ? <EmptyState title="No Competency users yet">Add the first person above, or open someone under People and fill in their Competency section.</EmptyState> : (
+      {!q.data.profiles.length ? <EmptyState title="No Competency users yet">Add the first person above, or open someone under Users and fill in their Competency section.</EmptyState> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[42rem] text-sm">
             <thead><tr className="label-caps text-left text-text-muted">{['Name', 'Competency role', 'Position', 'Grade', 'Employee record', 'Status', ''].map((h) => <th key={h} scope="col" className="py-1 pr-3">{h}</th>)}</tr></thead>
@@ -1246,11 +1273,17 @@ function CompetencyUsers() {
                   <td className="py-2 pr-3">{p.grade ? `G${p.grade}` : '—'}</td>
                   <td className="py-2 pr-3 font-mono text-xs">{p.employee_id || p.username}</td>
                   <td className="py-2 pr-3">{p.status}</td>
-                  <td className="py-2 text-right"><Button size="sm" variant="ghost" onClick={() => setOpen(open === p.username ? null : p.username)}>{open === p.username ? 'Close' : 'Edit'}</Button></td>
+                  <td className="whitespace-nowrap py-2 text-right">
+                    <Button size="sm" variant="ghost" onClick={() => { setDeleting(null); setOpen(open === p.username ? null : p.username); }}>{open === p.username ? 'Close' : 'Edit'}</Button>
+                    {isAdmin && <Button size="sm" variant="ghost" aria-label={`Delete ${p.name} from Competency`} onClick={() => { setOpen(null); setNotice(null); setDeleting(deleting === p.username ? null : p.username); }}><Trash2 aria-hidden className="size-4" />Delete</Button>}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {deleting && <DeleteCompetencyUser key={deleting} username={deleting} name={q.data.profiles.find((p) => p.username === deleting)?.name ?? deleting} onCancel={() => setDeleting(null)}
+            onDeleted={() => { setNotice(`${q.data.profiles.find((p) => p.username === deleting)?.name ?? deleting} is no longer a Competency user`); setDeleting(null); }} />}
+          {notice && <div className="mt-3"><Banner tone="success">{notice}</Banner></div>}
           {open && <div className="mt-3"><PersonCompetency username={open} name={q.data.profiles.find((p) => p.username === open)?.name ?? open} /></div>}
         </div>
       )}

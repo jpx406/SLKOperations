@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppBindings, AuthedUser, Env } from './env';
 import { logRow } from './lib';
+import { confirmOwnPassword } from './confirmPassword';
 import { checkProfile, planImport, rolesFromDataset, type CompetencyProfile, type SheetProfileRow } from '../shared/competencyUsers';
 
 // Storage for the Competency module (6z.34): the NESR Competency Framework System keeps its data through a
@@ -204,13 +205,22 @@ competency.put('/users/:username', async (c) => {
   return c.json({ ok: true });
 });
 
-/** Take a person out of the Competency users (their employee record in Competency stays). */
+/**
+ * Delete a Competency user (their employee record in Competency stays). Admins only, after typing their own
+ * WIREGUARD password: { password }.
+ */
 competency.delete('/users/:username', async (c) => {
   const me = c.get('user');
-  const username = c.req.param('username');
+  if (me.role !== 'admin') return c.json({ error: 'Only an admin can delete a Competency user' }, 403);
+  const row = await c.env.DB.prepare(`SELECT c.username, u.full_name FROM competency_users c JOIN user_roles u ON u.username = c.username WHERE c.username = ?`)
+    .bind(c.req.param('username')).first<{ username: string; full_name: string }>();
+  if (!row) return c.json({ error: 'No such Competency user' }, 404);
+  const { password } = await c.req.json<{ password?: string }>().catch(() => ({} as { password?: string }));
+  const refused = await confirmOwnPassword(c.env, me, password, { entity: 'competency_kv', id: row.username });
+  if (refused) return c.json({ error: refused.error }, refused.status);
   await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM competency_users WHERE username = ?').bind(username),
-    audit(c.env, me, 'delete', username, 'Competency user removed'),
+    c.env.DB.prepare('DELETE FROM competency_users WHERE username = ?').bind(row.username),
+    audit(c.env, me, 'delete', row.username, `Competency user ${row.full_name} deleted; confirmed with the admin password`),
   ]);
   return c.json({ ok: true });
 });

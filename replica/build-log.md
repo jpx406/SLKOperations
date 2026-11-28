@@ -2095,3 +2095,17 @@ Most of this group landed in 6z.67 (sync guards, one sync at a time, the nightly
   - `npm run check` passes: type check; lint with 0 errors; 550 Node tests; 39 Worker tests. The build is clean.
   - In a fresh tab, all 45 pages load at 1280 px and at 390 px (90 loads) with no console errors, no failed API calls and no sideways scroll, and every page has a heading.
   - The charts draw on recharts 3, and Face ID set-up options come back on the passkeys library 14.
+
+## 6z.74: delete Competency users (admin only, with password); People tab renamed Users
+
+- **Delete a Competency user** from Users & Roles › Competency users: a Delete button on each row and inside the Edit panel. It replaces the old "Remove from Competency".
+  - Only admins see it, and the server refuses everyone else, including people with the Users tab's edit right.
+  - The admin types their own WIREGUARD password first. It is a sign-in check only, so nothing in WIREGUARD changes. A wrong password is refused and written to the audit log.
+  - The person's Competency role and profile go. Their records in the Competency register stay, and so does their SLK Ops account.
+- **Users & Roles:** the People tab is now called Users.
+- The password check is one helper (`src/worker/confirmPassword.ts`), shared with the existing user delete.
+- **Owner's decisions:** delete is for admins only and asks for a password.
+- **Verified:**
+  - `npm run check` passes, with 4 new Worker tests (43 in all): a non-admin is refused, a missing password, an unknown user, and a wrong password that is logged.
+  - In the preview, a wrong password shows "That password is not right" and keeps the row. With the right test password the profile is deleted (then restored locally).
+  - At 390 px there is no sideways scroll and no console errors, apart from the expected 403 for the wrong password.

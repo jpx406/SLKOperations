@@ -9,7 +9,7 @@ import { USER_MODULES, WG_RIGHT, applyModules, parseUserModules, type UserModule
 import { FIX_LABEL, competencyRecords, deleteBlockers, reconcileUsers, type FixAction, type PersonRecords, type ReconPerson, type ReconProfile } from '../shared/userAdmin';
 import { checkProfile } from '../shared/competencyUsers';
 import { competencyDataset, competencyRoles } from './competency';
-import { WgError, wgLogin } from './wg';
+import { confirmOwnPassword } from './confirmPassword';
 import { wgUpsert, wgUsers, type WgListUser } from './wgUsers';
 import { syncPeople } from './people';
 import { roleKeys } from './rules';
@@ -202,16 +202,8 @@ admin.post('/users/:username/delete', async (c) => {
   if (cur.username.toLowerCase() === me.username.toLowerCase()) return c.json({ error: 'You cannot delete yourself' }, 400);
   if (cur.role === 'admin' && cur.active && (await activeAdmins(c.env)) <= 1) return c.json({ error: 'This is the last active admin' }, 400);
   const { password } = await c.req.json<{ password?: string }>().catch(() => ({} as { password?: string }));
-  if (!password) return c.json({ error: 'Type your password to confirm' }, 400);
-  try {
-    // a sign-in check against WIREGUARD with the admin's own account: nothing in WIREGUARD changes
-    const ok = await wgLogin(c.env, me.username, password);
-    if (ok.user.username.toLowerCase() !== me.username.toLowerCase()) throw new WgError(401, 'Wrong password');
-  } catch (e) {
-    if (e instanceof WgError && e.status >= 500) return c.json({ error: 'WIREGUARD could not be reached to check your password. Try again later.' }, 503);
-    await audit(c.env, me, 'delete_refused', 'user_role', cur.username, `Delete of ${cur.username} refused: wrong admin password`).run();
-    return c.json({ error: 'That password is not right' }, 403);
-  }
+  const refused = await confirmOwnPassword(c.env, me, password, { entity: 'user_role', id: cur.username });
+  if (refused) return c.json({ error: refused.error }, refused.status);
   const blockers = deleteBlockers(await personRecords(c.env, cur.username));
   if (blockers.length) return c.json({ error: `${cur.full_name} can only be deactivated: ${blockers.join('; ')}.`, blockers }, 409);
   await c.env.DB.batch([
