@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { localFile } from './localFile';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as K from '../src/shared/wireKpis';
@@ -11,7 +12,7 @@ import { checkKpiSource, KPI_SLICES, KPI_VERIFIED, kpiSource, sameBuild } from '
 // the fingerprint case below fails until both match the file.
 
 const SRC = process.env.WG_V2_PATCH ?? resolve(__dirname, '../../SLK__Wireguard_v2/slkwireguard-backend/Clau_updates/Nov17/WIREGUARD_release_2026-11-17/v2-patch.js');
-const have = existsSync(SRC);
+const have = localFile(SRC, 'Wire KPI parity with WIREGUARD');
 const TODAY = '2026-10-25';
 
 /** The slices of WIREGUARD's file the ported KPIs depend on, found by their own markers rather than line numbers. */

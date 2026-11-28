@@ -1,0 +1,10 @@
+// Bindings for the Worker integration tests (npm run test:worker). Kept apart from the real wrangler.jsonc so the
+// tests never see its service binding, routes or remote ids: storage here is in memory and thrown away after each
+// test file. WIREGUARD, e-mail and the rate limit are stubbed in tests/worker/helpers.ts.
+{
+	"name": "slkops-test",
+	"compatibility_date": "2026-10-01",
+	"d1_databases": [{ "binding": "DB", "database_name": "slkops-test", "database_id": "00000000-0000-0000-0000-000000000000" }],
+	"kv_namespaces": [{ "binding": "KV", "id": "slkops-test-kv" }],
+	"r2_buckets": [{ "binding": "FILES", "bucket_name": "slkops-test-files" }]
+}

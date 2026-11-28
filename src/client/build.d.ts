@@ -2,3 +2,6 @@
 declare const __APP_BUILD__: string;
 /** package.json's version. */
 declare const __APP_VERSION__: string;
+
+/** Style sheets imported for their effect (Vite bundles them). */
+declare module '*.css';

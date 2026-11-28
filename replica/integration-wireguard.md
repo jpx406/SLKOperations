@@ -142,7 +142,7 @@ Nothing about a wire is edited in SLK Ops. Every wire screen has **Open in WIREG
 
 ### How the KPIs are reproduced
 
-WIREGUARD computes its 49 KPIs **in the browser** (`v2-patch.js`: `v2Derive` builds per-run facts once, the `V2_KPIS` registry renders each card). There is no server endpoint to fetch them from. SLK Ops therefore **ports the formulas** into `src/shared/wire-kpis` (pure TypeScript, run in the browser like the original). It keeps them honest three ways:
+WIREGUARD computes its 49 KPIs **in the browser** (`v2-patch.js`: `v2Derive` builds per-run facts once, the `V2_KPIS` registry renders each card). There is no server endpoint to fetch them from. SLK Ops therefore **ports the formulas** into `src/shared/wireKpis.ts` (pure TypeScript, run in the browser like the original). It keeps them honest three ways:
 
 1. **Same parameters.** SLK Ops reads WIREGUARD's `/kpi-settings`, `/sop-settings`, `/sop-wire-size-thresholds` and `/wire-alloy-database` into `wg_settings`. Thresholds and on/off switches are WIREGUARD's own, and a KPI switched off in WIREGUARD is hidden in SLK Ops too.
 2. **Same codes.** G1, C1, W14 and so on keep their codes, so a number in SLK Ops can be checked against the same card in WIREGUARD.

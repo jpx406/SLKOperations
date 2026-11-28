@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { localFile } from './localFile';
 import { describe, expect, it } from 'vitest';
 import { approvalLevel, cleanAnswers, flags, riskScore } from '../src/shared/jra';
 import { parseIf, parseJraForm, parseLevels } from '../src/shared/jraForm';
@@ -104,7 +105,7 @@ describe('JRA Excel form', () => {
   });
   // NESR's own form, when it is on this machine (it is never committed)
   const real = 'C:/Users/JuanCeron/Downloads/SLK_JRA.xlsx';
-  it.skipIf(!fs.existsSync(real))('reads QAF14021 Rev 3 as QHSE wrote it', async () => {
+  it.skipIf(!localFile(real, 'JRA form QAF14021 test'))('reads QAF14021 Rev 3 as QHSE wrote it', async () => {
     const r = parseJraForm(await readXlsx(new Uint8Array(fs.readFileSync(real))));
     if ('error' in r) throw new Error(r.error);
     expect([r.template.code, r.template.revision, r.template.questions.length, Object.keys(r.template.sections).length]).toEqual(['QAF14021', '3', 26, 5]);

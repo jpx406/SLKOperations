@@ -914,8 +914,8 @@ function PersonAttendance({ user }: { user: UserRow }) {
     onSuccess: () => { setMsg({ tone: 'success', text: 'Attendance details saved' }); qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['attendance'] }); qc.invalidateQueries({ queryKey: ['employees'] }); },
     onError: (e: ApiError) => setMsg({ tone: 'danger', text: e.message }),
   });
+  const cats = useCategories(); // before the early return: hooks run in the same order every time
   if (!user.employee_id) return <p className="mb-5 text-xs text-text-subtle">Not on attendance yet: give {user.full_name} a country first.</p>;
-  const cats = useCategories();
   const sheet = f.attendance_sheet || user.role_sheet || 'none';
   const catName = (k: string | null) => cats.data?.find((c) => c.key === k)?.label ?? (k && k !== 'none' ? k : 'not on attendance');
   // foremen in the same country, for the Operators & Helpers sheet

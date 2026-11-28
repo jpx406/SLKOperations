@@ -2063,3 +2063,35 @@ Most of this group landed in 6z.67 (sync guards, one sync at a time, the nightly
 - **Verified:**
   - Tests: 550 pass (the 4 that only checked removed code are gone); the server tests (6z.73) pass; the type check is clean.
   - In the local app, pages that print dates, lesson logos and winch files load as before.
+
+## 6z.73: audit fixes, part 7: tests, lint, checks, docs and updates
+
+- **Server tests** (`npm run test:worker`, 39 tests in `tests/worker/`):
+  - They run the real Worker against a throw-away local D1, KV and R2 (wrangler `getPlatformProxy`; `@cloudflare/vitest-pool-workers` does not support this repo's Vitest 5). WIREGUARD is a stub, and each file checks it was never called.
+  - Covered:
+    - permissions (menus, write rules, other-site requests, the removed roster routes, Face ID switched off);
+    - bonus, including two people and the admin override;
+    - JRA: approvers, sending, deciding, the PDF filed in R2;
+    - sales locking;
+    - the reconciliation summary, run and explain;
+    - attendance self-approval;
+    - shared utility files kept or removed from R2.
+  - No bugs found.
+- **Lint** (`npm run lint`): ESLint with the React hook rules, on the Competency module too. It found two hooks called after an early return, in the person's attendance details (Users & Roles) and in Competency's employee report; both are fixed. The 42 effect-dependency notices stay as warnings: many are deliberate.
+- **Checks before deploy:**
+  - `npm run check` runs the type check, lint and both test suites, and `npm run deploy` runs it first.
+  - `.github/workflows/checks.yml` runs the same on every push and pull request; it never deploys.
+- **Tests that need local files** (NESR templates, the QHSE JRA form, WIREGUARD's source, none of which can be committed) now print why they skipped.
+- **Docs:**
+  - The README describes the live app, the local seed data and the checks.
+  - `replica/architecture.md` says where the code differs from the plan.
+  - The WIREGUARD integration doc names `wireKpis.ts`.
+  - The old `test_schema.py` (2 of 40 migrations) is gone; `tests/migrations.test.ts` covers the migrations.
+- **Updates:**
+  - Majors: passkeys library 13 to 14, recharts 2 to 3, TypeScript 5.9 to 6.0.3. TypeScript 7 builds, but the linter does not support it yet; the CSS type declaration it needs is in place.
+  - Minors: Anthropic SDK 1.14, wrangler 4.169, lucide-react 1.82.
+  - `vite.config.ts` imports `package.json` with a JSON import attribute (no more warning).
+- **Verified:**
+  - `npm run check` passes: type check; lint with 0 errors; 550 Node tests; 39 Worker tests. The build is clean.
+  - In a fresh tab, all 45 pages load at 1280 px and at 390 px (90 loads) with no console errors, no failed API calls and no sideways scroll, and every page has a heading.
+  - The charts draw on recharts 3, and Face ID set-up options come back on the passkeys library 14.

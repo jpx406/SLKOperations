@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { localFile } from './localFile';
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_CONTENT, cleanContent, cleanDraft, mayCreate, mayDo, nextLessonNumber, submitProblems, type LessonContent } from '../src/shared/lessons';
@@ -208,7 +209,7 @@ describe('show or hide, pictures side by side, ready-made layouts', () => {
 });
 
 const TPL = 'C:/Users/JuanCeron/OneDrive - National Energy Services Reunited Corp/Slickline_Library_Documents/Lesson Learnt/GES_NESR_Lesson_Learnt_TEMP.pptx';
-describe.skipIf(!existsSync(TPL))('the PowerPoint on a company template (local template file)', () => {
+describe.skipIf(!localFile(TPL, 'Lesson PowerPoint on a company template'))('the PowerPoint on a company template (local template file)', () => {
   it('reads the colours of each template', async () => {
     const dir = TPL.replace(/[^/]+$/, '');
     expect(await templateStyle(new Uint8Array(readFileSync(TPL)))).toMatchObject({ band: null, title: '863A3A', body: { top: 82, bottom: 677 } });
@@ -302,7 +303,7 @@ describe('the master and layout a template slide really uses (6z.62)', () => {
 });
 
 const NESR_TPL = 'C:/Users/JuanCeron/OneDrive - National Energy Services Reunited Corp/Slickline_Library_Documents/Lesson Learnt/NESR_Lesson_Learnt_TEMP.pptx';
-describe.skipIf(!existsSync(NESR_TPL) || !existsSync(TPL))('a company template made from the NESR one (6z.64, local template files)', () => {
+describe.skipIf(!localFile(NESR_TPL, 'Company template made from NESR') || !localFile(TPL, 'Company template made from NESR'))('a company template made from the NESR one (6z.64, local template files)', () => {
   it('puts the company logo, colour and database name on the NESR layout, and the page reads it', async () => {
     const nesr = new Uint8Array(readFileSync(NESR_TPL));
     const logo = (await templateLogo(new Uint8Array(readFileSync(TPL))))!;

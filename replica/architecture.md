@@ -1,7 +1,7 @@
 # Architecture: SLK Operations (a Slickline hub built on WL Operations Hub's features)
 
 Sources: `replica/recon.md` (45 screens + S46, 14 flows + F15), `replica/features.csv`, and the WIREGUARD project (`nesr/SLK__Wireguard_v2`).
-Updated: 2026-10-24.
+Updated: 2026-10-24. **Status, 2026-11-28 (6z.73):** this is the original plan. The app is live and has grown past it; where this file and the code differ, the code and `replica/build-log.md` are right. The main differences: Q-Incidents (formerly 8 Min. Facts) are served at `/api/emf`, the wire KPIs at `/api/wires/data` and `/api/stats`; tests are Vitest in plain Node (`npm test`) plus the Worker routes on a local D1 (`npm run test:worker`), and `tests/migrations.test.ts` checks the migrations (the old `test_schema.py` is retired).
 
 Decisions so far:
 - **Product line:** Slickline (SLK).
@@ -38,7 +38,7 @@ Decisions so far:
 | AI assistant | Anthropic API (`claude-sonnet-5-5`) with the `ANTHROPIC_API_KEY` secret, manual text only, no data tools | same approach as WIREGUARD's AI panel |
 | domain | custom domain on the Worker: **`slkops.nesrapp.com`** (confirmed) | `nesrapp.com` already serves WIREGUARD, in the same Cloudflare account |
 | plan | **Workers Paid** (confirmed; the account owner switches it in the dashboard) | the free plan's 10 ms CPU limit forced WIREGUARD's PBKDF2 down to 50k rounds. SLK Ops' sync, reconciliation and analytics need headroom, and auth is delegated to WIREGUARD anyway |
-| tests | Vitest + `@cloudflare/vitest-pool-workers` (API on real workerd + D1), Playwright (flows), `migrations/test_schema.py` (schema rules) | the Playwright CLI skill is installed |
+| tests | Vitest in plain Node (`npm test`: shared logic, permissions, `tests/migrations.test.ts` for D1 limits) and the Worker routes on a local D1 (`npm run test:worker`); flows are checked in the browser at desktop and 390 px | — |
 
 One Worker, one D1, no microservices. WIREGUARD remains a separate Worker.
 
@@ -186,8 +186,8 @@ Forgotten passwords and password changes link to WIREGUARD, which owns the accou
 
 | method path | does | who | flow |
 | --- | --- | --- | --- |
-| GET/POST `/api/8mf`, PUT `/api/8mf/:id` | save = one **D1 batch**: report + incidents + version snapshot + roll-up to job NPT/Failure + roster upsert (the statements tested in `test_schema.py`) | eight_min_facts edit | F06 |
-| POST `/api/8mf/:id/sent` · GET `/api/8mf/:id/history` | send marker, versions | 8MF edit / view | F06 |
+| GET/POST `/api/emf`, PUT `/api/emf/:id` (planned as `/api/8mf`) | save = one **D1 batch**: report + incidents + version snapshot + roll-up to job NPT/Failure + roster upsert (the statements tested in `test_schema.py`) | eight_min_facts edit | F06 |
+| POST `/api/emf/:id/sent` · GET `/api/emf/:id/versions/:v` | send marker, versions | 8MF edit / view | F06 |
 | GET/POST/PATCH `/api/failure-roster` | roster, manual rows, action status | failure_roster | F06 |
 | GET/PUT `/api/pre-job-notes/:jobId` · POST `/send` | versioned handover notes | pre_job_notes | F11 |
 | GET `/api/metrics/:name?filters` | statistics, NPT, utilization, competency computed by `src/shared/metrics` (pure TypeScript, unit-tested, also used by the browser) | dashboard views | F08 |
@@ -200,8 +200,8 @@ Forgotten passwords and password changes link to WIREGUARD, which owns the accou
 | GET `/api/wires?unit=&status=` | register from `wg_wires` + `wg_drums` + latest test + flags | wires view | F13 |
 | GET `/api/wires/:serial` | detail: runs, tests, derived facts (trips/jars since cut, life consumed, used-wire limit, pre-job test status) | wires view | F13 |
 | GET `/api/jobs/:id/wire-check` | pre-job test rule and tension limit for the job's wire and toolstring, plus linked WIREGUARD runs | jobs view | F04, F05 |
-| GET `/api/wire-kpis/data?filters` | the mirrored rows and WIREGUARD parameters the browser-side KPI engine needs (paged) | statistics view | F08 |
-| GET `/api/wire-kpis/parity` | last parity run vs the current WIREGUARD build stamp | admin | — |
+| GET `/api/wires/data?filters` (planned as `/api/wire-kpis/data`) | the mirrored rows and WIREGUARD parameters the browser-side KPI engine needs (paged) | statistics view | F08 |
+| the parity check runs in the WIREGUARD sync (`watchBuild` in `src/worker/sync.ts`; planned as `/api/wire-kpis/parity`) | last parity run vs the current WIREGUARD build stamp | admin | — |
 
 There are no write routes: every wire screen links to WIREGUARD for changes.
 

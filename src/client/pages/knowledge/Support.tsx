@@ -101,7 +101,7 @@ export function SupportFiles({ docId }: { docId: string }) {
           <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {videos.map((f) => (
               <li key={f.id} className="rounded-md border border-border p-2">
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption -- field videos have no caption files */}
+                {/* field videos have no caption files */}
                 <video controls preload="metadata" playsInline src={supportUrl(docId, f, true)} className="aspect-video w-full rounded-sm bg-black" />
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-sm"><span className="min-w-0 flex-1 truncate font-semibold">{f.file_name}</span>{actions(f)}</div>
                 <p className="text-xs text-text-subtle">{meta(f)}</p>

@@ -10,6 +10,8 @@ Cloudflare Worker (Hono) + D1 + KV + R2, React 19 front end. Live at `slkops.nes
   from `mock-wireguard/users.json`. The test admin is NESR-90003.
 - `npm run typecheck`: `tsc -b`. A hook also runs it after every edit under `src/`, `tests/` and `mock-wireguard/`.
 - `npm test`: Vitest, `tests/**/*.test.ts` only (plain Node).
+- `npm run test:worker`: the Worker routes against a throw-away local D1/KV/R2 (`tests/worker/`, wrangler `getPlatformProxy`; WIREGUARD is a stub that must never be called).
+- `npm run lint`: ESLint with the React hook rules only. `npm run check` runs typecheck, lint and both test suites; `npm run deploy` runs it first.
 - `npm run db:migrate:local`: applies `replica/migrations` to the local D1.
 - `npm run build`: type check + Vite build.
 
@@ -42,5 +44,5 @@ Cloudflare Worker (Hono) + D1 + KV + R2, React 19 front end. Live at `slkops.nes
 - Commits look like `feat: <what changed, in plain words> (6z.11)`; also `fix:` and `docs:`.
 - After a milestone, add a section to `replica/build-log.md`: what changed, the owner's decisions, and a
   **Verified:** line with the test count and what was checked in the browser.
-- Before calling UI work done: `npm run typecheck`, `npm test`, then check it in the preview at desktop and 390 px
-  phone width, with no console errors and no sideways scroll.
+- Before calling UI work done: `npm run check`, then check it in the preview at desktop and 390 px phone width, with
+  no console errors and no sideways scroll.

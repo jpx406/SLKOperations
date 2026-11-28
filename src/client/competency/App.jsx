@@ -3324,6 +3324,8 @@ function NotificationBell({ state, role, empForUser, user, setTab }) {
 }
 
 function EmployeeReportOverlay({ empId, state, d, onClose }) {
+  // the hook comes before the early returns, so it runs in the same order on every render
+  const [openErr, setOpenErr] = useState("");
   if (!empId) return null;
   const emp = state.employees.find(e => e.id === empId);
   if (!emp) return null;
@@ -3348,7 +3350,6 @@ function EmployeeReportOverlay({ empId, state, d, onClose }) {
     .filter(r => r.prof && r.prof.retention && r.prof.retention.startsWith("AT RISK"));
 
   const genAt = new Date();
-  const [openErr, setOpenErr] = useState("");
   /* Opening a new tab and printing there — window.print() on the CURRENT window is
      unreliable inside a sandboxed preview frame, the same restriction that blocks
      mailto: links. A fresh tab sidesteps that, and works identically once deployed. */
